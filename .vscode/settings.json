@@ -1,0 +1,43 @@
+{
+	"typescript.tsdk": "node_modules/typescript/lib",
+	"scss.lint.unknownAtRules": "ignore",
+	"css.lint.unknownAtRules": "ignore",
+	"editor.tabSize": 2,
+	"editor.formatOnSave": true,
+	"files.eol": "\n",
+	"editor.defaultFormatter": "biomejs.biome",
+	"[javascript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[typescript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[json]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"biome.enabled": true,
+	"eslint.enable": false,
+	"editor.codeActionsOnSave": {
+		"source.organizeImports.biome": "explicit",
+		"source.fixAll.eslint": "never",
+		"source.fixAll.ts": "never",
+		"source.fixAll.biome": "explicit"
+	},
+	"editor.quickSuggestions": {
+		"strings": "on"
+	},
+	"typescript.preferences.autoImportSpecifierExcludeRegexes": ["^(node:)?os$"],
+	//...
+	"search.exclude": {
+		// Avoid polluting search results with lockfile content
+		"pnpm-lock.yaml": true
+	},
+	// Ensure VSCode uses pnpm instead of npm
+	"npm.packageManager": "pnpm",
+	// For those using file-nesting, nest the new files. E.g.:
+	"explorer.fileNesting.enabled": true,
+	"explorer.fileNesting.patterns": {
+		"package.json": "pnpm-workspace.yaml, pnpm-lock.yaml",
+		".env": ".env.*"
+	}
+}

@@ -1,0 +1,45 @@
+{
+	"name": "auto-adventure",
+	"version": "0.0.0",
+	"license": "MIT",
+	"bin": "dist/main.js",
+	"type": "module",
+	"engines": {
+		"node": ">=16"
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"start": "node dist/main.js",
+		"lint": "biome check .",
+		"lint:fix": "biome check . --write"
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@ai-sdk/google": "^1.2.22",
+		"@google/genai": "^1.7.0",
+		"@types/tinycolor2": "^1.4.6",
+		"ai": "^4.3.16",
+		"dotenv-flow": "^4.1.0",
+		"ink": "^4.1.0",
+		"meow": "^11.0.0",
+		"react": "^18.2.0",
+		"react-error-boundary": "^6.0.0",
+		"tinycolor2": "^1.6.0",
+		"yaml": "^2.8.0",
+		"zod": "^3.25.67",
+		"zod-to-json-schema": "^3.24.6",
+		"zustand": "^5.0.6"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.6",
+		"@sindresorhus/tsconfig": "^3.0.1",
+		"@types/react": "^18.0.32",
+		"chalk": "^5.2.0",
+		"ink-testing-library": "^3.0.0",
+		"typescript": "^5.8.3",
+		"vitest": "^3.2.4"
+	}
+}
