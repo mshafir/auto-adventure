@@ -67,7 +67,11 @@ export async function invokeAction<Args extends any[]>(
 			locked: false,
 		});
 	} catch (e) {
-		log("Error during action:", e);
+		log(
+			"Error during action:",
+			e,
+			e && typeof e === "object" && "message" in e ? e.message : undefined,
+		);
 		useGameStore.setState({
 			locked: false,
 		});

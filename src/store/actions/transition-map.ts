@@ -2,6 +2,10 @@ import { type GenerationConfig, generateMap } from "../../ai/generate-map.js";
 import type { GameMap } from "../../map/map.schema.js";
 import { loadMap, mapExists, saveMap } from "../../map/map-loading.js";
 import { getMapDimensions } from "../../utils/get-map-dimensions.js";
+import {
+	getTileColumnCells,
+	getTileRowCells,
+} from "../../utils/get-tile-cells.js";
 import { log } from "../../utils/log.js";
 import type { GameState } from "../game-store.js";
 import { defineAction } from "./action.js";
@@ -79,20 +83,39 @@ export const transitionMap = defineAction(
 		});
 
 		const { width, height } = getMapDimensions(newMap);
+		const { mapTiles, nonWalkableSymbols } = newMap;
+		const isWalkable = (cell: string) => !nonWalkableSymbols.includes(cell);
+		const getWalkableRowIndex = (row: number) => {
+			const walkableRow = getTileRowCells(mapTiles, row).findIndex(isWalkable);
+			if (walkableRow === -1) {
+				return 0;
+			}
+			return walkableRow;
+		};
+		const getWalkableColumnIndex = (column: number) => {
+			const walkableColumn = getTileColumnCells(mapTiles, column).findIndex(
+				isWalkable,
+			);
+			if (walkableColumn === -1) {
+				return 0;
+			}
+			return walkableColumn;
+		};
 
 		let newPlayerPosition: [number, number];
 		switch (direction) {
-			case "up":
-				newPlayerPosition = [Math.floor(width / 2), height - 2]; // Near bottom
+			case "up": {
+				newPlayerPosition = [getWalkableRowIndex(height - 2), height - 2]; // Near bottom
 				break;
+			}
 			case "down":
-				newPlayerPosition = [Math.floor(width / 2), 1]; // Near top
+				newPlayerPosition = [getWalkableRowIndex(1), 1]; // Near top
 				break;
 			case "left":
-				newPlayerPosition = [width - 2, Math.floor(height / 2)]; // Near right
+				newPlayerPosition = [width - 2, getWalkableColumnIndex(width - 2)]; // Near right
 				break;
 			case "right":
-				newPlayerPosition = [1, Math.floor(height / 2)]; // Near left
+				newPlayerPosition = [1, getWalkableColumnIndex(1)]; // Near left
 				break;
 		}
 

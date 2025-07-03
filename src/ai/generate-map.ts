@@ -1,6 +1,6 @@
 import { google } from "@ai-sdk/google";
 import { GoogleGenAI } from "@google/genai";
-import { generateObject, generateText } from "ai";
+import { generateObject, generateText, streamText } from "ai";
 import type z from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { env } from "../env.js";
@@ -11,6 +11,7 @@ import {
 } from "../map/map.schema.js";
 import type { GameState } from "../store/game-store.js";
 import { log } from "../utils/log.js";
+import { objectGen, objectGenGoogle } from "./object-gen.js";
 
 export interface GenerationConfig {
 	name: string;
@@ -20,22 +21,8 @@ export interface GenerationConfig {
 	world: string;
 }
 
-async function objectGen<T>(
-	prompt: string,
-	schema: z.ZodSchema<T>,
-): Promise<T> {
-	const result = await generateObject({
-		model: google("gemini-2.5-flash-preview-04-17"),
-		temperature: 1,
-		prompt,
-		schema,
-	});
-	log("Usage: ", result.usage);
-	return result.object;
-}
-
 export async function generateMap(config: GenerationConfig) {
-	let result: GameMap = {
+	const result: GameMap = {
 		name: config.name,
 		description: config.description ?? "",
 		objects: [],
@@ -54,7 +41,21 @@ export async function generateMap(config: GenerationConfig) {
 		worldCoordinates: config.state?.worldCoordinates ?? [0, 0],
 		mapTiles: "",
 		tileColors: "",
-		nonWalkableSymbols: [],
+		nonWalkableSymbols: [
+			"█",
+			"━",
+			"┃",
+			"┏",
+			"┓",
+			"┗",
+			"┛",
+			"┣",
+			"┫",
+			"┳",
+			"┻",
+			"╋",
+			"●",
+		],
 	};
 	const descResponse = await objectGen(
 		`Come up with a several sentence description of a map named ${config.name} for an RPG game. 
@@ -101,8 +102,7 @@ Design a top-down 2D map for the location ${config.name}:
 ${config.description}
 
 The map should be at least 40x20 tiles large.
-Specify corresponding layers of base symbols to draw the map and colors to apply to the map. 
-Each of those layers should be exactly the same size and they should correspond to each other.
+
 ${
 	config.state && config.state?.map.name !== ""
 		? `The player just came from the map ${config.state.map.name} to the ${config.stateFrom}: 
@@ -122,24 +122,36 @@ ${Object.entries(result.borders ?? {})
 	)
 	.join("\n")}
 
+Use ${result.nonWalkableSymbols.join(", ")} as non-walkable, non-passable barrier tiles.
 
 Make sure to follow all of these rules strictly:
 - Make sure to include all of letters of objects in the tile symbols exactly once.
-- Make sure the tiles allow the user to reach the surrounding areas by clearing a path in the relevant direction.
-- If there is no border in a certain direction, generate a non-walkable wall along that edge.
-- For any specified border, make sure it is reachable and not blocked by a wall of non-walkable tiles.
-- Be sure to include a few objects in the tile symbols so we can keep the game going. At least 1 object is required.
+- Make sure the tiles allow the user to reach the specified surrounding areas by clearing a path in the relevant direction.
+  There should NOT be a non-walkable wall along any border specified above, use walkable tiles and create a gap so the use
+	can walk past the boundaries of the map to get to the next area in each of those directions.
 - Make sure the character can move around and all the specified borders are reachable.
-- Make the maps interesting, with obstacles and different colors and ornate details, don't make them monotonous.
+- Make the maps interesting, with obstacles and ornate details, don't make them monotonous.
 
-Check to make sure you have followed the above rules.
+Check to make sure you have followed the above rules and return only the exact map, no explanation or other text.
 `;
 	log(`Prompt: ${prompt}`);
-	const response = await objectGen(prompt, GameMapSchema);
-	result = {
-		...result,
-		...response,
-	};
+	const response = streamText({
+		model: google("gemini-2.5-flash"),
+		prompt,
+		temperature: 1,
+	});
+
+	let mapTiles = "";
+	for await (const chunk of response.textStream) {
+		log(chunk);
+		mapTiles += chunk;
+	}
+
+	// get the text between the ``` and ```
+	result.mapTiles = mapTiles.includes("```")
+		? mapTiles.split("```")[1]
+		: mapTiles;
+	result.tileColors = Array(result.mapTiles.length).fill(" ").join("\n");
 
 	return cleanupMap(result);
 }
