@@ -1,4 +1,4 @@
-export function getTile(layer: string, position: [number, number]) {
+export function getTile(layer: string, position: readonly [number, number]) {
 	const splitLayer = layer.split("\n");
 	if (
 		position[0] < 0 ||

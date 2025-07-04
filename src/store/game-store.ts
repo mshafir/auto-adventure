@@ -1,26 +1,47 @@
+import { writeFileSync } from "node:fs";
 import { create } from "zustand";
-import { env } from "../env.js";
+import { ENV } from "../env.js";
 import type { GameMap } from "../map/map.schema.js";
-import { loadMap } from "../map/map-loading.js";
 import { log } from "../utils/log.js";
 import type { Action } from "./actions/action.js";
 
+export type Quest = {
+	name: string;
+	description: string;
+	progress: string[];
+	completed: boolean;
+};
+
+export type InventoryItem = {
+	name: string;
+	description: string;
+	quantity: number;
+};
+
+export type InteractionState = {
+	currentObject: {
+		name: string;
+		description: string;
+		letter: string;
+	};
+	currentMessageIndex?: number;
+	currentChoiceIndex?: number;
+	chatMessages: { role: "user" | "assistant"; content: string }[];
+	choices?: string[];
+};
+
 export type GameState = {
 	locked: boolean;
+	status?: string;
 	map: GameMap;
-	playerPosition: [number, number];
+	playerPosition: readonly [number, number];
 	mapHistory: string[];
+	lastFrom?: "north" | "south" | "east" | "west";
 	worldCoordinates: [number, number]; // [x, y] coordinates in the world
 	world: string;
-	interactionState: {
-		isInteracting: boolean;
-		currentObject: {
-			name: string;
-			description: string;
-			letter: string;
-		} | null;
-		chatMessages: string[];
-	};
+	inventory: InventoryItem[];
+	quests: Quest[];
+	interactionState?: InteractionState;
 };
 
 const defaultMap: GameMap = {
@@ -31,8 +52,8 @@ const defaultMap: GameMap = {
 	tileColors: "",
 	nonWalkableSymbols: [],
 	objects: [],
-	borders: {},
-	world: env.worldName,
+	surroundingMaps: {},
+	world: ENV.worldName,
 	worldCoordinates: [0, 0],
 };
 
@@ -42,12 +63,16 @@ export const useGameStore = create<GameState>(() => ({
 	playerPosition: [10, 10],
 	mapHistory: [],
 	worldCoordinates: [0, 0],
-	world: env.worldName,
-	interactionState: {
-		isInteracting: false,
-		currentObject: null,
-		chatMessages: [],
-	},
+	world: ENV.worldName,
+	inventory: [
+		{
+			name: "Gold",
+			description: "A shiny coin",
+			quantity: 10,
+		},
+	],
+	quests: [],
+	interactionState: undefined,
 }));
 
 export async function invokeAction<Args extends any[]>(
@@ -64,15 +89,18 @@ export async function invokeAction<Args extends any[]>(
 		const newState = await action(state, ...args);
 		useGameStore.setState({
 			...newState,
+			status: undefined,
 			locked: false,
 		});
-	} catch (e) {
-		log(
-			"Error during action:",
-			e,
-			e && typeof e === "object" && "message" in e ? e.message : undefined,
+		writeFileSync(
+			"state.json",
+			JSON.stringify(useGameStore.getState(), null, 2),
 		);
+	} catch (e) {
+		const errorMsg = `Error during action: ${e && typeof e === "object" && "message" in e ? e.message : JSON.stringify(e)}`;
+		log(errorMsg);
 		useGameStore.setState({
+			status: errorMsg,
 			locked: false,
 		});
 	}

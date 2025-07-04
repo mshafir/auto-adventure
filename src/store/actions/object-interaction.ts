@@ -1,5 +1,18 @@
+import { objectInteractGen } from "../../ai/object-interact-gen.js";
+import { textGenWithTools } from "../../ai/text-gen.js";
+import { choices } from "../../ai/tools/choices.js";
+import {
+	addInventoryItem,
+	removeInventoryItem,
+} from "../../ai/tools/inventory.js";
+import {
+	addQuestProgress,
+	completeQuest,
+	createQuest,
+	removeQuest,
+} from "../../ai/tools/quests.js";
 import { getTile } from "../../utils/get-tile.js";
-import type { GameState } from "../game-store.js";
+import { type GameState, useGameStore } from "../game-store.js";
 import { defineAction } from "./action.js";
 
 export function getNearbyObject(state: GameState) {
@@ -75,33 +88,69 @@ export function generateChatResponse(
 	return responses[Math.floor(Math.random() * responses.length)];
 }
 
-export const startInteraction = defineAction((state: GameState) => {
-	const nearbyObject = getNearbyObject(state);
+export const startOrContinueInteraction = defineAction(
+	async (state: GameState) => {
+		const nearbyObject = getNearbyObject(state);
 
-	if (!nearbyObject) {
-		return state;
-	}
+		if (!nearbyObject) {
+			return state;
+		}
 
-	const chatResponse = generateChatResponse(
-		nearbyObject.name,
-		nearbyObject.description,
-	);
+		let { interactionState } = state;
 
-	return {
-		interactionState: {
-			isInteracting: true,
-			currentObject: nearbyObject,
-			chatMessages: [chatResponse],
-		},
-	};
-});
+		if (!interactionState) {
+			useGameStore.setState({
+				interactionState: {
+					currentMessageIndex: 0,
+					currentObject: nearbyObject,
+					chatMessages: [{ role: "user", content: "How do you respond?" }],
+				},
+			});
+			return await objectInteractGen(useGameStore.getState(), nearbyObject);
+		}
+
+		let messageIdx = interactionState?.currentMessageIndex ?? 0;
+		let messages = interactionState?.chatMessages ?? [];
+
+		if (
+			interactionState?.choices &&
+			interactionState.currentChoiceIndex !== undefined
+		) {
+			const choice =
+				interactionState.choices[interactionState.currentChoiceIndex];
+			messageIdx = messageIdx + 1;
+			messages = [...messages, { role: "user", content: choice }];
+			interactionState = {
+				...interactionState,
+				choices: [],
+				currentChoiceIndex: undefined,
+				chatMessages: messages,
+				currentMessageIndex: messageIdx,
+			};
+			useGameStore.setState({ interactionState });
+		}
+
+		if (messageIdx >= messages.length - 1) {
+			return await objectInteractGen(
+				{ ...state, interactionState },
+				nearbyObject,
+			);
+		}
+
+		return {
+			interactionState: {
+				...interactionState,
+				currentMessageIndex: Math.min(
+					interactionState.chatMessages.length - 1,
+					messageIdx + 1,
+				),
+			},
+		};
+	},
+);
 
 export const endInteraction = defineAction((state: GameState) => {
 	return {
-		interactionState: {
-			isInteracting: false,
-			currentObject: null,
-			chatMessages: [],
-		},
+		interactionState: undefined,
 	};
 });

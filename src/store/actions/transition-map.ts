@@ -2,11 +2,11 @@ import { type GenerationConfig, generateMap } from "../../ai/generate-map.js";
 import type { GameMap } from "../../map/map.schema.js";
 import { loadMap, mapExists, saveMap } from "../../map/map-loading.js";
 import { getMapDimensions } from "../../utils/get-map-dimensions.js";
-import {
-	getTileColumnCells,
-	getTileRowCells,
-} from "../../utils/get-tile-cells.js";
 import { log } from "../../utils/log.js";
+import {
+	pickWalkableColumnCell,
+	pickWalkableRowCell,
+} from "../../utils/walkable-borders.js";
 import type { GameState } from "../game-store.js";
 import { defineAction } from "./action.js";
 
@@ -24,106 +24,88 @@ export async function getMap(config: GenerationConfig): Promise<GameMap> {
 
 export const transitionMap = defineAction(
 	async (state: GameState, direction: "up" | "down" | "left" | "right") => {
-		const { borders } = state.map;
+		const { surroundingMaps } = state.map;
 		const [currentX, currentY] = state.worldCoordinates;
 
-		let borderInfo:
-			| { targetName: string; targetDescription: string }
-			| undefined;
+		let mapInfo: { targetName: string; targetDescription: string } | undefined;
 		let newCoordinates: [number, number] | undefined;
 		let stateFrom: "north" | "south" | "east" | "west" | undefined;
 
 		switch (direction) {
 			case "up":
-				if (borders?.north) {
-					borderInfo = borders.north;
+				if (surroundingMaps?.north) {
+					mapInfo = surroundingMaps.north;
 					newCoordinates = [currentX, currentY - 1];
 					stateFrom = "south";
 				}
 				break;
 			case "down":
-				if (borders?.south) {
-					borderInfo = borders.south;
+				if (surroundingMaps?.south) {
+					mapInfo = surroundingMaps.south;
 					newCoordinates = [currentX, currentY + 1];
 					stateFrom = "north";
 				}
 				break;
 			case "left":
-				if (borders?.west) {
-					borderInfo = borders.west;
+				if (surroundingMaps?.west) {
+					mapInfo = surroundingMaps.west;
 					newCoordinates = [currentX - 1, currentY];
 					stateFrom = "east";
 				}
 				break;
 			case "right":
-				if (borders?.east) {
-					borderInfo = borders.east;
+				if (surroundingMaps?.east) {
+					mapInfo = surroundingMaps.east;
 					newCoordinates = [currentX + 1, currentY];
 					stateFrom = "west";
 				}
 				break;
 		}
 
-		if (!borderInfo || !newCoordinates) {
+		if (!mapInfo || !newCoordinates) {
 			return state;
 		}
 
 		log(
-			`Crossing ${direction} border to ${borderInfo.targetName} from ${stateFrom}`,
+			`Crossing ${direction} border to ${mapInfo.targetName} from ${stateFrom}`,
 		);
 		const newMap = await getMap({
 			world: state.world,
-			name: borderInfo.targetName,
-			description: borderInfo.targetDescription,
+			name: mapInfo.targetName,
+			description: mapInfo.targetDescription,
 			state: {
 				...state,
 				worldCoordinates: newCoordinates,
 			},
 			stateFrom,
+			stateFromName: state.map.name,
 		});
 
 		const { width, height } = getMapDimensions(newMap);
-		const { mapTiles, nonWalkableSymbols } = newMap;
-		const isWalkable = (cell: string) => !nonWalkableSymbols.includes(cell);
-		const getWalkableRowIndex = (row: number) => {
-			const walkableRow = getTileRowCells(mapTiles, row).findIndex(isWalkable);
-			if (walkableRow === -1) {
-				return 0;
-			}
-			return walkableRow;
-		};
-		const getWalkableColumnIndex = (column: number) => {
-			const walkableColumn = getTileColumnCells(mapTiles, column).findIndex(
-				isWalkable,
-			);
-			if (walkableColumn === -1) {
-				return 0;
-			}
-			return walkableColumn;
-		};
-
-		let newPlayerPosition: [number, number];
+		let newPlayerPosition: readonly [number, number] | undefined;
 		switch (direction) {
-			case "up": {
-				newPlayerPosition = [getWalkableRowIndex(height - 2), height - 2]; // Near bottom
+			case "up":
+				newPlayerPosition = pickWalkableRowCell(newMap, height - 1); // Near bottom
 				break;
-			}
 			case "down":
-				newPlayerPosition = [getWalkableRowIndex(1), 1]; // Near top
+				newPlayerPosition = pickWalkableRowCell(newMap, 0); // Near top
 				break;
 			case "left":
-				newPlayerPosition = [width - 2, getWalkableColumnIndex(width - 2)]; // Near right
+				newPlayerPosition = pickWalkableColumnCell(newMap, width - 1); // Near right
 				break;
 			case "right":
-				newPlayerPosition = [1, getWalkableColumnIndex(1)]; // Near left
+				newPlayerPosition = pickWalkableColumnCell(newMap, 0); // Near left
 				break;
 		}
 
+		const historyIndex = state.mapHistory.indexOf(state.map.name);
+
 		return {
 			map: newMap,
-			mapHistory: [state.map.name, ...state.mapHistory],
+			mapHistory: [state.map.name, ...state.mapHistory.slice(historyIndex + 1)],
+			lastFrom: stateFrom,
 			worldCoordinates: newCoordinates,
-			playerPosition: newPlayerPosition,
+			playerPosition: newPlayerPosition ?? [10, 10],
 		};
 	},
 );

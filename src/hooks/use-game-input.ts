@@ -4,8 +4,9 @@ import type { Action } from "../store/actions/action.js";
 import { movePlayer } from "../store/actions/move-player.js";
 import {
 	endInteraction,
-	startInteraction,
+	startOrContinueInteraction,
 } from "../store/actions/object-interaction.js";
+import { regenerateTiles } from "../store/actions/regenerate-tiles.js";
 import {
 	type GameState,
 	invokeAction,
@@ -32,39 +33,32 @@ function event<Args extends unknown[]>(
 
 const events: InputEvent<any[]>[] = [
 	event(
-		(input, key, state) => key.escape && state.interactionState.isInteracting,
+		(input, key, state) => key.escape && !!state.interactionState,
 		endInteraction,
 		[],
 	),
+	event((input, key, state) => input === " ", startOrContinueInteraction, []),
 	event(
-		(input, key, state) =>
-			input === " " && !state.interactionState.isInteracting,
-		startInteraction,
-		[],
-	),
-	event(
-		(input, key, state) =>
-			key.leftArrow && !state.interactionState.isInteracting,
+		(input, key, state) => key.leftArrow && !state.interactionState,
 		movePlayer,
 		["left"],
 	),
 	event(
-		(input, key, state) =>
-			key.rightArrow && !state.interactionState.isInteracting,
+		(input, key, state) => key.rightArrow && !state.interactionState,
 		movePlayer,
 		["right"],
 	),
 	event(
-		(input, key, state) => key.upArrow && !state.interactionState.isInteracting,
+		(input, key, state) => key.upArrow && !state.interactionState,
 		movePlayer,
 		["up"],
 	),
 	event(
-		(input, key, state) =>
-			key.downArrow && !state.interactionState.isInteracting,
+		(input, key, state) => key.downArrow && !state.interactionState,
 		movePlayer,
 		["down"],
 	),
+	event((input, key, state) => key.ctrl && input === "r", regenerateTiles, []),
 ];
 
 export function useGameInput() {

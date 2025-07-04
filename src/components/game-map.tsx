@@ -1,7 +1,8 @@
-import { Newline, Text } from "ink";
+import { Box, Newline, Text } from "ink";
+import Spinner from "ink-spinner";
 import { Fragment } from "react/jsx-runtime";
 import tinycolor from "tinycolor2";
-import { colorMap } from "../map/map.schema.js";
+import { CONFIG } from "../env.js";
 import { type GameState, useGameStore } from "../store/game-store.js";
 import { getTile } from "../utils/get-tile.js";
 import { MeasuringBox } from "./measuring-box.js";
@@ -46,8 +47,8 @@ export function renderScene(width: number, height: number, state: GameState) {
 			) {
 				const symbol = tileSymbols[mapY][mapX];
 				const color = getTile(tileColors, [mapX, mapY]);
-				const colorName = colorMap[color as keyof typeof colorMap];
-				const isWalkable = !nonWalkableSymbols.includes(symbol);
+				const colorName =
+					CONFIG.colorMap[color as keyof typeof CONFIG.colorMap];
 				renderedMap[i][j] = (
 					<Text
 						key={`${mapY},${mapX}`}
@@ -88,6 +89,15 @@ export function renderScene(width: number, height: number, state: GameState) {
 
 export function GameMap() {
 	const state = useGameStore();
+	if (state.status) {
+		return (
+			<Box flexGrow={1} overflow="hidden">
+				<Text>
+					<Spinner type="material" /> {state.status}
+				</Text>
+			</Box>
+		);
+	}
 	return (
 		<MeasuringBox flexGrow={1} overflow="hidden">
 			{({ width, height }) => (

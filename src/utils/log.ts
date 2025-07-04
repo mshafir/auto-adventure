@@ -7,3 +7,7 @@ export function log(data: any, ...params: any[]) {
 		`${typeof data === "string" ? data : JSON.stringify(data)} ${params.length > 0 ? JSON.stringify(params) : ""}\n`,
 	);
 }
+
+export function logChars(data: string) {
+	fs.appendFileSync("log.txt", data);
+}

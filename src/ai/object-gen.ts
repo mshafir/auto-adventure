@@ -1,18 +1,24 @@
-import { google } from "@ai-sdk/google";
 import { GoogleGenAI } from "@google/genai";
 import { generateObject } from "ai";
 import type z from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { env } from "../env.js";
+import { CONFIG, ENV } from "../env.js";
 import { log } from "../utils/log.js";
 
 export async function objectGen<T>(
 	prompt: string,
 	schema: z.ZodSchema<T>,
 ): Promise<T> {
+	return objectGenVercel(prompt, schema);
+}
+
+export async function objectGenVercel<T>(
+	prompt: string,
+	schema: z.ZodSchema<T>,
+): Promise<T> {
 	const result = await generateObject({
-		model: google("gemini-2.5-flash-preview-04-17"),
-		temperature: 1,
+		model: CONFIG.model,
+		temperature: ENV.temperature,
 		prompt,
 		schema,
 	});
@@ -24,11 +30,13 @@ export async function objectGenGoogle<T>(
 	prompt: string,
 	schema: z.ZodSchema<T>,
 ) {
-	const genai = new GoogleGenAI({ apiKey: env.googleApiKey });
+	const genai = new GoogleGenAI({ apiKey: ENV.googleApiKey });
+	log(`Prompt: ${prompt}`);
 	const response = await genai.models.generateContent({
-		model: "gemini-2.5-flash",
+		model: CONFIG.model.modelId,
 		contents: prompt,
 		config: {
+			temperature: ENV.temperature,
 			responseMimeType: "application/json",
 			responseJsonSchema: zodToJsonSchema(schema, {
 				$refStrategy: "none",

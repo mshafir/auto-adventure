@@ -1,8 +1,6 @@
-function randomPick<T>(list: T[]): T {
-	return list[Math.floor(Math.random() * list.length)];
-}
+import { randomPick } from "./random-pick.js";
 
-function stringToCharArray(str: string): string[] {
+export function stringToCharArray(str: string): string[] {
 	return str.split("");
 }
 

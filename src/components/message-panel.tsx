@@ -1,40 +1,101 @@
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
+import Spinner from "ink-spinner";
 import { getNearbyObject } from "../store/actions/object-interaction.js";
 import { useGameStore } from "../store/game-store.js";
+
+export function MessageContents() {
+	const state = useGameStore();
+
+	const result = [];
+
+	useInput((input, key) => {
+		if (key.upArrow) {
+			useGameStore.setState((state) => {
+				if (!state.interactionState) return state;
+				const currentChoice = state.interactionState.currentChoiceIndex ?? 0;
+				return {
+					...state,
+					interactionState: {
+						...state.interactionState,
+						currentChoiceIndex: Math.max(0, currentChoice - 1),
+					},
+				};
+			});
+		} else if (key.downArrow) {
+			useGameStore.setState((state) => {
+				if (!state.interactionState) return state;
+				const currentChoice = state.interactionState.currentChoiceIndex ?? 0;
+				return {
+					...state,
+					interactionState: {
+						...state.interactionState,
+						currentChoiceIndex: Math.min(
+							(state.interactionState.choices?.length ?? 1) - 1,
+							currentChoice + 1
+						),
+					},
+				};
+			});
+		}
+	});
+
+	if (state.interactionState) {
+		const currentMessage =
+			state.interactionState.chatMessages[
+				state.interactionState.currentMessageIndex ?? 0
+			];
+
+		if (currentMessage) {
+			result.push(
+				<Text key={"message"} wrap="wrap">
+					{currentMessage.role === "user" ? (
+						<Spinner type="dots" />
+					) : (
+						currentMessage.content
+					)}
+				</Text>
+			);
+		}
+		if (state.interactionState.choices) {
+			for (const [idx, choice] of state.interactionState.choices.entries()) {
+				result.push(
+					<Text key={choice}>
+						[{idx === state.interactionState.currentChoiceIndex ? ">" : " "}]{" "}
+						{choice}
+					</Text>
+				);
+			}
+		}
+
+		return <>{result}</>;
+	}
+	return <Text>{state.map.name}</Text>;
+}
 
 export function MessagePanel() {
 	const state = useGameStore();
 	return (
 		<Box
 			borderStyle={"single"}
-			height={6}
-			overflow="hidden"
 			flexDirection="column"
+			flexShrink={0}
+			minHeight={5}
+			justifyContent="space-between"
 		>
-			<Box flexGrow={1} flexShrink={1}>
-				{state.interactionState.isInteracting ? (
+			<MessageContents />
+			{state.interactionState ? (
+				<Text>Press ESC to exit interaction. Press SPACE to continue it.</Text>
+			) : getNearbyObject(state) ? (
+				<>
 					<Text>
-						{
-							state.interactionState.chatMessages[
-								state.interactionState.chatMessages.length - 1
-							]
-						}
+						{getNearbyObject(state)?.name}:{" "}
+						{getNearbyObject(state)?.description}
 					</Text>
-				) : (
-					<Text>{state.map.name}</Text>
-				)}
-			</Box>
-			<Box>
-				{state.interactionState.isInteracting ? (
-					<Text>Press ESC to exit interaction</Text>
-				) : getNearbyObject(state) ? (
-					<Text>
-						Press SPACE to interact with {getNearbyObject(state)?.name}
-					</Text>
-				) : (
-					<Text>Use arrow keys to move</Text>
-				)}
-			</Box>
+					<Text>Press SPACE to interact.</Text>
+				</>
+			) : (
+				<Text>Use arrow keys to move</Text>
+			)}
 		</Box>
 	);
 }
