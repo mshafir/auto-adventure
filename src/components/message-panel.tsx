@@ -5,45 +5,11 @@ import { useGameStore } from "../store/game-store.js";
 
 export function MessageContents() {
 	const state = useGameStore();
-
 	const result = [];
-
-	useInput((input, key) => {
-		if (key.upArrow) {
-			useGameStore.setState((state) => {
-				if (!state.interactionState) return state;
-				const currentChoice = state.interactionState.currentChoiceIndex ?? 0;
-				return {
-					...state,
-					interactionState: {
-						...state.interactionState,
-						currentChoiceIndex: Math.max(0, currentChoice - 1),
-					},
-				};
-			});
-		} else if (key.downArrow) {
-			useGameStore.setState((state) => {
-				if (!state.interactionState) return state;
-				const currentChoice = state.interactionState.currentChoiceIndex ?? 0;
-				return {
-					...state,
-					interactionState: {
-						...state.interactionState,
-						currentChoiceIndex: Math.min(
-							(state.interactionState.choices?.length ?? 1) - 1,
-							currentChoice + 1
-						),
-					},
-				};
-			});
-		}
-	});
-
 	if (state.interactionState) {
+		const messages = state.interactionState.chatMessages ?? [];
 		const currentMessage =
-			state.interactionState.chatMessages[
-				state.interactionState.currentMessageIndex ?? 0
-			];
+			messages[state.interactionState.currentMessageIndex ?? 0];
 
 		if (currentMessage) {
 			result.push(

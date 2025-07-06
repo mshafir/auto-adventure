@@ -5,9 +5,11 @@ import { log, logChars } from "../utils/log.js";
 
 export async function textGen(prompt: string) {
 	log(`Prompt: ${prompt}`);
+	const controller = new AbortController();
 	const response = streamText({
 		model: CONFIG.model,
 		prompt,
+		abortSignal: controller.signal,
 		temperature: ENV.temperature,
 		providerOptions: {
 			google: {
@@ -19,9 +21,14 @@ export async function textGen(prompt: string) {
 	});
 
 	let result = "";
+	let lines = 0;
 	for await (const chunk of response.textStream) {
 		logChars(chunk);
 		result += chunk;
+		lines += chunk.split("\n").length;
+		if (lines > 100) {
+			controller.abort();
+		}
 	}
 	log("");
 	return result;
@@ -31,7 +38,7 @@ export async function textGenWithTools(
 	messages: CoreMessage[],
 	tools: ToolSet,
 ) {
-	log(`Text gen with tools`, messages);
+	log(`\n>>>> Text gen with tools: ${JSON.stringify(messages, null, 2)}`);
 	const response = await generateText({
 		model: CONFIG.model,
 		messages,
@@ -45,6 +52,12 @@ export async function textGenWithTools(
 			} satisfies GoogleGenerativeAIProviderOptions,
 		},
 	});
-	log(`Response`, response.response.messages);
+	log(
+		`\n\n>>>>> Response: ${JSON.stringify(
+			response.response.messages,
+			null,
+			2,
+		)}`,
+	);
 	return response.response.messages;
 }

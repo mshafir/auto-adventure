@@ -19,14 +19,14 @@ export type InventoryItem = {
 };
 
 export type InteractionState = {
-	currentObject: {
+	currentObject?: {
 		name: string;
 		description: string;
 		letter: string;
 	};
 	currentMessageIndex?: number;
 	currentChoiceIndex?: number;
-	chatMessages: { role: "user" | "assistant"; content: string }[];
+	chatMessages?: { role: "user" | "assistant"; content: string }[];
 	choices?: string[];
 };
 

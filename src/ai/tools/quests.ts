@@ -1,8 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { useGameStore } from "../../store/game-store.js";
+import { addMessage } from "../../store/utils/interaction-utils.js";
 import { log } from "../../utils/log.js";
-import { addMessage } from "./inventory.js";
 
 export const createQuest = tool({
 	description: "Create a new quest and add it to the quest log",
@@ -15,26 +15,27 @@ export const createQuest = tool({
 			.describe("Initial progress steps for the quest"),
 	}),
 	execute: async ({ name, description, initialProgress = [] }) => {
-		const state = useGameStore.getState();
-		const existingQuest = state.quests.find((quest) => quest.name === name);
+		useGameStore.setState((state) => {
+			const existingQuest = state.quests.find((quest) => quest.name === name);
 
-		if (existingQuest) {
-			log(`Quest "${name}" already exists in the quest log`);
-			return state;
-		}
+			if (existingQuest) {
+				log(`Quest "${name}" already exists in the quest log`);
+				return state;
+			}
 
-		return {
-			quests: [
-				...state.quests,
-				{
-					name,
-					description,
-					progress: initialProgress,
-					completed: false,
-				},
-			],
-			...addMessage(`You have embarked on quest ${name}.`),
-		};
+			return {
+				quests: [
+					...state.quests,
+					{
+						name,
+						description,
+						progress: initialProgress,
+						completed: false,
+					},
+				],
+				...addMessage(state, `You have embarked on quest ${name}.`),
+			};
+		});
 	},
 });
 
@@ -45,28 +46,31 @@ export const addQuestProgress = tool({
 		progressStep: z.string().describe("The progress step to add to the quest"),
 	}),
 	execute: async ({ questName, progressStep }) => {
-		const state = useGameStore.getState();
-		const questIndex = state.quests.findIndex(
-			(quest) => quest.name === questName,
-		);
+		useGameStore.setState((state) => {
+			const questIndex = state.quests.findIndex(
+				(quest) => quest.name === questName,
+			);
 
-		if (questIndex === -1) {
-			return `Quest "${questName}" not found in the quest log`;
-		}
+			if (questIndex === -1) {
+				log(`Quest "${questName}" not found in the quest log`);
+				return state;
+			}
 
-		const quest = state.quests[questIndex];
-		if (quest.completed) {
-			return `Quest "${questName}" is already completed`;
-		}
+			const quest = state.quests[questIndex];
+			if (quest.completed) {
+				log(`Quest "${questName}" is already completed`);
+				return state;
+			}
 
-		return {
-			quests: state.quests.map((quest, index) =>
-				index === questIndex
-					? { ...quest, progress: [...quest.progress, progressStep] }
-					: quest,
-			),
-			...addMessage(`You have made progress on quest ${questName}.`),
-		};
+			return {
+				quests: state.quests.map((quest, index) =>
+					index === questIndex
+						? { ...quest, progress: [...quest.progress, progressStep] }
+						: quest,
+				),
+				...addMessage(state, `You have made progress on quest ${questName}.`),
+			};
+		});
 	},
 });
 
@@ -76,28 +80,29 @@ export const completeQuest = tool({
 		questName: z.string().describe("The name of the quest to complete"),
 	}),
 	execute: async ({ questName }) => {
-		const state = useGameStore.getState();
-		const questIndex = state.quests.findIndex(
-			(quest) => quest.name === questName,
-		);
+		useGameStore.setState((state) => {
+			const questIndex = state.quests.findIndex(
+				(quest) => quest.name === questName,
+			);
 
-		if (questIndex === -1) {
-			log(`Quest "${questName}" not found in the quest log`);
-			return {};
-		}
+			if (questIndex === -1) {
+				log(`Quest "${questName}" not found in the quest log`);
+				return {};
+			}
 
-		const quest = state.quests[questIndex];
-		if (quest.completed) {
-			log(`Quest "${questName}" is already completed`);
-			return {};
-		}
+			const quest = state.quests[questIndex];
+			if (quest.completed) {
+				log(`Quest "${questName}" is already completed`);
+				return {};
+			}
 
-		return {
-			quests: state.quests.map((quest, index) =>
-				index === questIndex ? { ...quest, completed: true } : quest,
-			),
-			...addMessage(`You have completed quest ${questName}.`),
-		};
+			return {
+				quests: state.quests.map((quest, index) =>
+					index === questIndex ? { ...quest, completed: true } : quest,
+				),
+				...addMessage(state, `You have completed quest ${questName}.`),
+			};
+		});
 	},
 });
 
@@ -107,19 +112,20 @@ export const removeQuest = tool({
 		questName: z.string().describe("The name of the quest to remove"),
 	}),
 	execute: async ({ questName }) => {
-		const state = useGameStore.getState();
-		const questIndex = state.quests.findIndex(
-			(quest) => quest.name === questName,
-		);
+		useGameStore.setState((state) => {
+			const questIndex = state.quests.findIndex(
+				(quest) => quest.name === questName,
+			);
 
-		if (questIndex === -1) {
-			log(`Quest "${questName}" not found in the quest log`);
-			return {};
-		}
+			if (questIndex === -1) {
+				log(`Quest "${questName}" not found in the quest log`);
+				return {};
+			}
 
-		return {
-			quests: state.quests.filter((quest) => quest.name !== questName),
-			...addMessage(`You have abandoned quest ${questName}.`),
-		};
+			return {
+				quests: state.quests.filter((quest) => quest.name !== questName),
+				...addMessage(state, `You have abandoned quest ${questName}.`),
+			};
+		});
 	},
 });

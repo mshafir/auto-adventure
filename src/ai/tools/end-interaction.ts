@@ -1,12 +1,15 @@
 import { tool } from "ai";
 import z from "zod";
+import { useGameStore } from "../../store/game-store.js";
 
-export const choices = tool({
-	description: "End the interaction with the user",
+export const endInteractionTool = tool({
+	description: "Forcibly end the interaction with the user",
 	parameters: z.object({}),
 	execute: async () => {
-		return {
-			interactionState: undefined,
-		};
+		useGameStore.setState((state) => {
+			return {
+				interactionState: undefined,
+			};
+		});
 	},
 });

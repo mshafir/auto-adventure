@@ -4,6 +4,7 @@ import type { Action } from "../store/actions/action.js";
 import { movePlayer } from "../store/actions/move-player.js";
 import {
 	endInteraction,
+	moveChoice,
 	startOrContinueInteraction,
 } from "../store/actions/object-interaction.js";
 import { regenerateTiles } from "../store/actions/regenerate-tiles.js";
@@ -59,6 +60,16 @@ const events: InputEvent<any[]>[] = [
 		["down"],
 	),
 	event((input, key, state) => key.ctrl && input === "r", regenerateTiles, []),
+	event(
+		(input, key, state) => key.upArrow && !!state.interactionState,
+		moveChoice,
+		["up"],
+	),
+	event(
+		(input, key, state) => key.downArrow && !!state.interactionState,
+		moveChoice,
+		["down"],
+	),
 ];
 
 export function useGameInput() {

@@ -133,7 +133,7 @@ ${map.description}
 Here is a good example of a map for a Village Town Square location:
 ${goodExample}
 
-The map should be at least 40x20 tiles large.
+The map should be at least 40x20 tiles large and no more than 100x100 tiles.
 
 ${
 	config.state && config.state?.map.name !== "" && config.stateFrom

@@ -8,13 +8,14 @@ export const choices = tool({
 		choices: z.array(z.string()).describe("The choices to offer the user"),
 	}),
 	execute: async ({ choices }) => {
-		const state = useGameStore.getState();
-		return {
-			interactionState: {
-				...state.interactionState,
-				choices,
-				currentChoiceIndex: 0,
-			},
-		};
+		useGameStore.setState((state) => {
+			return {
+				interactionState: {
+					...state.interactionState,
+					choices,
+					currentChoiceIndex: 0,
+				},
+			};
+		});
 	},
 });
