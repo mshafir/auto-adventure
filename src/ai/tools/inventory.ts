@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { useGameStore } from "../../store/game-store.js";
-import { addMessage } from "../../store/utils/interaction-utils.js";
+import { addMessage, hasMessage } from "../../store/utils/interaction-utils.js";
 
 export const addInventoryItem = tool({
 	description: "Add an item to the inventory",
@@ -32,12 +32,13 @@ export const addInventoryItem = tool({
 					},
 				];
 			}
+			const message = `You have added ${quantity} ${itemName} to your inventory.`;
+			if (hasMessage(state, message)) {
+				return {};
+			}
 			return {
 				inventory,
-				...addMessage(
-					state,
-					`You have added ${quantity} ${itemName} to your inventory.`,
-				),
+				...addMessage(state, message),
 			};
 		});
 	},
@@ -60,11 +61,12 @@ export const removeInventoryItem = tool({
 					inventory[existingItemIndex].quantity - quantity,
 					0,
 				);
+				const message = `You have lost ${quantity} ${itemName} from your inventory.`;
+				if (hasMessage(state, message)) {
+					return {};
+				}
 				return {
-					...addMessage(
-						state,
-						`You have lost ${quantity} ${itemName} from your inventory.`,
-					),
+					...addMessage(state, message),
 					inventory: inventory
 						.map((item, index) =>
 							index === existingItemIndex

@@ -1,5 +1,6 @@
 import { objectInteractGen } from "../../ai/object-interact-gen.js";
-import { getTile } from "../../utils/get-tile.js";
+import { getMapTile, getTileSymbol } from "../../utils/get-tile.js";
+import { setTileSymbol } from "../../utils/set-tile.js";
 import { type GameState, useGameStore } from "../game-store.js";
 import {
 	incrementMessageIndex,
@@ -16,20 +17,18 @@ export function getNearbyObject(state: GameState) {
 
 	// Check all 8 adjacent positions (including diagonals)
 	const adjacentPositions: [number, number][] = [
-		[x - 1, y - 1], // top-left
 		[x, y - 1], // top
-		[x + 1, y - 1], // top-right
 		[x - 1, y], // left
 		[x + 1, y], // right
-		[x - 1, y + 1], // bottom-left
 		[x, y + 1], // bottom
-		[x + 1, y + 1], // bottom-right
 	];
 
 	for (const pos of adjacentPositions) {
-		const symbol = getTile(mapTiles, pos);
-		if (symbol && /[A-Z]/.test(symbol)) {
-			const object = objects.find((obj) => obj.letter === symbol);
+		const symbol = getTileSymbol(mapTiles, pos);
+		if (symbol && /[0-9]/.test(symbol)) {
+			const object = objects
+				.map((o, i) => ({ ...o, number: i }))
+				.find((obj) => obj.number === Number(symbol));
 			if (object) {
 				return object;
 			}
@@ -39,11 +38,47 @@ export function getNearbyObject(state: GameState) {
 	return null;
 }
 
+function getFacingPosition(state: GameState): [number, number] {
+	const { playerDirection } = state;
+	const [x, y] = state.playerPosition;
+	if (playerDirection === "up") {
+		return [x, y - 1];
+	}
+	if (playerDirection === "down") {
+		return [x, y + 1];
+	}
+	if (playerDirection === "left") {
+		return [x - 1, y];
+	}
+	return [x + 1, y];
+}
+
+function getFacingTile(state: GameState) {
+	const [x, y] = getFacingPosition(state);
+	return getMapTile(state.map, [x, y]);
+}
+
+function getPlayerTile(state: GameState) {
+	const [x, y] = state.playerPosition;
+	return getMapTile(state.map, [x, y]);
+}
+
 export const startOrContinueInteraction = defineAction(
 	async (state: GameState) => {
 		const nearbyObject = getNearbyObject(state);
 
 		if (!nearbyObject) {
+			const facingTile = getFacingTile(state);
+			if (!facingTile.passable) {
+				const playerTile = getPlayerTile(state);
+				return {
+					map: setTileSymbol(
+						state.map,
+						getFacingPosition(state),
+						playerTile.symbol,
+					),
+				};
+			}
 			return state;
 		}
 
@@ -80,7 +115,7 @@ export const startOrContinueInteraction = defineAction(
 	},
 );
 
-export const endInteraction = defineAction((state: GameState) => {
+export const endInteraction = defineAction(() => {
 	return {
 		interactionState: undefined,
 	};

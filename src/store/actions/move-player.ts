@@ -1,16 +1,15 @@
 import { getMapDimensions } from "../../utils/get-map-dimensions.js";
-import { getTile } from "../../utils/get-tile.js";
-import type { GameState } from "../game-store.js";
+import { getMapTile } from "../../utils/get-tile.js";
+import { type GameState, useGameStore } from "../game-store.js";
 import { defineAction } from "./action.js";
 import { transitionMap } from "./transition-map.js";
 
 const setPlayerPosition = defineAction(
 	(state: GameState, position: [number, number]) => {
-		const { mapTiles } = state.map;
-		const symbol = getTile(mapTiles, position);
+		const tile = getMapTile(state.map, position);
 
-		if (symbol && state.map.nonWalkableSymbols.includes(symbol)) {
-			return state;
+		if (!tile.passable) {
+			return {};
 		}
 
 		return {
@@ -22,6 +21,7 @@ const setPlayerPosition = defineAction(
 export const movePlayer = defineAction(
 	async (state: GameState, direction: "up" | "down" | "left" | "right") => {
 		const newPos = [...state.playerPosition] as [number, number];
+		useGameStore.setState({ playerDirection: direction });
 		switch (direction) {
 			case "up":
 				newPos[1]--;

@@ -22,7 +22,7 @@ export type InteractionState = {
 	currentObject?: {
 		name: string;
 		description: string;
-		letter: string;
+		number: number;
 	};
 	currentMessageIndex?: number;
 	currentChoiceIndex?: number;
@@ -35,6 +35,7 @@ export type GameState = {
 	status?: string;
 	map: GameMap;
 	playerPosition: readonly [number, number];
+	playerDirection: "up" | "down" | "left" | "right";
 	mapHistory: string[];
 	lastFrom?: "north" | "south" | "east" | "west";
 	worldCoordinates: [number, number]; // [x, y] coordinates in the world
@@ -49,18 +50,18 @@ const defaultMap: GameMap = {
 	createdAt: new Date().toISOString(),
 	description: "",
 	mapTiles: "",
-	tileColors: "",
-	nonWalkableSymbols: [],
 	objects: [],
 	surroundingMaps: {},
 	world: ENV.worldName,
 	worldCoordinates: [0, 0],
+	tileset: "basic",
 };
 
 export const useGameStore = create<GameState>(() => ({
 	locked: false,
 	map: defaultMap,
 	playerPosition: [10, 10],
+	playerDirection: "up",
 	mapHistory: [],
 	worldCoordinates: [0, 0],
 	world: ENV.worldName,

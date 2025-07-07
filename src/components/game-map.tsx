@@ -1,32 +1,19 @@
 import { Box, Newline, Text } from "ink";
 import Spinner from "ink-spinner";
 import { Fragment } from "react/jsx-runtime";
-import tinycolor from "tinycolor2";
-import { CONFIG } from "../env.js";
 import { type GameState, useGameStore } from "../store/game-store.js";
-import { getTile } from "../utils/get-tile.js";
+import { getMapTile } from "../utils/get-tile.js";
 import { MeasuringBox } from "./measuring-box.js";
 
-// a good utf char for a player
-const PLAYER_TILE = (
-	<Text key="player" bold color="green">
-		@
-	</Text>
-);
-
 /**
- * Renders the map tiles and player with teh player roughly in the center based on the screen width and height
+ * Renders the map tiles and player with the player roughly in the center based on the screen width and height
  * @param width
  * @param height
  */
 export function renderScene(width: number, height: number, state: GameState) {
 	const [x, y] = state.playerPosition;
-	const {
-		tileColors,
-		mapTiles: rawTileSymbols,
-		nonWalkableSymbols,
-	} = state.map;
-	const tileSymbols = rawTileSymbols.split("\n");
+	const { mapTiles } = state.map;
+	const tileSymbols = mapTiles.split("\n");
 	const defaultTile = <Text> </Text>; //state.map.defaultTile;
 
 	const renderedMap = Array(height);
@@ -45,30 +32,26 @@ export function renderScene(width: number, height: number, state: GameState) {
 				mapX >= 0 &&
 				mapX < tileSymbols[mapY].length
 			) {
-				const symbol = tileSymbols[mapY][mapX];
-				const color = getTile(tileColors, [mapX, mapY]);
-				const colorName =
-					CONFIG.colorMap[color as keyof typeof CONFIG.colorMap];
-				renderedMap[i][j] = (
-					<Text
-						key={`${mapY},${mapX}`}
-						backgroundColor={
-							symbol === " "
-								? tinycolor(colorName).darken().toHexString()
-								: undefined
-						}
-						color={colorName}
-					>
-						{symbol}
-					</Text>
-				);
+				const tile = getMapTile(state.map, [mapX, mapY]);
+				renderedMap[i][j] = tile.render();
 			} else {
 				renderedMap[i][j] = defaultTile;
 			}
 		}
 	}
 
-	renderedMap[halfHeight][halfWidth] = PLAYER_TILE;
+	// player tile
+	renderedMap[halfHeight][halfWidth] = (
+		<Text key="player" bold color="green">
+			{state.playerDirection === "up"
+				? "▲"
+				: state.playerDirection === "down"
+				? "▼"
+				: state.playerDirection === "left"
+				? "◀"
+				: "▶"}
+		</Text>
+	);
 
 	return (
 		<>

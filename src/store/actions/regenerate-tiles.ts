@@ -24,6 +24,9 @@ export const regenerateTiles = defineAction(async (state: GameState) => {
 	return {
 		map: newMap,
 		interactionState: undefined,
-		playerPosition: determineStartingPlayerPosition(newMap),
+		playerPosition: determineStartingPlayerPosition({
+			...state,
+			map: newMap,
+		}),
 	};
 });

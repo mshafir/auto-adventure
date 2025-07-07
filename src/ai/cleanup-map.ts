@@ -20,27 +20,19 @@ export function cleanupMap(map: GameMap): GameMap {
 
 function padMap(map: GameMap): GameMap {
 	const currentRows = map.mapTiles.split("\n");
-	const currentColorRows = map.tileColors.split("\n");
 	const longestWidth = Math.max(...currentRows.map((s) => s.length));
 	const rows = [];
-	const colorRows = [];
 	for (const [i, row] of currentRows.entries()) {
 		rows.push(row.padEnd(longestWidth, row.slice(-1)[0] ?? " "));
-		const currentColorRow = currentColorRows[i] ?? " ";
-		colorRows.push(
-			currentColorRow.padEnd(longestWidth, currentColorRow.slice(-1)[0]),
-		);
 	}
 	return {
 		...map,
 		mapTiles: rows.join("\n"),
-		tileColors: colorRows.join("\n"),
 	};
 }
 
 function removeBlankRows(map: GameMap): GameMap {
 	const rows = map.mapTiles.split("\n");
-	const colorRows = map.tileColors.split("\n");
 	const emptyRows = rows
 		.map((r, i) => [r, i] as const)
 		.filter(([row, i]) => row.trim() === "")
@@ -49,7 +41,6 @@ function removeBlankRows(map: GameMap): GameMap {
 	return {
 		...map,
 		mapTiles: removeAtIndicies(rows, emptyRows).join("\n"),
-		tileColors: removeAtIndicies(colorRows, emptyRows).join("\n"),
 	};
 }
 
@@ -69,13 +60,9 @@ function removeBlankColumns(map: GameMap): GameMap {
 		cells.every((row) => row[i] === " "),
 	);
 	const newCells = cells.map((row) => removeAtIndicies(row, emptyColumns));
-	const newColorCells = getCells(map.tileColors).map((row) =>
-		removeAtIndicies(row, emptyColumns),
-	);
 	return {
 		...map,
 		mapTiles: cellsToString(newCells),
-		tileColors: cellsToString(newColorCells),
 	};
 }
 

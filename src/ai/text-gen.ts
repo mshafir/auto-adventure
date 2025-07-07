@@ -14,7 +14,7 @@ export async function textGen(prompt: string) {
 		providerOptions: {
 			google: {
 				thinkingConfig: {
-					thinkingBudget: 0,
+					thinkingBudget: ENV.thinkingBudget,
 				},
 			} satisfies GoogleGenerativeAIProviderOptions,
 		},
@@ -24,11 +24,13 @@ export async function textGen(prompt: string) {
 	let lines = 0;
 	for await (const chunk of response.textStream) {
 		logChars(chunk);
-		result += chunk;
-		lines += chunk.split("\n").length;
-		if (lines > 100) {
+		lines += chunk.split("\n").length - 1;
+		if (lines > 80) {
+			result += chunk.split("\n")[0];
 			controller.abort();
+			break;
 		}
+		result += chunk;
 	}
 	log("");
 	return result;

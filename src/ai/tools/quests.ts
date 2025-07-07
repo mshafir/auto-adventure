@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { useGameStore } from "../../store/game-store.js";
-import { addMessage } from "../../store/utils/interaction-utils.js";
+import { addMessage, hasMessage } from "../../store/utils/interaction-utils.js";
 import { log } from "../../utils/log.js";
 
 export const createQuest = tool({
@@ -23,6 +23,11 @@ export const createQuest = tool({
 				return state;
 			}
 
+			const message = `You have embarked on quest ${name}.`;
+			if (hasMessage(state, message)) {
+				return {};
+			}
+
 			return {
 				quests: [
 					...state.quests,
@@ -33,7 +38,7 @@ export const createQuest = tool({
 						completed: false,
 					},
 				],
-				...addMessage(state, `You have embarked on quest ${name}.`),
+				...addMessage(state, message),
 			};
 		});
 	},
@@ -62,13 +67,18 @@ export const addQuestProgress = tool({
 				return state;
 			}
 
+			const message = `You have made progress on quest ${questName}.`;
+			if (hasMessage(state, message)) {
+				return {};
+			}
+
 			return {
 				quests: state.quests.map((quest, index) =>
 					index === questIndex
 						? { ...quest, progress: [...quest.progress, progressStep] }
 						: quest,
 				),
-				...addMessage(state, `You have made progress on quest ${questName}.`),
+				...addMessage(state, message),
 			};
 		});
 	},
@@ -96,11 +106,16 @@ export const completeQuest = tool({
 				return {};
 			}
 
+			const message = `You have completed quest ${questName}.`;
+			if (hasMessage(state, message)) {
+				return {};
+			}
+
 			return {
 				quests: state.quests.map((quest, index) =>
 					index === questIndex ? { ...quest, completed: true } : quest,
 				),
-				...addMessage(state, `You have completed quest ${questName}.`),
+				...addMessage(state, message),
 			};
 		});
 	},
@@ -122,9 +137,14 @@ export const removeQuest = tool({
 				return {};
 			}
 
+			const message = `You have abandoned quest ${questName}.`;
+			if (hasMessage(state, message)) {
+				return {};
+			}
+
 			return {
 				quests: state.quests.filter((quest) => quest.name !== questName),
-				...addMessage(state, `You have abandoned quest ${questName}.`),
+				...addMessage(state, message),
 			};
 		});
 	},

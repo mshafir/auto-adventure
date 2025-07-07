@@ -16,6 +16,12 @@ export function addMessage(
 	};
 }
 
+export function hasMessage(state: Partial<GameState>, message: string) {
+	return state.interactionState?.chatMessages?.some(
+		(m) => m.content === message,
+	);
+}
+
 export function addUserMessage(
 	state: Partial<GameState>,
 	message: string,

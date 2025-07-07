@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { GenerationConfig } from "../../ai/generate-map.js";
-import type { GameMap } from "../../map/map.schema.js";
 import { getMapDimensions } from "../../utils/get-map-dimensions.js";
 import { log } from "../../utils/log.js";
 import { randomPick } from "../../utils/random-pick.js";
@@ -24,23 +23,27 @@ export const loadGame = defineAction(
 
 		return {
 			map,
-			playerPosition: determineStartingPlayerPosition(map),
+			playerPosition: determineStartingPlayerPosition({
+				...state,
+				map,
+			}),
 		};
 	},
 );
 
-export function determineStartingPlayerPosition(map: GameMap) {
-	const { width, height } = getMapDimensions(map);
+export function determineStartingPlayerPosition(state: GameState) {
+	const { width, height } = getMapDimensions(state.map);
 	let playerPosition: readonly [number, number] | undefined;
-	const direction = randomPick(Object.keys(map.surroundingMaps ?? {}));
+	const direction =
+		state.lastFrom ?? randomPick(Object.keys(state.map.surroundingMaps ?? {}));
 	if (direction === "north") {
-		playerPosition = pickWalkableRowCell(map, 0);
+		playerPosition = pickWalkableRowCell(state.map, 0);
 	} else if (direction === "south") {
-		playerPosition = pickWalkableRowCell(map, height - 1);
+		playerPosition = pickWalkableRowCell(state.map, height - 1);
 	} else if (direction === "east") {
-		playerPosition = pickWalkableColumnCell(map, width - 1);
+		playerPosition = pickWalkableColumnCell(state.map, width - 1);
 	} else if (direction === "west") {
-		playerPosition = pickWalkableColumnCell(map, 0);
+		playerPosition = pickWalkableColumnCell(state.map, 0);
 	}
 	return playerPosition ?? [10, 10];
 }

@@ -1,5 +1,5 @@
 import type { GameMap } from "../map/map.schema.js";
-import { getTile } from "./get-tile.js";
+import { getMapTile } from "./get-tile.js";
 import { randomPick } from "./random-pick.js";
 
 export function getTileColumnCells(layer: string, x: number) {
@@ -13,8 +13,8 @@ export function getTileRowCells(layer: string, y: number) {
 }
 
 function isWalkable(map: GameMap, cell: readonly [number, number]): boolean {
-	const tile = getTile(map.mapTiles, cell);
-	return tile !== undefined && !map.nonWalkableSymbols.includes(tile);
+	const tile = getMapTile(map, cell);
+	return tile.passable;
 }
 
 export function getWalkableRowCells(map: GameMap, row: number) {
