@@ -1,4 +1,4 @@
-import { type GameState, SAVE_VERSION } from "../core/rules/state.js";
+import { type GameState, SAVE_VERSION, START_TICK, timeFromTick } from "../core/rules/state.js";
 import { logger } from "../utils/log.js";
 
 /**
@@ -79,6 +79,10 @@ function validate(value: Record<string, unknown>): GameState | undefined {
 	const { dialogue: _dialogue, notice: _notice, ...rest } = state;
 	return {
 		...(rest as GameState),
+		// Day, hour and minute are all derived from the tick, so recomputing them is
+		// both a backfill for saves written before a field existed and a repair for
+		// any that disagree with their own tick.
+		time: timeFromTick(state.time?.tick ?? START_TICK),
 		discovered: Array.isArray(value.discovered) ? (value.discovered as string[]) : [],
 		journal: Array.isArray(value.journal) ? state.journal : [],
 		flags: (value.flags as GameState["flags"]) ?? {},

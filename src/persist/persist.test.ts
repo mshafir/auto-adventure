@@ -163,3 +163,14 @@ describe("engine persistence", () => {
 		).toBe(true);
 	});
 });
+
+describe("the clock survives a reload", () => {
+	it("recomputes day, hour and minute from the tick", () => {
+		// A save written before `minute` existed has no minute in it, and every field
+		// is derivable from the tick — so recomputing is both the backfill and a
+		// repair for any save whose fields disagree with their own tick.
+		const stored = { ...newState(), time: { tick: 9 * 60 + 37, day: 99, hour: 99 } };
+		const restored = migrateSave(JSON.parse(JSON.stringify(stored)));
+		expect(restored?.time).toEqual({ tick: 9 * 60 + 37, day: 1, hour: 9, minute: 37 });
+	});
+});

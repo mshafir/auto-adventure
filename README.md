@@ -117,7 +117,9 @@ a crate, barrel, chest or shelf indoors, or the ground itself outdoors. What a
 building stores depends on what it is for — a mill really does hold timber — and
 crops, forest floor, marsh, reeds and bramble each give up their own things. Conversations are choice-only — up/down
 to pick, `SPACE` to answer, `ESC` to leave. `M` `W` `I` `Q` `J` switch the side
-panel between the local map, the world map, inventory, quests and the journal. An
+panel between the local map, the world map, inventory, quests and the journal. The
+map panel carries the clock: a tick is a minute and a move is a tick, so an hour
+of world time is sixty steps. An
 open errand is marked `!` on the world map and carries a bearing in the quest
 list, in chunks — `E 2` rather than a tile count.
 

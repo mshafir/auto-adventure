@@ -185,6 +185,8 @@ export default function App({ initialTab = "map" }: AppProps = {}) {
 				height={frameHeight}
 				summary={summary}
 				{...(placeName ? { placeName } : {})}
+				{...(inside ? {} : { weather })}
+				light={light.label}
 			/>
 		</Box>
 	);

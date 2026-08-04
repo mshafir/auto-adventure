@@ -103,6 +103,17 @@ function MapTab({
 			<Text color="gray">
 				{state.player.x}, {state.player.y}
 			</Text>
+			{/*
+			 * Up here rather than buried below the biome breakdown, and showing
+			 * minutes: a tick is a minute, so an hour is sixty player actions and an
+			 * hour-only clock sits unchanged for a solid minute of play, which reads
+			 * as stopped rather than slow.
+			 */}
+			<Text bold color="yellow">
+				{clock(state.time)}
+				<Text color="gray">{`  day ${state.time.day}`}</Text>
+			</Text>
+			{light ? <Text color="gray">{light}</Text> : null}
 			<Text> </Text>
 			{biomes.map(([biome, count]) => (
 				<Text key={biome} color="green">
@@ -110,10 +121,6 @@ function MapTab({
 				</Text>
 			))}
 			<Text> </Text>
-			<Text color="gray">
-				Day {state.time.day}, {String(state.time.hour).padStart(2, "0")}:00
-				{light ? ` (${light})` : ""}
-			</Text>
 			{weather && <Text color="cyan">{weather.description}</Text>}
 			<Text color="gray">Explored {state.discovered.length} chunks</Text>
 			{summary && summary.roadEntries.length > 0 && (
@@ -121,6 +128,11 @@ function MapTab({
 			)}
 		</Box>
 	);
+}
+
+/** `08:37`, zero-padded so the column never jumps as the digits change. */
+function clock(time: GameState["time"]): string {
+	return `${String(time.hour).padStart(2, "0")}:${String(time.minute).padStart(2, "0")}`;
 }
 
 function InventoryTab({ state }: { state: GameState }) {

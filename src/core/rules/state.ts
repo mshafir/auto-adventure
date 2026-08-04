@@ -43,6 +43,14 @@ export interface WorldTime {
 	readonly day: number;
 	/** 0..23. Drives lighting and NPC schedules. */
 	readonly hour: number;
+	/**
+	 * 0..59. Display only — nothing schedules on it.
+	 *
+	 * A tick is a minute, so an hour is sixty player actions. Showing only the hour
+	 * left the clock reading 08:00 for a solid minute of play, which looks stopped
+	 * rather than slow.
+	 */
+	readonly minute: number;
 }
 
 /** How many ticks make an hour. Day and hour are derived from `tick` alone. */
@@ -53,7 +61,12 @@ export const START_TICK = 8 * TICKS_PER_HOUR;
 
 export function timeFromTick(tick: number): WorldTime {
 	const totalHours = Math.floor(tick / TICKS_PER_HOUR);
-	return { tick, day: 1 + Math.floor(totalHours / 24), hour: totalHours % 24 };
+	return {
+		tick,
+		day: 1 + Math.floor(totalHours / 24),
+		hour: totalHours % 24,
+		minute: tick % TICKS_PER_HOUR,
+	};
 }
 
 export interface InventoryItem {
