@@ -164,6 +164,12 @@ at. So:
   you cannot miss it".
 - **Put the destination in the quest description too.** It is what the player reads
   in the panel three sessions later when they have forgotten.
+- **Write a `journal` line on every beat.** It is not decoration: beat journals are
+  the *clues* pinned to the main quest pane, so a beat without one leaves a gap in
+  the only running summary of the story the player gets. One or two sentences saying
+  what was just learned, in the voice of the person who said it.
+- **Beat ids become labels.** `the-short-tally` shows as "The short tally" when a beat
+  carries no quest, so name beats as if somebody will read them — because they will.
 
 ## Writing well
 

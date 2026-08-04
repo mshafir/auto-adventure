@@ -246,6 +246,60 @@ cannot wedge because an NPC forgot to call `completeQuest` — the failure mode
 values, so a baked conversation can give items, open quests, adjust reputation
 and set flags through zero new runtime machinery.
 
+## The story on screen
+
+Two panes read the arc, and both were thinner than the arc deserved.
+
+**The quest pane** pins the main quest above the errand list, reachable without
+moving a cursor, because the arc is not an errand: it has no bearing, it cannot be
+completed by walking somewhere, and it is the thing a player most often wants
+reminding of. `arcOutline(arc, state)` assembles it:
+
+```
+─ THE HOLLOW TITHE 1/3 ─────
+Your sister took the warden's badge, walked the…
+[x] Take the tally to Stonewait
+[~] Timber for the mill
+─ CLUES ────────────────────
+• Ilse Marrow keeps her own count, and it is short…
+```
+
+It is deliberately **backwards-looking**. Steps already reached, the clues already
+gathered, and a count of what remains — never *what* remains. The next step is
+already the open errand below it with a bearing on the map; naming the beat after
+that would hand over the plot in the first minute.
+
+A step ticks `[x]` only once its errand is *finished*, and shows `[~]` while it is
+still in hand. Ticking on the beat merely opening was visibly wrong: the outline
+showed a step complete while that very errand sat open in the list underneath it.
+
+Clues are read out of the journal **by source**, not stored twice, so a clue and
+the entry reporting it cannot disagree. `beatEffects` tags its journal line with
+`arc:<beatId>`; matching on prose would orphan every clue in an existing save the
+first time an author edited a line.
+
+**The journal** recorded only outcomes. An errand appeared in the log when it
+finished and never when it was given, and a three-step errand left no trace at all
+until the moment it closed — which made the log useless for remembering where you
+had got to. It now records:
+
+| When | Entry |
+| --- | --- |
+| a quest is created | `New errand: Take the tally to Stonewait.` |
+| an objective ticks off, errand still open | `Take the tally to Stonewait: go to Stonewait — done.` |
+| the errand finishes | `Completed: Take the tally to Stonewait.` |
+| a beat opens | whatever the author wrote, tagged `arc:<beatId>` |
+| a place is first entered | `Arrived in Bracken Cross.` |
+
+Every entry carries a `source` — the quest id or the beat — so the log can be read
+back by errand as well as by time. A finish is announced *once*: a single-objective
+errand satisfies its last objective and completes in the same step, and reporting
+both would put two lines in the log for one act.
+
+`describeObjective` moved into `core/rules/quests.ts` for this. The pane and the log
+now phrase an objective with the same words, and two copies would drift in a way the
+player would see.
+
 ## Framing cards
 
 The game used to drop the player onto a tile with a place name in the corner and

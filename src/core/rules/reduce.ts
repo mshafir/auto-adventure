@@ -4,7 +4,7 @@ import type { Command } from "./commands.js";
 import { type DomainEffect, type Effect, facingDelta, type Reduction } from "./effects.js";
 import type { LootItem } from "./loot.js";
 import { clampDisposition, createNpcRecord, MAX_FACTS, type NpcRecord } from "./npc.js";
-import { verifyQuests } from "./quests.js";
+import { describeObjective, verifyQuests } from "./quests.js";
 import {
 	type GameState,
 	type InventoryItem,
@@ -99,14 +99,24 @@ export function reduce(state: GameState, command: Command, world: WorldProbe): R
 
 	const journal = [
 		...arrival.entries,
+		// Progress before outcome, so a log read newest-first still reads in order
+		// within the turn that produced both.
+		...progress.advanced.map((step) => ({
+			tick: progress.state.time.tick,
+			kind: "event" as const,
+			text: `${step.quest.name}: ${describeObjective(step.objective)} — done.`,
+			source: step.quest.id,
+		})),
 		...progress.completed.map((quest) => ({
 			tick: progress.state.time.tick,
 			kind: "event" as const,
 			text: `Completed: ${quest.name}.`,
+			source: quest.id,
 		})),
 	];
 
-	const notable = progress.completed.length > 0 || arrival.entries.length > 0;
+	const notable =
+		progress.completed.length > 0 || progress.advanced.length > 0 || arrival.entries.length > 0;
 	return {
 		state: { ...arrival.state, journal: [...arrival.state.journal, ...journal] },
 		effects: notable ? [...result.effects, { t: "Save", reason: "checkpoint" }] : result.effects,
@@ -624,7 +634,21 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 				completed: false,
 				...(effect.siteId === undefined ? {} : { siteId: effect.siteId }),
 			};
-			return { ...state, quests: [...state.quests, quest] };
+			return {
+				...state,
+				quests: [...state.quests, quest],
+				// Only completion used to be journalled, so a log read a week later showed
+				// errands finishing that it never showed being given.
+				journal: [
+					...state.journal,
+					{
+						tick: state.time.tick,
+						kind: "event",
+						text: `New errand: ${quest.name}.`,
+						source: quest.id,
+					},
+				],
+			};
 		}
 		case "AdvanceQuest":
 			return {

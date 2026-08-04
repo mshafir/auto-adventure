@@ -38,6 +38,14 @@ export interface QuestProgress {
 	readonly state: GameState;
 	/** Quests that just finished, for the journal and the notification line. */
 	readonly completed: readonly Quest[];
+	/**
+	 * Objectives that just ticked off on errands still open.
+	 *
+	 * Reported separately so the journal can record progress rather than only
+	 * outcomes: a three-step errand used to leave no trace at all until the moment it
+	 * finished, which made the log useless for remembering where you had got to.
+	 */
+	readonly advanced: readonly { readonly quest: Quest; readonly objective: QuestObjective }[];
 }
 
 /**
@@ -101,14 +109,17 @@ export function questNeeding(state: GameState, itemName: string): Quest | undefi
 export function verifyQuests(state: GameState, context: QuestContext): QuestProgress {
 	let changed = false;
 	const completed: Quest[] = [];
+	const advanced: { quest: Quest; objective: QuestObjective }[] = [];
 
 	const quests = state.quests.map((quest) => {
 		if (quest.completed) return quest;
 
 		let questChanged = false;
+		const ticked: QuestObjective[] = [];
 		const objectives = quest.objectives.map((objective) => {
 			if (objective.done || !satisfied(objective, state, context)) return objective;
 			questChanged = true;
+			ticked.push(objective);
 			return { ...objective, done: true };
 		});
 
@@ -120,9 +131,41 @@ export function verifyQuests(state: GameState, context: QuestContext): QuestProg
 		changed = true;
 		const next: Quest = { ...quest, objectives, completed: allDone };
 		if (allDone) completed.push(next);
+		// Reported only while the errand is still open: a finished one is announced as
+		// finished, and saying both would put two lines in the journal for one act.
+		else for (const objective of ticked) advanced.push({ quest: next, objective });
 		return next;
 	});
 
-	if (!changed) return { state, completed: [] };
-	return { state: { ...state, quests }, completed };
+	if (!changed) return { state, completed: [], advanced: [] };
+	return { state: { ...state, quests }, completed, advanced };
+}
+
+/**
+ * An objective as an instruction rather than as its own tag.
+ *
+ * The tags are the reducer's vocabulary — `have`, `reach`, `talk` — and reading
+ * "have Timber x3" in a quest log is reading the implementation.
+ *
+ * In core rather than in the panel that first needed it, because the journal now
+ * phrases progress with the same words. Two copies would drift, and the drift would
+ * be visible: the pane and the log describing one objective differently.
+ */
+export function describeObjective(objective: {
+	kind: string;
+	target: string;
+	quantity?: number;
+}): string {
+	switch (objective.kind) {
+		case "have":
+			return objective.quantity && objective.quantity > 1
+				? `carry ${objective.quantity} ${objective.target}`
+				: `carry ${objective.target}`;
+		case "reach":
+			return `go to ${objective.target}`;
+		case "talk":
+			return `speak to ${objective.target}`;
+		default:
+			return objective.target;
+	}
 }

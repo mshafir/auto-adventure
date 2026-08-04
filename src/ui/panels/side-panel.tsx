@@ -1,9 +1,9 @@
 import { Box, Text } from "ink";
 import stringWidth from "string-width";
 import type { TerrainSummary } from "../../core/gen/pipeline.js";
-import { arcProgress } from "../../core/rules/arc.js";
+import { type ArcOutline, arcOutline, arcProgress } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
-import { questNeeding } from "../../core/rules/quests.js";
+import { describeObjective, questNeeding } from "../../core/rules/quests.js";
 import { activeQuests, type GameState } from "../../core/rules/state.js";
 import { biomeDef } from "../../core/world/biome.js";
 import { toChunk } from "../../core/world/coords.js";
@@ -436,6 +436,61 @@ function InventoryTab({
 	);
 }
 
+/**
+ * The story, always on screen.
+ *
+ * Pinned above the errands rather than being one entry in the list, because the arc
+ * is not an errand: it has no bearing, it cannot be completed by walking somewhere,
+ * and it is the thing the player most often wants to be reminded of. Reachable
+ * without moving a cursor for the same reason.
+ *
+ * Backwards-looking on purpose — what is done and what has been learned. The next
+ * step is already below it as an open errand with a bearing on the map, and naming
+ * the beat after that would hand over the plot.
+ */
+function MainQuest({ outline, width, rows }: { outline: ArcOutline; width: number; rows: number }) {
+	if (rows <= 1) return null;
+
+	const settled = outline.steps.filter((step) => step.complete).length;
+	const total = outline.steps.length + outline.remaining;
+	const progress = settled === total ? "done" : `${settled}/${total}`;
+
+	// The rule takes one row and the premise one or two; whatever is left goes to the
+	// ticked objectives first, because those are the answer to "where was I", and the
+	// clues take the remainder. A clue cut short is still a reminder; a missing
+	// objective reads as progress lost.
+	const premiseRows = Math.min(2, Math.max(0, rows - 2));
+	let left = rows - 1 - premiseRows;
+	const doneRows = Math.min(outline.steps.length, Math.max(0, left - 1));
+	left -= doneRows;
+	const clueRows = outline.clues.length > 0 ? Math.max(0, left - 1) : 0;
+
+	return (
+		<Box flexDirection="column">
+			<Rule width={width} label={`${outline.title} ${progress}`} />
+			<Prose text={outline.premise} width={width} rows={premiseRows} color="gray" />
+			{outline.steps.slice(-doneRows).map((step) => (
+				<Text key={step.label} color={step.complete ? "green" : "white"} wrap="truncate">
+					{step.complete ? "[x] " : "[~] "}
+					{step.label}
+				</Text>
+			))}
+			{clueRows > 0 && (
+				<>
+					<Rule width={width} label="clues" />
+					{/* Newest last, like the story: this is read as a recap, not as a feed. */}
+					{outline.clues.slice(-clueRows).map((clue) => (
+						<Text key={clue} color="yellow" wrap="truncate">
+							{"• "}
+							{clue}
+						</Text>
+					))}
+				</>
+			)}
+		</Box>
+	);
+}
+
 function QuestsTab({
 	state,
 	hud,
@@ -448,9 +503,19 @@ function QuestsTab({
 	rows: number;
 }) {
 	const open = activeQuests(state);
+	const outline = arcOutline(state.arc, state);
+
+	// The story gets up to half the pane and no more: it is context, and the errand
+	// with a bearing on it is what the player can act on right now.
+	const storyRows = outline
+		? Math.min(Math.floor(rows / 2), 4 + outline.steps.length + outline.clues.length)
+		: 0;
+	const questRows = rows - storyRows;
+
 	if (open.length === 0) {
 		return (
 			<Box flexDirection="column">
+				{outline && <MainQuest outline={outline} width={width} rows={storyRows} />}
 				<Rule width={width} label="errands" />
 				<Text color="gray">No active quests.</Text>
 			</Box>
@@ -464,8 +529,8 @@ function QuestsTab({
 
 	const cursor = Math.min(hud.cursor, open.length - 1);
 	const selected = open[cursor];
-	const detail = detailRows(rows, 8);
-	const listRows = Math.max(1, rows - detail - (detail > 0 ? 2 : 1));
+	const detail = detailRows(questRows, 8);
+	const listRows = Math.max(1, questRows - detail - (detail > 0 ? 2 : 1));
 	const mark = selected ? marks.get(selected.id) : undefined;
 	const bearing = mark ? bearingTo(here.cx, here.cy, mark.cx, mark.cy) : undefined;
 
@@ -480,6 +545,7 @@ function QuestsTab({
 
 	return (
 		<Box flexDirection="column">
+			{outline && <MainQuest outline={outline} width={width} rows={storyRows} />}
 			<Rule width={width} label={`errands ${open.length}`} />
 			<ScrollList
 				count={open.length}
@@ -529,27 +595,6 @@ function QuestsTab({
 			)}
 		</Box>
 	);
-}
-
-/**
- * An objective as an instruction rather than as its own tag.
- *
- * The tags are the reducer's vocabulary — `have`, `reach`, `talk` — and reading
- * "have Timber x3" in a quest log is reading the implementation.
- */
-function describeObjective(objective: { kind: string; target: string; quantity?: number }): string {
-	switch (objective.kind) {
-		case "have":
-			return objective.quantity && objective.quantity > 1
-				? `carry ${objective.quantity} ${objective.target}`
-				: `carry ${objective.target}`;
-		case "reach":
-			return `go to ${objective.target}`;
-		case "talk":
-			return `speak to ${objective.target}`;
-		default:
-			return objective.target;
-	}
 }
 
 function JournalTab({

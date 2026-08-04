@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { hashString } from "../rand/hash.js";
 import { npcId } from "../world/spec.js";
 import {
+	arcOutline,
 	arcProgress,
 	beatCardId,
 	beatEffects,
 	beatIsOpen,
+	beatLabel,
 	beatNpcId,
 	beatOpenedBy,
 	orderedBeats,
@@ -206,5 +208,147 @@ describe("a beat that raises a card", () => {
 	it("raises nothing for a beat that did not ask for one", () => {
 		const { card: _card, ...plain } = withCard;
 		expect(beatEffects(plain).some((effect) => effect.t === "ShowCard")).toBe(false);
+	});
+});
+
+describe("the story so far", () => {
+	function arcOf(): ScenarioArc {
+		return {
+			title: "The Hollow Tithe",
+			premise: "Your sister took the badge and stopped writing.",
+			beats: [
+				{
+					id: "the-short-tally",
+					order: 0,
+					siteId: 1,
+					npcSlot: 0,
+					requires: [],
+					setsFlag: "arc:the-short-tally",
+					journal: "Ilse says the tally has been short since the levy doubled.",
+					quest: {
+						id: "the-short-tally",
+						name: "Take the tally to Stonewait",
+						description: "…",
+						objectives: [{ kind: "reach", target: "Stonewait", done: false }],
+					},
+				},
+				{
+					id: "the-second-weight",
+					order: 1,
+					siteId: 2,
+					npcSlot: 0,
+					requires: ["arc:the-short-tally"],
+					setsFlag: "arc:the-second-weight",
+					journal: "Cull signs two tallies and only one is true.",
+				},
+				{
+					id: "the-crown-yard",
+					order: 2,
+					siteId: 3,
+					npcSlot: 0,
+					requires: ["arc:the-second-weight"],
+					setsFlag: "arc:the-crown-yard",
+				},
+			],
+		};
+	}
+
+	function stateWith(overrides: Partial<GameState> = {}): GameState {
+		const base = createInitialState(
+			{ id: "t", name: "t", seed: 1, createdAt: "2026-01-01T00:00:00.000Z" },
+			{ x: 0, y: 0 },
+		);
+		return { ...base, arc: arcOf(), ...overrides };
+	}
+
+	it("says nothing at all for a world with no story", () => {
+		expect(arcOutline(undefined, stateWith())).toBeUndefined();
+	});
+
+	it("shows the title and premise before anything has happened", () => {
+		const outline = arcOutline(arcOf(), stateWith());
+		expect(outline?.title).toBe("The Hollow Tithe");
+		expect(outline?.premise).toContain("stopped writing");
+		expect(outline?.steps).toEqual([]);
+		expect(outline?.remaining).toBe(3);
+	});
+
+	it("lists a beat once it has been reached, and counts the rest without naming them", () => {
+		// Naming the beats ahead would hand the player the plot in the first minute; the
+		// next step is already an open errand with a bearing on the map.
+		const outline = arcOutline(arcOf(), stateWith({ flags: { "arc:the-short-tally": true } }));
+		expect(outline?.steps.map((step) => step.label)).toEqual(["Take the tally to Stonewait"]);
+		expect(outline?.remaining).toBe(2);
+	});
+
+	it("does not tick a step whose errand is still open", () => {
+		// The bug this pins was visible on screen: the outline showed a step complete
+		// while that very errand sat open in the list underneath it.
+		const outline = arcOutline(arcOf(), stateWith({ flags: { "arc:the-short-tally": true } }));
+		expect(outline?.steps[0]?.complete).toBe(false);
+	});
+
+	it("ticks it once the errand is finished", () => {
+		const outline = arcOutline(
+			arcOf(),
+			stateWith({
+				flags: { "arc:the-short-tally": true },
+				quests: [
+					{
+						id: "the-short-tally",
+						name: "Take the tally to Stonewait",
+						description: "…",
+						objectives: [{ kind: "reach", target: "Stonewait", done: true }],
+						progress: [],
+						completed: true,
+					},
+				],
+			}),
+		);
+		expect(outline?.steps[0]?.complete).toBe(true);
+	});
+
+	it("ticks a beat that never carried an errand, since nothing is outstanding", () => {
+		const outline = arcOutline(
+			arcOf(),
+			stateWith({ flags: { "arc:the-short-tally": true, "arc:the-second-weight": true } }),
+		);
+		expect(outline?.steps[1]).toEqual({ label: "The second weight", complete: true });
+	});
+
+	it("labels a beat with no quest from its own id", () => {
+		expect(beatLabel(arcOf().beats[1] as ScenarioBeat)).toBe("The second weight");
+	});
+
+	it("reads its clues out of the journal, by beat, rather than storing them twice", () => {
+		// Matching on source and not on prose: an author editing a line must not orphan
+		// the clue an existing save already recorded.
+		const outline = arcOutline(
+			arcOf(),
+			stateWith({
+				flags: { "arc:the-short-tally": true },
+				journal: [
+					{ tick: 1, kind: "place", text: "Arrived in Bracken Cross." },
+					{
+						tick: 2,
+						kind: "event",
+						text: "Ilse says the tally has been short since the levy doubled.",
+						source: "arc:the-short-tally",
+					},
+					{ tick: 3, kind: "event", text: "New errand: something else.", source: "other" },
+				],
+			}),
+		);
+		expect(outline?.clues).toEqual(["Ilse says the tally has been short since the levy doubled."]);
+	});
+
+	it("does not show a clue for a beat that has not happened", () => {
+		const outline = arcOutline(
+			arcOf(),
+			stateWith({
+				journal: [{ tick: 2, kind: "event", text: "A thing.", source: "arc:the-second-weight" }],
+			}),
+		);
+		expect(outline?.clues).toEqual([]);
 	});
 });

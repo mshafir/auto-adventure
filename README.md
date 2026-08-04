@@ -133,11 +133,15 @@ Outdoors the same key gathers from the ground.
 
 ![Inside a building, where somebody is home](docs/screens/inside.svg)
 
-An open errand. Quest targets are resolved against what the engine actually
-built, so an NPC cannot send you after something that was never placed; the
-bearing points back at the town that gave it.
+The story so far, and the errand in hand. The main quest is pinned above the
+errand list and needs no cursor: the steps you have reached, ticked when their
+errand is finished and marked `[~]` while it is still open, and the clues the
+story has told you. It counts what remains without naming it — the next step is
+already the errand below, with a bearing back to the town that gave it. Quest
+targets are resolved against what the engine actually built, so an NPC cannot
+send you after something that was never placed.
 
-![An open errand, with a bearing](docs/screens/quest.svg)
+![The story so far, and the errand in hand](docs/screens/quest.svg)
 
 What you are carrying. The list takes the arrow keys while it is open — the
 border says so — and `D` drops the selection. Dropping destroys the item, so it

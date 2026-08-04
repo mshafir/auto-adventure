@@ -5,6 +5,7 @@ import { renderInk } from "../../test/harness/ink.js";
 import { createDialogueService } from "../ai/dialogue/dialogue.js";
 import { fallbackLore, fallbackSite } from "../ai/director/fallback.js";
 import { hashString } from "../core/rand/hash.js";
+import type { ScenarioArc } from "../core/rules/arc.js";
 import { createInitialState } from "../core/rules/state.js";
 import { siteContext } from "../core/world/context.js";
 import { type MacroSite, macroSite } from "../core/world/macro.js";
@@ -27,20 +28,18 @@ function findTown(seed: number): MacroSite {
 }
 
 /** An engine standing next to the first person in the nearest town. */
-function engineBesideSomeone() {
+function engineBesideSomeone(arc?: ScenarioArc) {
 	const site = findTown(SEED);
 	const spec = fallbackSite(SEED, site, siteContext(SEED, site));
-	const engine = new GameEngine(
-		createInitialState(
-			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
-			site.site,
-		),
-		{
-			runEffect: () => undefined,
-			specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
-			siteSpec: (id) => (id === site.id ? spec : undefined),
-		},
+	const base = createInitialState(
+		{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
+		site.site,
 	);
+	const engine = new GameEngine(arc ? { ...base, arc } : base, {
+		runEffect: () => undefined,
+		specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
+		siteSpec: (id) => (id === site.id ? spec : undefined),
+	});
 	engine.getChunks().prefetch({ cx: site.mx, cy: site.my }, 2);
 	engine.populateNpcs({ cx: site.mx, cy: site.my });
 
@@ -262,5 +261,64 @@ describe("the side panels", () => {
 		expect(text).toContain("carry 3 Timber");
 		expect(text).toContain("speak to Sedge");
 		expect(text).not.toContain("have Timber");
+	});
+
+	it("keeps the main quest on screen without touching the cursor", () => {
+		// The arc is not an errand — it has no bearing and cannot be walked to — and it
+		// is the thing a player most often wants reminding of, so it is pinned rather
+		// than being one selectable row among many.
+		const site = findTown(SEED);
+		const rope = {
+			id: "rope",
+			name: "Find the season's rope",
+			description: "It went down in the narrows.",
+			objectives: [{ kind: "have" as const, target: "Coil of rope", done: false }],
+		};
+		const { engine } = engineBesideSomeone({
+			title: "The Tithe",
+			premise: "Somebody has to pay for the rope.",
+			beats: [
+				{
+					id: "met",
+					order: 0,
+					siteId: site.id,
+					npcSlot: 0,
+					requires: [],
+					setsFlag: "arc:met",
+					quest: rope,
+				},
+			],
+		});
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [
+				{ t: "SetFlag", key: "arc:met", value: true },
+				{
+					t: "RecordJournal",
+					entry: {
+						kind: "event",
+						text: "Ilse says the barge went down with every coil aboard.",
+						source: "arc:met",
+					},
+				},
+				{ t: "CreateQuest", ...rope, siteId: site.id },
+			],
+		});
+		bindEngine(engine);
+		const { lastFrame, unmount } = renderInk(<App initialTab="quests" />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+
+		// Fragments rather than whole sentences: the pane is 32 columns and wraps, so
+		// asserting a phrase that spans a line break would fail on formatting alone.
+		expect(text).toContain("THE TITHE 0/1");
+		expect(text).toContain("Somebody has to pay for the");
+		// The step it has reached, marked as still in hand rather than done.
+		expect(text).toContain("[~] Find the season");
+		// And the clue it has gathered.
+		expect(text).toContain("CLUES");
+		// Elided at 32 columns, which is the pane doing its job — the journal tab is
+		// where a clue is read in full.
+		expect(text).toContain("Ilse says the barge");
 	});
 });

@@ -202,6 +202,9 @@ judgement:
 - `kind` must be in `allowedStructureKinds` and `placement` in `allowedPlacements`;
   both are closed sets. Preferring a `placement` from the site's `likelyAnchors` is
   advisory — a mismatch relocates the person and warns, it does not fail.
+- A beat's `journal` line is also its **clue**: it is pinned to the main quest pane as
+  part of the running summary of the story, so a beat without one leaves a gap there.
+  Write one on every beat.
 - `content` is inlined into the artifact, so the scenario carries its own flavour
   with no file to install. Copy `assets/content/default.json` for the full shape, or
   `assets/content/thornwick.json` for a worked partial. Nothing in it can make a

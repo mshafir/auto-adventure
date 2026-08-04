@@ -61,6 +61,17 @@ export interface ScenarioArc {
 	readonly beats: readonly ScenarioBeat[];
 }
 
+/**
+ * The journal source a beat's entry is filed under.
+ *
+ * Tagging is what makes a beat's journal line readable *back*: the quest pane shows
+ * the story's clues, and without a tag it would have to match on prose, which breaks
+ * the first time an author edits a line an old save already recorded.
+ */
+export function beatClueSource(beat: Pick<ScenarioBeat, "id">): string {
+	return `arc:${beat.id}`;
+}
+
 /** A beat's card id, namespaced so it cannot collide with the opening. */
 export function beatCardId(beat: Pick<ScenarioBeat, "id">): string {
 	return `beat:${beat.id}`;
@@ -128,7 +139,10 @@ export function beatEffects(beat: ScenarioBeat): DomainEffect[] {
 		});
 	}
 	if (beat.journal) {
-		effects.push({ t: "RecordJournal", entry: { kind: "event", text: beat.journal } });
+		effects.push({
+			t: "RecordJournal",
+			entry: { kind: "event", text: beat.journal, source: beatClueSource(beat) },
+		});
 	}
 	// After the quest and the journal, so what the player reads is already true of
 	// the game behind the card — the errand is in the log by the time they look.
@@ -147,4 +161,77 @@ export function arcProgress(
 	if (!arc) return { opened: 0, total: 0 };
 	const beats = orderedBeats(arc);
 	return { opened: beats.filter((beat) => beatIsOpen(state, beat)).length, total: beats.length };
+}
+
+/**
+ * What a label for a beat is.
+ *
+ * The quest's name when it has one, because that is a sentence somebody wrote for
+ * the player to read. Otherwise the id, unslugged — beats are named `the-short-tally`
+ * by hand, so "The short tally" is a real title rather than a placeholder, and it
+ * costs authors nothing.
+ */
+export function beatLabel(beat: ScenarioBeat): string {
+	if (beat.quest?.name) return beat.quest.name;
+	const words = beat.id.split("-").filter(Boolean).join(" ");
+	return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+export interface ArcStep {
+	readonly label: string;
+	/**
+	 * Whether this step of the story is actually finished.
+	 *
+	 * A beat *opening* only means the conversation happened. If it handed over an
+	 * errand, the step is not done until the errand is — and ticking it early was
+	 * visibly wrong: the outline showed "Ask Ott Pell" complete while that very errand
+	 * sat open in the list underneath it.
+	 */
+	readonly complete: boolean;
+}
+
+export interface ArcOutline {
+	readonly title: string;
+	readonly premise: string;
+	/** Beats already reached, oldest first, as the player would list them. */
+	readonly steps: readonly ArcStep[];
+	/** How many beats have not been reached, without saying what they are. */
+	readonly remaining: number;
+	/** What the story has told the player so far, oldest first. */
+	readonly clues: readonly string[];
+}
+
+/**
+ * The story so far, for a pane that is always on screen.
+ *
+ * Deliberately backwards-looking. It reports what has been accomplished and what has
+ * been learned, and says only *how many* beats remain — never which. The next step is
+ * already carried by the open errand below it, with a bearing on the map; naming the
+ * beat after that would hand the player the plot in the first minute.
+ *
+ * Clues are read out of the journal by source rather than being stored twice, so a
+ * clue and the journal entry that reports it cannot disagree.
+ */
+export function arcOutline(arc: ScenarioArc | undefined, state: GameState): ArcOutline | undefined {
+	if (!arc) return undefined;
+	const beats = orderedBeats(arc);
+	const opened = beats.filter((beat) => beatIsOpen(state, beat));
+	const sources = new Set(opened.map((beat) => beatClueSource(beat)));
+
+	const finished = new Set(
+		state.quests.filter((quest) => quest.completed).map((quest) => quest.id),
+	);
+
+	return {
+		title: arc.title,
+		premise: arc.premise,
+		steps: opened.map((beat) => ({
+			label: beatLabel(beat),
+			complete: !beat.quest || finished.has(beat.quest.id),
+		})),
+		remaining: beats.length - opened.length,
+		clues: state.journal
+			.filter((entry) => entry.source !== undefined && sources.has(entry.source))
+			.map((entry) => entry.text),
+	};
 }

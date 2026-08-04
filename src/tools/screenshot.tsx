@@ -13,6 +13,7 @@ import { render } from "ink";
 import stripAnsi from "strip-ansi";
 import { fallbackLore, fallbackSite } from "../ai/director/fallback.js";
 import { hashString } from "../core/rand/hash.js";
+import type { ScenarioArc } from "../core/rules/arc.js";
 import { openingCard } from "../core/rules/opening.js";
 import { createInitialState } from "../core/rules/state.js";
 import { siteContext } from "../core/world/context.js";
@@ -287,20 +288,69 @@ function findTown(seed: number): MacroSite {
 	throw new Error("no town found");
 }
 
-function buildEngine() {
+/**
+ * A story for the shots that show one.
+ *
+ * The quest pane pins the arc above the errands, so a screenshot built from a world
+ * with no arc would show the pane with its most important half missing.
+ */
+function shotArc(siteId: number): ScenarioArc {
+	return {
+		title: "The Hollow Tithe",
+		premise: "Your sister took the warden's badge, walked the road east, and stopped writing.",
+		beats: [
+			{
+				id: "the-short-tally",
+				order: 0,
+				siteId,
+				npcSlot: 0,
+				requires: [],
+				setsFlag: "arc:the-short-tally",
+				quest: {
+					id: "tally",
+					name: "Take the tally to Stonewait",
+					description: "…",
+					objectives: [{ kind: "reach", target: "Stonewait", done: true }],
+				},
+			},
+			{
+				id: "the-second-weight",
+				order: 1,
+				siteId,
+				npcSlot: 0,
+				requires: ["arc:the-short-tally"],
+				setsFlag: "arc:the-second-weight",
+				quest: {
+					id: "timber",
+					name: "Timber for the mill",
+					description: "…",
+					objectives: [],
+				},
+			},
+			{
+				id: "the-crown-yard",
+				order: 2,
+				siteId,
+				npcSlot: 0,
+				requires: ["arc:the-second-weight"],
+				setsFlag: "arc:the-crown-yard",
+			},
+		],
+	};
+}
+
+function buildEngine(withArc = false) {
 	const site = findTown(SEED);
 	const spec = fallbackSite(SEED, site, siteContext(SEED, site));
-	const engine = new GameEngine(
-		createInitialState(
-			{ id: "shot", name: "shot", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
-			site.site,
-		),
-		{
-			runEffect: () => undefined,
-			specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
-			siteSpec: (id) => (id === site.id ? spec : undefined),
-		},
+	const base = createInitialState(
+		{ id: "shot", name: "shot", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
+		site.site,
 	);
+	const engine = new GameEngine(withArc ? { ...base, arc: shotArc(site.id) } : base, {
+		runEffect: () => undefined,
+		specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
+		siteSpec: (id) => (id === site.id ? spec : undefined),
+	});
 	engine.dispatch({ t: "LoreLearned", lore: fallbackLore() });
 	engine.dispatch({ t: "SiteLearned", spec, source: "fallback" });
 	engine.getChunks().prefetch({ cx: site.mx, cy: site.my }, 2);
@@ -314,8 +364,9 @@ async function capture(
 	prepare: (engine: GameEngine, site: MacroSite) => void,
 	tab?: "map" | "world" | "inventory" | "quests" | "journal",
 	cursor?: number,
+	withArc = false,
 ) {
-	const { engine, site } = buildEngine();
+	const { engine, site } = buildEngine(withArc);
 	prepare(engine, site);
 	bindEngine(engine);
 
@@ -363,7 +414,7 @@ async function main() {
 
 	await capture(
 		"quest",
-		"An open errand, with a bearing back to the town that gave it",
+		"The story so far, and the errand in hand",
 		(engine, site) => {
 			// Discovered, then walked away from, so the quest carries a real bearing
 			// rather than reading "here".
@@ -371,6 +422,27 @@ async function main() {
 			engine.dispatch({
 				t: "ApplyEffects",
 				effects: [
+					// Two beats reached: the first finished, the second still in hand. That
+					// contrast is the point of the pane.
+					{ t: "SetFlag", key: "arc:the-short-tally", value: true },
+					{ t: "SetFlag", key: "arc:the-second-weight", value: true },
+					{
+						t: "RecordJournal",
+						entry: {
+							kind: "event",
+							text: "Ilse Marrow keeps her own count, and it is short by a cord a month.",
+							source: "arc:the-short-tally",
+						},
+					},
+					{
+						t: "CreateQuest",
+						id: "tally",
+						name: "Take the tally to Stonewait",
+						description: "Carry Ilse's own count up the high road.",
+						objectives: [{ kind: "reach", target: "Stonewait", done: true }],
+						siteId: site.id,
+					},
+					{ t: "CompleteQuest", id: "tally" },
 					{
 						t: "CreateQuest",
 						id: "timber",
@@ -388,6 +460,8 @@ async function main() {
 			});
 		},
 		"quests",
+		undefined,
+		true,
 	);
 
 	await capture(

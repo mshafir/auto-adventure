@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Command } from "./commands.js";
 import type { DomainEffect } from "./effects.js";
 import { reduce, type WorldProbe } from "./reduce.js";
-import { createInitialState, type GameState, START_TICK } from "./state.js";
+import { createInitialState, type GameState, type QuestObjective, START_TICK } from "./state.js";
 
 const WORLD = { id: "test", name: "Test", seed: 1234, createdAt: "2026-01-01T00:00:00.000Z" };
 
@@ -773,5 +773,125 @@ describe("asking to save", () => {
 		const { state, effects } = run(makeState(), [{ t: "RequestSave" }]);
 		expect(effects).toEqual([{ t: "Save", reason: "exit" }]);
 		expect(state.player).toEqual(makeState().player);
+	});
+});
+
+describe("what the journal remembers", () => {
+	function questState(objectives: QuestObjective[]) {
+		const state = createInitialState(
+			{ id: "j", name: "j", seed: 1, createdAt: "2026-01-01T00:00:00.000Z" },
+			{ x: 0, y: 0 },
+		);
+		return reduce(
+			state,
+			{
+				t: "ApplyEffects",
+				effects: [
+					{
+						t: "CreateQuest",
+						id: "rope",
+						name: "Find the season's rope",
+						description: "It went down in the narrows.",
+						objectives,
+					},
+				],
+			},
+			probe(),
+		).state;
+	}
+
+	it("records an errand being given, not only one being finished", () => {
+		// Only completion used to be journalled, so a log read a week later showed
+		// errands ending that it never showed beginning.
+		const state = questState([{ kind: "have", target: "Coil of rope", done: false }]);
+		expect(state.journal.map((entry) => entry.text)).toContain(
+			"New errand: Find the season's rope.",
+		);
+	});
+
+	it("files it under the errand, so the log can be read back by quest", () => {
+		const state = questState([{ kind: "have", target: "Coil of rope", done: false }]);
+		expect(state.journal.at(-1)?.source).toBe("rope");
+	});
+
+	it("does not record the same errand twice", () => {
+		// Quest ids are the identity and re-issuing one is already a no-op; the journal
+		// entry has to inherit that or a repeating model would fill the log.
+		const first = questState([{ kind: "have", target: "Coil of rope", done: false }]);
+		const again = reduce(
+			first,
+			{
+				t: "ApplyEffects",
+				effects: [
+					{
+						t: "CreateQuest",
+						id: "rope",
+						name: "Find the season's rope",
+						description: "It went down in the narrows.",
+						objectives: [],
+					},
+				],
+			},
+			probe(),
+		).state;
+		expect(again.journal.filter((entry) => entry.text.startsWith("New errand"))).toHaveLength(1);
+	});
+
+	it("records an objective ticking off on an errand still open", () => {
+		const state = questState([
+			{ kind: "have", target: "Coil of rope", done: false },
+			{ kind: "talk", target: "Ilse", done: false },
+		]);
+		const carried = reduce(
+			state,
+			{
+				t: "ApplyEffects",
+				effects: [{ t: "GrantItem", name: "Coil of rope", description: "Tarred.", quantity: 1 }],
+			},
+			probe(),
+		).state;
+
+		const texts = carried.journal.map((entry) => entry.text);
+		expect(texts).toContain("Find the season's rope: carry Coil of rope — done.");
+		// And it is progress, not an ending: the errand is still open.
+		expect(texts.some((text) => text.startsWith("Completed:"))).toBe(false);
+	});
+
+	it("announces a finish once, rather than as progress and then as a finish", () => {
+		// A single-objective errand satisfies its last objective and completes in the
+		// same step; reporting both would put two lines in the log for one act.
+		const state = questState([{ kind: "have", target: "Coil of rope", done: false }]);
+		const carried = reduce(
+			state,
+			{
+				t: "ApplyEffects",
+				effects: [{ t: "GrantItem", name: "Coil of rope", description: "Tarred.", quantity: 1 }],
+			},
+			probe(),
+		).state;
+
+		const texts = carried.journal.map((entry) => entry.text);
+		expect(texts).toContain("Completed: Find the season's rope.");
+		expect(texts.some((text) => text.includes("— done."))).toBe(false);
+	});
+
+	it("phrases progress the way the quest pane does", () => {
+		// Both call `describeObjective`, which is why it lives in core: the pane and the
+		// log describing one objective differently is the kind of drift a player notices.
+		const state = questState([
+			{ kind: "have", target: "Timber", quantity: 3, done: false },
+			{ kind: "talk", target: "Ilse", done: false },
+		]);
+		const carried = reduce(
+			state,
+			{
+				t: "ApplyEffects",
+				effects: [{ t: "GrantItem", name: "Timber", description: "Sawn.", quantity: 3 }],
+			},
+			probe(),
+		).state;
+		expect(carried.journal.map((entry) => entry.text)).toContain(
+			"Find the season's rope: carry 3 Timber — done.",
+		);
 	});
 });
