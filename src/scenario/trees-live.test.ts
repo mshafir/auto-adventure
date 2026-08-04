@@ -175,6 +175,74 @@ describe("authored conversation in play", () => {
 		session.dispose();
 	});
 
+	it("greets a first meeting as a first meeting, even when it opens the story", async () => {
+		// The beat's flag is set on the same turn the beat opens, so reading the flags
+		// after opening it meant a greeting gated on that flag fired on first contact —
+		// the character said "you already have my count" before handing anything over,
+		// and the first-meeting line was unreachable in every playthrough.
+		const artifact = demoArtifact();
+		const siteId = Number(Object.keys(artifact.sites)[0]);
+		const anchor = npcId(siteId, 0);
+		const spec = artifact.sites[String(siteId)]?.npcs[0];
+		if (!spec) throw new Error("fixture has no anchor npc");
+
+		const tree: DialogueTree = {
+			npcId: anchor,
+			entry: ["knowing", "hello"],
+			nodes: {
+				hello: {
+					id: "hello",
+					speech: "You will be wanting the rope, then.",
+					choices: [{ text: "Good day.", goto: null }],
+				},
+				knowing: {
+					id: "knowing",
+					speech: "You have heard about the barge already, I see.",
+					requires: ["arc:met"],
+					choices: [{ text: "Good day.", goto: null }],
+				},
+			},
+		};
+
+		const session = buildSession(
+			{
+				worldId: "first-meeting",
+				seed: 0,
+				flavour: "prebuilt",
+				scenario: {
+					...artifact,
+					trees: { [anchor]: tree },
+					arc: {
+						title: "The Tithe",
+						premise: "Somebody has to pay for the rope.",
+						beats: [
+							{
+								id: "met",
+								order: 0,
+								siteId,
+								npcSlot: 0,
+								requires: [],
+								setsFlag: "arc:met",
+								journal: "Ilse mentioned the barge.",
+							},
+						],
+					},
+				},
+			},
+			{ saveDebounceMs: 0 },
+		);
+
+		session.engine.dispatch({ t: "DialogueOpened", npcId: anchor, npcName: spec.name });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const state = session.engine.getState();
+		// The beat still opened — the flag is set and the journal written…
+		expect(state.flags["arc:met"]).toBe(true);
+		// …but the line the player heard is the one written for meeting a stranger.
+		expect(state.dialogue?.lines.at(-1)?.text).toBe("You will be wanting the rope, then.");
+		session.dispose();
+	});
+
 	it("keeps the cursor across a reload", async () => {
 		const { session, anchor, talkTo, say } = start();
 		await talkTo();

@@ -42,6 +42,17 @@ export class NpcDirectory {
 	private readonly roster = new Map<number, PlacedNpc[]>();
 	private readonly byChunk = new Map<string, PlacedNpc[]>();
 	private readonly byId = new Map<string, PlacedNpc>();
+	/**
+	 * Sites placed before all of their ground existed.
+	 *
+	 * A roster is derived from the anchors the settlement generator emitted, so one
+	 * derived while some of the site's chunks were missing is a guess — at the limit,
+	 * a guess that nobody lives there. Without this set that guess was cached as a
+	 * decision and `populate` skipped the site forever, which is how a fully authored
+	 * town could be permanently deserted. Cleared once the site has been derived from
+	 * its whole footprint, so a settled roster is never disturbed again.
+	 */
+	private readonly provisional = new Set<number>();
 	private bucket: TimeOfDay = "morning";
 	/**
 	 * Bumped whenever placements change.
@@ -59,6 +70,7 @@ export class NpcDirectory {
 
 	/** Drop everything for a site, so it is re-derived from a newer spec. */
 	forget(siteId: number): void {
+		this.provisional.delete(siteId);
 		if (!this.roster.delete(siteId)) return;
 		this.revision++;
 		this.reindex();
@@ -66,6 +78,7 @@ export class NpcDirectory {
 
 	forgetAll(): void {
 		this.roster.clear();
+		this.provisional.clear();
 		this.revision++;
 		this.reindex();
 	}
@@ -86,19 +99,53 @@ export class NpcDirectory {
 		this.reindex();
 	}
 
-	/** Place everyone belonging to the sites reaching a chunk. */
+	/**
+	 * Place everyone belonging to the sites reaching a chunk.
+	 *
+	 * Called on every chunk change, so it must be cheap for sites already settled and
+	 * must not disturb them: re-deriving a roster from a partially evicted footprint
+	 * would move people who are standing where they belong. Only a provisional roster
+	 * is revisited, and only once the whole footprint is back.
+	 */
 	populate(sites: readonly MacroSite[]): void {
-		let added = false;
+		let changed = false;
 		for (const site of sites) {
-			if (this.roster.has(site.id)) continue;
+			const known = this.roster.has(site.id);
+			if (known && !this.provisional.has(site.id)) continue;
+			const whole = this.footprintResident(site);
+			// Still nothing better to say than last time.
+			if (known && !whole) continue;
 			const spec = this.specFor(site.id);
 			if (!spec) continue;
+			// Drop the guess before replacing it: `place` treats every existing station
+			// as occupied, so the people about to be replaced would reserve tiles
+			// against themselves and get shuffled off their own doorsteps.
+			this.roster.delete(site.id);
 			this.roster.set(site.id, this.place(site, spec));
-			added = true;
+			if (whole) this.provisional.delete(site.id);
+			else this.provisional.add(site.id);
+			changed = true;
 		}
-		if (!added) return;
+		if (!changed) return;
 		this.revision++;
 		this.reindex();
+	}
+
+	/**
+	 * Whether every chunk `anchorsFor` consults has been generated.
+	 *
+	 * The same square, deliberately: the question is not "is the site loaded" but
+	 * "would searching for its anchors find all of them", and only the search's own
+	 * extent answers that.
+	 */
+	private footprintResident(site: MacroSite): boolean {
+		const reach = Math.ceil(site.radius / CHUNK) + 1;
+		for (let dy = -reach; dy <= reach; dy++) {
+			for (let dx = -reach; dx <= reach; dx++) {
+				if (!this.chunks.get(site.mx + dx, site.my + dy)) return false;
+			}
+		}
+		return true;
 	}
 
 	at(x: number, y: number): PlacedNpc | undefined {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { openingNode } from "../ai/dialogue/tree.js";
 import { resolveSeed } from "../config.js";
 import { hashString } from "../core/rand/hash.js";
+import type { GameState } from "../core/rules/state.js";
 import { npcId } from "../core/world/spec.js";
 import { assembleArtifact, resolveDraftSeed, type ScenarioDraft } from "./draft.js";
 import { verifyArtifact } from "./repo.js";
@@ -286,6 +288,27 @@ describe("the trees a draft describes", () => {
 	it("puts gated openings before the plain one", () => {
 		const tree = assembleArtifact(withTree(), AT).trees?.[npcId(SITE_ID, 0)];
 		expect(tree?.entry).toEqual(["later", "hello"]);
+	});
+
+	it("turns an alternative opening's flag into a requirement on its node", () => {
+		// `node.requires` is the only gate the runtime consults. Lowering `entryAfter`
+		// to a bare list of candidates dropped the flag entirely, and since the
+		// alternative is listed first and required nothing, it always won.
+		const tree = assembleArtifact(withTree(), AT).trees?.[npcId(SITE_ID, 0)];
+		expect(tree?.nodes.later?.requires).toEqual(["arc:first"]);
+		expect(tree?.nodes.hello?.requires).toBeUndefined();
+	});
+
+	it("greets a first-time visitor with the plain opening", () => {
+		// The bug this pins: with the flag dropped, "you again" was the first thing the
+		// character ever said, and the greeting written for a first meeting was
+		// unreachable in every playthrough.
+		const tree = assembleArtifact(withTree(), AT).trees?.[npcId(SITE_ID, 0)];
+		if (!tree) throw new Error("no tree");
+		const state = (flags: Record<string, boolean>) => ({ flags }) as unknown as GameState;
+
+		expect(openingNode(tree, state({}), undefined)?.id).toBe("hello");
+		expect(openingNode(tree, state({ "arc:first": true }), undefined)?.id).toBe("later");
 	});
 
 	it("drops a revisit that names no node, rather than dangling", () => {

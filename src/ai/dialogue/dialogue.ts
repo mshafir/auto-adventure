@@ -64,12 +64,19 @@ export function createDialogueService(deps: DialogueDeps) {
 		// Meeting someone creates their memory record; it must exist before the
 		// turn is recorded against it.
 		ensureRecord(engine, placed);
-		// Then the story, before the line is written: a live NPC given the quest in
-		// its prompt can mention it, and a scripted one can gate a node on its flag.
+		// Then the story, before the line is written, so a live NPC given the quest in
+		// its prompt can mention it.
 		//
 		// Only on the opening turn. Beats gate on flags set by earlier beats, so
 		// checking every turn would let one conversation walk the entire story —
 		// answer a question, open beat two, answer again, open beat three.
+		//
+		// The state as it was *before* the beat opened is kept for the scripted path.
+		// A written tree greets by flag, and the flag a beat sets is set on the same
+		// turn the beat opens — so reading it afterwards means "you already did this"
+		// greets the player on first contact, and the first-meeting node the author
+		// wrote is never reachable at all.
+		const beforeBeat = engine.getState();
 		if (!choice) openBeat(engine, npcId);
 		if (choice) {
 			engine.dispatch({
@@ -95,7 +102,7 @@ export function createDialogueService(deps: DialogueDeps) {
 		const scripted = deps.tree
 			? scriptedTurn({
 					tree: deps.tree(npcId),
-					state,
+					state: choice ? state : beforeBeat,
 					record,
 					spec: placed.spec,
 					site,

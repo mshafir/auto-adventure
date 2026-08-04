@@ -91,6 +91,64 @@ describe("npc placement", () => {
 	});
 });
 
+describe("a town placed before its ground exists", () => {
+	/**
+	 * The failure this guards against left a fully authored town deserted.
+	 *
+	 * `populate` runs for every site in the macro halo, which reaches far past the
+	 * chunks that have been built — and in a prebuilt scenario every spec exists from
+	 * the first frame, so distant towns were placed against chunks containing nothing.
+	 * That empty roster was then cached as an answer and never revisited, because
+	 * `populate` skipped any site it had already seen. Nothing reported it: you walked
+	 * into the town the story hangs on and there was simply no one there.
+	 */
+	function unbuilt(seed: number, site: MacroSite) {
+		const spec: SiteSpec = fallbackSite(seed, site, siteContext(seed, site));
+		const chunks = new ChunkManager({
+			seed,
+			specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
+		});
+		const npcs = new NpcDirectory(chunks, (id) => (id === site.id ? spec : undefined));
+		return { chunks, npcs, spec };
+	}
+
+	it("places nobody while the ground is missing", () => {
+		const site = findTown(SEED);
+		const { npcs } = unbuilt(SEED, site);
+		npcs.populate([site]);
+		expect(npcs.atSite(site.id)).toEqual([]);
+	});
+
+	it("fills the town in once its chunks are built", () => {
+		const site = findTown(SEED);
+		const { chunks, npcs, spec } = unbuilt(SEED, site);
+		npcs.populate([site]);
+
+		chunks.prefetch({ cx: site.mx, cy: site.my }, Math.ceil(site.radius / CHUNK) + 1);
+		npcs.populate([site]);
+		expect(npcs.atSite(site.id).length).toBe(spec.npcs.length);
+	});
+
+	it("leaves a settled roster alone when its edges are evicted", () => {
+		// The other half of the same problem: re-deriving on every chunk change would
+		// move people who are already standing where they belong, because a placement
+		// made from a partly evicted footprint sees fewer anchors than the real one.
+		const site = findTown(SEED);
+		const { chunks, npcs } = populated(SEED, site);
+		const before = npcs.all().map((npc) => `${npc.id}@${npc.x},${npc.y}`);
+		expect(before.length).toBeGreaterThan(0);
+
+		chunks.invalidateRect({
+			x: site.site.x + site.radius,
+			y: site.site.y + site.radius,
+			w: CHUNK,
+			h: CHUNK,
+		});
+		npcs.populate([site]);
+		expect(npcs.all().map((npc) => `${npc.id}@${npc.x},${npc.y}`)).toEqual(before);
+	});
+});
+
 describe("bumping into people", () => {
 	it("opens a conversation instead of walking through them", () => {
 		const site = findTown(SEED);

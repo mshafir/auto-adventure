@@ -371,6 +371,19 @@ function lowerTrees(
 				...(node.actions?.length ? { actions: node.actions } : {}),
 			};
 		}
+		// An alternative opening's flag becomes a requirement *on the node it names*,
+		// because that is the only gate the runtime consults. Lowering `entryAfter` to
+		// a bare list of candidates dropped the flag on the floor: the alternative was
+		// listed first and required nothing, so it always won, and the first-meeting
+		// greeting it was written to replace could never be read at all.
+		for (const option of draft.entryAfter ?? []) {
+			const node = nodes[option.node];
+			if (!node) continue;
+			const already = node.requires ?? [];
+			if (already.includes(option.flag)) continue;
+			nodes[option.node] = { ...node, requires: [...already, option.flag] };
+		}
+
 		// Gated openings first, so the most specific one that qualifies is used.
 		const entry = [...(draft.entryAfter ?? []).map((option) => option.node), draft.entry].filter(
 			(node) => nodes[node],
