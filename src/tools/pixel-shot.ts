@@ -1,15 +1,14 @@
 /**
- * Write the quadrant renderer's pixel buffer straight to a PNG.
+ * Write the pixel renderer's frame straight to a PNG.
  *
- * The terminal is a poor place to judge pixel art: the cell aspect ratio, the
- * font's idea of how much of its box a block element fills, and the terminal's
- * own gamma all sit between the sprite and the eye. This dumps exactly the
- * pixels the encoder is working from, magnified, so the sprites in `sprite.ts`
- * can be judged as art.
+ * The same buffer the kitty path transmits, so this is not a second
+ * implementation of the renderer — it is the renderer, with a different sink.
+ * Useful because a PNG can be inspected on any machine, including ones with no
+ * kitty graphics support and no terminal at all.
  *
- * PNG rather than the SVG the `screens` tool emits because at 4x4 tiles a
- * viewport is ~12,000 pixels, and one rect each makes an SVG nothing will open
- * happily.
+ * PNG rather than the SVG the `screens` tool emits because a viewport is
+ * hundreds of thousands of pixels, and one rect each makes an SVG nothing will
+ * open happily.
  *
  *   vite-node src/tools/pixel-shot.ts -- --at 4,4 --out /tmp/tiles.png
  */
@@ -19,9 +18,9 @@ import { deflateSync } from "node:zlib";
 import { generateChunk } from "../core/gen/pipeline.js";
 import { hashString } from "../core/rand/hash.js";
 import { CHUNK, type ChunkCoord } from "../core/world/coords.js";
-import type { RGB } from "../ui/render/color.js";
-import { type Cell, composeScene } from "../ui/render/compose.js";
-import { inkAt, paintFor, TILE_PX } from "../ui/render/sprite.js";
+import { composeScene } from "../ui/render/compose.js";
+import { rasterScene } from "../ui/render/raster.js";
+import { TILE_PX } from "../ui/render/sprite.js";
 import { createWorldTileSource } from "../ui/render/world-source.js";
 
 function crc32(buf: Buffer): number {
@@ -93,7 +92,8 @@ function main() {
 	const cc: ChunkCoord = { cx: Number(at[0] ?? 0) | 0, cy: Number(at[1] ?? 0) | 0 };
 	const tilesW = Number(args.get("width") ?? 44);
 	const tilesH = Number(args.get("height") ?? 24);
-	const zoom = Number(args.get("zoom") ?? 6);
+	const zoom = Number(args.get("zoom") ?? 3);
+	const tile = Number(args.get("tile") ?? TILE_PX);
 	const out = args.get("out") ?? "tiles.png";
 	const flat = args.has("flat");
 
@@ -105,38 +105,31 @@ function main() {
 	const camera = { x: cc.cx * CHUNK, y: cc.cy * CHUNK, width: tilesW, height: tilesH };
 	const scene = composeScene(source, camera, { shadows: !flat, relief: !flat });
 
-	const pw = tilesW * TILE_PX;
-	const ph = tilesH * TILE_PX;
-	const buf = Buffer.alloc(pw * zoom * ph * zoom * 3);
+	// Exactly the buffer the kitty path transmits, so what this writes to a PNG
+	// is what the terminal is asked to draw — not a second implementation of it.
+	const frame = rasterScene(scene, { tilePx: tile });
 
-	for (let ty = 0; ty < tilesH; ty++) {
-		const row = scene[ty] as Cell[];
-		for (let tx = 0; tx < tilesW; tx++) {
-			const cell = row[tx] as Cell;
-			const paint = paintFor(cell.ch, cell.fg, cell.bg, cell.entity);
-			for (let ly = 0; ly < TILE_PX; ly++) {
-				for (let lx = 0; lx < TILE_PX; lx++) {
-					const wx = (camera.x + tx) * TILE_PX + lx;
-					const wy = (camera.y + ty) * TILE_PX + ly;
-					const c: RGB = inkAt(paint.mask, wx, wy) ? paint.fg : paint.bg;
-					// Magnify by writing a zoom x zoom block per pixel.
-					const px = (tx * TILE_PX + lx) * zoom;
-					const py = (ty * TILE_PX + ly) * zoom;
-					for (let dy = 0; dy < zoom; dy++) {
-						let i = ((py + dy) * pw * zoom + px) * 3;
-						for (let dx = 0; dx < zoom; dx++) {
-							buf[i++] = c[0] as number;
-							buf[i++] = c[1] as number;
-							buf[i++] = c[2] as number;
-						}
-					}
+	// Magnified by nearest-neighbour, because the point is to inspect pixels.
+	const zw = frame.width * zoom;
+	const buf = Buffer.alloc(zw * frame.height * zoom * 3);
+	for (let y = 0; y < frame.height; y++) {
+		for (let x = 0; x < frame.width; x++) {
+			const src = (y * frame.width + x) * 3;
+			for (let dy = 0; dy < zoom; dy++) {
+				let i = ((y * zoom + dy) * zw + x * zoom) * 3;
+				for (let dx = 0; dx < zoom; dx++) {
+					buf[i++] = frame.rgb[src] as number;
+					buf[i++] = frame.rgb[src + 1] as number;
+					buf[i++] = frame.rgb[src + 2] as number;
 				}
 			}
 		}
 	}
 
-	writeFileSync(out, encodePng(pw * zoom, ph * zoom, buf));
-	process.stdout.write(`${out}  ${pw}x${ph} pixels (${tilesW}x${tilesH} tiles) at ${zoom}x\n`);
+	writeFileSync(out, encodePng(zw, frame.height * zoom, buf));
+	process.stdout.write(
+		`${out}  ${frame.width}x${frame.height} px (${tilesW}x${tilesH} tiles at ${tile}px) at ${zoom}x\n`,
+	);
 }
 
 main();

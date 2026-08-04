@@ -1,116 +1,165 @@
 /**
- * A 4x4 pixel sprite per glyph, for the quadrant renderer.
+ * How one tile is drawn, at whatever pixel size the renderer is working in.
  *
- * The key economy here is that a sprite is a *bitmask*, not a bitmap. It says
- * which of a tile's 16 pixels are "ink" and which are "ground"; the two colours
- * come from the `Cell` the compositor already produced. So every sprite
- * inherits lighting, tint, relief, shadow and field-of-view for free, because
- * all of those have already been folded into `cell.fg` / `cell.bg` by the time
- * we get here.
+ * Sprites are **procedures, not bitmaps**. A tile is drawn by asking, for a
+ * point in the unit square, whether that point is ink — so the same conifer is
+ * a crisp triangle at 8 pixels and at 24, and changing the tile size is a
+ * number rather than a re-draw of sixty sprites. Upscaling a fixed 4x4 mask to
+ * 16x16 would just be a blocky 4x4, which is the whole reason the earlier
+ * quadrant experiment was not worth keeping.
  *
- * It also means a tile is two-coloured by construction, which is what makes the
- * quadrant encoder lossless — see `quadrant.ts`. A general RGB bitmap would put
- * up to four colours in a 2x2 cell and force a quantisation step that this
- * design does not need at all.
+ * Colour is not a sprite's business. A sprite answers ink or ground, and the
+ * two colours come from the `Cell` the compositor already produced — so every
+ * sprite inherits lighting, tint, relief, shadow and field of view for free,
+ * because all of those are folded into `cell.fg` / `cell.bg` upstream.
  *
- * Sprites are addressed by offset *within* a tile, never by world position, so
- * a tile draws the same wherever the camera happens to be. That is worth saying
- * because `scale.ts` has to work for the same property: it scatters specks by
- * absolute position, and keying that to a viewport index instead makes the whole
- * ground shimmer on every footfall. Here it falls out of the design.
+ * Coordinates are the unit square, `u` and `v` in `[0, 1)`, with `v` running
+ * downward. Unit coordinates rather than pixels because that is what makes a
+ * sprite resolution-independent; a shape written against pixel indices is a
+ * shape that only works at one size.
  */
+import { decorDef } from "../../core/tiles/decor.js";
+import { terrainDef } from "../../core/tiles/terrain.js";
 import { AUTOTILE_SETS } from "./autotile.js";
 import { mix, type RGB } from "./color.js";
 
-/** Pixels along one edge of a tile. Must be even: the quadrant encoder pairs them. */
-export const TILE_PX = 4;
+/**
+ * Pixels along one edge of a tile.
+ *
+ * Sixteen is a real tileset's worth of detail and about what a pair of terminal
+ * cells can show without the terminal having to scale the image. `TILE_PX`
+ * overrides it for experiments; the sprites do not care.
+ */
+export const TILE_PX = (() => {
+	const raw = Number(process.env.TILE_PX);
+	return Number.isFinite(raw) && raw >= 4 ? Math.trunc(raw) : 16;
+})();
 
-/** 16 bits, bit `y * 4 + x`, set meaning "draw the foreground colour". */
-export interface MaskSprite {
-	readonly kind: "mask";
-	readonly mask: number;
-}
+/** Is the point `(u, v)` of this tile ink? */
+export type Shape = (u: number, v: number) => boolean;
 
 export type Sprite =
-	| MaskSprite
+	| { readonly kind: "shape"; readonly shape: Shape }
 	/**
-	 * A shade between the tile's two colours, 0 = all background, 1 = all ink.
+	 * A shade between the tile's two colours, 0 = all ground, 1 = all ink.
 	 *
-	 * Blended flat rather than dithered, and that is the single most important
-	 * decision in this file. A `░` glyph at one-glyph-per-tile reads as a
-	 * uniform 25% tint; the *same* glyph rasterised as a 25% ordered dither is
-	 * four separate visible dots, and a field of grass becomes static. Rendered
-	 * out, it put back exactly the high-frequency noise that `compose.ts`
-	 * records the generator being changed to avoid — a whole viewport of it.
+	 * Blended flat rather than dithered, and that decision was expensive to
+	 * learn. A `░` glyph reads as a uniform 25% tint at one glyph per tile; the
+	 * same glyph rasterised as a 25% ordered dither is a field of separate dots,
+	 * and a viewport of grass became visual static — exactly the high-frequency
+	 * noise that `compose.ts` records the generator being changed to avoid.
 	 *
 	 * So sub-tile texture stays sub-tile: it becomes a value, and the visible
-	 * texture comes from the authored specks instead. That is the balance
-	 * `glyphs.ts` already strikes, where grass is half `░` and half a single
-	 * mark — this keeps it rather than amplifying the `░` half fourfold.
+	 * texture comes from the drawn specks instead. That is the balance
+	 * `glyphs.ts` already strikes, where grass is half `░` and half a mark.
 	 */
 	| { readonly kind: "density"; readonly level: number };
 
-/**
- * Read a 4x4 sprite from four strings, `#` for ink.
- *
- * Literal art rather than computed masks because these are *shapes* and the
- * whole point is being able to see them in the source.
- */
-function art(...rows: readonly [string, string, string, string]): MaskSprite {
-	let mask = 0;
-	rows.forEach((row, y) => {
-		for (let x = 0; x < TILE_PX; x++) {
-			if (row[x] === "#") mask |= 1 << (y * TILE_PX + x);
-		}
-	});
-	return { kind: "mask", mask };
+function shape(fn: Shape): Sprite {
+	return { kind: "shape", shape: fn };
 }
 
 function density(level: number): Sprite {
 	return { kind: "density", level };
 }
 
+// --- shape primitives ------------------------------------------------------
+// Everything below composes these, so a sprite reads as a description of the
+// thing it draws rather than as arithmetic.
+
+/** An axis-aligned box, in unit coordinates. */
+const box =
+	(x0: number, y0: number, x1: number, y1: number): Shape =>
+	(u, v) =>
+		u >= x0 && u < x1 && v >= y0 && v < y1;
+
+const disc =
+	(cx: number, cy: number, r: number): Shape =>
+	(u, v) =>
+		(u - cx) ** 2 + (v - cy) ** 2 < r * r;
+
+/** A triangle with its apex at `(cx, apexY)`, widening to `base`. */
+const cone =
+	(cx: number, apexY: number, base: number, halfWidth: number): Shape =>
+	(u, v) => {
+		if (v < apexY || v > base) return false;
+		const t = (v - apexY) / (base - apexY);
+		return Math.abs(u - cx) < halfWidth * t;
+	};
+
+const any =
+	(...parts: readonly Shape[]): Shape =>
+	(u, v) =>
+		parts.some((p) => p(u, v));
+
+const not =
+	(inner: Shape): Shape =>
+	(u, v) =>
+		!inner(u, v);
+
+const both =
+	(a: Shape, b: Shape): Shape =>
+	(u, v) =>
+		a(u, v) && b(u, v);
+
+/** A ring: a disc with a smaller one taken out of it. */
+const ring = (cx: number, cy: number, r: number, thickness: number): Shape =>
+	both(disc(cx, cy, r), not(disc(cx, cy, r - thickness)));
+
+/** A sine band, for water. */
+const wave =
+	(centre: number, amplitude: number, periods: number, thickness: number): Shape =>
+	(u, v) =>
+		Math.abs(v - (centre + amplitude * Math.sin(u * Math.PI * 2 * periods))) < thickness;
+
+const NOTHING: Shape = () => false;
+
+// --- box drawing -----------------------------------------------------------
+
 /**
- * Which pixel tracks a line occupies, by weight.
+ * How wide a line is drawn, as a fraction of the tile, per weight.
  *
- * A 4-pixel tile cannot centre an odd-width line, so `light` sits one pixel off
- * centre. At this resolution that is invisible next to the thing it buys, which
- * is that light, heavy and double walls stay visibly different weights.
+ * These are the three weights the autotile tables already distinguish, and
+ * keeping them apart is the point: a fence must not read as a wall.
  */
-const TRACKS: Readonly<Record<string, readonly number[]>> = {
-	light: [1],
-	heavy: [1, 2],
-	// Two rails with a gap. Anchored at 0 so the rails meet across tile edges
-	// and a bridge reads as one continuous span rather than a dashed line.
-	double: [0, 2],
+const WEIGHTS: Readonly<Record<string, number>> = {
+	light: 0.14,
+	heavy: 0.3,
+	double: 0.36,
 };
 
 /**
- * Build a box-drawing sprite from its arm directions.
+ * Build a box-drawing shape from its arm directions.
  *
- * Arms run from the tile edge to the centre band, so a glyph's arms always
- * reach its neighbours' and walls join without a seam.
+ * Arms run from the tile edge to the centre band, so a glyph's arms always meet
+ * its neighbours' and a run of wall is unbroken. A double line is drawn as two
+ * rails with a gap, which is what tells a bridge from a thick wall.
  */
-function boxSprite(mask: number, weight: string): MaskSprite {
-	const tracks = TRACKS[weight] ?? TRACKS.heavy;
-	if (!tracks) throw new Error(`unknown box weight ${weight}`);
-	const lo = Math.min(...tracks);
-	const hi = Math.max(...tracks);
-	let bits = 0;
-	const set = (x: number, y: number) => {
-		bits |= 1 << (y * TILE_PX + x);
-	};
+function boxShape(mask: number, weight: string): Shape {
+	const w = WEIGHTS[weight] ?? 0.3;
+	const lo = 0.5 - w / 2;
+	const hi = 0.5 + w / 2;
+	const rail = w / 3;
 
-	// The centre band is always drawn, so a glyph with no arms is a pillar or a
-	// post rather than an empty tile.
-	for (const y of tracks) for (const x of tracks) set(x, y);
+	// A horizontal arm splits into two rails along v; a vertical one along u.
+	const across = (x0: number, x1: number): Shape =>
+		weight === "double"
+			? any(box(x0, lo, x1, lo + rail), box(x0, hi - rail, x1, hi))
+			: box(x0, lo, x1, hi);
+	const down = (y0: number, y1: number): Shape =>
+		weight === "double"
+			? any(box(lo, y0, lo + rail, y1), box(hi - rail, y0, hi, y1))
+			: box(lo, y0, hi, y1);
 
-	if (mask & 1) for (let y = 0; y <= hi; y++) for (const x of tracks) set(x, y); // N
-	if (mask & 2) for (let x = lo; x < TILE_PX; x++) for (const y of tracks) set(x, y); // E
-	if (mask & 4) for (let y = lo; y < TILE_PX; y++) for (const x of tracks) set(x, y); // S
-	if (mask & 8) for (let x = 0; x <= hi; x++) for (const y of tracks) set(x, y); // W
-
-	return { kind: "mask", mask: bits };
+	const parts: Shape[] = [];
+	if (mask & 1) parts.push(down(0, hi)); // N
+	if (mask & 2) parts.push(across(lo, 1)); // E
+	if (mask & 4) parts.push(down(lo, 1)); // S
+	if (mask & 8) parts.push(across(0, hi)); // W
+	// The centre is always drawn, so a glyph with no arms is a pillar or a post
+	// rather than an empty tile.
+	if (parts.length === 0) parts.push(box(lo, lo, hi, hi));
+	return any(...parts);
 }
 
 /** Which line weight each autotile set draws in. Density sets are not box art. */
@@ -123,10 +172,9 @@ const SET_WEIGHT: Readonly<Record<string, string>> = {
 /**
  * Derive every box-drawing sprite from the autotile tables themselves.
  *
- * Deriving rather than listing 48 glyphs by hand keeps the two in step: an
- * autotile table that gains a glyph gains its sprite in the same commit, and a
- * table reordered by mistake produces visibly wrong walls in both renderers
- * rather than only in one.
+ * Deriving rather than listing 48 glyphs keeps the two in step: a table that
+ * gains a glyph gains its sprite in the same commit, and a table reordered by
+ * mistake produces visibly wrong walls in both renderers rather than only one.
  */
 function derivedBoxSprites(): Map<string, Sprite> {
 	const out = new Map<string, Sprite>();
@@ -134,14 +182,7 @@ function derivedBoxSprites(): Map<string, Sprite> {
 		const weight = SET_WEIGHT[set.key];
 		if (!weight) continue;
 		set.table.forEach((ch, mask) => {
-			const existing = out.get(ch);
-			const sprite = boxSprite(mask, weight);
-			// Two sets sharing a glyph would silently give one of them the other's
-			// shape, so say so instead.
-			if (existing && existing.kind === "mask" && existing.mask !== sprite.mask) {
-				throw new Error(`glyph "${ch}" is claimed by two autotile sets with different shapes`);
-			}
-			out.set(ch, sprite);
+			if (!out.has(ch)) out.set(ch, shape(boxShape(mask, weight)));
 		});
 	}
 	return out;
@@ -150,31 +191,32 @@ function derivedBoxSprites(): Map<string, Sprite> {
 /**
  * Everything that walks, drawn as a head and shoulders.
  *
- * NPC glyphs are letters (`npc-directory.ts` uppercases the role's initial), and
- * a letter is simply not legible in sixteen pixels. So the entity layer stops
- * being typographic here: a person is a person-shape, and *which* person is
- * carried by the colour, which `dispositionColor` already varies.
+ * NPC glyphs are letters — `npc-directory.ts` uppercases the role's initial —
+ * and a letter is not legible at tile size. So the entity layer stops being
+ * typographic here: a person is a person-shape, and *which* person is carried
+ * by the colour, which `dispositionColor` already varies.
  *
- * The cost is real and worth stating: the glyph renderer distinguishes a
- * merchant from a guard at a glance and this does not. Disposition survives,
- * identity does not — so pixel mode leans harder on the side panel to say who
- * is on screen.
+ * The cost is worth stating plainly: the glyph renderer tells a merchant from a
+ * guard at a glance and this does not. Disposition survives, identity does not,
+ * so pixel mode leans harder on the side panel to say who is on screen.
  */
-const ENTITY: MaskSprite = art(".##.", "####", ".##.", ".##.");
+const FIGURE: Shape = any(
+	disc(0.5, 0.22, 0.15),
+	cone(0.5, 0.36, 0.76, 0.26),
+	box(0.36, 0.74, 0.46, 0.96),
+	box(0.54, 0.74, 0.64, 0.96),
+);
 
 /**
- * Hand-authored sprites, for everything that is not a box-drawing line.
+ * Hand-drawn sprites, for everything that is not a box-drawing line.
  *
- * Density glyphs map to a coverage fraction rather than a fixed pattern; the
- * rest are drawn. Specks stay deliberately sparse — one or two pixels — because
- * a speck's job is to break up a flat colour, and at 16 pixels a tile it takes
- * very little to read as texture.
+ * Specks stay deliberately small. A speck's job is to break up a flat colour,
+ * not to be identified, and ground texture that reads clearly on its own tile
+ * reads as clutter across a whole viewport.
  */
 const AUTHORED: Readonly<Record<string, Sprite>> = {
-	" ": { kind: "mask", mask: 0 },
-	// The player is always drawn through the entity path, but map it anyway so
-	// no glyph the registry can emit depends on the fallback.
-	"@": ENTITY,
+	" ": shape(NOTHING),
+	"@": shape(FIGURE),
 
 	// --- density fills -----------------------------------------------------
 	"░": density(0.25),
@@ -183,68 +225,168 @@ const AUTHORED: Readonly<Record<string, Sprite>> = {
 	"█": density(1),
 
 	// --- water -------------------------------------------------------------
-	"~": art("....", "##..", "..##", "...."),
-	"≈": art("##..", "..##", "##..", "..##"),
+	"~": shape(wave(0.5, 0.12, 1, 0.08)),
+	"≈": shape(any(wave(0.3, 0.1, 1, 0.07), wave(0.75, 0.1, 1, 0.07))),
 
 	// --- scenery -----------------------------------------------------------
-	"▲": art("..#.", ".###", "####", "..#."),
-	"●": art(".##.", "####", "####", ".##."),
-	"†": art("..#.", ".###", "..#.", "..#."),
-	o: art("....", ".##.", ".##.", "...."),
+	"▲": shape(any(cone(0.5, 0.06, 0.8, 0.4), box(0.44, 0.76, 0.56, 0.98))),
+	"●": shape(disc(0.5, 0.55, 0.34)),
+	"†": shape(any(box(0.44, 0.1, 0.56, 0.98), box(0.24, 0.28, 0.76, 0.4))),
+	o: shape(ring(0.5, 0.6, 0.28, 0.1)),
 
 	// --- ground specks -----------------------------------------------------
-	",": art("....", "....", ".#..", "...."),
-	".": art("....", "....", "..#.", "...."),
-	"'": art("....", ".#..", "....", "...."),
-	":": art("....", ".#..", ".#..", "...."),
-	"·": art("....", "..#.", "....", "...."),
-	"*": art("....", ".#..", "...#", "...."),
-	'"': art("....", "#.#.", "....", "...."),
-	"!": art(".#..", ".#..", "....", "...."),
-	"|": art(".#..", ".#..", ".#..", ".#.."),
-	"=": art("....", "###.", "....", "###."),
-	"-": art("....", "###.", "....", "...."),
-	"≡": art("###.", "....", "###.", "...."),
+	",": shape(disc(0.36, 0.62, 0.1)),
+	".": shape(disc(0.56, 0.68, 0.09)),
+	"'": shape(disc(0.42, 0.34, 0.09)),
+	":": shape(any(disc(0.4, 0.36, 0.08), disc(0.4, 0.66, 0.08))),
+	"·": shape(disc(0.5, 0.5, 0.08)),
+	"*": shape(any(disc(0.36, 0.4, 0.11), disc(0.66, 0.66, 0.09))),
+	'"': shape(any(disc(0.34, 0.32, 0.08), disc(0.6, 0.32, 0.08))),
+	"!": shape(box(0.46, 0.2, 0.56, 0.62)),
+	"|": shape(box(0.46, 0.05, 0.56, 0.95)),
+	"=": shape(any(box(0.15, 0.36, 0.85, 0.46), box(0.15, 0.62, 0.85, 0.72))),
+	"-": shape(box(0.15, 0.46, 0.85, 0.56)),
+	"≡": shape(
+		any(box(0.15, 0.2, 0.85, 0.3), box(0.15, 0.45, 0.85, 0.55), box(0.15, 0.7, 0.85, 0.8)),
+	),
 
 	// --- built -------------------------------------------------------------
-	"▤": art("####", "#.#.", "####", "#.#."),
-	"▨": art("#..#", ".##.", ".##.", "#..#"),
-	"▣": art("####", "#..#", "#..#", "####"),
-	"▩": art("#.#.", ".#.#", "#.#.", ".#.#"),
-	"▢": art("####", "#..#", "#..#", "####"),
-	"▭": art("....", "####", "####", "...."),
-	"▬": art("####", "....", "####", "...."),
-	"≣": art("####", "....", "####", "...."),
-	"◍": art(".##.", "####", "####", ".##."),
-	// The anvil. Its glyph happens to be a quadrant block, which is only a
-	// coincidence — here it is a horn, a face and a waist.
-	"▟": art("..##", ".###", "..#.", ".###"),
-	"∩": art(".##.", "#..#", "#..#", "#..#"),
-	"⊓": art("####", ".#.#", ".#.#", "...."),
-	"╤": art("####", "..#.", "..#.", "..#."),
-	"╪": art("..#.", "####", "..#.", "..#."),
-	"╫": art(".#.#", "####", ".#.#", ".#.#"),
-	"§": art(".##.", ".#..", "..#.", ".##."),
-	"※": art("#.#.", ".#..", "#.#.", "...."),
-	"¡": art("..#.", "....", "..#.", "..#."),
-	"+": art("..#.", "####", "..#.", "..#."),
-	"/": art("...#", "..#.", ".#..", "#..."),
-	">": art(".#..", "..#.", "..#.", ".#.."),
-	"<": art("..#.", ".#..", ".#..", "..#."),
-	"■": art(".##.", ".##.", ".##.", ".##."),
-	"○": art("....", ".#..", ".#..", "...."),
+	"▤": shape(any(box(0.1, 0.12, 0.9, 0.24), box(0.1, 0.44, 0.9, 0.56), box(0.1, 0.76, 0.9, 0.88))),
+	"▨": shape(both(box(0.1, 0.1, 0.9, 0.9), (u, v) => Math.abs(u - v) < 0.18)),
+	"▣": shape(any(ring(0.5, 0.5, 0.42, 0.1), disc(0.5, 0.5, 0.16))),
+	"▩": shape(both(box(0.08, 0.08, 0.92, 0.92), (u, v) => ((u * 4) | 0) % 2 === ((v * 4) | 0) % 2)),
+	"▢": shape(ring(0.5, 0.5, 0.42, 0.1)),
+	"▭": shape(box(0.08, 0.34, 0.92, 0.7)),
+	"▬": shape(box(0.06, 0.36, 0.94, 0.62)),
+	"≣": shape(any(box(0.1, 0.16, 0.9, 0.28), box(0.1, 0.44, 0.9, 0.56), box(0.1, 0.72, 0.9, 0.84))),
+	"◍": shape(any(ring(0.5, 0.5, 0.4, 0.1), box(0.12, 0.44, 0.88, 0.56))),
+	"∩": shape(
+		any(
+			both(ring(0.5, 0.5, 0.4, 0.12), box(0, 0, 1, 0.5)),
+			box(0.1, 0.5, 0.22, 1),
+			box(0.78, 0.5, 0.9, 1),
+		),
+	),
+	"⊓": shape(
+		any(box(0.18, 0.24, 0.82, 0.36), box(0.22, 0.36, 0.34, 0.9), box(0.66, 0.36, 0.78, 0.9)),
+	),
+	"╤": shape(any(box(0.06, 0.18, 0.94, 0.3), box(0.44, 0.3, 0.56, 0.98))),
+	"╪": shape(any(box(0.06, 0.34, 0.94, 0.46), box(0.44, 0.05, 0.56, 0.98))),
+	"╫": shape(
+		any(box(0.06, 0.3, 0.94, 0.42), box(0.3, 0.05, 0.42, 0.98), box(0.58, 0.05, 0.7, 0.98)),
+	),
+	"§": shape(
+		any(
+			both(ring(0.5, 0.3, 0.22, 0.09), box(0, 0, 1, 0.34)),
+			both(ring(0.5, 0.7, 0.22, 0.09), box(0, 0.66, 1, 1)),
+		),
+	),
+	"※": shape(
+		any(
+			disc(0.5, 0.5, 0.12),
+			disc(0.24, 0.28, 0.08),
+			disc(0.76, 0.28, 0.08),
+			disc(0.24, 0.74, 0.08),
+			disc(0.76, 0.74, 0.08),
+		),
+	),
+	"¡": shape(any(box(0.44, 0.12, 0.56, 0.2), box(0.44, 0.32, 0.56, 0.88))),
+	"+": shape(any(box(0.42, 0.12, 0.58, 0.92), box(0.16, 0.4, 0.84, 0.56))),
+	"/": shape((u, v) => Math.abs(u - (1 - v)) < 0.13),
+	">": shape((u, v) => Math.abs(u - (0.3 + (0.5 - Math.abs(v - 0.5)))) < 0.14),
+	"<": shape((u, v) => Math.abs(1 - u - (0.3 + (0.5 - Math.abs(v - 0.5)))) < 0.14),
+	"■": shape(box(0.24, 0.16, 0.76, 0.94)),
+	"○": shape(ring(0.5, 0.55, 0.24, 0.09)),
+	// The anvil. Its glyph is a quadrant block only by coincidence.
+	"▟": shape(
+		any(box(0.18, 0.3, 0.86, 0.5), box(0.36, 0.5, 0.64, 0.72), box(0.22, 0.72, 0.78, 0.88)),
+	),
 };
 
 const BOX = derivedBoxSprites();
 
 /**
- * Drawn for any glyph with no sprite of its own.
+ * Scattered blobs, for vegetation.
  *
- * A visible lozenge rather than a blank, so a missing sprite shows up on the
- * map instead of quietly erasing whatever it was meant to be. `spriteCoverage`
- * reports which glyphs land here.
+ * `count` clumps at fixed offsets rather than random ones: a sprite is drawn
+ * fresh for every tile on every frame, so anything random would boil. Fixed
+ * offsets give one tile of foliage that tiles against itself without a seam.
  */
-const FALLBACK: MaskSprite = art("....", ".##.", ".##.", "....");
+function foliage(count: number, radius: number): Shape {
+	const seeds: readonly (readonly [number, number])[] = [
+		[0.28, 0.34],
+		[0.68, 0.28],
+		[0.5, 0.58],
+		[0.22, 0.72],
+		[0.78, 0.68],
+		[0.44, 0.86],
+	];
+	return any(...seeds.slice(0, count).map(([x, y]) => disc(x, y, radius)));
+}
+
+/** Rows of overlapping scallops, for roof shingle and scale-like texture. */
+const shingle: Shape = (u, v) => {
+	const row = Math.floor(v * 4);
+	const offset = row % 2 === 0 ? 0 : 0.5;
+	const x = (u + offset) % 0.5;
+	// A dark line at the top of each course and a notch between scallops.
+	return v * 4 - row < 0.22 || Math.abs(x - 0.25) < 0.06;
+};
+
+/**
+ * Sprites chosen by what a tile *is* rather than by the glyph it was reduced to.
+ *
+ * This exists because the glyph vocabulary is ambiguous in ways that only
+ * matter once a tile has real pixels. `▒` is both a roof and a bush; drawing
+ * both as the same flat 50% shade gives a town full of green squares where the
+ * hedges should be. Keyed by `TerrainDef.key` rather than by numeric id so the
+ * table survives ids being appended, which the registry explicitly allows.
+ *
+ * Deliberately a short list. Most terrain is served fine by its glyph, and an
+ * entry here is a claim that this particular tile is worth drawing properly.
+ */
+const BY_TERRAIN: Readonly<Record<string, Sprite>> = {
+	// Grass is the commonest tile on the map, so its texture has to survive being
+	// seen thousands of times at once: a few thin blades, close in value to the
+	// ground. Anything bolder is the dither problem again at a larger scale.
+	grass: shape(
+		any(box(0.22, 0.52, 0.28, 0.78), box(0.54, 0.4, 0.6, 0.72), box(0.78, 0.6, 0.84, 0.84)),
+	),
+	forestFloor: shape(any(disc(0.32, 0.44, 0.07), disc(0.7, 0.66, 0.06), disc(0.5, 0.82, 0.05))),
+	bush: shape(foliage(4, 0.19)),
+	tallGrass: shape(foliage(6, 0.1)),
+	reeds: shape(any(box(0.24, 0.2, 0.32, 1), box(0.48, 0.1, 0.56, 1), box(0.7, 0.3, 0.78, 1))),
+	crops: shape(any(box(0.2, 0.3, 0.3, 1), box(0.45, 0.22, 0.55, 1), box(0.7, 0.3, 0.8, 1))),
+	roof: shape(shingle),
+	broadleaf: shape(foliage(5, 0.22)),
+	conifer: shape(any(cone(0.5, 0.06, 0.8, 0.4), box(0.44, 0.76, 0.56, 0.98))),
+	rubble: shape(any(disc(0.3, 0.4, 0.13), disc(0.66, 0.6, 0.11), disc(0.44, 0.76, 0.09))),
+	gravel: shape(any(disc(0.3, 0.4, 0.07), disc(0.68, 0.62, 0.06))),
+	flowers: shape(any(disc(0.34, 0.38, 0.11), disc(0.66, 0.64, 0.09))),
+	ice: shape((u, v) => Math.abs(u * 0.6 + v - 0.7) < 0.05),
+};
+
+const BY_DECOR: Readonly<Record<string, Sprite>> = {
+	bed: shape(any(box(0.1, 0.28, 0.9, 0.92), box(0.16, 0.34, 0.5, 0.54))),
+	barrel: shape(
+		any(ring(0.5, 0.5, 0.36, 0.09), box(0.16, 0.34, 0.84, 0.42), box(0.16, 0.6, 0.84, 0.68)),
+	),
+	hearth: shape(any(box(0.1, 0.2, 0.9, 0.32), cone(0.5, 0.44, 0.9, 0.3))),
+	campfire: shape(any(cone(0.5, 0.24, 0.82, 0.28), box(0.16, 0.82, 0.84, 0.9))),
+	statue: shape(
+		any(disc(0.5, 0.24, 0.14), cone(0.5, 0.36, 0.86, 0.26), box(0.24, 0.86, 0.76, 0.96)),
+	),
+	well: shape(
+		any(ring(0.5, 0.62, 0.34, 0.1), box(0.14, 0.16, 0.86, 0.26), box(0.46, 0.16, 0.54, 0.5)),
+	),
+};
+
+/**
+ * Drawn for any glyph with no sprite of its own: a hollow lozenge, visible
+ * enough that a missing sprite shows up on the map rather than quietly erasing
+ * whatever it was meant to be. `spriteCoverage` reports which glyphs land here.
+ */
+const FALLBACK: Sprite = shape(ring(0.5, 0.5, 0.3, 0.1));
 
 export function spriteFor(ch: string): Sprite {
 	return AUTHORED[ch] ?? BOX.get(ch) ?? FALLBACK;
@@ -255,44 +397,69 @@ export function hasSprite(ch: string): boolean {
 }
 
 /**
- * One tile ready to rasterise: a bitmask and the two colours it is painted in.
+ * One tile ready to rasterise: a shape and the two colours it is drawn in.
  *
- * Resolving to exactly two colours is what makes the quadrant encoder lossless
- * — a cell is two pixels square and so never straddles a tile, which means it
- * never sees a third colour and never needs to quantise. A density sprite folds
- * its shade into the background and clears the mask, so it is a *one*-colour
- * tile and cheaper still.
+ * A density sprite folds its shade into the ground colour and draws nothing, so
+ * it costs one flat fill — which is most of the map, most of the time.
  */
 export interface TilePaint {
-	readonly mask: number;
+	readonly shape: Shape;
 	readonly fg: RGB;
 	readonly bg: RGB;
 }
 
-export function paintFor(ch: string, fg: RGB, bg: RGB, entity = false): TilePaint {
-	if (entity) return { mask: ENTITY.mask, fg, bg };
-	const sprite = spriteFor(ch);
-	if (sprite.kind === "density") {
-		return { mask: 0, fg, bg: mix(bg, fg, sprite.level) };
+/**
+ * Resolve one cell to a shape and two colours.
+ *
+ * Order matters: an entity beats everything, then decor, then terrain, then the
+ * glyph. That is the compositor's own layering (`terrain -> decor -> entity`),
+ * and following it means a signpost on a road draws the signpost — whereas
+ * keying off the glyph alone would draw whichever of the two won the character.
+ */
+export function paintFor(cell: PaintInput): TilePaint {
+	const { fg, bg } = cell;
+	if (cell.entity) return { shape: FIGURE, fg, bg };
+
+	const byDecor = cell.decor !== undefined ? BY_DECOR[decorDef(cell.decor).key] : undefined;
+	const byTerrain =
+		byDecor === undefined && cell.terrain !== undefined
+			? BY_TERRAIN[terrainDef(cell.terrain).key]
+			: undefined;
+	// A decor override only applies where decor is actually present; `none` is
+	// id 0 and must not shadow the terrain under it.
+	const chosen =
+		(cell.decor ? byDecor : undefined) ??
+		(cell.decor ? undefined : byTerrain) ??
+		spriteFor(cell.ch);
+
+	if (chosen.kind === "density") {
+		return { shape: NOTHING, fg, bg: mix(bg, fg, chosen.level) };
 	}
-	return { mask: sprite.mask, fg, bg };
+	return { shape: chosen.shape, fg, bg };
+}
+
+/** What {@link paintFor} needs. A `Cell` satisfies it; tests can pass less. */
+export interface PaintInput {
+	readonly ch: string;
+	readonly fg: RGB;
+	readonly bg: RGB;
+	readonly entity?: boolean;
+	readonly terrain?: number;
+	readonly decor?: number;
 }
 
 /**
- * Is this world pixel ink?
+ * Is pixel `(px, py)` of a `size`-pixel tile ink?
  *
- * `px`/`py` are **world** pixel coordinates. Only the low two bits are read,
- * which is the within-tile offset for any tile origin (a multiple of 4) and
- * works unchanged for negative coordinates — so a sprite is anchored to the
- * ground rather than to the viewport, and does not slide as the camera moves.
+ * Sampled at the pixel's centre rather than its corner. A corner sample shifts
+ * every shape half a pixel up and to the left, which at this size is visible as
+ * a lopsided tree and a wall that meets its neighbour unevenly.
  */
-export function inkAt(mask: number, px: number, py: number): boolean {
-	const x = px & (TILE_PX - 1);
-	const y = py & (TILE_PX - 1);
-	return (mask & (1 << (y * TILE_PX + x))) !== 0;
+export function inkAt(shape: Shape, px: number, py: number, size = TILE_PX): boolean {
+	return shape((px + 0.5) / size, (py + 0.5) / size);
 }
 
-/** Which glyphs have a sprite and which fall back. For tests and the preview tool. */
+/** Which glyphs have a sprite and which fall back. For tests and the tools. */
 export function spriteCoverage(glyphs: Iterable<string>): {
 	covered: string[];
 	missing: string[];

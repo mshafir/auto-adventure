@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Box, Text, Transform } from "ink";
 import { useMemo } from "react";
 import { encodeScene } from "./render/ansi.js";
 import { type ColorDepth, detectColorDepth } from "./render/color.js";
@@ -8,11 +8,26 @@ import {
 	composeScene,
 	type TileSource,
 } from "./render/compose.js";
+import { placeholderRows, transmitFrame } from "./render/kitty.js";
+import { cellPixels, resolveTileMode, type TileMode } from "./render/mode.js";
+import { rasterScene } from "./render/raster.js";
 import { expandScene, TILE_WIDTH, tilesAcross } from "./render/scale.js";
 
 export { TILE_WIDTH, tilesAcross };
 
 let cachedDepth: ColorDepth | undefined;
+let cachedMode: TileMode | undefined;
+
+/** Resolved once: the mode cannot change without the process restarting. */
+export function tileMode(): TileMode {
+	if (cachedMode === undefined) cachedMode = resolveTileMode().mode;
+	return cachedMode;
+}
+
+/** Test seam, matching {@link setColorDepth}. */
+export function setTileMode(mode: TileMode | undefined): void {
+	cachedMode = mode;
+}
 
 export function colorDepth(): ColorDepth {
 	if (cachedDepth === undefined) cachedDepth = detectColorDepth();
@@ -37,7 +52,13 @@ export interface ViewportProps {
  * many Yoga layout nodes every frame; this builds 40. Ink passes the escape
  * sequences through untouched because it measures with `string-width`.
  */
-export function Viewport({ source, camera, options }: ViewportProps) {
+export function Viewport(props: ViewportProps) {
+	// Dispatch rather than branch inside one component, so the mode that is not
+	// in use does no compositing at all.
+	return tileMode() === "kitty" ? <KittyViewport {...props} /> : <GlyphViewport {...props} />;
+}
+
+function GlyphViewport({ source, camera, options }: ViewportProps) {
 	const depth = colorDepth();
 	const rows = useMemo(
 		// The camera is in tiles; expansion to columns happens after compositing,
@@ -57,6 +78,66 @@ export function Viewport({ source, camera, options }: ViewportProps) {
 					{row}
 				</Text>
 			))}
+		</Box>
+	);
+}
+
+/**
+ * Renders the map as an image, placed through Unicode placeholder cells.
+ *
+ * The image data cannot go inline: `string-width` measures an APC graphics
+ * escape as 24 columns, so Ink would lay every row out too wide and the map
+ * would shear. It rides instead on Ink's `Transform`, which rewrites a line's
+ * final output *after* layout has been computed from the line it wrapped — so
+ * Ink lays out a grid of placeholders, each one column wide, and the pixels are
+ * smuggled onto the front of the first row.
+ *
+ * That also makes the upload atomic with the repaint. `sync-output.ts` brackets
+ * each of Ink's writes in DEC 2026, and because the image is part of the same
+ * write, the terminal never presents a frame where the placeholders have been
+ * drawn but their image has not arrived.
+ */
+function KittyViewport({ source, camera, options }: ViewportProps) {
+	const cell = cellPixels();
+
+	const { transmit, rows } = useMemo(() => {
+		const scene = composeScene(source, camera, options);
+		const frame = rasterScene(scene);
+		// The cell rectangle the image is asked to fill. Rounded up, so the image
+		// is never given fewer cells than it has tiles and squeezed.
+		const columns = Math.max(1, Math.ceil(frame.width / cell.width));
+		const cellRows = Math.max(1, Math.ceil(frame.height / cell.height));
+		return {
+			transmit: transmitFrame({
+				rgb: frame.rgb,
+				width: frame.width,
+				height: frame.height,
+				columns,
+				rows: cellRows,
+			}),
+			rows: placeholderRows(columns, cellRows),
+		};
+	}, [source, camera, options, cell.width, cell.height]);
+
+	return (
+		<Box flexDirection="column" flexShrink={0}>
+			{rows.map((row, i) => {
+				const text = (
+					// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional, not identities
+					<Text key={i} wrap="truncate">
+						{row}
+					</Text>
+				);
+				// Only the first row carries the upload; the rest are plain text.
+				return i === 0 ? (
+					// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional, not identities
+					<Transform key={i} transform={(line) => transmit + line}>
+						{text}
+					</Transform>
+				) : (
+					text
+				);
+			})}
 		</Box>
 	);
 }

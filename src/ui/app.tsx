@@ -22,10 +22,12 @@ import { Reader, readable } from "./panels/reader.js";
 import { type PanelTab, SidePanel } from "./panels/side-panel.js";
 import { FACING_MARKER, PLAYER_GLYPH } from "./render/glyphs.js";
 import { lightFor } from "./render/lighting.js";
+import { cellPixels } from "./render/mode.js";
 import { PAL } from "./render/palette.js";
+import { tileFit } from "./render/raster.js";
 import { tileSourceFrom } from "./render/world-source.js";
 import { getEngine, useGameState } from "./store.js";
-import { cameraCenteredOn, tilesAcross, Viewport } from "./viewport.js";
+import { cameraCenteredOn, tileMode, tilesAcross, Viewport } from "./viewport.js";
 
 const SIDE_PANEL_WIDTH = 32;
 /** How far a lamp carries indoors. */
@@ -184,13 +186,18 @@ export default function App({
 	// so the total is constant either way.
 	const panelHeight = panelHeightFor(state.dialogue !== undefined);
 	const mapHeight = Math.max(6, bodyHeight - panelHeight);
-	// The camera is measured in tiles, the layout in terminal columns, and a tile
-	// is TILE_WIDTH columns wide. Centring on the player in tile space is what
-	// keeps them in the middle of the viewport at any tile width.
-	const cameraTiles = tilesAcross(mapWidth);
+	// The camera is measured in tiles and the layout in terminal cells, and how
+	// many cells a tile takes depends on the renderer: TILE_WIDTH columns and one
+	// row for glyphs, and whatever its pixel size works out to for the image
+	// renderer, which is not bound to the character grid. Centring on the player
+	// in tile space is what keeps them in the middle either way.
+	const fit =
+		tileMode() === "kitty"
+			? tileFit(mapWidth, mapHeight, cellPixels())
+			: { width: tilesAcross(mapWidth), height: mapHeight };
 	const camera = useMemo(
-		() => cameraCenteredOn([player.x, player.y], cameraTiles, mapHeight),
-		[player.x, player.y, cameraTiles, mapHeight],
+		() => cameraCenteredOn([player.x, player.y], fit.width, fit.height),
+		[player.x, player.y, fit.width, fit.height],
 	);
 
 	const cc = toChunk(player.x, player.y);
