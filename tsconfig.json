@@ -13,14 +13,18 @@
 		"forceConsistentCasingInFileNames": true,
 		"inlineSources": false,
 		"isolatedModules": true,
-		"noUnusedLocals": false,
+		"noUnusedLocals": true,
 		"noUnusedParameters": false,
 		"preserveWatchOutput": true,
 		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"exactOptionalPropertyTypes": false,
+		"verbatimModuleSyntax": true,
 		"resolveJsonModule": true,
 		"sourceMap": true,
 		"jsx": "react-jsx",
 		"outDir": "dist"
 	},
-	"include": ["src"]
+	"include": ["src", "test", "vitest.config.ts"]
 }

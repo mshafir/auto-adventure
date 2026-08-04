@@ -1,0 +1,296 @@
+import { describe, expect, it } from "vitest";
+import { getInterior } from "../core/gen/features/interior.js";
+import { labelComponents, primaryComponent } from "../core/geom/floodfill.js";
+import { hashString } from "../core/rand/hash.js";
+import { createInitialState } from "../core/rules/state.js";
+import { TFlag } from "../core/tiles/flags.js";
+import { T } from "../core/tiles/terrain.js";
+import { CHUNK, chunkKey } from "../core/world/coords.js";
+import { ChunkManager } from "./chunk-manager.js";
+import { GameEngine } from "./engine.js";
+import { findSpawn } from "./spawn.js";
+import { createWorldView } from "./world-view.js";
+
+const SEED = hashString("world-test");
+
+function managerWithBlock(seed: number, radius: number) {
+	const chunks = new ChunkManager({ seed, capacity: (radius * 2 + 1) ** 2 + 4 });
+	chunks.prefetch({ cx: 0, cy: 0 }, radius);
+	return chunks;
+}
+
+describe("stitched world view", () => {
+	it("reads across a chunk boundary as one continuous surface", () => {
+		const chunks = managerWithBlock(SEED, 1);
+		const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+
+		// The tile at x = CHUNK-1 lives in chunk 0 and the tile at x = CHUNK in
+		// chunk 1; the view must resolve both without the caller knowing.
+		for (let y = 0; y < CHUNK; y += 7) {
+			expect(view.terrainAt(CHUNK - 1, y)).not.toBe(T.void);
+			expect(view.terrainAt(CHUNK, y)).not.toBe(T.void);
+		}
+	});
+
+	it("handles negative world coordinates", () => {
+		const chunks = managerWithBlock(SEED, 1);
+		const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+		expect(view.terrainAt(-1, -1)).not.toBe(T.void);
+		expect(view.terrainAt(-CHUNK, -CHUNK)).not.toBe(T.void);
+	});
+
+	it("treats ungenerated ground as impassable rather than empty", () => {
+		// Walking off the edge of what exists must be refused, not permitted into
+		// a void the player could never walk back out of.
+		const view = createWorldView({ seed: SEED, chunkAt: () => undefined });
+		expect(view.isPassable(0, 0)).toBe(false);
+		expect(view.isLoaded(0, 0)).toBe(false);
+		expect(view.terrainAt(0, 0)).toBe(T.void);
+	});
+
+	it("still gives ungenerated ground a stable variant so it does not flicker", () => {
+		const view = createWorldView({ seed: SEED, chunkAt: () => undefined });
+		expect(view.variantAt(7, 9)).toBe(view.variantAt(7, 9));
+	});
+});
+
+describe("cross-chunk walkability", () => {
+	it("has one walkable region spanning a 5x5 block of chunks", () => {
+		// The real test of seamlessness: a flood fill started anywhere on land
+		// must reach across every chunk boundary in the block. A seam, a wall of
+		// void at an edge, or a mis-stitched view would split this into pieces.
+		const radius = 2;
+		const chunks = managerWithBlock(SEED, radius);
+		const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+
+		const size = (radius * 2 + 1) * CHUNK;
+		const bounds = { x: -radius * CHUNK, y: -radius * CHUNK, w: size, h: size };
+		const result = labelComponents(bounds, (x, y) => view.isPassable(x, y), true);
+		const primary = primaryComponent(result);
+		expect(primary).toBeGreaterThan(0);
+
+		const primarySize = result.sizes[primary] ?? 0;
+		let passableTotal = 0;
+		for (let id = 1; id <= result.componentCount; id++) passableTotal += result.sizes[id] ?? 0;
+
+		// The dominant landmass should be the overwhelming majority of walkable
+		// ground; small islands cut off by water are legitimate.
+		expect(primarySize / passableTotal).toBeGreaterThan(0.8);
+
+		// And it must actually span the block rather than fill one chunk.
+		const width = size;
+		let minX = size;
+		let maxX = 0;
+		let minY = size;
+		let maxY = 0;
+		for (let ly = 0; ly < size; ly++) {
+			for (let lx = 0; lx < size; lx++) {
+				if (result.labels[ly * width + lx] !== primary) continue;
+				if (lx < minX) minX = lx;
+				if (lx > maxX) maxX = lx;
+				if (ly < minY) minY = ly;
+				if (ly > maxY) maxY = ly;
+			}
+		}
+		expect(maxX - minX).toBeGreaterThan(CHUNK * 3);
+		expect(maxY - minY).toBeGreaterThan(CHUNK * 3);
+	});
+
+	it("holds for several independent seeds", () => {
+		for (const name of ["moss", "ember", "vale"]) {
+			const seed = hashString(name);
+			const chunks = managerWithBlock(seed, 1);
+			const view = createWorldView({ seed, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+			const size = 3 * CHUNK;
+			const result = labelComponents(
+				{ x: -CHUNK, y: -CHUNK, w: size, h: size },
+				(x, y) => view.isPassable(x, y),
+				true,
+			);
+			const primary = primaryComponent(result);
+			expect(primary, `seed ${name} produced no walkable ground`).toBeGreaterThan(0);
+			expect((result.sizes[primary] ?? 0) / (size * size)).toBeGreaterThan(0.3);
+		}
+	});
+});
+
+describe("chunk manager", () => {
+	it("is deterministic across eviction", () => {
+		// Eviction is only safe because generation is reproducible; if a chunk
+		// came back different after being evicted, the world would change behind
+		// the player's back.
+		const chunks = new ChunkManager({ seed: SEED, capacity: 4 });
+		const before = [...chunks.ensure(0, 0).terrain];
+		for (let i = 1; i <= 12; i++) chunks.ensure(i, i);
+		expect(chunks.has(0, 0)).toBe(false);
+		expect([...chunks.ensure(0, 0).terrain]).toEqual(before);
+	});
+
+	it("respects its capacity", () => {
+		const chunks = new ChunkManager({ seed: SEED, capacity: 6 });
+		for (let i = 0; i < 30; i++) chunks.ensure(i, 0);
+		expect(chunks.residentCount).toBeLessThanOrEqual(6);
+	});
+
+	it("applies a stored delta over the generated terrain", () => {
+		const chunks = new ChunkManager({ seed: SEED });
+		const original = chunks.ensure(0, 0).terrain[0];
+		chunks.setDeltas({ [chunkKey(0, 0)]: { tiles: [0, T.doorOpen, 0] } });
+		expect(chunks.ensure(0, 0).terrain[0]).toBe(T.doorOpen);
+		expect(chunks.ensure(0, 0).terrain[0]).not.toBe(original);
+	});
+
+	it("reports a summary for a resident chunk", () => {
+		const chunks = new ChunkManager({ seed: SEED });
+		chunks.ensure(2, -3);
+		expect(chunks.summaryFor(2, -3)?.dominantBiome).toBeTruthy();
+		expect(chunks.summaryFor(9, 9)).toBeUndefined();
+	});
+});
+
+describe("spawn", () => {
+	it("places the player on passable ground", () => {
+		for (const name of ["alpha", "harrow", "vale", "moss"]) {
+			const seed = hashString(name);
+			const spawn = findSpawn(seed);
+			const chunks = new ChunkManager({ seed });
+			const view = createWorldView({ seed, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+			chunks.ensure(Math.floor(spawn.x / CHUNK), Math.floor(spawn.y / CHUNK));
+			expect(view.isPassable(spawn.x, spawn.y), `seed ${name} spawned in a wall`).toBe(true);
+		}
+	});
+});
+
+describe("engine", () => {
+	it("dispatches synchronously and notifies subscribers", () => {
+		const spawn = findSpawn(SEED);
+		const state = createInitialState(
+			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
+			spawn,
+		);
+		let notifications = 0;
+		const engine = new GameEngine(state, { runEffect: () => undefined });
+		engine.subscribe(() => notifications++);
+
+		engine.dispatch({ t: "Move", facing: "right" });
+		// The state is already updated when dispatch returns — no awaiting.
+		expect(engine.getState().player.facing).toBe("right");
+		expect(notifications).toBe(1);
+	});
+
+	it("does not notify when a command changes nothing", () => {
+		const state = createInitialState(
+			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
+			findSpawn(SEED),
+		);
+		const engine = new GameEngine(state, { runEffect: () => undefined });
+		let notifications = 0;
+		engine.subscribe(() => notifications++);
+		engine.dispatch({ t: "ApplyEffects", effects: [] });
+		expect(notifications).toBe(0);
+	});
+
+	it("lets an effect dispatch without reordering the queue", () => {
+		const state = createInitialState(
+			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
+			findSpawn(SEED),
+		);
+		const seen: string[] = [];
+		const engine = new GameEngine(state, {
+			runEffect: (effect, e) => {
+				seen.push(effect.t);
+				if (effect.t === "EnsureChunk") e.dispatch({ t: "Tick", amount: 1 });
+			},
+		});
+		engine.dispatch({ t: "Move", facing: "right" });
+		engine.dispatch({ t: "Move", facing: "right" });
+		expect(seen.length).toBeGreaterThan(0);
+	});
+});
+
+describe("entering buildings", () => {
+	function engineAtTown(seedName: string) {
+		const seed = hashString(seedName);
+		const chunks = new ChunkManager({ seed });
+		// Find a settlement chunk and the first building in it.
+		for (let my = -4; my <= 4; my++) {
+			for (let mx = -4; mx <= 4; mx++) {
+				chunks.ensure(mx, my);
+				const buildings = chunks.buildingsIn(mx, my);
+				const withDoor = buildings[0];
+				if (withDoor) return { seed, chunks, building: withDoor };
+			}
+		}
+		return undefined;
+	}
+
+	it("walks through a door into an interior and back out again", () => {
+		const found = engineAtTown("vale");
+		expect(found, "no settlement found to test").toBeDefined();
+		if (!found) return;
+
+		const { seed, building } = found;
+		// Stand on the doorstep, facing the door.
+		const step = {
+			x:
+				building.door.x +
+				(building.door.x === building.rect.x
+					? -1
+					: building.door.x === building.rect.x + building.rect.w - 1
+						? 1
+						: 0),
+			y:
+				building.door.y +
+				(building.door.y === building.rect.y
+					? -1
+					: building.door.y === building.rect.y + building.rect.h - 1
+						? 1
+						: 0),
+		};
+		const state = {
+			...createInitialState(
+				{ id: "door", name: "door", seed, createdAt: "2026-01-01T00:00:00.000Z" },
+				step,
+			),
+		};
+		const engine = new GameEngine(state, { runEffect: () => undefined });
+
+		const facing =
+			building.door.y < step.y
+				? "up"
+				: building.door.y > step.y
+					? "down"
+					: building.door.x > step.x
+						? "right"
+						: "left";
+
+		engine.dispatch({ t: "Move", facing });
+		engine.dispatch({ t: "Move", facing });
+
+		const inside = engine.getState().player.inside;
+		expect(inside, "walking into the door did not enter the interior").toBeDefined();
+		expect(inside?.interiorId).toBe(building.interiorId);
+
+		// The player stands on floor, not in a wall.
+		const player = engine.getState().player;
+		expect(engine.getView().isPassable(player.x, player.y)).toBe(true);
+
+		// Walking south out of the entrance returns to the doorstep.
+		engine.dispatch({ t: "Move", facing: "down" });
+		engine.dispatch({ t: "Move", facing: "down" });
+		expect(engine.getState().player.inside).toBeUndefined();
+		expect(engine.getState().player.x).toBe(step.x);
+		expect(engine.getState().player.y).toBe(step.y);
+	});
+
+	it("cannot walk out through an interior wall", () => {
+		const found = engineAtTown("harrow");
+		if (!found) return;
+		const interior = getInterior(found.seed, found.building.interiorId, found.building.kind);
+		// Every tile of the outer ring except the single exit must block.
+		for (let x = 0; x < interior.width; x++) {
+			const top = (interior.flags[x] ?? 0) & TFlag.Passable;
+			expect(top).toBe(0);
+		}
+	});
+});

@@ -1,0 +1,82 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.0.6/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": ["**", "!dist/**", "!maps/**", "!test/goldens/**"]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 100
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"trailingCommas": "all",
+			"semicolons": "always"
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"correctness": {
+				"noUnusedImports": "error",
+				"noUnusedVariables": "error"
+			},
+			"suspicious": {
+				"noExplicitAny": "warn"
+			},
+			"style": {
+				"useConst": "error",
+				"noNonNullAssertion": "off"
+			}
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["src/core/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"node:fs": "src/core must stay pure and worker-safe: no filesystem access.",
+									"node:fs/promises": "src/core must stay pure and worker-safe: no filesystem access.",
+									"react": "src/core must stay pure: no React.",
+									"ink": "src/core must stay pure: no rendering.",
+									"zustand": "src/core must stay pure: state lives behind the reducer, not a store.",
+									"ai": "src/core must stay pure: no LLM calls in the deterministic engine."
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["src/**", "!src/ui/store.ts", "!src/store/game-store.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"zustand": "The store has exactly one writer. Import state via src/ui/store.ts selectors instead.",
+									"zustand/vanilla": "The store has exactly one writer. Import state via src/ui/store.ts selectors instead."
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	]
+}
