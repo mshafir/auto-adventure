@@ -1,4 +1,5 @@
 import { Text } from "ink";
+import { questChunks } from "../../core/rules/quest-map.js";
 import type { GameState } from "../../core/rules/state.js";
 import { biomeAt } from "../../core/world/context.js";
 import { CHUNK, chunkKey, toChunk } from "../../core/world/coords.js";
@@ -44,6 +45,7 @@ const HIGH = new Set(["highland", "alpine", "glacier"]);
 export function Minimap({ state, width, height }: MinimapProps) {
 	const here = toChunk(state.player.x, state.player.y);
 	const seen = new Set(state.discovered);
+	const errands = questChunks(state);
 
 	// A row is `2 * half + 1` cells wide, so the half-width has to come off
 	// `width - 1`. Getting this wrong overflows the panel by one column and Ink
@@ -69,6 +71,17 @@ export function Minimap({ state, width, height }: MinimapProps) {
 			}
 			if (!seen.has(chunkKey(cx, cy))) {
 				cells.push(<Text key={key}> </Text>);
+				continue;
+			}
+
+			// Drawn over the settlement glyph rather than beside it: which town it is
+			// matters less than that something is waiting there.
+			if (errands.has(chunkKey(cx, cy))) {
+				cells.push(
+					<Text key={key} bold color="magenta">
+						!
+					</Text>,
+				);
 				continue;
 			}
 

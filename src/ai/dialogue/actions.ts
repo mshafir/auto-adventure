@@ -33,6 +33,8 @@ export interface ActionContext {
 	 * it; omitted, targets pass through unchecked.
 	 */
 	readonly surroundings?: Surroundings;
+	/** The settlement this conversation is in, recorded on any quest given here. */
+	readonly siteId?: number;
 }
 
 /** Bounds on a single action, so one bad turn cannot rewrite the save. */
@@ -112,6 +114,7 @@ function mapOne(
 					name,
 					description: clean(action.description) ?? name,
 					objectives: mapObjectives(action.objectives, context.surroundings, context.state),
+					...(context.siteId === undefined ? {} : { siteId: context.siteId }),
 				},
 			];
 		}

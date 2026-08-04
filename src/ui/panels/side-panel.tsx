@@ -1,7 +1,9 @@
 import { Box, Text } from "ink";
 import type { TerrainSummary } from "../../core/gen/pipeline.js";
+import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { activeQuests, type GameState } from "../../core/rules/state.js";
 import { biomeDef } from "../../core/world/biome.js";
+import { toChunk } from "../../core/world/coords.js";
 import type { Weather } from "../../core/world/weather.js";
 import { useGameState } from "../store.js";
 import { Minimap } from "./minimap.js";
@@ -138,24 +140,38 @@ function InventoryTab({ state }: { state: GameState }) {
 function QuestsTab({ state }: { state: GameState }) {
 	const open = activeQuests(state);
 	if (open.length === 0) return <Text color="gray">No active quests.</Text>;
+
+	// Where each errand was given, and which way that is from here. The quest log
+	// is prose; in an infinite world prose is not enough to find a place again.
+	const here = toChunk(state.player.x, state.player.y);
+	const marks = new Map(questMarks(state).map((mark) => [mark.questId, mark]));
+
 	return (
 		<Box flexDirection="column">
-			{open.map((quest) => (
-				<Box key={quest.id} flexDirection="column" marginBottom={1}>
-					<Text bold color="cyan">
-						{quest.name}
-					</Text>
-					{quest.objectives.map((objective) => (
-						<Text
-							key={`${objective.kind}:${objective.target}`}
-							color={objective.done ? "green" : "gray"}
-						>
-							{objective.done ? "[x] " : "[ ] "}
-							{objective.kind} {objective.target}
+			{open.map((quest) => {
+				const mark = marks.get(quest.id);
+				const bearing = mark ? bearingTo(here.cx, here.cy, mark.cx, mark.cy) : undefined;
+				return (
+					<Box key={quest.id} flexDirection="column" marginBottom={1}>
+						<Text bold color="cyan">
+							{quest.name}
+							{bearing ? (
+								<Text color="magenta">{`  ${bearing.compass} ${bearing.distance}`}</Text>
+							) : null}
+							{mark && !bearing ? <Text color="green">{"  here"}</Text> : null}
 						</Text>
-					))}
-				</Box>
-			))}
+						{quest.objectives.map((objective) => (
+							<Text
+								key={`${objective.kind}:${objective.target}`}
+								color={objective.done ? "green" : "gray"}
+							>
+								{objective.done ? "[x] " : "[ ] "}
+								{objective.kind} {objective.target}
+							</Text>
+						))}
+					</Box>
+				);
+			})}
 		</Box>
 	);
 }

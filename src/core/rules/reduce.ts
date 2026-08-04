@@ -545,6 +545,7 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 				objectives: effect.objectives,
 				progress: [],
 				completed: false,
+				...(effect.siteId === undefined ? {} : { siteId: effect.siteId }),
 			};
 			return { ...state, quests: [...state.quests, quest] };
 		}

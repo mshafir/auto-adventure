@@ -83,6 +83,7 @@ export function createDialogueService(deps: DialogueDeps) {
 				stock,
 				disposition: record.disposition,
 				surroundings,
+				siteId: placed.siteId,
 			}),
 		];
 

@@ -86,9 +86,13 @@ calls, tokens and latency per call type into the log on exit.
 
 Arrows move; the first press of a new direction only turns, so looking at a sign
 costs nothing. Walking into a door enters the building. Walking into a person
-starts a conversation, as does `SPACE`. Conversations are choice-only — up/down
+starts a conversation, as does `SPACE`. `SPACE` facing a crate, barrel, chest or
+shelf searches it — what a building stores depends on what it is for, and a mill
+really does hold timber. Conversations are choice-only — up/down
 to pick, `SPACE` to answer, `ESC` to leave. `M` `W` `I` `Q` `J` switch the side
-panel between the local map, the world map, inventory, quests and the journal.
+panel between the local map, the world map, inventory, quests and the journal. An
+open errand is marked `!` on the world map and carries a bearing in the quest
+list, in chunks — `E 2` rather than a tile count.
 
 ## Playing without a model
 

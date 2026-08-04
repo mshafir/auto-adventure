@@ -78,6 +78,16 @@ export interface Quest {
 	readonly objectives: readonly QuestObjective[];
 	readonly progress: readonly string[];
 	readonly completed: boolean;
+	/**
+	 * The settlement whose resident gave this out.
+	 *
+	 * Recorded so an open quest can be marked on the map. A minimap draws one
+	 * character per 64-tile chunk, so a town and a building inside it are the same
+	 * cell — settlement precision is all the display can show, and it is what the
+	 * player actually needs to remember. Absent on quests from before this existed
+	 * and on any the engine cannot place.
+	 */
+	readonly siteId?: number;
 }
 
 export interface JournalEntry {

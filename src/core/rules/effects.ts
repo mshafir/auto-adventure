@@ -26,6 +26,8 @@ export type DomainEffect =
 			readonly name: string;
 			readonly description: string;
 			readonly objectives: readonly QuestObjective[];
+			/** Where it was given, so it can be marked on the map. */
+			readonly siteId?: number;
 	  }
 	| { readonly t: "AdvanceQuest"; readonly id: string; readonly note: string }
 	| { readonly t: "CompleteQuest"; readonly id: string }
