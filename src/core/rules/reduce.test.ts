@@ -570,3 +570,77 @@ describe("searching a container", () => {
 		expect(state.quests[0]?.completed).toBe(true);
 	});
 });
+
+describe("where the player is while indoors", () => {
+	/**
+	 * Interior coordinates are local to the interior, which starts at its own
+	 * origin. Resolving a settlement from them is not merely useless but wrong:
+	 * a position like (6, 7) sits near the world origin, so a town there would
+	 * claim the player standing in a building two hundred tiles away — completing
+	 * a `reach` objective and journalling an arrival that never happened.
+	 */
+	function townAtOrigin(): WorldProbe {
+		return {
+			...probe(),
+			// A town at the world origin, and a building two hundred tiles away.
+			placeNameAt: (x, y) => (Math.abs(x) < 20 && Math.abs(y) < 20 ? "Origintown" : undefined),
+			doorAt: (x, y) => (x === 200 && y === 201 ? { interiorId: 7, structure: "mill" } : undefined),
+			interiorEntrance: () => ({ x: 6, y: 7 }),
+		};
+	}
+
+	function enter(state: GameState, world: WorldProbe): GameState {
+		return run(state, [{ t: "Move", facing: "down" }], world).state;
+	}
+
+	it("does not claim the player arrived somewhere they only walked past a door into", () => {
+		const world = townAtOrigin();
+		const state = enter(makeState({ player: { ...makeState().player, x: 200, y: 200 } }), world);
+		expect(state.player.inside?.interiorId).toBe(7);
+		// Interior-local (6,7) is inside Origintown's radius, but the doorway is not.
+		expect(state.flags["visited:origintown"]).toBeUndefined();
+	});
+
+	it("does not complete a `reach` objective for a town the door is nowhere near", () => {
+		const world = townAtOrigin();
+		const quest = makeState({
+			player: { ...makeState().player, x: 200, y: 200 },
+			quests: [
+				{
+					id: "q1",
+					name: "Go to Origintown",
+					description: "",
+					objectives: [{ kind: "reach", target: "Origintown", done: false }],
+					progress: [],
+					completed: false,
+				},
+			],
+		});
+		expect(enter(quest, world).quests[0]?.completed).toBe(false);
+	});
+
+	it("still resolves the settlement the doorway is actually in", () => {
+		// The player is in the town while indoors, so an objective naming it closes.
+		const world: WorldProbe = {
+			...townAtOrigin(),
+			// A settlement covers an area, so it contains both the door and the
+			// tile the player stepped in from.
+			placeNameAt: (x, y) =>
+				Math.abs(x - 200) < 5 && Math.abs(y - 200) < 5 ? "Brackgate" : undefined,
+		};
+		const quest = makeState({
+			player: { ...makeState().player, x: 200, y: 200 },
+			quests: [
+				{
+					id: "q1",
+					name: "Go to Brackgate",
+					description: "",
+					objectives: [{ kind: "reach", target: "Brackgate", done: false }],
+					progress: [],
+					completed: false,
+				},
+			],
+		});
+		expect(enter(quest, world).quests[0]?.completed).toBe(true);
+	});
+});

@@ -17,7 +17,8 @@
 		"test:watch": "vitest",
 		"lint": "./node_modules/.bin/biome check .",
 		"lint:fix": "./node_modules/.bin/biome check . --write",
-		"check": "npm run typecheck && npm run lint && npm test"
+		"check": "npm run typecheck && npm run lint && npm test",
+		"screens": "vite-node src/tools/screenshot.tsx"
 	},
 	"files": [
 		"dist"

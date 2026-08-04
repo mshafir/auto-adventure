@@ -50,11 +50,16 @@ function useTerminalSize() {
 	return size;
 }
 
-export default function App() {
+export interface AppProps {
+	/** Which side panel starts open. Only the screenshot tool and tests pass this. */
+	readonly initialTab?: PanelTab;
+}
+
+export default function App({ initialTab = "map" }: AppProps = {}) {
 	const engine = getEngine();
 	const state = useGameState();
 	const { width, height } = useTerminalSize();
-	const [tab, setTab] = useState<PanelTab>("map");
+	const [tab, setTab] = useState<PanelTab>(initialTab);
 
 	useGameInput({ dispatch: engine.dispatch, onToggleTab: setTab });
 
@@ -116,7 +121,13 @@ export default function App() {
 	const cc = toChunk(player.x, player.y);
 	const summary = engine.getChunks().summaryFor(cc.cx, cc.cy);
 	const looking = state.notice ?? describeFaced(engine, view, facedX, facedY, player.x, player.y);
-	const placeName = player.inside?.name ?? engine.placeNameAt(player.x, player.y);
+	// Indoors, the position is interior-local, so the settlement has to be resolved
+	// from the doorway rather than from where the player is standing.
+	const placeName = player.inside
+		? (player.inside.name ??
+			engine.placeNameAt(player.inside.returnX, player.inside.returnY) ??
+			player.inside.structure)
+		: engine.placeNameAt(player.x, player.y);
 	const facedNpc = npcs.at(facedX, facedY);
 
 	const inside = player.inside !== undefined;

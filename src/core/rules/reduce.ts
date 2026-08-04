@@ -70,7 +70,15 @@ export function reduce(state: GameState, command: Command, world: WorldProbe): R
 	// A notice reports what just happened, so whatever happens next clears it —
 	// otherwise "You find 3 Timber." sits under the map for the rest of the game.
 	const result = step(withoutNotice(state), command, world);
-	const placeName = world.placeNameAt?.(result.state.player.x, result.state.player.y);
+
+	// Indoors the player's coordinates are interior-local, and an interior starts
+	// at its own origin — so asking which settlement covers them is not merely
+	// useless but wrong: coordinates like (6, 7) can land inside a town near the
+	// world origin. The doorway the player came in by is where they actually are.
+	const inside = result.state.player.inside;
+	const placeName = inside
+		? world.placeNameAt?.(inside.returnX, inside.returnY)
+		: world.placeNameAt?.(result.state.player.x, result.state.player.y);
 
 	// Objectives are checked after every command rather than only when a model
 	// remembers to say so. This is what makes a quest something the world can

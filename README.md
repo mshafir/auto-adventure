@@ -3,6 +3,8 @@
 A terminal RPG on an infinite, seamless, procedurally generated world, with an
 LLM as its author rather than its renderer.
 
+![A town, seen from the road](docs/screens/town.svg)
+
 ```
 npm install
 npm start                 # play
@@ -81,6 +83,29 @@ All variables are optional.
 
 Model calls cost tokens, so they are counted: `src/ai/telemetry.ts` reports
 calls, tokens and latency per call type into the log on exit.
+
+## What it looks like
+
+Talking to somebody. Conversations are choice-only — the model suggests what you
+might say, and every option is a real branch rather than a text box.
+
+![Talking to somebody](docs/screens/conversation.svg)
+
+Inside a building. Crates, barrels, chests and shelves can be searched, and what
+a building stores depends on what it is for — a mill really does hold timber.
+
+![Inside a building, where the crates are](docs/screens/inside.svg)
+
+An open errand. Quest targets are resolved against what the engine actually
+built, so an NPC cannot send you after something that was never placed; the
+bearing points back at the town that gave it.
+
+![An open errand, with a bearing](docs/screens/quest.svg)
+
+These are rendered from real frames by `npm run screens` — the same compositor,
+palette and panels the game uses, captured through Ink and written out as SVG. So
+they are a build artifact rather than a photograph of somebody's terminal, and
+refreshing them after a change is one command.
 
 ## Controls
 
