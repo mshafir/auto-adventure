@@ -29,7 +29,12 @@ function messages(artifact: ScenarioArtifact): string {
 		.join("\n");
 }
 
-describe("buildPassability", () => {
+// Generating every chunk of a bounded world is the work this pass exists to do, so
+// these tests are slow by nature rather than by accident: the default five seconds
+// is not a budget the real thing can be held to.
+const SLOW = { timeout: 60_000 };
+
+describe("buildPassability", SLOW, () => {
 	it("covers the whole bounded world", () => {
 		const grid = buildPassability(BASE);
 		expect(grid.w).toBeGreaterThan(BASE.bounds.maxX - BASE.bounds.minX);
@@ -49,7 +54,7 @@ describe("buildPassability", () => {
 	});
 });
 
-describe("validateArtifact", () => {
+describe("validateArtifact", SLOW, () => {
 	it("passes a sound scenario", () => {
 		const findings = validateArtifact(BASE);
 		expect(hasErrors(findings), messages(BASE)).toBe(false);
