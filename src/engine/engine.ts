@@ -4,7 +4,9 @@ import { invalidateSettlement, settlementBounds } from "../core/gen/features/set
 import type { Command } from "../core/rules/commands.js";
 import type { Effect } from "../core/rules/effects.js";
 import { reduce, type WorldProbe } from "../core/rules/reduce.js";
+import { shopStock, tradeKind } from "../core/rules/shop.js";
 import type { GameState } from "../core/rules/state.js";
+import { EMPTY_SURROUNDINGS, type Surroundings } from "../core/rules/surroundings.js";
 import { parseChunkKey, toChunk } from "../core/world/coords.js";
 import { type MacroSite, sitesAround } from "../core/world/macro.js";
 import type { SiteSpec } from "../core/world/spec.js";
@@ -142,6 +144,75 @@ export class GameEngine {
 			if (named) return named;
 		}
 		return undefined;
+	}
+
+	/**
+	 * What actually exists around a site, for the dialogue layer to be honest about.
+	 *
+	 * Assembled from the generator's own output — the buildings it placed, the
+	 * roster it filled, the sites in the macro graph — so an NPC is describing the
+	 * world rather than imagining one, and the action boundary has something real to
+	 * resolve quest targets against.
+	 */
+	surroundingsFor(siteId: number): Surroundings {
+		const site = this.siteById(siteId);
+		if (!site) return EMPTY_SURROUNDINGS;
+
+		const buildings = this.npcs.buildingsAt(site).map((building) => ({
+			name: building.name ?? building.kind,
+			kind: building.kind,
+		}));
+
+		const people = this.npcs.atSite(siteId).map((npc) => ({
+			name: npc.spec.name,
+			role: npc.spec.role,
+		}));
+
+		// Neighbouring places, but only ones that have been named: an unnamed site is
+		// one the director has not reached yet, and sending the player to a place with
+		// no name is no better than sending them to an invented one.
+		const places: string[] = [];
+		for (const other of sitesAround(this.state.world.seed, site.mx, site.my, 2)) {
+			if (other.id === siteId) continue;
+			const named =
+				this.state.sites[String(other.id)]?.name ?? this.services.siteSpec?.(other.id)?.name;
+			if (named) places.push(named);
+		}
+
+		return {
+			place: this.state.sites[String(siteId)]?.name ?? this.services.siteSpec?.(siteId)?.name,
+			buildings,
+			people,
+			places,
+			items: this.obtainableItems(site),
+		};
+	}
+
+	private siteById(siteId: number): MacroSite | undefined {
+		const cc = toChunk(this.state.player.x, this.state.player.y);
+		// The player is standing in or beside the site they are talking to someone in,
+		// so a small ring around them always contains it.
+		return sitesAround(this.state.world.seed, cc.cx, cc.cy, 2).find((s) => s.id === siteId);
+	}
+
+	/**
+	 * Item names a `have` objective could legitimately name.
+	 *
+	 * Everything on sale at this settlement, plus what the player already carries.
+	 * Deliberately assembled here rather than read from a catalogue constant, so
+	 * that whatever else comes to hold items later is added in one place.
+	 */
+	private obtainableItems(site: MacroSite): string[] {
+		const names = new Set<string>();
+		for (const npc of this.npcs.atSite(site.id)) {
+			const kind = tradeKind(npc.spec.role);
+			if (!kind) continue;
+			for (const item of shopStock(this.state.world.seed, site.id, npc.spec.slot, kind)) {
+				names.add(item.name);
+			}
+		}
+		for (const carried of this.state.inventory) names.add(carried.name);
+		return [...names];
 	}
 
 	subscribe = (listener: () => void): (() => void) => {

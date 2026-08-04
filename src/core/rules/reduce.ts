@@ -57,6 +57,8 @@ export function reduce(state: GameState, command: Command, world: WorldProbe): R
 	// resolve — walk into the right town, carry the right thing, and it closes.
 	const progress = verifyQuests(result.state, {
 		placeName,
+		insideName: result.state.player.inside?.name,
+		insideKind: result.state.player.inside?.structure,
 		talkedTo: result.state.dialogue?.npcName,
 	});
 

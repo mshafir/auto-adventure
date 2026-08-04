@@ -145,3 +145,26 @@ export function shopStock(seed: number, siteId: number, slot: number, kind: stri
 	// Stable order regardless of draw order, so the list does not shuffle.
 	return stock.sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/**
+ * The shop catalogue a role trades from, or `undefined` if they sell nothing.
+ *
+ * Roles are prose written by the director ("the village farrier"), so this reads
+ * them rather than requiring an exact kind. It lives beside the catalogue because
+ * both the dialogue layer, which prices what an NPC offers, and the engine, which
+ * has to know which item names exist before a quest may ask for one, need the same
+ * answer — and two copies of this mapping would drift.
+ */
+const TRADES: readonly (readonly [RegExp, string])[] = [
+	[/\b(smith|blacksmith|farrier|armou?rer)\b/i, "smithy"],
+	[/\b(apothecary|herbalist|healer|physician)\b/i, "apothecary"],
+	[/\b(innkeep|inn|tavern|cook|baker)\b/i, "inn"],
+	[/\b(stable|ostler|groom)\b/i, "stable"],
+	[/\b(factor|warehouse|quartermaster)\b/i, "warehouse"],
+	[/\b(shop|merchant|trader|pedlar|peddler|grocer|chandler)\b/i, "shop"],
+];
+
+export function tradeKind(role: string): string | undefined {
+	for (const [pattern, kind] of TRADES) if (pattern.test(role)) return kind;
+	return sellsGoods(role) ? role : undefined;
+}

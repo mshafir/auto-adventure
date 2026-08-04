@@ -209,6 +209,16 @@ export class NpcDirectory {
 		return found;
 	}
 
+	/** Everyone belonging to a site, whether or not they are outdoors right now. */
+	atSite(siteId: number): readonly PlacedNpc[] {
+		return this.roster.get(siteId) ?? [];
+	}
+
+	/** The buildings a site actually has, for grounding what an NPC may promise. */
+	buildingsAt(site: MacroSite): readonly BuildingPlacement[] {
+		return this.buildingsFor(site);
+	}
+
 	private buildingsFor(site: MacroSite): BuildingPlacement[] {
 		const found: BuildingPlacement[] = [];
 		const reach = Math.ceil(site.radius / CHUNK) + 1;

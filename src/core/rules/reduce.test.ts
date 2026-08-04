@@ -387,3 +387,85 @@ describe("purity", () => {
 		expect(Object.hasOwn(state, "dialogue")).toBe(false);
 	});
 });
+
+describe("reaching a building closes a quest", () => {
+	/**
+	 * The failure this closes: an NPC sends the player to the mill, they walk into
+	 * the mill, and the quest sits open forever.
+	 *
+	 * `reach` was only ever matched against `placeNameAt`, which resolves
+	 * settlements and nothing else, so a target naming a building could not be
+	 * satisfied even with the building standing right there.
+	 */
+	function questFor(target: string): GameState {
+		return makeState({
+			quests: [
+				{
+					id: "q1",
+					name: "Timber",
+					description: "Fetch it from the mill.",
+					objectives: [{ kind: "reach", target, done: false }],
+					progress: [],
+					completed: false,
+				},
+			],
+		});
+	}
+
+	/** A world with a door at (10,11) leading into a named mill. */
+	function millWorld(name?: string): WorldProbe {
+		return {
+			...probe(),
+			doorAt: (x, y) =>
+				x === 10 && y === 11
+					? { interiorId: 7, structure: "mill", ...(name ? { name } : {}) }
+					: undefined,
+			interiorEntrance: () => ({ x: 3, y: 3 }),
+			placeNameAt: () => "Harrowfen",
+		};
+	}
+
+	it("completes when the player walks into the named building", () => {
+		// Facing south first, because the first press of a new direction only turns.
+		const { state } = run(
+			questFor("Harrowmill Mill"),
+			[
+				{ t: "Move", facing: "down" },
+				{ t: "Move", facing: "down" },
+			],
+			millWorld("Harrowmill Mill"),
+		);
+		expect(state.player.inside?.structure).toBe("mill");
+		expect(state.quests[0]?.completed).toBe(true);
+	});
+
+	it("completes on the kind of building when it has no authored name", () => {
+		const { state } = run(
+			questFor("the mill"),
+			[
+				{ t: "Move", facing: "down" },
+				{ t: "Move", facing: "down" },
+			],
+			millWorld(),
+		);
+		expect(state.quests[0]?.completed).toBe(true);
+	});
+
+	it("does not complete on a different building", () => {
+		const { state } = run(
+			questFor("the smithy"),
+			[
+				{ t: "Move", facing: "down" },
+				{ t: "Move", facing: "down" },
+			],
+			millWorld("Harrowmill Mill"),
+		);
+		expect(state.player.inside?.structure).toBe("mill");
+		expect(state.quests[0]?.completed).toBe(false);
+	});
+
+	it("still completes on a settlement name, as it always did", () => {
+		const { state } = run(questFor("Harrowfen"), [{ t: "Move", facing: "up" }], millWorld());
+		expect(state.quests[0]?.completed).toBe(true);
+	});
+});

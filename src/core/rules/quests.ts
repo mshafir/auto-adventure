@@ -1,5 +1,6 @@
 import type { GameState, Quest, QuestObjective } from "./state.js";
 import { itemCount } from "./state.js";
+import { namesMatch } from "./surroundings.js";
 
 /**
  * Quest progress, decided by the engine.
@@ -14,6 +15,21 @@ import { itemCount } from "./state.js";
 export interface QuestContext {
 	/** The settlement the player is standing in, if any. */
 	readonly placeName?: string | undefined;
+	/**
+	 * The building the player is inside, by name, if any.
+	 *
+	 * Without this a `reach` objective could only ever match a settlement, because
+	 * `placeNameAt` resolves sites and nothing else — so "go to the mill" was
+	 * unsatisfiable by construction even with the mill standing right there.
+	 */
+	readonly insideName?: string | undefined;
+	/**
+	 * What kind of building that is — "mill", "smithy".
+	 *
+	 * A building only carries a name when the director gave it one, but its kind is
+	 * always known, and "go to the mill" is a request about the kind.
+	 */
+	readonly insideKind?: string | undefined;
 	/** Who the player is talking to right now, if anyone. */
 	readonly talkedTo?: string | undefined;
 }
@@ -24,13 +40,16 @@ export interface QuestProgress {
 	readonly completed: readonly Quest[];
 }
 
-/** Loose comparison, because targets come from prose. */
+/**
+ * Loose comparison, because targets come from prose.
+ *
+ * Shares its definition with the action boundary that resolved the target in the
+ * first place. Two copies of this rule would be worse than one imperfect one: an
+ * objective could resolve against a building at creation and then never match it
+ * on arrival, which is indistinguishable from the quest being broken.
+ */
 function matches(target: string, candidate: string | undefined): boolean {
-	if (!candidate) return false;
-	const a = target.trim().toLowerCase();
-	const b = candidate.trim().toLowerCase();
-	if (!a || !b) return false;
-	return a === b || b.includes(a) || a.includes(b);
+	return candidate === undefined ? false : namesMatch(target, candidate);
 }
 
 function satisfied(objective: QuestObjective, state: GameState, context: QuestContext): boolean {
@@ -41,7 +60,13 @@ function satisfied(objective: QuestObjective, state: GameState, context: QuestCo
 		case "flag":
 			return Boolean(state.flags[objective.target]);
 		case "reach":
-			return matches(objective.target, context.placeName);
+			// Either granularity counts. A target may name the town or a building in
+			// it, and the player standing inside the mill is also standing in the town.
+			return (
+				matches(objective.target, context.placeName) ||
+				matches(objective.target, context.insideName) ||
+				matches(objective.target, context.insideKind)
+			);
 		case "talk":
 			return matches(objective.target, context.talkedTo);
 	}

@@ -1,8 +1,9 @@
 import { MODELS } from "../../config.js";
 import type { DomainEffect } from "../../core/rules/effects.js";
 import { type NpcRecord, needsSummary, SUMMARY_BATCH } from "../../core/rules/npc.js";
-import { type StockItem, sellsGoods, shopStock } from "../../core/rules/shop.js";
+import { type StockItem, shopStock, tradeKind } from "../../core/rules/shop.js";
 import type { GameState } from "../../core/rules/state.js";
+import type { Surroundings } from "../../core/rules/surroundings.js";
 import type { RegionSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 import { weatherAt } from "../../core/world/weather.js";
 import type { GameEngine } from "../../engine/engine.js";
@@ -65,8 +66,12 @@ export function createDialogueService(deps: DialogueDeps) {
 
 		const site = deps.siteSpec(placed.siteId);
 		const stock = stockFor(deps.seed, placed);
+		// Assembled once and passed to both the prompt and the action boundary, so
+		// what the NPC is allowed to promise and what the engine will accept are the
+		// same list rather than two views that can disagree.
+		const surroundings = engine.surroundingsFor(placed.siteId);
 		const turn = enabled
-			? await generateTurn(state, record, placed, site, stock, choice)
+			? await generateTurn(state, record, placed, site, stock, choice, surroundings)
 			: cannedTurn(record, placed.spec, site, choice);
 
 		const effects: DomainEffect[] = [
@@ -77,6 +82,7 @@ export function createDialogueService(deps: DialogueDeps) {
 				npcName: record.name,
 				stock,
 				disposition: record.disposition,
+				surroundings,
 			}),
 		];
 
@@ -99,6 +105,7 @@ export function createDialogueService(deps: DialogueDeps) {
 		site: SiteSpec | undefined,
 		stock: StockItem[] | undefined,
 		choice: string | undefined,
+		surroundings: Surroundings,
 	) {
 		const region = deps.regionSpec(placed.regionId);
 		const input = {
@@ -109,6 +116,7 @@ export function createDialogueService(deps: DialogueDeps) {
 			record,
 			state,
 			...(stock?.length ? { stock } : {}),
+			surroundings,
 			weather: weatherAt(deps.seed, state.time.tick, placed.x, placed.y),
 		};
 
@@ -217,18 +225,4 @@ function stockFor(seed: number, placed: PlacedNpc): StockItem[] | undefined {
 	const kind = tradeKind(placed.role);
 	if (!kind) return undefined;
 	return shopStock(seed, placed.siteId, placed.spec.slot, kind);
-}
-
-const TRADES: readonly (readonly [RegExp, string])[] = [
-	[/\b(smith|blacksmith|farrier|armou?rer)\b/i, "smithy"],
-	[/\b(apothecary|herbalist|healer|physician)\b/i, "apothecary"],
-	[/\b(innkeep|inn|tavern|cook|baker)\b/i, "inn"],
-	[/\b(stable|ostler|groom)\b/i, "stable"],
-	[/\b(factor|warehouse|quartermaster)\b/i, "warehouse"],
-	[/\b(shop|merchant|trader|pedlar|peddler|grocer|chandler)\b/i, "shop"],
-];
-
-function tradeKind(role: string): string | undefined {
-	for (const [pattern, kind] of TRADES) if (pattern.test(role)) return kind;
-	return sellsGoods(role) ? role : undefined;
 }

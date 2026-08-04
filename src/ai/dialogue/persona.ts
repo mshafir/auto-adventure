@@ -1,6 +1,7 @@
 import { dispositionLabel, type NpcRecord } from "../../core/rules/npc.js";
 import { buyPrice, type StockItem, sellPrice } from "../../core/rules/shop.js";
 import { activeQuests, type GameState, itemCount } from "../../core/rules/state.js";
+import type { Surroundings } from "../../core/rules/surroundings.js";
 import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 import type { Weather } from "../../core/world/weather.js";
 import { timeOfDay } from "../../core/world/weather.js";
@@ -24,6 +25,56 @@ export interface PersonaInput {
 	/** Goods this person sells, priced by the engine. */
 	readonly stock?: readonly StockItem[];
 	readonly weather?: Weather;
+	/**
+	 * What the engine actually built around them.
+	 *
+	 * Without this an NPC knew its town's name and description and nothing else
+	 * physical, so it furnished a plausible village from tone alone and sent the
+	 * player after a mill that had never been placed. The engine knows what it
+	 * built; telling the NPC is what makes an errand point at something real.
+	 */
+	readonly surroundings?: Surroundings;
+}
+
+/**
+ * The physical world, as facts the NPC is allowed to build an errand on.
+ *
+ * Phrased as a hard constraint rather than as colour. A model given a list will
+ * otherwise treat it as a sample of a larger world and invent the rest, which is
+ * exactly the failure this exists to stop — and the action boundary would then
+ * drop the objective it invented, leaving a quest that cannot be finished.
+ */
+function surroundingsLines(surroundings: Surroundings | undefined): string[] {
+	if (!surroundings) return [];
+	const lines: string[] = [];
+
+	if (surroundings.buildings.length > 0) {
+		lines.push(
+			"",
+			"Every building in this place, and there are no others:",
+			...surroundings.buildings.map((b) =>
+				b.name && b.name !== b.kind ? `- ${b.name} (${b.kind})` : `- the ${b.kind}`,
+			),
+		);
+	}
+	if (surroundings.people.length > 0) {
+		lines.push(
+			"Everyone who lives here:",
+			...surroundings.people.map((p) => `- ${p.name}, ${p.role}`),
+		);
+	}
+	if (surroundings.places.length > 0) {
+		lines.push(`Places within travelling distance: ${surroundings.places.join(", ")}.`);
+	}
+
+	if (lines.length > 0) {
+		lines.push(
+			"When you send the traveller somewhere or after something, it must be one of the things " +
+				"named above. Do not invent a building, a person, or a place that is not listed — if the " +
+				"errand you have in mind has nowhere to happen, ask for something else instead.",
+		);
+	}
+	return lines;
 }
 
 export function dialogueSystem(input: PersonaInput): string {
@@ -50,6 +101,8 @@ export function dialogueSystem(input: PersonaInput): string {
 	if (site?.hooks.length) {
 		lines.push(`Local troubles you are aware of:\n${site.hooks.map((h) => `- ${h}`).join("\n")}`);
 	}
+
+	lines.push(...surroundingsLines(input.surroundings));
 
 	if (input.stock?.length) {
 		// Prices are stated up front so the NPC can quote them correctly. What the

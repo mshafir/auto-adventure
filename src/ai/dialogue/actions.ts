@@ -2,6 +2,7 @@ import type { DomainEffect } from "../../core/rules/effects.js";
 import { basePrice, buyPrice, type StockItem, sellPrice } from "../../core/rules/shop.js";
 import type { GameState, QuestObjective } from "../../core/rules/state.js";
 import { itemCount } from "../../core/rules/state.js";
+import { resolveName, type Surroundings } from "../../core/rules/surroundings.js";
 import type { ActionResponse } from "./schema.js";
 
 /**
@@ -27,6 +28,11 @@ export interface ActionContext {
 	readonly stock?: readonly StockItem[];
 	/** Their regard for the player, which moves prices inside a fixed band. */
 	readonly disposition?: number;
+	/**
+	 * What the engine actually placed nearby. Quest targets are resolved against
+	 * it; omitted, targets pass through unchecked.
+	 */
+	readonly surroundings?: Surroundings;
 }
 
 /** Bounds on a single action, so one bad turn cannot rewrite the save. */
@@ -105,7 +111,7 @@ function mapOne(
 					id,
 					name,
 					description: clean(action.description) ?? name,
-					objectives: mapObjectives(action.objectives),
+					objectives: mapObjectives(action.objectives, context.surroundings, context.state),
 				},
 			];
 		}
@@ -228,12 +234,38 @@ function findStock(stock: readonly StockItem[] | undefined, name: string): Stock
 	);
 }
 
-function mapObjectives(objectives: ActionResponse["objectives"]): readonly QuestObjective[] {
+/**
+ * Turn requested objectives into ones the engine can actually decide.
+ *
+ * Targets are *resolved*, not trusted — the same posture `buy` already takes with
+ * prices, where the model names an item and the engine looks it up. An NPC has no
+ * inventory of the world, so it will cheerfully send the player to a mill that was
+ * never built or after timber that exists nowhere; such an objective can never be
+ * satisfied, and a quest carrying one is a quest that hangs open forever.
+ *
+ * An unresolvable objective is dropped and the quest kept. The NPC has already
+ * said the words out loud by the time this runs, so discarding the whole quest
+ * would contradict the conversation; a quest with no engine-checked objectives is
+ * a note to self, which `verifyQuests` already leaves for the model to close.
+ *
+ * Resolution rewrites the target to the world's own spelling, so the quest log and
+ * the place label agree even when the NPC said "the mill".
+ */
+function mapObjectives(
+	objectives: ActionResponse["objectives"],
+	surroundings: Surroundings | undefined,
+	state: GameState,
+): readonly QuestObjective[] {
 	if (!objectives) return [];
 	const mapped: QuestObjective[] = [];
+
 	for (const objective of objectives) {
-		const target = clean(objective.target);
+		const requested = clean(objective.target);
+		if (!requested) continue;
+
+		const target = resolveObjectiveTarget(objective.kind, requested, surroundings, state);
 		if (!target) continue;
+
 		mapped.push({
 			kind: objective.kind,
 			target,
@@ -242,6 +274,45 @@ function mapObjectives(objectives: ActionResponse["objectives"]): readonly Quest
 		});
 	}
 	return mapped;
+}
+
+function resolveObjectiveTarget(
+	kind: QuestObjective["kind"],
+	requested: string,
+	surroundings: Surroundings | undefined,
+	state: GameState,
+): string | undefined {
+	// Without surroundings there is nothing to check against, so the target passes
+	// through. Keeps every existing caller and test working unchanged, and means a
+	// missing wiring degrades to the old behaviour rather than to no quests at all.
+	if (!surroundings) return requested;
+
+	switch (kind) {
+		// A flag is the model's own bookkeeping and names nothing in the world.
+		case "flag":
+			return requested;
+
+		case "reach":
+			return resolveName(requested, [
+				...(surroundings.place ? [surroundings.place] : []),
+				...surroundings.places,
+				...surroundings.buildings.map((b) => b.name),
+			]);
+
+		case "talk":
+			return resolveName(
+				requested,
+				surroundings.people.map((p) => p.name),
+			);
+
+		case "have":
+			// Anything already carried counts: an NPC may ask for something the
+			// player picked up in a place this conversation knows nothing about.
+			return resolveName(requested, [
+				...surroundings.items,
+				...state.inventory.map((entry) => entry.name),
+			]);
+	}
 }
 
 function held(state: GameState, name: string, spent: Map<string, number>): number {

@@ -245,3 +245,126 @@ describe("trade", () => {
 		expect(trade([action({ kind: "sell", item: "Brass Lamp" })])).toEqual([]);
 	});
 });
+
+describe("grounding quest objectives", () => {
+	/**
+	 * An NPC has no inventory of the world, so it will happily send the player to a
+	 * mill that was never built or after timber that exists nowhere. Such an
+	 * objective can never be satisfied, and a quest carrying one hangs open forever
+	 * — which is what happened in play. Targets are resolved against what the engine
+	 * actually placed, the same posture `buy` already takes with prices.
+	 */
+	const WORLD = {
+		place: "Harrowfen",
+		buildings: [
+			{ name: "Harrowmill Mill", kind: "mill" },
+			{ name: "The Slaked Ox", kind: "inn" },
+		],
+		people: [{ name: "Wren", role: "miller" }],
+		places: ["Stonecutter's Reach"],
+		items: ["Coil of Rope"],
+	};
+
+	function quest(objectives: ActionResponse["objectives"], state: GameState = BASE) {
+		const effects = mapActions([action({ kind: "createQuest", questName: "Errand", objectives })], {
+			state,
+			npcId: "npc:1:0",
+			npcName: "Wren",
+			surroundings: WORLD,
+		});
+		const created = effects.find((e) => e.t === "CreateQuest");
+		return created?.t === "CreateQuest" ? created.objectives : undefined;
+	}
+
+	it("keeps an objective naming a building the generator placed", () => {
+		expect(quest([{ kind: "reach", target: "the mill", quantity: null }])).toEqual([
+			// Rewritten to the world's spelling, so the log and the place label agree.
+			{ kind: "reach", target: "Harrowmill Mill", done: false },
+		]);
+	});
+
+	it("drops an objective naming a building that does not exist", () => {
+		expect(quest([{ kind: "reach", target: "the sawmill on the ridge", quantity: null }])).toEqual(
+			[],
+		);
+	});
+
+	it("keeps the quest when every objective is dropped", () => {
+		// The NPC has already said the words aloud by the time this runs, so binning
+		// the quest would contradict the conversation. A quest with no engine-checked
+		// objective is a note to self, which only the model may close.
+		const effects = mapActions(
+			[
+				action({
+					kind: "createQuest",
+					questName: "Errand",
+					objectives: [{ kind: "have", target: "Moonsilver", quantity: null }],
+				}),
+			],
+			{ state: BASE, npcId: "npc:1:0", npcName: "Wren", surroundings: WORLD },
+		);
+		const created = effects.find((e) => e.t === "CreateQuest");
+		expect(created).toBeDefined();
+		expect(created?.t === "CreateQuest" && created.objectives).toEqual([]);
+	});
+
+	it("drops a `have` objective for an item that exists nowhere", () => {
+		expect(quest([{ kind: "have", target: "Timber", quantity: 3 }])).toEqual([]);
+	});
+
+	it("keeps a `have` objective for something on sale nearby", () => {
+		expect(quest([{ kind: "have", target: "rope", quantity: 2 }])).toEqual([
+			{ kind: "have", target: "Coil of Rope", quantity: 2, done: false },
+		]);
+	});
+
+	it("keeps a `have` objective for something the player already carries", () => {
+		// The item may have been picked up somewhere this conversation knows nothing
+		// about, so the inventory counts as evidence that it exists.
+		const carrying: GameState = {
+			...BASE,
+			inventory: [
+				...BASE.inventory,
+				{ name: "Millstone Grit", description: "Coarse.", quantity: 1 },
+			],
+		};
+		expect(quest([{ kind: "have", target: "Millstone Grit", quantity: null }], carrying)).toEqual([
+			{ kind: "have", target: "Millstone Grit", done: false },
+		]);
+	});
+
+	it("resolves a `talk` objective only to someone who lives here", () => {
+		expect(quest([{ kind: "talk", target: "Wren", quantity: null }])).toEqual([
+			{ kind: "talk", target: "Wren", done: false },
+		]);
+		expect(quest([{ kind: "talk", target: "Aldric the Grey", quantity: null }])).toEqual([]);
+	});
+
+	it("lets a `reach` objective name a neighbouring settlement", () => {
+		expect(quest([{ kind: "reach", target: "Stonecutter's Reach", quantity: null }])).toEqual([
+			{ kind: "reach", target: "Stonecutter's Reach", done: false },
+		]);
+	});
+
+	it("never checks a flag target, because a flag names nothing in the world", () => {
+		expect(quest([{ kind: "flag", target: "spoke-to-the-council", quantity: null }])).toEqual([
+			{ kind: "flag", target: "spoke-to-the-council", done: false },
+		]);
+	});
+
+	it("passes targets through untouched when there are no surroundings", () => {
+		// A missing wiring must degrade to the old behaviour rather than to no
+		// quests at all, and every existing caller keeps working.
+		const effects = map([
+			action({
+				kind: "createQuest",
+				questName: "Errand",
+				objectives: [{ kind: "reach", target: "anywhere at all", quantity: null }],
+			}),
+		]);
+		const created = effects.find((e) => e.t === "CreateQuest");
+		expect(created?.t === "CreateQuest" && created.objectives).toEqual([
+			{ kind: "reach", target: "anywhere at all", done: false },
+		]);
+	});
+});
