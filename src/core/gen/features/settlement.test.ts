@@ -320,6 +320,67 @@ describe("fallback spec", () => {
 	});
 });
 
+describe("perimeter wall continuity", () => {
+	/**
+	 * The wall ring must be 4-connected, not merely 8-connected.
+	 *
+	 * The ring is sampled by angle and rounded to tiles, so on its 45-degree arcs
+	 * consecutive samples used to land diagonally. Two tiles touching only at a
+	 * corner have no orthogonal neighbour, and the renderer's autotiler looks only
+	 * N/E/S/W, so each run came out as a stub capped at both ends: the wall drew as
+	 * `╺━━╸ ╺╸ ┏╸ ╺┛ ■`, a dotted diagonal that reads as a gap exactly where there
+	 * should be a corner.
+	 *
+	 * Asserted on the terrain rather than on the glyphs, so this stays a property of
+	 * the generated world and does not depend on the render layer.
+	 */
+	const WALL_PLANE = new Set([T.stoneWall, T.woodWall, T.window, T.doorClosed, T.doorOpen]);
+
+	it("leaves no wall tile without an orthogonal neighbour", () => {
+		let checkedTowns = 0;
+		let walls = 0;
+		let isolated = 0;
+		let ends = 0;
+
+		for (const name of ["vale", "harrow", "moss", "ember"]) {
+			const { seed, sites } = sampleSites(name, 4);
+			for (const site of sites) {
+				const spec = fallbackSettlementSpec(seed, site);
+				if (!spec.walled) continue;
+				checkedTowns++;
+
+				const patch = generateSettlement(seed, site, spec);
+				const terrainAt = (x: number, y: number) => {
+					const i = patchIndex(patch, x, y);
+					return i < 0 ? T.void : (patch.terrain[i] ?? T.void);
+				};
+
+				for (let y = patch.bounds.y; y < patch.bounds.y + patch.bounds.h; y++) {
+					for (let x = patch.bounds.x; x < patch.bounds.x + patch.bounds.w; x++) {
+						if (!WALL_PLANE.has(terrainAt(x, y))) continue;
+						walls++;
+						let neighbours = 0;
+						if (WALL_PLANE.has(terrainAt(x, y - 1))) neighbours++;
+						if (WALL_PLANE.has(terrainAt(x + 1, y))) neighbours++;
+						if (WALL_PLANE.has(terrainAt(x, y + 1))) neighbours++;
+						if (WALL_PLANE.has(terrainAt(x - 1, y))) neighbours++;
+						if (neighbours === 0) isolated++;
+						else if (neighbours === 1) ends++;
+					}
+				}
+			}
+		}
+
+		expect(checkedTowns, "no walled settlement in the sample").toBeGreaterThan(0);
+		expect(walls).toBeGreaterThan(200);
+		// A lone pillar is never right: it is a wall tile with nothing to join.
+		expect(isolated, `${isolated} isolated wall tiles`).toBe(0);
+		// A dangling end is right only where the wall stops at a gate, so a handful
+		// per town is expected and a tenth of every wall tile is not.
+		expect(ends / walls, `${ends} of ${walls} wall tiles dangle`).toBeLessThan(0.04);
+	});
+});
+
 describe("walled settlements", () => {
 	/**
 	 * The square must be reachable from open country.

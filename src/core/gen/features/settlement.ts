@@ -263,13 +263,39 @@ function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): F
 		// Follow the deformed outline rather than a circle: a circular wall drawn
 		// around a lobed footprint wanders outside the town and breaks into
 		// disconnected fragments standing in open field.
+		//
+		// Collected first and written second, so a tile can be dropped once the
+		// whole ring is known.
+		const ring: Vec2[] = [];
 		stampRing(site.site, radiusAt, buildable, (x, y) => {
 			// Leave the streets open: a wall across a road would make the gate
 			// unreachable, and the carve pass is forbidden from breaking walls.
 			const existing = patch.terrain[patchIndex(patch, x, y)] ?? T.void;
 			if (existing === T.cobbleRoad || existing === T.dirtRoad) return;
-			patchWrite(patch, x, y, T.stoneWall);
+			ring.push({ x, y });
 		});
+
+		const key = (x: number, y: number) => `${x},${y}`;
+		const planned = new Set(ring.map((p) => key(p.x, p.y)));
+		const joins = (x: number, y: number) => {
+			if (planned.has(key(x, y))) return true;
+			// A building wall counts too: the ring is allowed to end against one.
+			const i = patchIndex(patch, x, y);
+			if (i < 0) return false;
+			const t = patch.terrain[i] ?? T.void;
+			return t === T.stoneWall || t === T.woodWall;
+		};
+
+		for (const p of ring) {
+			// Drop lone pillars. Two survive the 4-connected ring: one where the
+			// outline runs past the patch bounds and is clipped, and one where two
+			// gate roads leave side by side and strand the single tile between them.
+			// A wall tile with nothing to join encloses nothing, so removing it costs
+			// no enclosure and takes away a stray `■` that reads as a hole.
+			const joined =
+				joins(p.x, p.y - 1) || joins(p.x + 1, p.y) || joins(p.x, p.y + 1) || joins(p.x - 1, p.y);
+			if (joined) patchWrite(patch, p.x, p.y, T.stoneWall);
+		}
 	}
 
 	// --- carve ---------------------------------------------------------------
@@ -434,13 +460,50 @@ function stampRing(
 	// a coarser sweep leaves a dotted line rather than a wall.
 	const maxRadius = radiusAt(0);
 	const steps = Math.max(256, Math.round(maxRadius * 16));
-	for (let i = 0; i < steps; i++) {
+
+	let prevX = Number.NaN;
+	let prevY = Number.NaN;
+
+	// One sample past the end closes the ring back onto its first tile. Writes are
+	// idempotent, so revisiting that tile costs nothing.
+	for (let i = 0; i <= steps; i++) {
 		const angle = (i / steps) * Math.PI * 2;
 		// Sit just inside the outline so the wall is on buildable ground.
 		const r = radiusAt(angle) - 1;
 		const x = Math.round(centre.x + Math.cos(angle) * r);
 		const y = Math.round(centre.y + Math.sin(angle) * r);
+
+		// Adjacent is not the same as orthogonally adjacent. On its 45-degree arcs
+		// the ring steps diagonally, and two tiles touching only at a corner have no
+		// orthogonal neighbour, so a four-neighbour autotiler renders each run as a
+		// stub capped at both ends: the wall came out as `╺━━╸ ╺╸ ┏╸ ╺┛ ■`, a dotted
+		// diagonal that reads as a gap wherever there should be a corner. Adding the
+		// tile that turns the diagonal into a step makes the ring 4-connected, so the
+		// same autotiler produces a proper corner instead.
+		// NaN on the first iteration compares false, which skips this.
+		// Adjacent is not the same as orthogonally adjacent. On its 45-degree arcs
+		// the ring steps diagonally, and two tiles touching only at a corner have no
+		// orthogonal neighbour, so a four-neighbour autotiler renders each run as a
+		// stub capped at both ends: the wall came out as `╺━━╸ ╺╸ ┏╸ ╺┛ ■`, a dotted
+		// diagonal that reads as a gap wherever there should be a corner. Adding the
+		// tile that turns the diagonal into a step makes the ring 4-connected, so the
+		// same autotiler produces a proper corner instead.
+		// NaN on the first iteration compares false, which skips this.
+		if (Math.abs(x - prevX) === 1 && Math.abs(y - prevY) === 1) {
+			// Prefer the corner nearer the centre: `allowed` is the buildable
+			// footprint, so the inner tile is the one more likely to be inside it.
+			const inner = { x: prevX, y };
+			const outer = { x, y: prevY };
+			const dInner = (inner.x - centre.x) ** 2 + (inner.y - centre.y) ** 2;
+			const dOuter = (outer.x - centre.x) ** 2 + (outer.y - centre.y) ** 2;
+			const [first, second] = dInner <= dOuter ? [inner, outer] : [outer, inner];
+			if (allowed(first.x, first.y)) write(first.x, first.y);
+			else if (allowed(second.x, second.y)) write(second.x, second.y);
+		}
+
 		if (allowed(x, y)) write(x, y);
+		prevX = x;
+		prevY = y;
 	}
 }
 
