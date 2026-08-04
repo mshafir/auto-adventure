@@ -142,6 +142,12 @@ function step(state: GameState, command: Command, world: WorldProbe): Reduction 
 			return move(state, command.facing, world);
 		case "Interact":
 			return interact(state, world);
+		case "DropItem":
+			return dropItem(state, command.name, command.quantity);
+		case "RequestSave":
+			// No state change, so `applyEffects`' "save when something changed" rule
+			// would never fire; asking to quit has to be able to say so directly.
+			return { state, effects: [{ t: "Save", reason: "exit" }] };
 		case "Advance":
 			return advanceDialogue(state);
 		case "ChoiceUp":
@@ -389,6 +395,34 @@ function search(state: GameState, world: WorldProbe, x: number, y: number): Redu
 		},
 		// Worth a checkpoint: the player has gained something they would be annoyed
 		// to lose, and searching is not on the movement path.
+		effects: [{ t: "Save", reason: "checkpoint" }],
+	};
+}
+
+/**
+ * Put something down.
+ *
+ * The world has no ground-item layer — a chunk is regenerated from its seed and
+ * only player *changes* persist — so a dropped item is destroyed rather than
+ * left on the floor. That is why this is worth a checkpoint and why the panel
+ * confirms first: it cannot be undone by walking back.
+ *
+ * Matching is by name rather than by index so the command survives the list
+ * being re-sorted between the keypress and the dispatch.
+ */
+function dropItem(state: GameState, name: string, quantity: number): Reduction {
+	const lower = name.toLowerCase();
+	const held = state.inventory.find((item) => item.name.toLowerCase() === lower);
+	if (!held || quantity <= 0) return { state, effects: [] };
+
+	const dropped = Math.min(quantity, held.quantity);
+	const label = dropped > 1 ? `${dropped} ${held.name}` : held.name;
+	return {
+		state: {
+			...state,
+			inventory: removeItem(state.inventory, held.name, dropped),
+			notice: `You leave ${label} behind.`,
+		},
 		effects: [{ t: "Save", reason: "checkpoint" }],
 	};
 }

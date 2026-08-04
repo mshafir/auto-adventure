@@ -8,6 +8,18 @@ export function rgb(hex: string): RGB {
 	return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
+/**
+ * `#rrggbb`, for the panels.
+ *
+ * The map is composed straight to escape sequences, but the side panel is
+ * ordinary Ink `<Text>`, and Ink takes colours as strings. Going through this
+ * rather than writing hex literals into the panels is what keeps a legend
+ * showing the same colour as the tile it describes.
+ */
+export function toHex(c: RGB): string {
+	return `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 export function mix(a: RGB, b: RGB, t: number): RGB {
 	const k = t < 0 ? 0 : t > 1 ? 1 : t;
 	return [

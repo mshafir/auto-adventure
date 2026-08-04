@@ -312,6 +312,7 @@ async function capture(
 	title: string,
 	prepare: (engine: GameEngine, site: MacroSite) => void,
 	tab?: "map" | "world" | "inventory" | "quests" | "journal",
+	cursor?: number,
 ) {
 	const { engine, site } = buildEngine();
 	prepare(engine, site);
@@ -319,12 +320,15 @@ async function capture(
 
 	const stdout = fakeStdout();
 	const stdin = fakeStdin();
-	const instance = render(<App {...(tab ? { initialTab: tab } : {})} />, {
-		stdout,
-		stdin,
-		patchConsole: false,
-		exitOnCtrlC: false,
-	});
+	const instance = render(
+		<App {...(tab ? { initialTab: tab } : {})} {...(cursor ? { initialCursor: cursor } : {})} />,
+		{
+			stdout,
+			stdin,
+			patchConsole: false,
+			exitOnCtrlC: false,
+		},
+	);
 	// One tick, so the effects the first frame queued have landed.
 	await new Promise((resolve) => setImmediate(resolve));
 
@@ -383,6 +387,44 @@ async function main() {
 			});
 		},
 		"quests",
+	);
+
+	await capture(
+		"inventory",
+		"What you are carrying, and what an errand still wants",
+		(engine, site) => {
+			engine.dispatch({
+				t: "ApplyEffects",
+				effects: [
+					{
+						t: "GrantItem",
+						name: "Timber",
+						description: "Rough-sawn planks, still smelling of the mill.",
+						quantity: 3,
+					},
+					{
+						t: "GrantItem",
+						name: "Cushion Moss",
+						description: "A damp green cushion prised off a north-facing stone.",
+						quantity: 2,
+					},
+					{
+						t: "CreateQuest",
+						id: "timber",
+						name: "Timber for the mill",
+						// More than is carried, so the objective has not latched and the pane
+						// still shows the warning that guards it against being dropped.
+						description: "The miller wants five lengths of sawn timber.",
+						objectives: [{ kind: "have", target: "Timber", quantity: 5, done: false }],
+						siteId: site.id,
+					},
+				],
+			});
+		},
+		"inventory",
+		// The cursor lands on the timber rather than the starting coin, so the shot
+		// shows the warning that stops an errand item being thrown away.
+		1,
 	);
 
 	await capture("inside", "Inside a building, where the crates are", (engine, site) => {

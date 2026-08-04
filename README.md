@@ -103,6 +103,12 @@ bearing points back at the town that gave it.
 
 ![An open errand, with a bearing](docs/screens/quest.svg)
 
+What you are carrying. The list takes the arrow keys while it is open — the
+border says so — and `D` drops the selection. Dropping destroys the item, so it
+asks first, and it tells you when an open errand still wants it.
+
+![The inventory panel, with an errand item flagged](docs/screens/inventory.svg)
+
 These are rendered from real frames by `npm run screens` — the same compositor,
 palette and panels the game uses, captured through Ink and written out as SVG. So
 they are a build artifact rather than a photograph of somebody's terminal, and
@@ -115,13 +121,26 @@ costs nothing. Walking into a door enters the building. Walking into a person
 starts a conversation, as does `SPACE`. `SPACE` searches whatever you are facing:
 a crate, barrel, chest or shelf indoors, or the ground itself outdoors. What a
 building stores depends on what it is for — a mill really does hold timber — and
-crops, forest floor, marsh, reeds and bramble each give up their own things. Conversations are choice-only — up/down
-to pick, `SPACE` to answer, `ESC` to leave. `M` `W` `I` `Q` `J` switch the side
-panel between the local map, the world map, inventory, quests and the journal. The
-map panel carries the clock: a tick is a minute and a move is a tick, so an hour
-of world time is sixty steps. An
-open errand is marked `!` on the world map and carries a bearing in the quest
-list, in chunks — `E 2` rather than a tile count.
+crops, forest floor, marsh, reeds and bramble each give up their own things.
+Conversations are choice-only — up/down to pick, `SPACE` to answer, `ESC` to
+leave.
+
+The bar along the bottom always says which keys are live, because they change:
+the arrow keys mean three different things depending on whether you are walking,
+choosing a reply, or reading a list.
+
+`M` `W` `I` `Q` `J` switch the side panel between the local map, the world map,
+inventory, quests and the journal. The three list panels take the arrow keys when
+you open them — the border turns cyan to say so — and `ESC` gives them back.
+Inside the inventory, `D` drops what the cursor is on; it asks first, and warns
+you if an open errand wants it, because there is no ground layer to pick it back
+up from. `S` saves and quits, also with a confirmation.
+
+The map panel carries the clock and a key to the glyphs on screen: a tick is a
+minute and a move is a tick, so an hour of world time is sixty steps. The world
+panel carries its own key, since one character stands for a whole chunk there and
+means something different. An open errand is marked `!` on the world map and
+carries a bearing in the quest list, in chunks — `E 2` rather than a tile count.
 
 ## Playing without a model
 

@@ -174,3 +174,39 @@ describe("the clock survives a reload", () => {
 		expect(restored?.time).toEqual({ tick: 9 * 60 + 37, day: 1, hour: 9, minute: 37 });
 	});
 });
+
+describe("saving on the way out", () => {
+	it("writes immediately rather than leaving it to the debounce", () => {
+		/**
+		 * The debounce timer is deliberately `unref`'d so a pending save cannot hold
+		 * the process open — which also means a quitting process abandons it. The
+		 * key bar promises "S save+quit", so the command behind it has to flush.
+		 */
+		const repo = new SaveRepository(60_000);
+		const engine = new GameEngine(newState("quitter"), createEffectRunner({ saves: repo }));
+		for (let i = 0; i < 6; i++) engine.dispatch({ t: "Move", facing: "right" });
+
+		// Nothing on disk yet: every step only scheduled a debounced write.
+		expect(new SaveRepository(0).load("quitter")).toBeUndefined();
+
+		engine.dispatch({ t: "RequestSave" });
+
+		const saved = new SaveRepository(0).load("quitter");
+		expect(saved?.player.x).toBe(engine.getState().player.x);
+		expect(saved?.time.tick).toBe(engine.getState().time.tick);
+	});
+
+	it("keeps what was dropped dropped", () => {
+		const repo = new SaveRepository(0);
+		const engine = new GameEngine(newState("dropper"), createEffectRunner({ saves: repo }));
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [{ t: "GrantItem", name: "Timber", description: "Planks.", quantity: 3 }],
+		});
+		engine.dispatch({ t: "DropItem", name: "Timber", quantity: 3 });
+		repo.flush();
+
+		const saved = new SaveRepository(0).load("dropper");
+		expect(saved?.inventory.some((item) => item.name === "Timber")).toBe(false);
+	});
+});

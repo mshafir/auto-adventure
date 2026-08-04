@@ -714,3 +714,64 @@ describe("gathering from the ground", () => {
 		expect(state.quests[0]?.completed).toBe(true);
 	});
 });
+
+describe("putting something down", () => {
+	const carrying = (): GameState =>
+		makeState({
+			inventory: [
+				{ name: "Timber", description: "Rough-sawn planks.", quantity: 3 },
+				{ name: "Gold", description: "A handful of coins.", quantity: 12 },
+			],
+		});
+
+	it("takes the whole stack and says so", () => {
+		const { state } = run(carrying(), [{ t: "DropItem", name: "Timber", quantity: 3 }]);
+		expect(state.inventory.map((item) => item.name)).toEqual(["Gold"]);
+		expect(state.notice).toBe("You leave 3 Timber behind.");
+	});
+
+	it("takes only part of one when asked for part", () => {
+		const { state } = run(carrying(), [{ t: "DropItem", name: "Timber", quantity: 1 }]);
+		expect(state.inventory.find((item) => item.name === "Timber")?.quantity).toBe(2);
+	});
+
+	it("cannot drop more than is carried, or go negative", () => {
+		const { state } = run(carrying(), [{ t: "DropItem", name: "Gold", quantity: 999 }]);
+		expect(state.inventory.some((item) => item.name === "Gold")).toBe(false);
+		expect(state.notice).toBe("You leave 12 Gold behind.");
+	});
+
+	it("does nothing for something that is not carried", () => {
+		const before = carrying();
+		const { state } = run(before, [{ t: "DropItem", name: "Lantern", quantity: 1 }]);
+		expect(state.inventory).toEqual(before.inventory);
+		expect(state.notice).toBeUndefined();
+	});
+
+	it("matches the name however it was capitalised", () => {
+		// The name is carried from the panel rather than an index, so the command
+		// survives the list being re-ordered — but only if it still matches.
+		const { state } = run(carrying(), [{ t: "DropItem", name: "timber", quantity: 3 }]);
+		expect(state.inventory.map((item) => item.name)).toEqual(["Gold"]);
+	});
+
+	it("checkpoints, because it cannot be undone by walking back", () => {
+		const { effects } = run(carrying(), [{ t: "DropItem", name: "Timber", quantity: 3 }]);
+		expect(effects).toContainEqual({ t: "Save", reason: "checkpoint" });
+	});
+
+	it("refuses a nonsense quantity rather than adding stock", () => {
+		const { state } = run(carrying(), [{ t: "DropItem", name: "Timber", quantity: -5 }]);
+		expect(state.inventory.find((item) => item.name === "Timber")?.quantity).toBe(3);
+	});
+});
+
+describe("asking to save", () => {
+	it("writes out now rather than waiting for the debounce", () => {
+		// The debounce timer is unref'd, so a quitting process would abandon it and
+		// the last few steps would be lost.
+		const { state, effects } = run(makeState(), [{ t: "RequestSave" }]);
+		expect(effects).toEqual([{ t: "Save", reason: "exit" }]);
+		expect(state.player).toEqual(makeState().player);
+	});
+});

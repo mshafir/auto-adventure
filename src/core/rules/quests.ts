@@ -1,5 +1,5 @@
 import type { GameState, Quest, QuestObjective } from "./state.js";
-import { itemCount } from "./state.js";
+import { activeQuests, itemCount } from "./state.js";
 import { namesMatch } from "./surroundings.js";
 
 /**
@@ -70,6 +70,24 @@ function satisfied(objective: QuestObjective, state: GameState, context: QuestCo
 		case "talk":
 			return matches(objective.target, context.talkedTo);
 	}
+}
+
+/**
+ * The open errand that still wants this item, if any.
+ *
+ * Dropping something destroys it — there is no ground layer to pick it back up
+ * from — so the one case worth interrupting the player over is throwing away
+ * the very thing they were sent to fetch. Matched with the same loose rule the
+ * objective will be checked with, so the warning cannot disagree with whether
+ * the item would actually have counted.
+ */
+export function questNeeding(state: GameState, itemName: string): Quest | undefined {
+	return activeQuests(state).find((quest) =>
+		quest.objectives.some(
+			(objective) =>
+				objective.kind === "have" && !objective.done && namesMatch(objective.target, itemName),
+		),
+	);
 }
 
 /**

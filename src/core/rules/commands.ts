@@ -15,6 +15,15 @@ import type { Facing } from "./state.js";
 export type Command =
 	| { readonly t: "Move"; readonly facing: Facing }
 	| { readonly t: "Interact" }
+	/**
+	 * Put something down and leave it.
+	 *
+	 * There is no ground-item layer, so a dropped thing is gone — which is why the
+	 * panel asks before dispatching this rather than acting on the keypress.
+	 */
+	| { readonly t: "DropItem"; readonly name: string; readonly quantity: number }
+	/** Write the save out now. Dispatched when the player asks to quit. */
+	| { readonly t: "RequestSave" }
 	| { readonly t: "Advance" }
 	| { readonly t: "ChoiceUp" }
 	| { readonly t: "ChoiceDown" }

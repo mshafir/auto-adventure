@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeFov, lightAt } from "../geom/fov.js";
 import { hashString } from "../rand/hash.js";
 import { timeOfDay, weatherAt } from "../world/weather.js";
-import { verifyQuests } from "./quests.js";
+import { questNeeding, verifyQuests } from "./quests.js";
 import { reduce, type WorldProbe } from "./reduce.js";
 import { basePrice, buyPrice, sellPrice, shopStock } from "./shop.js";
 import { createInitialState, type GameState, type Quest } from "./state.js";
@@ -197,5 +197,43 @@ describe("field of view", () => {
 	it("reports nothing outside its own radius", () => {
 		const fov = computeFov(0, 0, 4, () => false);
 		expect(lightAt(fov, 40, 40)).toBe(0);
+	});
+});
+
+describe("what an errand still wants", () => {
+	/**
+	 * Dropping destroys an item — there is no ground layer to pick it back up
+	 * from — so the one case worth interrupting the player over is throwing away
+	 * the thing they were sent to fetch.
+	 */
+	it("names the errand that asked for it", () => {
+		const state = withQuest(quest([{ kind: "have", target: "Timber", quantity: 3, done: false }]));
+		expect(questNeeding(state, "Timber")?.name).toBe("The Errand");
+	});
+
+	it("matches the way the objective will be checked, not more strictly", () => {
+		// "Sawn Timber" would satisfy nothing if the objective says "Timber", but
+		// `namesMatch` is what decides that at completion time, so it decides here.
+		const state = withQuest(quest([{ kind: "have", target: "Cushion Moss", done: false }]));
+		expect(questNeeding(state, "cushion moss")).toBeDefined();
+		expect(questNeeding(state, "Sphagnum Moss")).toBeUndefined();
+	});
+
+	it("says nothing about an objective already ticked off", () => {
+		// Objectives latch, so a satisfied one stays satisfied: the item has done
+		// its job and there is no reason to guard it.
+		const state = withQuest(quest([{ kind: "have", target: "Timber", done: true }]));
+		expect(questNeeding(state, "Timber")).toBeUndefined();
+	});
+
+	it("says nothing about a finished errand", () => {
+		const base = withQuest(quest([{ kind: "have", target: "Timber", done: false }]));
+		const done = { ...base, quests: base.quests.map((q) => ({ ...q, completed: true })) };
+		expect(questNeeding(done, "Timber")).toBeUndefined();
+	});
+
+	it("ignores objectives that are not about carrying something", () => {
+		const state = withQuest(quest([{ kind: "talk", target: "Timber", done: false }]));
+		expect(questNeeding(state, "Timber")).toBeUndefined();
 	});
 });

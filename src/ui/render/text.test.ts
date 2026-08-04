@@ -52,3 +52,26 @@ describe("clampLine", () => {
 		expect(line.endsWith("…")).toBe(true);
 	});
 });
+
+describe("wrapping and the ellipsis", () => {
+	it("does not mark a cut that did not happen", () => {
+		// The old test for "did anything get dropped" compared `lines * width`
+		// against the character count, which ignores the spaces wrapping removes —
+		// so a journal entry that wrapped neatly onto two lines came back with a
+		// trailing ellipsis and read as truncated when it was whole.
+		const text = "Somebody has been taking the sluice gates apart at night.";
+		const lines = wrapToLines(text, 28, 4);
+		expect(lines.join(" ")).toBe(text);
+		expect(lines.at(-1)?.endsWith("…")).toBe(false);
+	});
+
+	it("still marks one that did", () => {
+		const text = "Somebody has been taking the sluice gates apart at night.";
+		expect(wrapToLines(text, 28, 1).at(-1)?.endsWith("…")).toBe(true);
+	});
+
+	it("keeps every word when there is room for them", () => {
+		const text = "the old roads still run between the holdfasts";
+		expect(wrapToLines(text, 12, 10).join(" ")).toBe(text);
+	});
+});

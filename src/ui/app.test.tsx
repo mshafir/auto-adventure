@@ -152,3 +152,115 @@ describe("the game screen", () => {
 		expect(text).toContain("SPACE");
 	});
 });
+
+describe("the key bar", () => {
+	/**
+	 * Every binding the game has was previously undocumented anywhere on screen
+	 * except the one line inside the conversation panel, so the only way to find
+	 * out that `j` opened the journal was to read the source.
+	 */
+	it("names the keys, including the one that saves and leaves", () => {
+		const { engine } = engineBesideSomeone();
+		bindEngine(engine);
+		const { lastFrame, unmount } = render(<App />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("MWIQJ panels");
+		expect(text).toContain("S save+quit");
+		expect(text).toContain("Arrows move");
+	});
+
+	it("says what the arrow keys do once a conversation has them", () => {
+		const { engine, target } = engineBesideSomeone();
+		bindEngine(engine);
+		engine.dispatch({ t: "DialogueOpened", npcId: target.id, npcName: target.name });
+		engine.dispatch({
+			t: "DialogueTurn",
+			npcId: target.id,
+			speaker: target.name,
+			text: "Aye?",
+			choices: ["Hello.", "Nothing."],
+		});
+		const { lastFrame, unmount } = render(<App />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("Up/Dn choose");
+		expect(text).toContain("Esc leave");
+		// The panel keys do not work mid-sentence, so they are not advertised.
+		expect(text).not.toContain("MWIQJ panels");
+	});
+});
+
+describe("the side panels", () => {
+	it("explains the map's glyphs rather than leaving them to be guessed", () => {
+		const { engine } = engineBesideSomeone();
+		bindEngine(engine);
+		const { lastFrame, unmount } = render(<App initialTab="map" />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("KEY");
+		for (const label of ["you", "folk", "door", "chest", "water"]) {
+			expect(text, `the key does not mention ${label}`).toContain(label);
+		}
+	});
+
+	it("explains the minimap's glyphs too, which are a different alphabet", () => {
+		const { engine } = engineBesideSomeone();
+		bindEngine(engine);
+		const { lastFrame, unmount } = render(<App initialTab="world" />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		for (const label of ["here", "town", "village", "errand"]) {
+			expect(text, `the key does not mention ${label}`).toContain(label);
+		}
+	});
+
+	it("shows what is carried, with a cursor on it and its description below", () => {
+		const { engine } = engineBesideSomeone();
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [{ t: "GrantItem", name: "Timber", description: "Rough-sawn planks.", quantity: 3 }],
+		});
+		bindEngine(engine);
+		const { lastFrame, unmount } = render(<App initialTab="inventory" />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("3x Timber");
+		// The pane arrives focused, so the cursor is drawn and the detail follows it
+		// — whatever the cursor happens to start on, which is the first thing the
+		// player was given rather than the first thing this test added.
+		expect(text).toContain("▸ ");
+		const first = engine.getState().inventory[0];
+		expect(first).toBeDefined();
+		if (first) expect(text).toContain(first.description);
+	});
+
+	it("writes an objective as an instruction, not as its own tag", () => {
+		// "have Timber x3" is the reducer's vocabulary; a quest log should not be
+		// where the player reads the implementation.
+		const { engine, site } = engineBesideSomeone();
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [
+				{
+					t: "CreateQuest",
+					id: "timber",
+					name: "Timber for the mill",
+					description: "Three lengths of sawn timber.",
+					objectives: [
+						{ kind: "have", target: "Timber", quantity: 3, done: false },
+						{ kind: "talk", target: "Sedge", done: false },
+					],
+					siteId: site.id,
+				},
+			],
+		});
+		bindEngine(engine);
+		const { lastFrame, unmount } = render(<App initialTab="quests" />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("carry 3 Timber");
+		expect(text).toContain("speak to Sedge");
+		expect(text).not.toContain("have Timber");
+	});
+});

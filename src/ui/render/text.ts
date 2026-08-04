@@ -15,49 +15,50 @@ import stringWidth from "string-width";
 export function wrapToLines(text: string, width: number, maxLines: number): string[] {
 	if (width <= 0 || maxLines <= 0) return [];
 
+	const words = text.split(/\s+/).filter(Boolean);
 	const lines: string[] = [];
 	let current = "";
+	let index = 0;
 
-	const push = () => {
-		lines.push(current);
-		current = "";
-	};
+	while (index < words.length && lines.length < maxLines) {
+		const word = words[index];
+		if (word === undefined) break;
 
-	for (const word of text.split(/\s+/).filter(Boolean)) {
 		if (current.length === 0) {
+			// A single word longer than the panel is rare but must not loop or
+			// overflow; break it at the column and carry the remainder.
+			if (stringWidth(word) > width) {
+				lines.push(word.slice(0, width));
+				words[index] = word.slice(width);
+				continue;
+			}
 			current = word;
 		} else if (stringWidth(`${current} ${word}`) <= width) {
 			current = `${current} ${word}`;
 		} else {
-			push();
-			if (lines.length >= maxLines) break;
-			current = word;
+			lines.push(current);
+			current = "";
+			// Retry the same word against the fresh line.
+			continue;
 		}
-
-		// A single word longer than the panel is rare but must not loop or
-		// overflow; break it at the column and carry the remainder.
-		while (stringWidth(current) > width) {
-			lines.push(current.slice(0, width));
-			current = current.slice(width);
-			if (lines.length >= maxLines) break;
-		}
-		if (lines.length >= maxLines) break;
+		index++;
+	}
+	if (lines.length < maxLines && current.length > 0) {
+		lines.push(current);
+		current = "";
 	}
 
-	if (current.length > 0 && lines.length < maxLines) push();
-	if (lines.length <= maxLines && lines.length * width >= visibleLength(text)) return lines;
+	// Whether anything was dropped is decided by what is left over, not by
+	// comparing character counts against `lines.length * width`: that arithmetic
+	// ignores the spaces wrapping removes, so a passage that fitted exactly came
+	// back with a trailing ellipsis and looked cut when it was whole.
+	if (index >= words.length && current.length === 0) return lines;
 
-	// Something was dropped, so say so rather than ending mid-sentence.
-	const clipped = lines.slice(0, maxLines);
-	const last = clipped[clipped.length - 1];
+	const last = lines[lines.length - 1];
 	if (last !== undefined) {
-		clipped[clipped.length - 1] = `${last.slice(0, Math.max(0, width - 1)).trimEnd()}…`;
+		lines[lines.length - 1] = `${last.slice(0, Math.max(0, width - 1)).trimEnd()}…`;
 	}
-	return clipped;
-}
-
-function visibleLength(text: string): number {
-	return stringWidth(text.trim());
+	return lines;
 }
 
 /** One line, cut at the column, with an ellipsis when it did not fit. */

@@ -1,9 +1,11 @@
-import { Box, useStdout } from "ink";
-import { useEffect, useMemo, useState } from "react";
+import { Box, useApp, useStdout } from "ink";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { computeFov, lightAt } from "../core/geom/fov.js";
 import { facingDelta } from "../core/rules/effects.js";
 import { forageKey, isForageable } from "../core/rules/forage.js";
 import { isContainer, lootKey } from "../core/rules/loot.js";
+import { questNeeding } from "../core/rules/quests.js";
+import { activeQuests } from "../core/rules/state.js";
 import { decorDef } from "../core/tiles/decor.js";
 import { TFlag } from "../core/tiles/flags.js";
 import { terrainDef } from "../core/tiles/terrain.js";
@@ -11,8 +13,10 @@ import { toChunk } from "../core/world/coords.js";
 import { weatherAt } from "../core/world/weather.js";
 import type { GameEngine } from "../engine/engine.js";
 import type { WorldView } from "../engine/world-view.js";
+import { hudReducer, initialHud, LIST_TABS } from "./hud-state.js";
 import { useGameInput } from "./input/use-game-input.js";
 import { DialoguePanel, panelHeightFor } from "./panels/dialogue-panel.js";
+import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
 import { type PanelTab, SidePanel } from "./panels/side-panel.js";
 import { FACING_MARKER, PLAYER_GLYPH } from "./render/glyphs.js";
 import { lightFor } from "./render/lighting.js";
@@ -54,15 +58,65 @@ function useTerminalSize() {
 export interface AppProps {
 	/** Which side panel starts open. Only the screenshot tool and tests pass this. */
 	readonly initialTab?: PanelTab;
+	/** Which row of it is selected. Same callers, same reason. */
+	readonly initialCursor?: number;
 }
 
-export default function App({ initialTab = "map" }: AppProps = {}) {
+export default function App({ initialTab = "map", initialCursor = 0 }: AppProps = {}) {
 	const engine = getEngine();
 	const state = useGameState();
 	const { width, height } = useTerminalSize();
-	const [tab, setTab] = useState<PanelTab>(initialTab);
+	const { exit } = useApp();
+	const [hud, hudDispatch] = useReducer(hudReducer, initialTab, (tab) => ({
+		...initialHud(tab),
+		cursor: initialCursor,
+	}));
 
-	useGameInput({ dispatch: engine.dispatch, onToggleTab: setTab });
+	// How long the focused pane's list is, so a cursor cannot survive the list
+	// shrinking under it — an item spent, a quest closed, a save reloaded.
+	const listCount =
+		hud.tab === "inventory"
+			? state.inventory.length
+			: hud.tab === "quests"
+				? activeQuests(state).length
+				: hud.tab === "journal"
+					? state.journal.length
+					: 0;
+
+	const held =
+		hud.tab === "inventory" && state.inventory.length > 0
+			? state.inventory[Math.min(hud.cursor, state.inventory.length - 1)]
+			: undefined;
+
+	useGameInput({
+		dispatch: engine.dispatch,
+		hud,
+		hudDispatch,
+		listCount,
+		// Dropping destroys the item — the world has no ground layer to pick it
+		// back up from — so this only ever raises the question.
+		...(held
+			? {
+					onDrop: () => {
+						const wanted = questNeeding(state, held.name);
+						hudDispatch({
+							t: "Ask",
+							confirm: {
+								action: { t: "drop", name: held.name, quantity: held.quantity },
+								prompt: `Drop ${held.quantity > 1 ? `${held.quantity} ` : ""}${held.name}? It is gone for good.`,
+								...(wanted ? { warning: `Wanted for "${wanted.name}".` } : {}),
+							},
+						});
+					},
+				}
+			: {}),
+		onQuit: () => {
+			// Flushed here rather than relying on the debounce timer, which is
+			// unref'd and would be abandoned by the exiting process.
+			engine.dispatch({ t: "RequestSave" });
+			exit();
+		},
+	});
 
 	const view = engine.getView();
 	const player = state.player;
@@ -105,11 +159,14 @@ export default function App({ initialTab = "map" }: AppProps = {}) {
 	// rendered output is *shorter* than the terminal; at exactly the terminal
 	// height it clears the whole screen every frame, which reads as flicker.
 	const frameHeight = Math.max(10, height - 1);
+	// The key bar is one unbordered row along the bottom of the whole frame, so
+	// everything above it gets one row less.
+	const bodyHeight = Math.max(8, frameHeight - 1);
 	const mapWidth = Math.max(20, width - SIDE_PANEL_WIDTH - 2);
 	// The conversation panel has two fixed sizes; the map takes whatever is left,
 	// so the total is constant either way.
 	const panelHeight = panelHeightFor(state.dialogue !== undefined);
-	const mapHeight = Math.max(6, frameHeight - panelHeight);
+	const mapHeight = Math.max(6, bodyHeight - panelHeight);
 	// The camera is measured in tiles, the layout in terminal columns, and a tile
 	// is TILE_WIDTH columns wide. Centring on the player in tile space is what
 	// keeps them in the middle of the viewport at any tile width.
@@ -168,26 +225,35 @@ export default function App({ initialTab = "map" }: AppProps = {}) {
 		[light.tint, light.strength, fov],
 	);
 
+	const keyMode: KeyBarMode = state.dialogue
+		? { t: "dialogue" }
+		: hud.focus && LIST_TABS.has(hud.tab)
+			? { t: "panel", canDrop: held !== undefined }
+			: { t: "world" };
+
 	return (
-		<Box flexDirection="row" width={width} height={frameHeight}>
-			<Box flexDirection="column" flexGrow={1}>
-				<Viewport source={source} camera={camera} options={composeOptions} />
-				<DialoguePanel
-					width={mapWidth}
-					height={panelHeight}
-					looking={looking}
-					{...(facedNpc ? { nearbyName: facedNpc.name } : {})}
+		<Box flexDirection="column" width={width} height={frameHeight}>
+			<Box flexDirection="row" height={bodyHeight}>
+				<Box flexDirection="column" flexGrow={1}>
+					<Viewport source={source} camera={camera} options={composeOptions} />
+					<DialoguePanel
+						width={mapWidth}
+						height={panelHeight}
+						looking={looking}
+						{...(facedNpc ? { nearbyName: facedNpc.name } : {})}
+					/>
+				</Box>
+				<SidePanel
+					hud={hud}
+					width={SIDE_PANEL_WIDTH}
+					height={bodyHeight}
+					summary={summary}
+					{...(placeName ? { placeName } : {})}
+					{...(inside ? {} : { weather })}
+					light={light.label}
 				/>
 			</Box>
-			<SidePanel
-				tab={tab}
-				width={SIDE_PANEL_WIDTH}
-				height={frameHeight}
-				summary={summary}
-				{...(placeName ? { placeName } : {})}
-				{...(inside ? {} : { weather })}
-				light={light.label}
-			/>
+			<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />
 		</Box>
 	);
 }
