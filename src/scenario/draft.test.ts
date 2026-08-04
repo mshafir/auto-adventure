@@ -165,6 +165,90 @@ describe("the arc a draft describes", () => {
 		]);
 	});
 
+	it("spells a quest target the way the world does", () => {
+		// The runtime canonicalises a target when an NPC opens a quest, via
+		// `resolveObjectiveTarget`. An authored quest gets the same treatment here, or it
+		// is the one kind that cannot complete: `verifyQuests` matches on significant
+		// words, so an objective still spelled the author's way never fires.
+		const spelled = draft({
+			sites: [siteDraft(SITE_ID)],
+			arc: {
+				title: "T",
+				premise: "",
+				beats: [
+					{
+						id: "there",
+						siteId: SITE_ID,
+						npcSlot: 0,
+						quest: {
+							name: "Go there",
+							description: "",
+							// The draft's inn is "The Green Measure"; an author writes it loosely.
+							objective: { kind: "reach", target: "green measure" },
+						},
+					},
+				],
+			},
+		});
+		const objective = assembleArtifact(spelled, AT).arc?.beats[0]?.quest?.objectives[0];
+		expect(objective?.target).toBe("The Green Measure");
+	});
+
+	it("does not canonicalise to a name the runtime never consults", () => {
+		// `shortName` is not among the candidates `resolveObjectiveTarget` offers, so
+		// resolving to one would hand the game a target it cannot match — worse than
+		// leaving the author's words for validation to report.
+		const short = draft({
+			sites: [siteDraft(SITE_ID)],
+			arc: {
+				title: "T",
+				premise: "",
+				beats: [
+					{
+						id: "there",
+						siteId: SITE_ID,
+						npcSlot: 0,
+						quest: {
+							name: "Go",
+							description: "",
+							objective: { kind: "reach", target: "Bracken" },
+						},
+					},
+				],
+			},
+		});
+		expect(assembleArtifact(short, AT).arc?.beats[0]?.quest?.objectives[0]?.target).toBe(
+			"Bracken Cross",
+		);
+	});
+
+	it("leaves a target it cannot improve alone", () => {
+		// Nothing here can spell an item better than the author did, and a flag names
+		// nothing in the world at all.
+		const kept = draft({
+			sites: [siteDraft(SITE_ID)],
+			arc: {
+				title: "T",
+				premise: "",
+				beats: [
+					{
+						id: "fetch",
+						siteId: SITE_ID,
+						npcSlot: 0,
+						quest: {
+							name: "Fetch",
+							description: "",
+							objective: { kind: "have", target: "Cord House tally" },
+						},
+					},
+				],
+			},
+		});
+		expect(assembleArtifact(kept, AT).arc?.beats[0]?.quest?.objectives[0]?.target).toBe(
+			"Cord House tally",
+		);
+	});
+
 	it("survives the loader's arc checks", () => {
 		expect(verifyArtifact(assembleArtifact(withArc(), AT))).toEqual([]);
 	});

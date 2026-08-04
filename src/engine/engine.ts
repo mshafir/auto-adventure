@@ -3,16 +3,10 @@ import type { StructureKind } from "../core/gen/features/patch.js";
 import { invalidateSettlement, settlementBounds } from "../core/gen/features/settlement.js";
 import type { Command } from "../core/rules/commands.js";
 import type { Effect } from "../core/rules/effects.js";
-import {
-	forageAt,
-	forageKey,
-	forageYields,
-	isForageable,
-	pickedOverMessage,
-} from "../core/rules/forage.js";
+import { forageAt, forageKey, isForageable, pickedOverMessage } from "../core/rules/forage.js";
 import { containerContents, emptyMessage, isContainer, lootKey } from "../core/rules/loot.js";
+import { obtainableItems } from "../core/rules/obtainable.js";
 import { reduce, type WorldProbe } from "../core/rules/reduce.js";
-import { shopStock, tradeKind } from "../core/rules/shop.js";
 import type { GameState } from "../core/rules/state.js";
 import { EMPTY_SURROUNDINGS, type Surroundings } from "../core/rules/surroundings.js";
 import { parseChunkKey, toChunk } from "../core/world/coords.js";
@@ -39,13 +33,6 @@ export interface EngineServices {
 	/** The authored description of a site, used to place its people. */
 	siteSpec?: (siteId: number) => SiteSpec | undefined;
 }
-
-/**
- * How far past a town's edge an errand may point, and how coarsely that ground is
- * sampled. Three tiles cannot step over a field or a treeline.
- */
-const FORAGE_MARGIN = 24;
-const FORAGE_STRIDE = 3;
 
 /**
  * The single writer.
@@ -214,88 +201,31 @@ export class GameEngine {
 	/**
 	 * Item names a `have` objective could legitimately name.
 	 *
-	 * Three sources, and all three have to be here or an NPC gets refused a request
-	 * the player could actually have satisfied: what is on sale, what the buildings
-	 * here store, and what the player already carries. This is why "fetch me timber"
-	 * is a legal errand in a milling town and an illegal one in a fishing village,
-	 * without either the model or the resolver holding a catalogue of its own.
+	 * The judgement itself lives in `core/rules/obtainable.ts`, so the offline
+	 * scenario validator asks the identical question rather than approximating it.
+	 * This is only the adapter that hands it the live rosters, the player's pockets
+	 * and the chunks that happen to be resident.
 	 */
 	private obtainableItems(site: MacroSite): string[] {
-		const names = new Set<string>();
-
-		for (const npc of this.npcs.atSite(site.id)) {
-			const kind = tradeKind(npc.spec.role);
-			if (!kind) continue;
-			for (const item of shopStock(this.state.world.seed, site.id, npc.spec.slot, kind)) {
-				names.add(item.name);
-			}
-		}
-
-		// What is *in* the crates, not what a building of this kind could hold.
-		//
-		// Asking `itemsStoredIn(kind)` was the bug behind "I took a quest and cannot
-		// find it": a barn can store timber, so timber was offered to the model as
-		// fetchable, but whether any barn container actually rolled timber is a
-		// separate throw of the dice. In one measured town nothing held timber at
-		// all and the errand could never be finished. Contents are pure, so the real
-		// answer is available for the asking; interiors are cached after the first
-		// look, so only the first conversation in a town pays for it.
-		for (const building of this.npcs.buildingsAt(site)) {
-			const interior = getInterior(
-				this.state.world.seed,
-				building.interiorId,
-				building.kind as StructureKind,
-			);
-			for (let y = 0; y < interior.height; y++) {
-				for (let x = 0; x < interior.width; x++) {
-					const decor = interior.decor[y * interior.width + x] ?? 0;
-					if (!isContainer(decor)) continue;
-					// Already emptied by the player, so no longer something to promise.
-					if (this.state.flags[lootKey(building.interiorId, x, y)]) continue;
-					for (const item of containerContents(
-						this.state.world.seed,
-						building.interiorId,
-						x,
-						y,
-						decor,
-						building.kind,
-					)) {
-						names.add(item.name);
-					}
-				}
-			}
-		}
-
-		// What the ground around the town gives up. Sampled rather than walked tile
-		// by tile: this only needs to know *which kinds* of ground are present, and a
-		// stride of three cannot miss a patch of crops or a stretch of forest floor
-		// while costing a ninth as many reads.
-		for (const name of this.groundYieldsNear(site)) names.add(name);
-
-		for (const carried of this.state.inventory) names.add(carried.name);
-		return [...names];
-	}
-
-	/**
-	 * Everything the land immediately around a settlement can be gathered for.
-	 *
-	 * Reaches past the town's own footprint, because "the crops near the forest" is
-	 * exactly the sort of errand an NPC gives and the forest is rarely inside the
-	 * walls. Only ground in chunks that are actually resident counts, so this never
-	 * promises a field the player would have to generate to find.
-	 */
-	private groundYieldsNear(site: MacroSite): Set<string> {
-		const names = new Set<string>();
-		const reach = site.radius + FORAGE_MARGIN;
-		for (let y = site.site.y - reach; y <= site.site.y + reach; y += FORAGE_STRIDE) {
-			for (let x = site.site.x - reach; x <= site.site.x + reach; x += FORAGE_STRIDE) {
-				if (!this.view.isLoaded(x, y)) continue;
-				const terrain = this.view.terrainAt(x, y);
-				if (!isForageable(terrain)) continue;
-				for (const name of forageYields(terrain)) names.add(name);
-			}
-		}
-		return names;
+		return obtainableItems({
+			seed: this.state.world.seed,
+			siteId: site.id,
+			people: this.npcs
+				.atSite(site.id)
+				.map((npc) => ({ role: npc.spec.role, slot: npc.spec.slot })),
+			buildings: this.npcs
+				.buildingsAt(site)
+				.map((building) => ({ interiorId: building.interiorId, kind: building.kind })),
+			ground: {
+				centre: site.site,
+				radius: site.radius,
+				// Only ground in resident chunks counts, so this never promises a field
+				// the player would have to generate to find.
+				terrainAt: (x, y) => (this.view.isLoaded(x, y) ? this.view.terrainAt(x, y) : undefined),
+			},
+			emptied: (interiorId, x, y) => Boolean(this.state.flags[lootKey(interiorId, x, y)]),
+			carried: this.state.inventory.map((entry) => entry.name),
+		});
 	}
 
 	subscribe = (listener: () => void): (() => void) => {

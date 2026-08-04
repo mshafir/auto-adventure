@@ -132,9 +132,13 @@ Never mention game mechanics, tiles, seeds, or that any of it is generated.
 - **Beats** should each be one thing learned or asked for. A beat that is only a
   revelation is good pacing — not every one needs a quest.
 - **The last beat should close the story**, not open another door.
-- **Quest objectives must be satisfiable.** `have` needs something that actually
-  hands the item over — a `giveItem` action in somebody's dialogue is the reliable
-  way. `reach` needs a place you have named. `talk` needs a person you have named.
+- **Quest objectives must be satisfiable**, and this is checked against the engine's
+  own rules rather than a guess. `have` passes if a `giveItem` action hands the item
+  over, or a trader here stocks it, or a container in one of the buildings holds it,
+  or the ground around the town yields it. `reach` needs a place or building name,
+  `talk` a person's name — matched on significant words, so "Thorn" will not do for
+  "Thornwick". Assembly rewrites a loose name to the world's spelling where it can,
+  and reports it where it cannot.
 
 ## When you are done
 

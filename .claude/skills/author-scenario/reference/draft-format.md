@@ -174,6 +174,10 @@ judgement:
   advisory — a mismatch relocates the person and warns, it does not fail.
 - A beat's `siteId` must be a site of this seed, and its `npcSlot` must exist in that
   site's `npcs`.
+- A `reach` or `talk` objective is rewritten to the world's own spelling on assembly,
+  so "green measure" becomes "The Green Measure". Names are matched on significant
+  words, never on substrings — "Thorn" does **not** match "Thornwick", and a target
+  nothing answers to is reported rather than silently kept.
 - The first beat opens with nothing done, and each later one waits on its
   predecessor. That is automatic — you cannot get it wrong by writing.
 
@@ -186,5 +190,8 @@ apply. Useful kinds: `giveItem`, `takeItem`, `adjustGold`, `setFlag`,
 
 Most conversations need none. Use one only when the character would really do it.
 
-A `giveItem` action is the reliable way to satisfy a `have` objective — validation
-looks for exactly that when checking whether a fetch quest is possible.
+A `giveItem` action is the reliable way to satisfy a `have` objective. Validation
+asks the engine's own question — `obtainableItems` — so a fetch quest also passes
+when the item is on sale at a trader here, sitting in a container in one of the
+buildings, or gatherable from the ground around the town. Writing the hand-over
+explicitly is still the surest route, because it does not depend on a dice roll.

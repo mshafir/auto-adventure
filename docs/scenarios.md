@@ -411,6 +411,17 @@ game — one town, generated once — and wrong for validation, which measures s
 candidate rosters for the same site in one process and would otherwise report the
 first layout for all of them. The pass drops the entry before generating.
 
+Two mechanisms were reaching the same invariant by different means, and one of them
+was wrong. The validator matched place names by *substring* while `verifyQuests`
+matches on *significant words*, so `reach: "Thorn"` passed authoring against a town
+called "Thornwick" and could never complete in play — authoring accepted a quest the
+game refused, and the only symptom was an errand that never finished. Name resolution
+now lives once in `core/rules/surroundings.ts` (`resolveObjectiveTarget`) and
+obtainability once in `core/rules/obtainable.ts`, both called by the engine and the
+validator; the engine's four sources for a fetchable item are no longer approximated
+by a pattern over NPC roles. Assembly canonicalises `reach` and `talk` targets to the
+world's own spelling, which is what the runtime already did for a quest an NPC opens.
+
 The anchor check was also *wrong*, not merely weak, and stayed wrong until a real
 draft ran through it. `pickAnchor` treats `yard` as `doorstep` and falls back to any
 free anchor otherwise — its own comment says the placement is advisory — so an

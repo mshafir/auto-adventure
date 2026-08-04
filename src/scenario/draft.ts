@@ -6,6 +6,7 @@ import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
 import { hashString } from "../core/rand/hash.js";
 import type { ScenarioArc, ScenarioBeat } from "../core/rules/arc.js";
 import type { QuestObjective } from "../core/rules/state.js";
+import { resolveName } from "../core/rules/surroundings.js";
 import { normalizeBrief } from "../core/world/brief.js";
 import type { RegionSpec, SiteSpec } from "../core/world/spec.js";
 import { npcId } from "../core/world/spec.js";
@@ -240,7 +241,7 @@ export function assembleArtifact(draft: ScenarioDraft, at: string): ScenarioArti
 		};
 	}
 
-	const arc = draft.arc ? lowerArc(draft.arc) : undefined;
+	const arc = draft.arc ? lowerArc(draft.arc, sites) : undefined;
 	const trees = lowerTrees(draft.trees ?? []);
 
 	return {
@@ -284,13 +285,43 @@ export function resolveDraftSeed(draft: ScenarioDraft): number {
  * flag nothing sets, cannot skip its own opening, and cannot be reordered by editing
  * the file in the wrong place. The story is the order it is written in.
  */
-function lowerArc(draft: NonNullable<ScenarioDraft["arc"]>): ScenarioArc {
+function lowerArc(
+	draft: NonNullable<ScenarioDraft["arc"]>,
+	sites: Readonly<Record<string, SiteSpec>>,
+): ScenarioArc {
+	// Canonicalised here so the objective carries the world's spelling rather than
+	// the author's. `verifyQuests` matches on significant words, so "the mill" never
+	// completes against a building called "Harrowmill Mill" — the runtime does this
+	// for a quest an NPC opens, via `resolveObjectiveTarget`, and an authored quest
+	// needs the same treatment or it is quietly the one kind that cannot finish.
+	// Exactly the candidates `resolveObjectiveTarget` offers a `reach` target at
+	// runtime: place names and building names. Notably *not* `shortName`, which the
+	// runtime never consults — canonicalising to a name the game cannot resolve would
+	// be worse than leaving the author's own words in place.
+	const placeNames: string[] = [];
+	for (const spec of Object.values(sites)) {
+		placeNames.push(spec.name);
+		for (const structure of spec.settlement.structures) {
+			if (structure.name) placeNames.push(structure.name);
+		}
+	}
+	const peopleNames = Object.values(sites).flatMap((spec) => spec.npcs.map((npc) => npc.name));
+
+	const canonical = (kind: QuestObjective["kind"], target: string): string => {
+		if (kind === "reach") return resolveName(target, placeNames) ?? target;
+		if (kind === "talk") return resolveName(target, peopleNames) ?? target;
+		// `have` names an item, which the author types themselves and nothing here can
+		// spell better; `flag` names nothing in the world at all. Validation reports an
+		// item no conversation gives.
+		return target;
+	};
+
 	const beats: ScenarioBeat[] = draft.beats.map((raw, order) => {
 		const objectives: QuestObjective[] = raw.quest?.objective
 			? [
 					{
 						kind: raw.quest.objective.kind,
-						target: raw.quest.objective.target,
+						target: canonical(raw.quest.objective.kind, raw.quest.objective.target),
 						...(raw.quest.objective.quantity ? { quantity: raw.quest.objective.quantity } : {}),
 						done: false,
 					},

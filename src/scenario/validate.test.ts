@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { demoArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
 import { PLACEMENTS } from "../ai/director/schemas.js";
+import { namesMatch } from "../core/rules/surroundings.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { buildPassability, hasErrors, validateArtifact } from "./validate.js";
 
@@ -135,7 +136,43 @@ describe("validateArtifact", SLOW, () => {
 				],
 			},
 		});
-		expect(messages(artifact)).toContain('nowhere here is called "Atlantis"');
+		expect(messages(artifact)).toContain('nothing here answers to "Atlantis"');
+	});
+
+	it("rejects a place name the runtime could never match", () => {
+		// The defect the shared resolver fixes. The old check matched by substring, so
+		// "mill" passed against a town called "Millgate Barracks" — and then never
+		// completed, because `verifyQuests` matches on significant words and "mill" is
+		// not one of "millgate barracks". Authoring accepted a quest the game refused.
+		const artifact = demoArtifact({
+			arc: {
+				title: "T",
+				premise: "",
+				beats: [
+					{
+						id: "a",
+						order: 0,
+						siteId: SITE_ID,
+						npcSlot: 0,
+						requires: [],
+						setsFlag: "f1",
+						quest: {
+							id: "q",
+							name: "Go there",
+							description: "",
+							// "Thornwick" is the fixture town; "Thorn" is a substring of it and
+							// nothing else, which the old check accepted and the runtime does not.
+							objectives: [{ kind: "reach", target: "Thorn", done: false }],
+						},
+					},
+				],
+			},
+		});
+		const found = messages(artifact);
+		expect(found).toContain("Thorn");
+		// And it agrees with the runtime rather than merely disagreeing with the old
+		// check: what the validator refuses, `namesMatch` also refuses.
+		expect(namesMatch("Thorn", "Thornwick")).toBe(false);
 	});
 
 	it("accepts a quest asking for a place that does exist", () => {

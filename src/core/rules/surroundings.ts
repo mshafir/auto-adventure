@@ -1,3 +1,5 @@
+import type { QuestObjectiveKind } from "./state.js";
+
 /**
  * What actually exists near a conversation.
  *
@@ -112,4 +114,52 @@ export function resolveName(requested: string, candidates: readonly string[]): s
 		if (best === undefined || candidate.length < best.length) best = candidate;
 	}
 	return best;
+}
+
+/**
+ * The world's own name for what a quest objective asked for, or `undefined`.
+ *
+ * The single answer to "can this errand be given here?", so the dialogue boundary
+ * and the offline scenario validator cannot disagree about it. They used to: the
+ * validator matched place names by substring, which `namesMatch` above explains is
+ * actively wrong — "mill" is a substring of "Millgate Barracks". A `reach: "mill"`
+ * objective therefore passed authoring and could never be completed, because
+ * `verifyQuests` resolves the same name by words and would never match it.
+ *
+ * Returns the canonical spelling so a quest log entry and the place label agree.
+ */
+export function resolveObjectiveTarget(
+	kind: QuestObjectiveKind,
+	requested: string,
+	surroundings: Surroundings | undefined,
+	carried: readonly string[] = [],
+): string | undefined {
+	// Without surroundings there is nothing to check against, so the target passes
+	// through. Keeps every existing caller and test working unchanged, and means a
+	// missing wiring degrades to the old behaviour rather than to no quests at all.
+	if (!surroundings) return requested;
+
+	switch (kind) {
+		// A flag is the giver's own bookkeeping and names nothing in the world.
+		case "flag":
+			return requested;
+
+		case "reach":
+			return resolveName(requested, [
+				...(surroundings.place ? [surroundings.place] : []),
+				...surroundings.places,
+				...surroundings.buildings.map((building) => building.name),
+			]);
+
+		case "talk":
+			return resolveName(
+				requested,
+				surroundings.people.map((person) => person.name),
+			);
+
+		case "have":
+			// Anything already carried counts: somebody may ask for a thing the player
+			// picked up in a place this conversation knows nothing about.
+			return resolveName(requested, [...surroundings.items, ...carried]);
+	}
 }

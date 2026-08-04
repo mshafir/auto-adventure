@@ -3,7 +3,14 @@ import { generateSettlement, invalidateSettlement } from "../core/gen/features/s
 import { generateChunk } from "../core/gen/pipeline.js";
 import { findPath } from "../core/geom/astar.js";
 import { beatNpcId, orderedBeats } from "../core/rules/arc.js";
+import { obtainableItems } from "../core/rules/obtainable.js";
+import {
+	EMPTY_SURROUNDINGS,
+	resolveObjectiveTarget,
+	type Surroundings,
+} from "../core/rules/surroundings.js";
 import { TFlag } from "../core/tiles/flags.js";
+import type { TerrainId } from "../core/tiles/terrain.js";
 import { isWellInside } from "../core/world/bounds.js";
 import { CHUNK, localIndex, toChunk } from "../core/world/coords.js";
 import { isSettlement, MACRO, type MacroSite, macroSite } from "../core/world/macro.js";
@@ -24,6 +31,14 @@ import { planFor } from "./survey.js";
  *
  * `verifyArtifact` in `repo.ts` is the cheap half and runs on every load. This is
  * the expensive half and runs once, at authoring time.
+ *
+ * Everything about *names* defers to `core/rules/surroundings.ts`, and everything
+ * about *obtainability* to `core/rules/obtainable.ts` — the same functions the
+ * running game uses. That is not tidiness. While this file had its own answers, it
+ * matched place names by substring and guessed obtainability from a pattern over
+ * roles, so it accepted quests the game would refuse and refused none it accepted.
+ * A validator that disagrees with the thing it validates is worse than no validator,
+ * because it is believed.
  */
 
 export type Severity = "error" | "warning";
@@ -97,6 +112,13 @@ export interface PassabilityGrid {
 	readonly w: number;
 	readonly h: number;
 	readonly passable: Uint8Array;
+	/**
+	 * Terrain ids, for the forage sources.
+	 *
+	 * Recorded in the same sweep as passability, because generating the world twice
+	 * to answer two questions about it would double the slowest thing here.
+	 */
+	readonly terrain: Uint8Array;
 }
 
 export function buildPassability(artifact: ScenarioArtifact): PassabilityGrid {
@@ -108,6 +130,7 @@ export function buildPassability(artifact: ScenarioArtifact): PassabilityGrid {
 	const w = (max.cx - min.cx + 1) * CHUNK;
 	const h = (max.cy - min.cy + 1) * CHUNK;
 	const passable = new Uint8Array(w * h);
+	const terrain = new Uint8Array(w * h);
 
 	for (let cy = min.cy; cy <= max.cy; cy++) {
 		for (let cx = min.cx; cx <= max.cx; cx++) {
@@ -121,14 +144,24 @@ export function buildPassability(artifact: ScenarioArtifact): PassabilityGrid {
 			);
 			for (let ly = 0; ly < CHUNK; ly++) {
 				for (let lx = 0; lx < CHUNK; lx++) {
-					const flags = chunk.flags[localIndex(lx, ly)] ?? 0;
-					passable[(cy * CHUNK + ly - y) * w + (cx * CHUNK + lx - x)] =
-						flags & TFlag.Passable ? 1 : 0;
+					const index = localIndex(lx, ly);
+					const flags = chunk.flags[index] ?? 0;
+					const at = (cy * CHUNK + ly - y) * w + (cx * CHUNK + lx - x);
+					passable[at] = flags & TFlag.Passable ? 1 : 0;
+					terrain[at] = chunk.terrain[index] ?? 0;
 				}
 			}
 		}
 	}
-	return { x, y, w, h, passable };
+	return { x, y, w, h, passable, terrain };
+}
+
+/** Terrain at a position, or undefined outside the generated block. */
+function terrainOf(grid: PassabilityGrid, x: number, y: number): TerrainId | undefined {
+	const gx = x - grid.x;
+	const gy = y - grid.y;
+	if (gx < 0 || gy < 0 || gx >= grid.w || gy >= grid.h) return undefined;
+	return grid.terrain[gy * grid.w + gx];
 }
 
 function isPassable(grid: PassabilityGrid, x: number, y: number): boolean {
@@ -217,8 +250,9 @@ export function validateArtifact(artifact: ScenarioArtifact): Finding[] {
 	// that is about to be invalidated.
 	findings.push(...checkSettlements(artifact, sites));
 	const grid = buildPassability(artifact);
+	const terrainAt = (x: number, y: number) => terrainOf(grid, x, y);
 	findings.push(...checkSpawn(artifact, grid));
-	findings.push(...checkStory(artifact, grid, sites));
+	findings.push(...checkStory(artifact, grid, sites, terrainAt));
 	findings.push(...checkTrees(artifact));
 	return findings;
 }
@@ -298,6 +332,7 @@ function checkStory(
 	artifact: ScenarioArtifact,
 	grid: PassabilityGrid,
 	sites: Map<number, MacroSite>,
+	terrainAt: (x: number, y: number) => TerrainId | undefined,
 ): Finding[] {
 	const arc = artifact.arc;
 	if (!arc) return [];
@@ -311,11 +346,28 @@ function checkStory(
 			findings.push(error(`beat ${beat.id} has no anchor to open it`));
 			continue;
 		}
+		// Resolved through the same function the dialogue boundary uses, so a target
+		// this accepts is one `verifyQuests` will actually match at runtime.
+		const surroundings = surroundingsFor(artifact, beat.siteId, sites, terrainAt);
 		for (const objective of beat.quest?.objectives ?? []) {
-			if (objective.kind === "reach" && !namedPlace(artifact, objective.target))
-				findings.push(warning(`beat ${beat.id}: nowhere here is called "${objective.target}"`));
-			if (objective.kind === "have" && !obtainable(artifact, objective.target))
-				findings.push(warning(`beat ${beat.id}: nothing here gives "${objective.target}"`));
+			const resolved = resolveObjectiveTarget(objective.kind, objective.target, surroundings);
+			if (resolved === undefined) {
+				findings.push(
+					warning(
+						`beat ${beat.id}: nothing here answers to "${objective.target}" as a ${objective.kind} target`,
+					),
+				);
+				continue;
+			}
+			// The world spells it differently, so the objective as written would never
+			// match. Assembly canonicalises this, so seeing it here means the draft was
+			// edited after assembly or written by hand.
+			if (resolved !== objective.target)
+				findings.push(
+					warning(
+						`beat ${beat.id}: "${objective.target}" is spelled "${resolved}" here; the objective will not match until it agrees`,
+					),
+				);
 		}
 	}
 
@@ -372,40 +424,79 @@ function checkTrees(artifact: ScenarioArtifact): Finding[] {
 	return findings;
 }
 
-/** Whether any authored place answers to this name, the way `placeNameAt` does. */
-function namedPlace(artifact: ScenarioArtifact, target: string): boolean {
-	const wanted = target.trim().toLowerCase();
-	if (!wanted) return false;
-	return Object.values(artifact.sites).some((spec) => {
-		const name = spec.name.toLowerCase();
-		return (
-			name.includes(wanted) || wanted.includes(name) || spec.shortName.toLowerCase() === wanted
-		);
-	});
+/**
+ * What a conversation at this site can truthfully promise.
+ *
+ * Assembled exactly as `GameEngine.surroundingsFor` assembles it, so the validator
+ * and the running game resolve an objective name identically. Before this, the
+ * validator matched places by substring and guessed at obtainability from a
+ * regular expression over roles — so a `reach: "mill"` objective passed authoring
+ * against a town called "Millgate Barracks" and could never be completed, because
+ * `verifyQuests` matches by significant words and would never agree.
+ *
+ * More generous than the live engine in one respect, deliberately: the whole bounded
+ * world is generated here, so ground the player has not walked to yet still counts.
+ * An authored errand is judged against the world as a whole, which is the right
+ * scope for content that ships complete.
+ */
+function surroundingsFor(
+	artifact: ScenarioArtifact,
+	siteId: number,
+	sites: Map<number, MacroSite>,
+	terrainAt: (x: number, y: number) => TerrainId | undefined,
+): Surroundings {
+	const site = sites.get(siteId);
+	const spec = artifact.sites[String(siteId)];
+	if (!site || !spec) return EMPTY_SURROUNDINGS;
+
+	invalidateSettlement(artifact.seed, site.id);
+	const built = generateSettlement(artifact.seed, site, spec.settlement);
+
+	// Every other authored place, so a `reach` objective may point out of town. The
+	// engine looks two macro cells out; here the bound is the world, since a scenario
+	// is finite and every place in it is somewhere the player can be sent.
+	const places = Object.values(artifact.sites)
+		.filter((other) => other.siteId !== siteId)
+		.map((other) => other.name);
+
+	return {
+		place: spec.name,
+		buildings: built.buildings.map((building) => ({
+			name: building.name ?? building.kind,
+			kind: building.kind,
+		})),
+		people: spec.npcs.map((npc) => ({ name: npc.name, role: npc.role })),
+		places,
+		items: [
+			...obtainableItems({
+				seed: artifact.seed,
+				siteId,
+				people: spec.npcs.map((npc) => ({ role: npc.role, slot: npc.slot })),
+				buildings: built.buildings.map((building) => ({
+					interiorId: building.interiorId,
+					kind: building.kind,
+				})),
+				ground: { centre: site.site, radius: site.radius, terrainAt },
+			}),
+			// Anything written dialogue hands over, anywhere in the scenario. A fetch
+			// quest is satisfiable if *some* authored conversation gives the item, even
+			// when that conversation happens in another town.
+			...authoredGifts(artifact),
+		],
+	};
 }
 
-/**
- * Whether anything in the world hands this item over.
- *
- * Written dialogue is checked exactly. Shops are treated as a possible source
- * without enumerating them, because stock is derived from role and slot at runtime
- * and reproducing that here would trade a rare false negative for a warning on
- * almost every fetch quest.
- */
-function obtainable(artifact: ScenarioArtifact, target: string): boolean {
-	const wanted = target.trim().toLowerCase();
-	if (!wanted) return false;
-	const given = Object.values(artifact.trees ?? {}).some((tree) =>
-		Object.values(tree.nodes).some((node) =>
-			(node.actions ?? []).some(
-				(action) =>
-					(action.kind === "giveItem" || action.kind === "sell") &&
-					(action.item ?? "").trim().toLowerCase() === wanted,
-			),
-		),
-	);
-	if (given) return true;
-	return Object.values(artifact.sites).some((spec) =>
-		spec.npcs.some((npc) => /merchant|trader|shop|smith|apothecary|innkeep/i.test(npc.role)),
-	);
+/** Item names some authored conversation gives or sells. */
+function authoredGifts(artifact: ScenarioArtifact): string[] {
+	const names: string[] = [];
+	for (const tree of Object.values(artifact.trees ?? {})) {
+		for (const node of Object.values(tree.nodes)) {
+			for (const action of node.actions ?? []) {
+				if ((action.kind === "giveItem" || action.kind === "sell") && action.item) {
+					names.push(action.item);
+				}
+			}
+		}
+	}
+	return names;
 }

@@ -2,7 +2,7 @@ import type { DomainEffect } from "../../core/rules/effects.js";
 import { basePrice, buyPrice, type StockItem, sellPrice } from "../../core/rules/shop.js";
 import type { GameState, QuestObjective } from "../../core/rules/state.js";
 import { itemCount } from "../../core/rules/state.js";
-import { resolveName, type Surroundings } from "../../core/rules/surroundings.js";
+import { resolveObjectiveTarget, type Surroundings } from "../../core/rules/surroundings.js";
 import type { ActionResponse } from "./schema.js";
 
 /**
@@ -280,7 +280,12 @@ function mapObjectives(
 		const requested = clean(objective.target);
 		if (!requested) continue;
 
-		const target = resolveObjectiveTarget(objective.kind, requested, surroundings, state);
+		const target = resolveObjectiveTarget(
+			objective.kind,
+			requested,
+			surroundings,
+			state.inventory.map((entry) => entry.name),
+		);
 		if (!target) {
 			onDropped?.(objective.kind, requested);
 			continue;
@@ -294,45 +299,6 @@ function mapObjectives(
 		});
 	}
 	return mapped;
-}
-
-function resolveObjectiveTarget(
-	kind: QuestObjective["kind"],
-	requested: string,
-	surroundings: Surroundings | undefined,
-	state: GameState,
-): string | undefined {
-	// Without surroundings there is nothing to check against, so the target passes
-	// through. Keeps every existing caller and test working unchanged, and means a
-	// missing wiring degrades to the old behaviour rather than to no quests at all.
-	if (!surroundings) return requested;
-
-	switch (kind) {
-		// A flag is the model's own bookkeeping and names nothing in the world.
-		case "flag":
-			return requested;
-
-		case "reach":
-			return resolveName(requested, [
-				...(surroundings.place ? [surroundings.place] : []),
-				...surroundings.places,
-				...surroundings.buildings.map((b) => b.name),
-			]);
-
-		case "talk":
-			return resolveName(
-				requested,
-				surroundings.people.map((p) => p.name),
-			);
-
-		case "have":
-			// Anything already carried counts: an NPC may ask for something the
-			// player picked up in a place this conversation knows nothing about.
-			return resolveName(requested, [
-				...surroundings.items,
-				...state.inventory.map((entry) => entry.name),
-			]);
-	}
 }
 
 function held(state: GameState, name: string, spent: Map<string, number>): number {
