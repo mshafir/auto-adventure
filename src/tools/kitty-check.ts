@@ -9,7 +9,7 @@
  * is merely "colourful" would look fine while being completely wrong.
  *
  *   vite-node src/tools/kitty-check.ts --
- *   vite-node src/tools/kitty-check.ts -- --implicit
+ *   vite-node src/tools/kitty-check.ts -- --explicit
  */
 import {
 	deleteFrame,
@@ -73,7 +73,8 @@ function main() {
 	const args = parseArgs(process.argv.slice(2));
 	const columns = Number(args.get("columns") ?? 40);
 	const rows = Number(args.get("rows") ?? 16);
-	const explicit = !args.has("implicit");
+	// Defaults to what the game emits, so a pass here means the game will work.
+	const explicit = args.has("explicit");
 	// Roughly a cell's aspect, so the pattern is not obviously squashed.
 	const width = columns * 8;
 	const height = rows * 16;
@@ -83,7 +84,7 @@ function main() {
 	out.write(`kitty graphics detected: ${detectKittyGraphics()}\n`);
 	out.write(`multiplexer in the way: ${graphicsBlockedByMultiplexer()}\n`);
 	out.write(
-		`placement: ${explicit ? "explicit row/column diacritics" : "implicit continuation"}\n`,
+		`placement: ${explicit ? "every cell named" : "row anchor, then continuation (what the game emits)"}\n`,
 	);
 	out.write(`image: ${width}x${height} px into ${columns}x${rows} cells\n\n`);
 
@@ -96,7 +97,8 @@ function main() {
 	out.write("If you see base64 text, the escapes are not being consumed.\n");
 	out.write("If you see nothing at all, the placement did not resolve.\n");
 	out.write("If the colours are shuffled, the row/column diacritics are wrong.\n");
-	out.write("Try --implicit to test continuation instead of explicit diacritics.\n");
+	out.write("Try --explicit to name every cell instead of continuing a run:\n");
+	out.write("if that works and this does not, the terminal lacks continuation.\n");
 
 	// Deliberately *not* deleting the image on the way out: the placement is what
 	// is on screen, and freeing it here would wipe the very thing being checked.

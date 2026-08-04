@@ -42,10 +42,16 @@ export const PLACEHOLDER = String.fromCodePoint(0x10_ee_ee);
 /**
  * Row and column diacritics, in the order the protocol assigns them.
  *
- * The full table is 297 entries; this is the prefix, which covers viewports up
- * to 64 cells on a side. `encodeCell` throws rather than silently wrapping past
- * the end, because a wrapped index draws the wrong slice of the image and is
- * very hard to recognise as an off-by-one on screen.
+ * The full table is 297 entries and this is only the first 64, which is a
+ * deliberate limit rather than an unfinished one. The values are a fixed list
+ * the protocol defines, not a range that can be computed, and a wrong entry
+ * does not fail — it silently draws the wrong slice of the image, which is
+ * miserable to recognise as an off-by-one. So the table stops where it is
+ * trustworthy, and {@link placeholderRows} is built to need only as many
+ * entries as the viewport has *rows*, which is comfortably inside it.
+ *
+ * A viewport is far wider than 64 columns, which is exactly how this limit was
+ * found. Columns are handled by continuation instead.
  */
 const DIACRITICS: readonly number[] = [
 	0x0305, 0x030d, 0x030e, 0x0310, 0x0312, 0x033d, 0x033e, 0x033f, 0x0346, 0x034a, 0x034b, 0x034c,
@@ -128,20 +134,37 @@ export function deleteFrame(imageId = FRAME_IMAGE_ID): string {
 	return `${APC}a=d,d=I,q=2,i=${imageId}${ST}`;
 }
 
-/**
- * One placeholder cell: the code point, plus diacritics naming which row and
- * column of the image it shows.
- */
-export function encodeCell(row: number, column: number): string {
-	const r = DIACRITICS[row];
-	const c = DIACRITICS[column];
-	if (r === undefined || c === undefined) {
+function diacritic(index: number, what: string): string {
+	const cp = DIACRITICS[index];
+	if (cp === undefined) {
 		throw new Error(
-			`kitty placeholder index out of range (row ${row}, column ${column}); ` +
-				`the diacritic table covers 0..${DIACRITICS.length - 1}`,
+			`kitty placeholder ${what} ${index} is past the diacritic table (0..${DIACRITICS.length - 1})`,
 		);
 	}
-	return PLACEHOLDER + String.fromCodePoint(r) + String.fromCodePoint(c);
+	return String.fromCodePoint(cp);
+}
+
+/**
+ * One placeholder cell naming both its row and its column.
+ *
+ * Only needed to anchor a run or to debug one. A whole viewport encoded this
+ * way needs as many diacritics as it has *columns*, which is more than the
+ * table has — see {@link placeholderRows} for what is actually emitted.
+ */
+export function encodeCell(row: number, column: number): string {
+	return PLACEHOLDER + diacritic(row, "row") + diacritic(column, "column");
+}
+
+/**
+ * The first cell of a row: says which row, and lets the column default to zero.
+ *
+ * Giving one diacritic rather than two is the whole trick that keeps this
+ * inside the trustworthy part of the table. A row index is bounded by the
+ * terminal's height, which is tens; a column index is bounded by its width,
+ * which is not.
+ */
+export function encodeRowStart(row: number): string {
+	return PLACEHOLDER + diacritic(row, "row");
 }
 
 /**
@@ -160,10 +183,14 @@ export function imageIdSequence(imageId = FRAME_IMAGE_ID): string {
 
 export interface PlaceholderOptions {
 	/**
-	 * Name every cell's row and column explicitly rather than letting the
-	 * terminal continue a run. Explicit is the safe default: continuation is the
-	 * part of the spec terminals differ most on, and a wrong guess draws a
-	 * plausible-looking but scrambled map.
+	 * Name every cell's row *and* column rather than letting the terminal
+	 * continue a run.
+	 *
+	 * Off by default, and it cannot be the default: a viewport is far wider than
+	 * the 64 diacritics this file is willing to vouch for, so explicit encoding
+	 * simply cannot express one. Kept for the smoke test, where the rectangle is
+	 * small enough and naming every cell is what distinguishes "continuation is
+	 * unsupported" from "the diacritic values are wrong".
 	 */
 	readonly explicit?: boolean;
 	readonly imageId?: number;
@@ -174,22 +201,29 @@ export interface PlaceholderOptions {
  *
  * Returned as one string per terminal row, to be handed to Ink as `<Text>`
  * exactly like the glyph renderer's encoded rows.
+ *
+ * Each row anchors itself with a single row diacritic and then runs bare, which
+ * the terminal continues rightward. That is not only what keeps the diacritic
+ * table small enough to trust — it is also most of the byte cost gone, since a
+ * bare placeholder is four UTF-8 bytes against ten for a fully-named cell.
  */
 export function placeholderRows(
 	columns: number,
 	rows: number,
 	options: PlaceholderOptions = {},
 ): string[] {
-	const explicit = options.explicit ?? true;
+	const explicit = options.explicit ?? false;
 	const prefix = imageIdSequence(options.imageId);
 	const out: string[] = [];
 
 	for (let row = 0; row < rows; row++) {
 		let line = prefix;
 		for (let column = 0; column < columns; column++) {
-			// Without diacritics the terminal continues from the previous cell, so
-			// only the first of a run has to say where it is.
-			line += explicit || column === 0 ? encodeCell(row, column) : PLACEHOLDER;
+			if (explicit) {
+				line += encodeCell(row, column);
+			} else {
+				line += column === 0 ? encodeRowStart(row) : PLACEHOLDER;
+			}
 		}
 		out.push(`${line}${ESC}[0m`);
 	}

@@ -14,6 +14,8 @@
 		"typecheck": "tsc --noEmit",
 		"preview": "vite-node src/tools/preview.ts --",
 		"pixel-shot": "vite-node src/tools/pixel-shot.ts --",
+		"kitty-check": "vite-node src/tools/kitty-check.ts --",
+		"kitty-size": "vite-node src/tools/kitty-size.ts",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"lint": "./node_modules/.bin/biome check .",
