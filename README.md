@@ -3,7 +3,7 @@
 A terminal RPG on an infinite, seamless, procedurally generated world, with an
 LLM as its author rather than its renderer.
 
-![A town, seen from the road](docs/screens/town.svg)
+![A recording of the game being played](docs/screens/play.gif)
 
 ```
 npm install
@@ -86,6 +86,14 @@ calls, tokens and latency per call type into the log on exit.
 
 ## What it looks like
 
+That recording is a real session, played offline with no model calls: waking up
+in a village, walking up the road to the shopkeeper, going through a crate in
+his house, and quitting. The stills below are particular moments.
+
+A town from the road, with the local map, the clock and a key to the glyphs.
+
+![A town, seen from the road](docs/screens/town.svg)
+
 Talking to somebody. Conversations are choice-only — the model suggests what you
 might say, and every option is a real branch rather than a text box.
 
@@ -109,10 +117,17 @@ asks first, and it tells you when an open errand still wants it.
 
 ![The inventory panel, with an errand item flagged](docs/screens/inventory.svg)
 
-These are rendered from real frames by `npm run screens` — the same compositor,
-palette and panels the game uses, captured through Ink and written out as SVG. So
-they are a build artifact rather than a photograph of somebody's terminal, and
-refreshing them after a change is one command.
+The stills are rendered from real frames by `npm run screens` — the same
+compositor, palette and panels the game uses, captured through Ink and written
+out as SVG. So they are a build artifact rather than a photograph of somebody's
+terminal, and refreshing them after a change is one command.
+
+The recording is [`docs/demo.tape`](docs/demo.tape), played back through
+[vhs](https://github.com/charmbracelet/vhs) — `npm run build && vhs docs/demo.tape`,
+which additionally needs `ttyd` and `ffmpeg`. Its keystrokes are generated rather
+than written: `npx vite-node src/tools/route.ts 23` builds the same world, paths
+through it with the same A\*, replays the result through a real engine to check
+it, and prints the tape body.
 
 ## Controls
 
