@@ -2,7 +2,7 @@ import { findPath } from "../../geom/astar.js";
 import { bspSplit } from "../../geom/bsp.js";
 import { labelComponents } from "../../geom/floodfill.js";
 import { rasterizePolyline } from "../../geom/line.js";
-import { type Rect, rectIntersection, type Vec2 } from "../../geom/vec.js";
+import { type Rect, rectIntersection, rectIntersects, type Vec2 } from "../../geom/vec.js";
 import { hash2 } from "../../rand/hash.js";
 import { type Rng, rngFor } from "../../rand/rng.js";
 import { D } from "../../tiles/decor.js";
@@ -149,7 +149,8 @@ function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): F
 
 	// --- town square ---------------------------------------------------------
 	const square = flattestNear(seed, site.site, 5);
-	stampDisc(patch, square, site.kind === "town" ? 4 : 3, T.cobbleRoad, buildable);
+	const squareRadius = site.kind === "town" ? 4 : 3;
+	stampDisc(patch, square, squareRadius, T.cobbleRoad, buildable);
 	anchors.push({ id: "square", kind: "square", x: square.x, y: square.y });
 	if (site.kind !== "camp") {
 		patchWrite(patch, square.x, square.y, T.cobbleRoad);
@@ -216,11 +217,35 @@ function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): F
 		}
 	}
 
+	/**
+	 * Nothing may be built on the square.
+	 *
+	 * The BSP is laid over the town centre and the square sits at the town centre,
+	 * so without this a plot lands squarely on top of it — burying the well, and
+	 * leaving the "square" anchor *inside somebody's house*. That anchor is where
+	 * people gather in the evening and where every carve path starts, so the whole
+	 * settlement is then routed from a tile behind a locked door. It went unnoticed
+	 * because a building used to be floored rather than roofed, which made the
+	 * stolen square passable and the connectivity check pass.
+	 */
+	const plaza: Rect = {
+		x: square.x - squareRadius - 1,
+		y: square.y - squareRadius - 1,
+		w: squareRadius * 2 + 3,
+		h: squareRadius * 2 + 3,
+	};
+
 	// A plot is a leaf inset by a street margin, kept only if it fits entirely
-	// on buildable ground.
+	// on buildable ground and clear of the square.
 	const plots = leaves
 		.map((leaf) => ({ x: leaf.x + 1, y: leaf.y + 1, w: leaf.w - 2, h: leaf.h - 2 }))
-		.filter((plot) => plot.w >= 5 && plot.h >= 5 && rectFullyBuildable(plot, buildable))
+		.filter(
+			(plot) =>
+				plot.w >= 5 &&
+				plot.h >= 5 &&
+				!rectIntersects(plot, plaza) &&
+				rectFullyBuildable(plot, buildable),
+		)
 		.sort((a, b) => b.w * b.h - a.w * a.h);
 
 	// --- assign structures to plots -----------------------------------------
@@ -587,6 +612,13 @@ function carveConnections(
 
 	for (const anchor of anchors) {
 		if (anchor.kind === "square") continue;
+		// An anchor that is itself impassable can never be routed to, and a failed
+		// A* explores the entire patch before saying so. Buildings emit `counter`,
+		// `hearth` and `backroom` anchors inside their own footprint, which became
+		// exactly this case when the footprint stopped being a floor and started
+		// being a roof — and doubled the time to generate a settlement chunk.
+		const index = patchIndex(patch, anchor.x, anchor.y);
+		if (index < 0 || !((patch.flags[index] ?? 0) & TFlag.Passable)) continue;
 		const path = findPath(
 			{ x: square.x, y: square.y },
 			{ x: anchor.x, y: anchor.y },

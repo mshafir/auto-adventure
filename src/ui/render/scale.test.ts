@@ -71,7 +71,7 @@ describe("horizontal expansion", () => {
 		});
 	});
 
-	describe("rule 3 — structural glyphs hold their column", () => {
+	describe("rule 4 — structural glyphs hold their column", () => {
 		it("never moves a person between halves of a tile", () => {
 			// Placing by position would shift the player half a tile left and right
 			// on every step, which reads as a wobble.
@@ -93,12 +93,38 @@ describe("horizontal expansion", () => {
 		});
 	});
 
-	describe("rule 2 — ground texture is drawn once", () => {
+	describe("rule 2 — an area fill covers its whole tile", () => {
+		it("repeats a shade, because its density is per area and not per glyph", () => {
+			/**
+			 * The bug this replaced: fills were dithered like specks, so half of every
+			 * tile of water, canopy or roof was left empty. `slotFor` is `(x+y) % 2`,
+			 * which over a solid mass is a chequerboard — a new roof came out looking
+			 * like a tiled floor, and the sea was rendered at half the density it was
+			 * composed at.
+			 */
+			for (const ch of ["░", "▒", "▓", "█", "≈", "~"]) {
+				expect(glyphs(expandRow([cell(ch)], 2, 0, 0)), ch).toBe(`${ch}${ch}`);
+				// And it stays covered wherever it sits, unlike a dithered speck.
+				expect(glyphs(expandRow([cell(ch)], 2, 0, 1)), ch).toBe(`${ch}${ch}`);
+			}
+		});
+
+		it("keeps a fill solid across a run of tiles", () => {
+			const out = glyphs(expandRow([cell("▓"), cell("▓"), cell("▓")], 2, 0, 0));
+			expect(out).toBe("▓▓▓▓▓▓");
+		});
+	});
+
+	describe("rule 3 — a speck is drawn once", () => {
 		it("never repeats a glyph, so density is preserved", () => {
-			// Doubling a glyph doubles the apparent density of whatever it depicts.
-			for (const ch of ["░", "▒", "▓", "█", "≈", "~", "*", ",", "▲", "†"]) {
+			// Doubling a countable mark doubles the apparent density of whatever it
+			// depicts: `▲▲` is two trees where `▲` is one.
+			for (const ch of ["*", ",", "▲", "†", "●", "≡"]) {
 				const out = expandRow([cell(ch)], 2, 0, 0);
-				expect(out.filter((c) => c.ch === ch)).toHaveLength(1);
+				expect(
+					out.filter((c) => c.ch === ch),
+					ch,
+				).toHaveLength(1);
 			}
 		});
 

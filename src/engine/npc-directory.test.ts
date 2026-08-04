@@ -280,3 +280,83 @@ describe("a town is never empty", () => {
 		expect(moves.length, "no town anywhere changes through the day").toBeGreaterThan(0);
 	}, 30_000);
 });
+
+describe("standing outside a building", () => {
+	/**
+	 * Found while recording a demo of the game.
+	 *
+	 * A door's other three neighbours are its own wall, so the doorstep is the only
+	 * tile it can be entered from — and walking into somebody talks to them rather
+	 * than displacing them. Placement preferred exactly that tile, so in the
+	 * measured village every one of the four doors had its own owner standing in
+	 * it and not a single building could be entered at any hour of the day.
+	 *
+	 * It survived because it looks completely reasonable: a shopkeeper waiting
+	 * outside their shop. Seed 23 is kept because towns have squares and stalls to
+	 * absorb people, and it takes a village with nothing but doorsteps to show it.
+	 */
+	const STEPS = [
+		[0, -1],
+		[0, 1],
+		[-1, 0],
+		[1, 0],
+	] as const;
+
+	/** The one tile a door can be approached from, when there is only one. */
+	function soleApproach(
+		view: ReturnType<typeof createWorldView>,
+		door: { x: number; y: number },
+	): { x: number; y: number } | undefined {
+		const open = STEPS.filter(([dx, dy]) => view.isPassable(door.x + dx, door.y + dy)).map(
+			([dx, dy]) => ({ x: door.x + dx, y: door.y + dy }),
+		);
+		return open.length === 1 ? open[0] : undefined;
+	}
+
+	function village(seed: number) {
+		const site = findTown(seed);
+		const { chunks, npcs } = populated(seed, site);
+		const view = createWorldView({ seed, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+		const reach = Math.ceil(site.radius / CHUNK) + 1;
+		const buildings = [];
+		for (let dy = -reach; dy <= reach; dy++) {
+			for (let dx = -reach; dx <= reach; dx++) {
+				buildings.push(...chunks.buildingsIn(site.mx + dx, site.my + dy));
+			}
+		}
+		return { site, npcs, view, buildings };
+	}
+
+	it("never stands in the only doorway a building has", () => {
+		for (const seed of [23, 65, hashString("npc-test"), hashString("vale")]) {
+			const { npcs, view, buildings } = village(seed);
+			expect(buildings.length, `seed ${seed} has no buildings`).toBeGreaterThan(0);
+
+			for (let hour = 0; hour < 24; hour += 2) {
+				npcs.setHour(hour);
+				const standing = new Set(npcs.all().map((npc) => `${npc.x},${npc.y}`));
+				for (const building of buildings) {
+					const step = soleApproach(view, building.door);
+					if (!step) continue;
+					expect(
+						standing.has(`${step.x},${step.y}`),
+						`seed ${seed}: the only way into a ${building.kind} is blocked at ${String(hour).padStart(2, "0")}:00`,
+					).toBe(false);
+				}
+			}
+		}
+	}, 60_000);
+
+	it("still puts people where their building is", () => {
+		// The cheap way to satisfy the above is to move everybody to the square, at
+		// which point a village is a crowd standing in a field.
+		const { npcs, buildings } = village(23);
+		npcs.setHour(11);
+		const near = npcs
+			.all()
+			.filter((npc) =>
+				buildings.some((b) => Math.abs(b.door.x - npc.x) + Math.abs(b.door.y - npc.y) <= 3),
+			);
+		expect(near.length, "nobody stands near any building").toBeGreaterThan(0);
+	}, 30_000);
+});

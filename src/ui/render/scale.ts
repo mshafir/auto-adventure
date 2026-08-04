@@ -41,13 +41,20 @@ export function tilesAcross(columns: number): number {
  *  1. A box-drawing glyph with an east arm continues its line (`┏` → `┏━`).
  *     These are *shapes*: `┏┏` is two corners and `┏ ` is a broken wall, so
  *     continuation is the only reading that survives doubling.
- *  2. Ground texture — fills, specks, canopy, rock — is drawn once, in whichever
- *     half of the tile its position selects, so it reads as scatter.
- *  3. Everything else keeps the left column and blanks the right: people, doors,
+ *  2. An area fill — water, canopy, roof shingle, cliff shading — covers the
+ *     whole tile.
+ *  3. A speck — grass, gravel, a tree, a rock — is drawn once, in whichever half
+ *     of the tile its position selects, so it reads as scatter.
+ *  4. Everything else keeps the left column and blanks the right: people, doors,
  *     windows, chests, and box-drawing that has no east arm to continue.
  *
- * No glyph is ever repeated: doubling a glyph doubles the apparent density of
- * whatever it represents.
+ * Rules 2 and 3 are the same question answered two ways, and getting it wrong is
+ * visible from across the room. Density for a speck is *per glyph* — `▲▲` is two
+ * trees where `▲` is one — so a speck must never be repeated. Density for a fill
+ * is *per area*: `▓▓` is the same shade as `▓` covering the same ground, and
+ * drawing it once leaves the other half of the tile empty. Treating fills as
+ * specks turned every roof into a chequerboard and rendered water and forest
+ * canopy at half the density they were composed at.
  */
 
 /**
@@ -88,25 +95,25 @@ const CONTINUATION: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Glyphs that shade an area rather than mark a spot.
+ *
+ * These repeat across the whole tile. They are mostly autotile output — the
+ * mass-edge and water-edge tables — plus the roof and bush fills, and what they
+ * all have in common is that the glyph *is* the ground: half a tile of `▓` and
+ * half a tile of nothing is not a lighter shade, it is a hole.
+ */
+const FILL: ReadonlySet<string> = new Set(["░", "▒", "▓", "█", "~", "≈"]);
+
+/**
  * Glyphs that may be placed in either half of their tile.
  *
- * Only ground texture qualifies. Everything structural — a door, a window, a
- * wall end-cap, a chest — is a shape at a known place, and shifting it half a
+ * Only countable ground marks qualify. Everything structural — a door, a window,
+ * a wall end-cap, a chest — is a shape at a known place, and shifting it half a
  * tile breaks whatever it was lining up with: dithering `┓` opens a gap between
  * the corner and the wall arriving from the west.
- *
- * Note this deliberately includes the mass-edge fills (`░▒▓█`) even though they
- * are autotile output, because they shade an *area* rather than draw an edge.
  */
-const TEXTURE: ReadonlySet<string> = new Set([
-	// Area fills: water, canopy, cliffs, shading.
-	"░",
-	"▒",
-	"▓",
-	"█",
-	"~",
-	"≈",
-	// Specks: grass, gravel, sand, flowers, crops, reeds.
+const SPECK: ReadonlySet<string> = new Set([
+	// Grass, gravel, sand, flowers, crops, reeds.
 	",",
 	".",
 	"'",
@@ -170,9 +177,16 @@ export function expandRow(cells: readonly Cell[], scale: number, worldX = 0, wor
 			continue;
 		}
 
-		// Rules 2 and 3. Only ground texture is free to move within its tile; a
-		// person that drifted between halves would appear to wobble as they walk.
-		const dither = !cell.entity && TEXTURE.has(cell.ch);
+		if (!cell.entity && FILL.has(cell.ch)) {
+			// Rule 2: a shade covers its whole tile. Repeating is what preserves the
+			// density here, rather than what destroys it.
+			for (let n = 0; n < scale; n++) out[i++] = cell;
+			continue;
+		}
+
+		// Rules 3 and 4. Only a speck is free to move within its tile; a person
+		// that drifted between halves would appear to wobble as they walk.
+		const dither = !cell.entity && SPECK.has(cell.ch);
 		const slot = dither ? slotFor(worldX + col, worldY, scale) : 0;
 		for (let n = 0; n < scale; n++) {
 			// The style is identical across the pair either way, so the run-length

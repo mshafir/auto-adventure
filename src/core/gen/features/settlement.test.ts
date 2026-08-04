@@ -436,3 +436,97 @@ describe("walled settlements", () => {
 		expect(checked, "no walled settlements were sampled").toBeGreaterThan(0);
 	});
 });
+
+describe("the town square", () => {
+	/**
+	 * Found while giving buildings roofs. The BSP that produces plots is laid over
+	 * the town centre and the square sits at the town centre, so a plot could land
+	 * on top of it — burying the well and leaving the `square` anchor inside
+	 * somebody's house. Everyone gathers there in the evening and every carve path
+	 * starts there, so the whole settlement was routed from a tile behind a door.
+	 *
+	 * It survived because a building used to be floored rather than roofed: the
+	 * stolen square stayed passable, so the connectivity check saw nothing wrong.
+	 */
+	it("is never built on", () => {
+		for (const name of ["alpha", "harrow", "vale", "moss", "hollowmoor"]) {
+			const { seed, sites } = sampleSites(name, 3);
+			for (const site of sites.slice(0, 8)) {
+				const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+				const square = patch.anchors.find((a) => a.kind === "square");
+				if (!square) continue;
+
+				for (const building of patch.buildings) {
+					const { rect } = building;
+					const inside =
+						square.x >= rect.x &&
+						square.x < rect.x + rect.w &&
+						square.y >= rect.y &&
+						square.y < rect.y + rect.h;
+					expect(inside, `${name}: a ${building.kind} was built on the square`).toBe(false);
+				}
+			}
+		}
+	}, 30_000);
+
+	it("is somewhere the player can stand", () => {
+		// The weaker version of the above, and the one that actually bit: whatever
+		// covers the square, it has to be walkable.
+		for (const name of ["alpha", "harrow", "vale", "moss"]) {
+			const { seed, sites } = sampleSites(name, 3);
+			for (const site of sites.slice(0, 8)) {
+				const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+				const square = patch.anchors.find((a) => a.kind === "square");
+				if (!square) continue;
+				expect(
+					patchPassable(patch, square.x, square.y),
+					`${name}: the square of a ${site.kind} cannot be stood on`,
+				).toBe(true);
+			}
+		}
+	}, 30_000);
+});
+
+describe("buildings seen from outside", () => {
+	it("are roofed, not floored", () => {
+		// Interiors are separate grids, so the tiles inside the wall ring are only
+		// ever seen from above. Writing the floor there drew the floorboards of a
+		// closed building through its own roof and made a town read as a plan.
+		const { seed, sites } = sampleSites("roofs", 3);
+		let checked = 0;
+		for (const site of sites.slice(0, 8)) {
+			const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+			for (const building of patch.buildings) {
+				if (building.kind === "ruin") continue;
+				const { rect } = building;
+				for (let y = rect.y + 1; y < rect.y + rect.h - 1; y++) {
+					for (let x = rect.x + 1; x < rect.x + rect.w - 1; x++) {
+						const i = patchIndex(patch, x, y);
+						if (i < 0) continue;
+						expect(patch.terrain[i], `${building.kind} shows its floor at ${x},${y}`).toBe(T.roof);
+						checked++;
+					}
+				}
+			}
+		}
+		expect(checked).toBeGreaterThan(100);
+	}, 30_000);
+
+	it("cannot be walked into except through the door", () => {
+		// A roof is impassable where a floor was not, so this is now true of the
+		// footprint as well as the wall ring.
+		const { seed, sites } = sampleSites("roofs", 3);
+		for (const site of sites.slice(0, 8)) {
+			const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+			for (const building of patch.buildings) {
+				if (building.kind === "ruin") continue;
+				const { rect } = building;
+				for (let y = rect.y + 1; y < rect.y + rect.h - 1; y++) {
+					for (let x = rect.x + 1; x < rect.x + rect.w - 1; x++) {
+						expect(patchPassable(patch, x, y), `${building.kind} is open at ${x},${y}`).toBe(false);
+					}
+				}
+			}
+		}
+	}, 30_000);
+});

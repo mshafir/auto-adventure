@@ -8,13 +8,15 @@ import {
 	type BuildingPlacement,
 	type FeaturePatch,
 	patchDecor,
+	patchIndex,
 	patchWrite,
 	type StructureKind,
 } from "./patch.js";
 
 export interface BuildingMaterials {
 	readonly wall: TerrainId;
-	readonly floor: TerrainId;
+	/** What fills the footprint as seen from outside: a roof, or open sky. */
+	readonly cover: TerrainId;
 }
 
 function materialsFor(kind: StructureKind): BuildingMaterials {
@@ -23,11 +25,12 @@ function materialsFor(kind: StructureKind): BuildingMaterials {
 		case "barracks":
 		case "tower":
 		case "smithy":
-			return { wall: T.stoneWall, floor: T.floorStone };
+			return { wall: T.stoneWall, cover: T.roof };
+		// A ruin is roofless by definition, and its rubble is the point.
 		case "ruin":
-			return { wall: T.stoneWall, floor: T.rubble };
+			return { wall: T.stoneWall, cover: T.rubble };
 		default:
-			return { wall: T.woodWall, floor: T.floorWood };
+			return { wall: T.woodWall, cover: T.roof };
 	}
 }
 
@@ -87,14 +90,18 @@ export function buildStructure(
 	rng: Rng,
 	details?: { readonly name?: string; readonly signText?: string },
 ): BuildResult {
-	const { wall, floor } = materialsFor(kind);
+	const { wall, cover } = materialsFor(kind);
 	const anchors: Anchor[] = [];
 
+	// Roofed, not floored. Interiors are separate grids, so the tiles inside the
+	// wall ring are only ever seen from outside and from above — writing the floor
+	// there drew the floorboards of a closed building through its own roof, and a
+	// town came out looking like an architect's plan rather than a place.
 	for (let y = rect.y; y < rect.y + rect.h; y++) {
 		for (let x = rect.x; x < rect.x + rect.w; x++) {
 			const onEdge =
 				x === rect.x || y === rect.y || x === rect.x + rect.w - 1 || y === rect.y + rect.h - 1;
-			patchWrite(patch, x, y, onEdge ? wall : floor, onEdge ? 0 : TFlag.Interior);
+			patchWrite(patch, x, y, onEdge ? wall : cover, onEdge ? 0 : TFlag.Interior);
 		}
 	}
 
@@ -133,6 +140,24 @@ export function buildStructure(
 			patchDecor(patch, beside.x, beside.y, D.sign);
 			signAt = beside;
 		}
+	}
+
+	/**
+	 * Somewhere to stand that is not the doorway.
+	 *
+	 * The doorstep is the *only* tile a door can be entered from — the other three
+	 * neighbours are its own wall — so anyone standing there seals the building.
+	 * Reported by nothing, because it looks like a shopkeeper waiting outside their
+	 * shop; found by trying to walk into one. In one measured village every single
+	 * door had its owner in it and not one building could be entered at any hour.
+	 *
+	 * No terrain is written here. Claiming the tile could overwrite a neighbour's
+	 * wall, and the ground pass has already made everything buildable walkable, so
+	 * a tile that is not passable now is one that belongs to something else.
+	 */
+	const yard = yardBeside(rect, door, step, signAt);
+	if (yard && (patch.flags[patchIndex(patch, yard.x, yard.y)] ?? 0) & TFlag.Passable) {
+		anchors.push({ id: `b${index}:yard`, kind: "yard", x: yard.x, y: yard.y, building: index });
 	}
 
 	// Interior anchors sit on floor tiles, away from the door.
@@ -201,6 +226,32 @@ function besideStep(rect: Rect, door: Vec2, step: Vec2): Vec2 | undefined {
 	const horizontalWall = door.y === rect.y || door.y === rect.y + rect.h - 1;
 	const candidate = horizontalWall ? { x: step.x + 1, y: step.y } : { x: step.x, y: step.y + 1 };
 	return candidate;
+}
+
+/**
+ * A tile next to the doorstep for somebody to stand on.
+ *
+ * Along the wall first, so they read as belonging to the building, and on the
+ * side the sign did not take. Then one further out, for a doorway wedged against
+ * a neighbour.
+ */
+function yardBeside(rect: Rect, door: Vec2, step: Vec2, sign: Vec2 | undefined): Vec2 | undefined {
+	const horizontalWall = door.y === rect.y || door.y === rect.y + rect.h - 1;
+	const out = { x: step.x - door.x, y: step.y - door.y };
+	const candidates: readonly Vec2[] = horizontalWall
+		? [
+				{ x: step.x - 1, y: step.y },
+				{ x: step.x + 1, y: step.y },
+				{ x: step.x - 1, y: step.y + out.y },
+				{ x: step.x + 1, y: step.y + out.y },
+			]
+		: [
+				{ x: step.x, y: step.y - 1 },
+				{ x: step.x, y: step.y + 1 },
+				{ x: step.x + out.x, y: step.y - 1 },
+				{ x: step.x + out.x, y: step.y + 1 },
+			];
+	return candidates.find((c) => !(sign && c.x === sign.x && c.y === sign.y));
 }
 
 function interiorSpot(inner: Rect, kind: Anchor["kind"], rng: Rng): Vec2 | undefined {

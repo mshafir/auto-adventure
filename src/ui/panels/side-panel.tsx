@@ -274,7 +274,8 @@ function MapTab({
 	// Everything above the key is fixed; the key takes whatever is left, so a
 	// short terminal loses the bottom of the legend rather than overflowing the
 	// frame — which would make Ink clear and repaint the whole screen.
-	const fixed = 3 + 1 + biomes.length + 1 + (roads.length > 0 ? 1 : 0) + 1 + 1;
+	const fixed =
+		3 + (biomes.length > 0 ? 1 : 0) + biomes.length + 1 + (roads.length > 0 ? 1 : 0) + 1 + 1;
 	const legendRows = Math.max(0, rows - fixed);
 
 	const stamp = `${clock(state.time)}  day ${state.time.day}${light ? `  ${light}` : ""}`;
@@ -311,7 +312,9 @@ function MapTab({
 				<Text> </Text>
 			)}
 
-			<Rule width={width} label="ground" />
+			{/* Indoors there is no chunk summary, and a GROUND heading with nothing
+			    under it reads as something that failed to load. */}
+			{biomes.length > 0 && <Rule width={width} label="ground" />}
 			{biomes.map(([biome, count]) => (
 				<Field
 					key={biome}

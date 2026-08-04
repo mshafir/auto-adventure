@@ -259,10 +259,16 @@ function glyphFor(npc: NpcSpec): string {
 /**
  * Find somewhere for one NPC to stand.
  *
- * Preference order: the doorstep of the building they were named against, then
- * any anchor of the kind they asked for, then any free outdoor anchor at all.
- * The last fallback matters — the model's `placement` is advisory, and a
- * settlement small enough to have no square still has doorsteps.
+ * Preference order: the yard of the building they were named against, then any
+ * anchor of the kind they asked for, then any free outdoor anchor at all. The
+ * last fallback matters — the model's `placement` is advisory, and a settlement
+ * small enough to have no square still has yards.
+ *
+ * Never a doorstep. That tile is the only one a door can be entered from, since
+ * the other three neighbours are its own wall, so somebody standing there seals
+ * the building. It looked entirely reasonable on screen — a shopkeeper waiting
+ * outside their shop — and in one measured village it made every door in the
+ * place unusable at every hour of the day.
  */
 function pickAnchor(
 	npc: NpcSpec,
@@ -276,14 +282,16 @@ function pickAnchor(
 		const wanted = npc.structureName.toLowerCase();
 		const building = buildings.find((b) => b.name?.toLowerCase() === wanted);
 		if (building) {
-			const step = anchors.find(
-				(a) => a.kind === "doorstep" && a.building === building.index && free(a),
+			const own = anchors.find(
+				(a) => a.kind === "yard" && a.building === building.index && free(a),
 			);
-			if (step) return step;
+			if (own) return own;
 		}
 	}
 
-	const wantedKind = npc.placement === "yard" ? "doorstep" : npc.placement;
+	// "yard" is what the schema calls standing outside your own building, and it
+	// is now a real anchor rather than an alias for the doorway.
+	const wantedKind = npc.placement === "doorstep" ? "yard" : npc.placement;
 	return anchors.find((a) => a.kind === wantedKind && free(a)) ?? anchors.find(free);
 }
 
@@ -336,12 +344,17 @@ function stationsFor(
 	};
 }
 
+/**
+ * Anchors somebody may stand on.
+ *
+ * `doorstep` is deliberately absent: it is the sole approach to a door, so an
+ * NPC parked there locks the building for good.
+ */
 const OUTDOOR: ReadonlySet<Anchor["kind"]> = new Set([
 	"square",
 	"well",
 	"stall",
 	"bench",
 	"gate",
-	"doorstep",
 	"yard",
 ]);
