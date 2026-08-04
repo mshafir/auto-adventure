@@ -1,3 +1,4 @@
+import type { WorldBounds } from "../world/bounds.js";
 import type { ScenarioBrief } from "../world/brief.js";
 import type { ChunkKey } from "../world/coords.js";
 import type { RegionSpec, SiteSpec, SpecSource, WorldLore } from "../world/spec.js";
@@ -12,6 +13,16 @@ export interface WorldMeta {
 	readonly name: string;
 	readonly seed: number;
 	readonly createdAt: string;
+	/**
+	 * The edge of the world, for a pre-generated scenario. Absent means infinite.
+	 *
+	 * Stored here beside the seed because it is part of what the world *is*: a
+	 * bounded save has to stay bounded on reload whether or not the artifact it
+	 * came from is still on disk. Terrain is a pure function of the seed and this.
+	 */
+	readonly bounds?: WorldBounds;
+	/** The scenario this world came from, if any. Re-attaches arc and dialogue. */
+	readonly scenarioId?: string;
 }
 
 /**

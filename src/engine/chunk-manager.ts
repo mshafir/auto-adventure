@@ -3,6 +3,7 @@ import type { SettlementSpec } from "../core/gen/features/settlement.js";
 import { generateChunk, type TerrainSummary } from "../core/gen/pipeline.js";
 import type { ChunkDelta } from "../core/rules/state.js";
 import { type Chunk, setTerrain } from "../core/tiles/chunk.js";
+import type { WorldBounds } from "../core/world/bounds.js";
 import { CHUNK, type ChunkCoord, type ChunkKey, chunkKey } from "../core/world/coords.js";
 import type { MacroSite } from "../core/world/macro.js";
 
@@ -13,6 +14,8 @@ export interface ChunkManagerOptions {
 	readonly onGenerated?: (key: ChunkKey, summary: TerrainSummary) => void;
 	/** Director-supplied settlement specs; absent means use the fallback roster. */
 	readonly specFor?: (site: MacroSite) => SettlementSpec | undefined;
+	/** The edge of a bounded world. Absent means infinite. */
+	readonly bounds?: WorldBounds;
 }
 
 interface Entry {
@@ -70,6 +73,7 @@ export class ChunkManager {
 			{
 				seed: this.options.seed,
 				...(this.options.specFor ? { specFor: this.options.specFor } : {}),
+				...(this.options.bounds ? { bounds: this.options.bounds } : {}),
 			},
 			cc,
 		);

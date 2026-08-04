@@ -5,6 +5,7 @@ import { type Chunk, createChunk, setTerrain } from "../tiles/chunk.js";
 import { TFlag } from "../tiles/flags.js";
 import { T, type TerrainId } from "../tiles/terrain.js";
 import { type BiomeId, biomeDef, classifyBiome } from "../world/biome.js";
+import { boundaryTerrain, isBoundary, type WorldBounds } from "../world/bounds.js";
 import { CHUNK, type ChunkCoord, localIndex } from "../world/coords.js";
 import { elevationBand, SEA_LEVEL } from "../world/fields.js";
 import { isSettlement, type MacroSite, sitesAround } from "../world/macro.js";
@@ -76,6 +77,15 @@ export interface GenContext {
 	 * what makes the world fully playable with no director at all.
 	 */
 	readonly specFor?: (site: MacroSite) => SettlementSpec | undefined;
+	/**
+	 * The edge of a bounded world, for pre-generated scenarios.
+	 *
+	 * Omitted everywhere else, which is why the goldens do not move: an unbounded
+	 * world generates exactly as it did. A tile stays a pure function of
+	 * `(seed, worldPosition, bounds)` and `bounds` is constant for a scenario, so
+	 * no stage reads another chunk and the seam contract is unaffected.
+	 */
+	readonly bounds?: WorldBounds;
 }
 
 /**
@@ -228,6 +238,11 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 		collectWithin(patch, originX, originY, buildings, anchors);
 	}
 
+	// S9 -- boundary. After the settlement patches, so a bounded world is closed
+	// whatever a patch tried to write at its edge, and before the tally, so the
+	// summary describes what the chunk actually is.
+	if (ctx.bounds) stampBoundary(chunk, ctx.bounds, seed, originX, originY);
+
 	// Tally after stamping, so the counts describe what the chunk actually is.
 	let waterTiles = 0;
 	let passableTiles = 0;
@@ -264,6 +279,34 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 			buildingCount: buildings.length,
 		},
 	};
+}
+
+/**
+ * Close the edge of a bounded world.
+ *
+ * Unconditional where it applies: a settlement or a road that reached into the
+ * band is overwritten, because a bounded world that is only *mostly* closed is
+ * not bounded. The authoring pass keeps site footprints clear of the band so this
+ * is a guarantee rather than a routine event.
+ */
+function stampBoundary(
+	chunk: Chunk,
+	bounds: WorldBounds,
+	seed: number,
+	originX: number,
+	originY: number,
+): void {
+	const terrain = boundaryTerrain(bounds.style);
+	for (let ly = 0; ly < CHUNK; ly++) {
+		const wy = originY + ly;
+		for (let lx = 0; lx < CHUNK; lx++) {
+			if (!isBoundary(seed, bounds, originX + lx, wy)) continue;
+			setTerrain(chunk, lx, ly, terrain);
+			// Decor is drawn over terrain, so a tree left standing here would appear
+			// to grow out of the cliff that replaced the ground under it.
+			chunk.decor[localIndex(lx, ly)] = 0;
+		}
+	}
 }
 
 /** Copy the portion of a feature patch that falls inside this chunk. */

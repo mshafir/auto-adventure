@@ -1,5 +1,6 @@
 import { generateChunk } from "../core/gen/pipeline.js";
 import { TFlag } from "../core/tiles/flags.js";
+import type { WorldBounds } from "../core/world/bounds.js";
 import { CHUNK, type ChunkCoord } from "../core/world/coords.js";
 import { isSettlement, sitesAround } from "../core/world/macro.js";
 
@@ -11,7 +12,11 @@ import { isSettlement, sitesAround } from "../core/world/macro.js";
  * spiral looking for standable ground, preferring somewhere near a settlement
  * so a new player has something to walk toward.
  */
-export function findSpawn(seed: number, maxRadius = 12): { x: number; y: number } {
+export function findSpawn(
+	seed: number,
+	maxRadius = 12,
+	bounds?: WorldBounds,
+): { x: number; y: number } {
 	for (let radius = 0; radius <= maxRadius; radius++) {
 		for (const cc of ring(radius)) {
 			// Prefer chunks whose halo contains a settlement, so the opening view
@@ -19,14 +24,14 @@ export function findSpawn(seed: number, maxRadius = 12): { x: number; y: number 
 			const settled = sitesAround(seed, cc.cx, cc.cy, 1).some((s) => isSettlement(s.kind));
 			if (radius > 0 && !settled) continue;
 
-			const spot = standableIn(seed, cc);
+			const spot = standableIn(seed, cc, bounds);
 			if (spot) return spot;
 		}
 	}
 
 	// Every candidate was unusable, which should be impossible; fall back to the
 	// origin chunk and accept whatever is there rather than looping forever.
-	return standableIn(seed, { cx: 0, cy: 0 }) ?? { x: 0, y: 0 };
+	return standableIn(seed, { cx: 0, cy: 0 }, bounds) ?? { x: 0, y: 0 };
 }
 
 function* ring(radius: number): Generator<ChunkCoord> {
@@ -42,8 +47,15 @@ function* ring(radius: number): Generator<ChunkCoord> {
 	}
 }
 
-function standableIn(seed: number, cc: ChunkCoord): { x: number; y: number } | undefined {
-	const { chunk } = generateChunk({ seed }, cc);
+function standableIn(
+	seed: number,
+	cc: ChunkCoord,
+	bounds?: WorldBounds,
+): { x: number; y: number } | undefined {
+	// Generated *with* the bounds, so the boundary band has already replaced the
+	// ground it covers. Testing passability against an unbounded chunk could spawn
+	// the player inside a cliff face.
+	const { chunk } = generateChunk({ seed, ...(bounds ? { bounds } : {}) }, cc);
 	const centre = CHUNK / 2;
 
 	let best: { x: number; y: number; distance: number } | undefined;

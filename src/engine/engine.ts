@@ -74,6 +74,7 @@ export class GameEngine {
 		this.chunks = new ChunkManager({
 			seed: initial.world.seed,
 			...(services.specFor ? { specFor: services.specFor } : {}),
+			...(initial.world.bounds ? { bounds: initial.world.bounds } : {}),
 		});
 		this.chunks.setDeltas(initial.deltas);
 		this.npcs = new NpcDirectory(this.chunks, (siteId) => this.services.siteSpec?.(siteId));
