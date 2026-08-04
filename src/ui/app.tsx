@@ -17,7 +17,7 @@ import { lightFor } from "./render/lighting.js";
 import { PAL } from "./render/palette.js";
 import { tileSourceFrom } from "./render/world-source.js";
 import { getEngine, useGameState } from "./store.js";
-import { cameraCenteredOn, Viewport } from "./viewport.js";
+import { cameraCenteredOn, tilesAcross, Viewport } from "./viewport.js";
 
 const SIDE_PANEL_WIDTH = 32;
 /** How far a lamp carries indoors. */
@@ -103,9 +103,13 @@ export default function App() {
 	// so the total is constant either way.
 	const panelHeight = panelHeightFor(state.dialogue !== undefined);
 	const mapHeight = Math.max(6, frameHeight - panelHeight);
+	// The camera is measured in tiles, the layout in terminal columns, and a tile
+	// is TILE_WIDTH columns wide. Centring on the player in tile space is what
+	// keeps them in the middle of the viewport at any tile width.
+	const cameraTiles = tilesAcross(mapWidth);
 	const camera = useMemo(
-		() => cameraCenteredOn([player.x, player.y], mapWidth, mapHeight),
-		[player.x, player.y, mapWidth, mapHeight],
+		() => cameraCenteredOn([player.x, player.y], cameraTiles, mapHeight),
+		[player.x, player.y, cameraTiles, mapHeight],
 	);
 
 	const cc = toChunk(player.x, player.y);

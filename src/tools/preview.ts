@@ -12,7 +12,7 @@ import { sitesAround } from "../core/world/macro.js";
 import { encodeScene } from "../ui/render/ansi.js";
 import { type ColorDepth, detectColorDepth } from "../ui/render/color.js";
 import { composeScene } from "../ui/render/compose.js";
-import { expandScene, type FillMode } from "../ui/render/scale.js";
+import { expandScene, TILE_WIDTH } from "../ui/render/scale.js";
 import { createWorldTileSource } from "../ui/render/world-source.js";
 
 /**
@@ -63,8 +63,8 @@ function main() {
 	const height = Number(args.get("height") ?? 32);
 	const depth = (args.get("color") as ColorDepth | undefined) ?? detectColorDepth();
 	const ascii = args.has("ascii");
-	const xscale = Math.max(1, Math.trunc(Number(args.get("xscale") ?? 1)) || 1);
-	const xfill = (args.get("xfill") ?? "smart") as FillMode;
+	// Defaults to whatever the game draws, so this stays a faithful preview.
+	const xscale = Math.max(1, Math.trunc(Number(args.get("xscale") ?? TILE_WIDTH)) || 1);
 
 	const started = Date.now();
 	const { chunk, summary, buildings } = generateChunk({ seed }, cc);
@@ -90,7 +90,7 @@ function main() {
 			shadows: !args.has("flat"),
 			relief: !args.has("flat"),
 		});
-		const scaled = expandScene(scene, xscale, xfill);
+		const scaled = expandScene(scene, xscale);
 		process.stdout.write(`${encodeScene(scaled, depth).join("\n")}\n`);
 	}
 

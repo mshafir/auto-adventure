@@ -1,4 +1,4 @@
-import type { TerrainId } from "../../core/tiles/terrain.js";
+import { T, type TerrainId } from "../../core/tiles/terrain.js";
 
 /**
  * Neighbour bits. A set bit means "the neighbour in that direction matches me",
@@ -42,12 +42,24 @@ function densityTable(exposed: string, one: string, two: string, three: string, 
 
 const sameTerrain = (id: TerrainId, self: TerrainId) => id === self;
 
+/**
+ * A wall continues through its own openings.
+ *
+ * Doors and windows are separate terrain ids, so plain same-terrain matching
+ * treated each one as the end of the wall: a cottage front came out as
+ * `┗╸▤■+■▤╹` — two end-caps and a pair of isolated pillars — instead of one
+ * unbroken run. The opening is *in* the wall, so for connection purposes it is
+ * part of it.
+ */
+const wallPlane = (id: TerrainId, self: TerrainId) =>
+	id === self || id === T.window || id === T.doorClosed || id === T.doorOpen;
+
 /** Heavy box drawing: stone and timber walls. Index 0 is an isolated pillar. */
 export const HEAVY_WALL: AutotileSet = {
 	key: "heavyWall",
 	//              0    N    E    NE   S    NS   ES   NES  W    NW   EW   NEW  SW   NSW  ESW  all
 	table: maskTable("■", "╹", "╺", "┗", "╻", "┃", "┏", "┣", "╸", "┛", "━", "┻", "┓", "┫", "┳", "╋"),
-	matches: sameTerrain,
+	matches: wallPlane,
 };
 
 /** Light box drawing: fences and rails. Index 0 is a lone post. */

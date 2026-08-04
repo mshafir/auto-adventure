@@ -12,6 +12,15 @@ export interface Cell {
 	bg: RGB;
 	bold: boolean;
 	dim: boolean;
+	/**
+	 * The glyph came from the entity or overlay layer — a person, the player, a
+	 * cursor — rather than from terrain.
+	 *
+	 * Only horizontal scaling cares: static world texture may be placed in either
+	 * half of a widened tile to avoid pinstripes, but something that *moves* has
+	 * to sit in the same half every frame or it appears to wobble as it walks.
+	 */
+	entity?: boolean;
 }
 
 /** Drawn above decor: the player, NPCs, creatures. */
@@ -302,17 +311,23 @@ export function composeScene(
 				}
 			}
 
+			let moving = false;
+
 			const entity = source.entityAt(wx, wy);
 			if (entity) {
 				ch = entity.ch;
 				fg = entity.fg;
 				bold = entity.bold ?? true;
 				dim = false;
+				moving = true;
 			}
 
 			const overlay = source.overlayAt?.(wx, wy);
 			if (overlay) {
-				if (overlay.ch !== undefined) ch = overlay.ch;
+				if (overlay.ch !== undefined) {
+					ch = overlay.ch;
+					moving = true;
+				}
 				if (overlay.fg) fg = overlay.fg;
 				if (overlay.bg) bg = overlay.bg;
 				if (overlay.bold !== undefined) bold = overlay.bold;
@@ -328,7 +343,7 @@ export function composeScene(
 				bg = scaleColor(bg, light);
 			}
 
-			cells[col] = { ch, fg, bg, bold, dim };
+			cells[col] = moving ? { ch, fg, bg, bold, dim, entity: true } : { ch, fg, bg, bold, dim };
 		}
 
 		rows[row] = cells;

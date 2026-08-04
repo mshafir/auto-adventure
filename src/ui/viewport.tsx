@@ -8,6 +8,9 @@ import {
 	composeScene,
 	type TileSource,
 } from "./render/compose.js";
+import { expandScene, TILE_WIDTH, tilesAcross } from "./render/scale.js";
+
+export { TILE_WIDTH, tilesAcross };
 
 let cachedDepth: ColorDepth | undefined;
 
@@ -37,7 +40,9 @@ export interface ViewportProps {
 export function Viewport({ source, camera, options }: ViewportProps) {
 	const depth = colorDepth();
 	const rows = useMemo(
-		() => encodeScene(composeScene(source, camera, options), depth),
+		// The camera is in tiles; expansion to columns happens after compositing,
+		// so lighting, autotiling and field of view all still work per tile.
+		() => encodeScene(expandScene(composeScene(source, camera, options), TILE_WIDTH), depth),
 		[source, camera, options, depth],
 	);
 

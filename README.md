@@ -10,6 +10,7 @@ NO_AI=1 npm start         # play with no model at all
 npm run preview -- --seed vale --at 0,0    # dump a chunk to stdout
 npm run preview -- --at 0,0 --ascii        # ...as one ASCII byte per tile
 npm run preview -- --at 0,0 --flat         # ...with shadows and slope shading off
+npm run preview -- --at 0,0 --xscale 1     # ...one column per tile instead of two
 npm run check             # typecheck + lint + tests
 ```
 
@@ -76,6 +77,7 @@ All variables are optional.
 | `LOG_FILE`, `LOG_LEVEL` | `log.txt`, `info` | The TUI owns stdout, so logs go to a file. |
 | `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Only needed if your terminal prints the escape instead of honouring it. |
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
+| `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. |
 
 Model calls cost tokens, so they are counted: `src/ai/telemetry.ts` reports
 calls, tokens and latency per call type into the log on exit.
