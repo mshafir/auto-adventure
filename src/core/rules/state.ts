@@ -3,6 +3,7 @@ import type { ScenarioBrief } from "../world/brief.js";
 import type { ChunkKey } from "../world/coords.js";
 import type { RegionSpec, SiteSpec, SpecSource, WorldLore } from "../world/spec.js";
 import type { ScenarioArc } from "./arc.js";
+import type { Card } from "./card.js";
 import type { NpcRecord } from "./npc.js";
 
 export const SAVE_VERSION = 3;
@@ -216,6 +217,15 @@ export interface GameState {
 	 * command so it reads as a reaction rather than as status.
 	 */
 	readonly notice?: string;
+	/**
+	 * A full screen of prose waiting to be read.
+	 *
+	 * UI-facing and never persisted, like `dialogue` — but unlike a notice it is not
+	 * cleared by the next command, because it is the thing the player is doing. It
+	 * blocks movement until dismissed, which is the point: framing that can be walked
+	 * out of without being read is framing nobody reads.
+	 */
+	readonly card?: Card;
 }
 
 export function createInitialState(

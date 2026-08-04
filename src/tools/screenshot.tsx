@@ -13,6 +13,7 @@ import { render } from "ink";
 import stripAnsi from "strip-ansi";
 import { fallbackLore, fallbackSite } from "../ai/director/fallback.js";
 import { hashString } from "../core/rand/hash.js";
+import { openingCard } from "../core/rules/opening.js";
 import { createInitialState } from "../core/rules/state.js";
 import { siteContext } from "../core/world/context.js";
 import { CHUNK, chunkKey } from "../core/world/coords.js";
@@ -427,12 +428,43 @@ async function main() {
 		1,
 	);
 
-	await capture("inside", "Inside a building, where the crates are", (engine, site) => {
-		// Stand in the doorway of the first building with an interior and step in.
-		const building = engine
-			.getChunks()
-			.buildingsIn(site.mx, site.my)
-			.find((b) => b.kind !== "ruin");
+	await capture("opening", "How a game introduces itself", (engine) => {
+		// The card every flavour opens on, assembled from what the world knows about
+		// itself. Raised directly here because the screenshot tool builds its own engine
+		// rather than going through `buildSession`, which is what raises it in play.
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [
+				{
+					t: "ShowCard",
+					card: openingCard({
+						lore: fallbackLore(),
+						placeName: "Harrowmere",
+						landscape: "old forest",
+						brief: {
+							protagonist: "a timber-tallier walking the road out of season",
+							storyline: "the player is looking for a sibling who stopped writing",
+						},
+					}),
+				},
+			],
+		});
+	});
+
+	await capture("inside", "Inside a building, where somebody is home", (engine, site) => {
+		// A building with somebody in it, so the shot shows a room that is lived in
+		// rather than a room with furniture in it.
+		const building =
+			engine
+				.getChunks()
+				.buildingsIn(site.mx, site.my)
+				.find(
+					(b) => b.kind !== "ruin" && engine.getResidents().in(b.interiorId, b.kind).length > 0,
+				) ??
+			engine
+				.getChunks()
+				.buildingsIn(site.mx, site.my)
+				.find((b) => b.kind !== "ruin");
 		if (!building) return;
 		engine.dispatch({
 			t: "ApplyEffects",
@@ -441,6 +473,18 @@ async function main() {
 		// Facing the door, then walking into it, is how you enter.
 		engine.dispatch({ t: "Move", facing: "down" });
 		engine.dispatch({ t: "Move", facing: "down" });
+
+		// Then stand beside whoever is home and look at them, so the shot shows the
+		// examine line for a resident rather than for a crate.
+		const inside = engine.getState().player.inside;
+		if (!inside) return;
+		const resident = engine.getResidents().in(inside.interiorId, inside.structure)[0];
+		if (!resident) return;
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [{ t: "Teleport", x: resident.x, y: resident.y + 1 }],
+		});
+		engine.dispatch({ t: "Move", facing: "up" });
 	});
 }
 

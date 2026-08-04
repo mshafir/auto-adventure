@@ -33,6 +33,9 @@ function choice(overrides: Partial<LaunchChoice> = {}): LaunchChoice {
  * dispatch would leave the player standing where they started.
  */
 function saveNow(session: ReturnType<typeof buildSession>) {
+	// The opening card blocks movement until it has been read, which is the point of
+	// it — so a test that walks has to read it first, like a player.
+	session.engine.dispatch({ t: "DismissCard" });
 	session.engine.dispatch({ t: "Move", facing: "down" });
 	session.engine.dispatch({ t: "Move", facing: "down" });
 	session.saves.schedule(session.engine.getState());
@@ -216,5 +219,90 @@ describe("a prebuilt world", () => {
 		expect(resumed.state.sites[siteId]).toEqual(artifact.sites[siteId]);
 		expect(resumed.state.brief).toEqual(artifact.brief);
 		resumed.dispose();
+	});
+});
+
+describe("the opening card", () => {
+	it("frames a world with no model at all", () => {
+		// The flavour with the least to work from. It still has to say where the player
+		// is and admit there is no errand, rather than starting them on a blank tile.
+		const session = buildSession(choice(), { saveDebounceMs: 0 });
+		const card = session.engine.getState().card;
+		expect(card?.id).toBe("opening");
+		expect(card?.sections.map((s) => s.heading)).toContain("Where you are");
+		expect(card?.sections.map((s) => s.heading)).toContain("What brought you here");
+		session.dispose();
+	});
+
+	it("frames a prebuilt scenario from its own arc", () => {
+		const artifact = demoArtifact();
+		const session = buildSession(
+			choice({
+				worldId: "framed",
+				flavour: "prebuilt",
+				scenario: {
+					...artifact,
+					arc: {
+						title: "The Tithe",
+						premise: "Somebody has to pay for the rope.",
+						beats: [],
+					},
+				},
+			}),
+			{ saveDebounceMs: 0 },
+		);
+		const card = session.engine.getState().card;
+		expect(card?.title).toBe(artifact.lore.title);
+		expect(card?.sections.find((s) => s.heading === "What brought you here")?.body).toBe(
+			"Somebody has to pay for the rope.",
+		);
+		session.dispose();
+	});
+
+	it("uses the brief when a world was asked to be about something", () => {
+		const session = buildSession(
+			choice({
+				worldId: "briefed",
+				brief: {
+					protagonist: "a tax collector nobody sent for",
+					storyline: "the player is owed money",
+				},
+			}),
+			{ saveDebounceMs: 0 },
+		);
+		const sections = session.engine.getState().card?.sections ?? [];
+		expect(sections.find((s) => s.heading === "Who you are")?.body).toBe(
+			"You are a tax collector nobody sent for.",
+		);
+		expect(sections.find((s) => s.heading === "What brought you here")?.body).toBe(
+			"You are owed money.",
+		);
+		session.dispose();
+	});
+
+	it("blocks the world until it has been read", () => {
+		const session = buildSession(choice({ worldId: "blocked" }), { saveDebounceMs: 0 });
+		const before = session.engine.getState().player;
+		session.engine.dispatch({ t: "Move", facing: "down" });
+		session.engine.dispatch({ t: "Move", facing: "down" });
+		expect(session.engine.getState().player).toEqual(before);
+
+		session.engine.dispatch({ t: "DismissCard" });
+		session.engine.dispatch({ t: "Move", facing: "down" });
+		session.engine.dispatch({ t: "Move", facing: "down" });
+		expect(session.engine.getState().player.y).not.toBe(before.y);
+		session.dispose();
+	});
+
+	it("does not show it again on a world that has already been played", () => {
+		const first = buildSession(choice({ worldId: "resumed" }), { saveDebounceMs: 0 });
+		saveNow(first);
+		first.dispose();
+
+		const again = buildSession(choice({ worldId: "resumed", mustExist: true }), {
+			saveDebounceMs: 0,
+		});
+		expect(again.engine.getState().card).toBeUndefined();
+		again.dispose();
 	});
 });

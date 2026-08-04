@@ -255,7 +255,21 @@
 				"id": "the-crown-yard",
 				"siteId": 3139050156,
 				"npcSlot": 0,
-				"journal": "Factor Odell bought a full ledger from a warden in autumn, at four parts in five, and was asked to forget her. He remembers the hand it was written in. So do you."
+				"journal": "Factor Odell bought a full ledger from a warden in autumn, at four parts in five, and was asked to forget her. He remembers the hand it was written in. So do you.",
+				"card": {
+					"title": "The hand you know",
+					"subtitle": "read in the back room of Odell's, by one lamp",
+					"sections": [
+						{
+							"heading": "The ledger",
+							"body": "It is not the crown's book and it was never meant to be. Two columns to a page: what the road carried, and what the yard received. The second is always the larger, and the difference is always about a cord, and it has been about a cord every month since the levy doubled."
+						},
+						{
+							"heading": "The hand",
+							"body": "Small, hard, and slanted to the left, the way she wrote everything from the time she was nine. She kept the true count for three winters, sold it to a man who buys paper and does not ask, and asked him to forget her. She did not stop writing. She stopped writing to you."
+						}
+					]
+				}
 			}
 		]
 	},

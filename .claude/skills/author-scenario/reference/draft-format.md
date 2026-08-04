@@ -109,8 +109,18 @@ judgement:
         "id": "the-clerk",
         "siteId": 2528282773,
         "npcSlot": 1,
-        "journal": "The toll clerk has not been seen at the gate since."
+        "journal": "The toll clerk has not been seen at the gate since.",
         // no quest: a beat that is only a revelation is good pacing
+        "card": {                     // optional; a full screen, shown once
+          "title": "The gate stands open",
+          "subtitle": "and nobody is taking the toll",   // optional
+          "sections": [               // 1-4 of them, each a heading and a paragraph
+            {
+              "heading": "What you find",
+              "body": "The bar is up, the ledger is open to a page three weeks old, and the ink in the well has dried to a skin."
+            }
+          ]
+        }
       }
     ]
   },
@@ -172,6 +182,11 @@ judgement:
 - `kind` must be in `allowedStructureKinds` and `placement` in `allowedPlacements`;
   both are closed sets. Preferring a `placement` from the site's `likelyAnchors` is
   advisory — a mismatch relocates the person and warns, it does not fail.
+- A `card` is for the turns a line of dialogue cannot carry: a revelation, a passage
+  of time, the moment the errand becomes something else. It stops the game until it
+  is read, so use two or three across a whole scenario, not one per beat. The game
+  raises one of its own at the start — assembled from your lore, brief and arc
+  premise — so a card on the first beat usually repeats it.
 - A beat's `siteId` must be a site of this seed, and its `npcSlot` must exist in that
   site's `npcs`.
 - A `reach` or `talk` objective is rewritten to the world's own spelling on assembly,

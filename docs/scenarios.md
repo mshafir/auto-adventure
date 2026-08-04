@@ -236,6 +236,7 @@ interface ScenarioBeat {
   readonly setsFlag: string;
   readonly quest?: Quest;
   readonly journal?: string;
+  readonly card?: CardBody;      // a full screen, for a turn dialogue cannot carry
 }
 ```
 
@@ -244,6 +245,93 @@ cannot wedge because an NPC forgot to call `completeQuest` — the failure mode
 `quests.ts` was written to eliminate. Dialogue nodes carry `ActionResponse`
 values, so a baked conversation can give items, open quests, adjust reputation
 and set flags through zero new runtime machinery.
+
+## Framing cards
+
+The game used to drop the player onto a tile with a place name in the corner and
+no statement of where they were, who they were, or why they had come. All three
+facts existed already — in the lore, in the brief, in the arc premise — and none
+were ever said out loud.
+
+A `Card` is a full screen of prose, raised by a `DomainEffect` and shown *once*:
+
+```ts
+interface Card {
+  readonly id: string;            // becomes `card:<id>` in the flags
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly sections: readonly { heading: string; body: string }[];
+  readonly footer?: string;
+}
+```
+
+Two properties earn it a place in state rather than in the UI.
+
+**Anything that can change the game can raise one.** It is an effect, so a beat,
+an arrival or a discovery can put one up without the UI knowing what occasions
+exist. `beatEffects` emits it after the quest and the journal, so what the player
+reads is already true of the game behind the card.
+
+**It is read once, ever.** The id becomes a persisted flag, set in the same step
+the card goes up. A beat re-applied after a partial save, or a world resumed from
+a save that already read it, cannot show it twice — and the card itself is
+dropped on load like `dialogue` and `notice`, so a save taken mid-read does not
+come back blocking the first keypress.
+
+Cards block movement, interaction and conversation while up (`CARD_BLOCKS` in
+`reduce.ts`), because framing that can be walked out of unread is framing nobody
+reads. Everything asynchronous stays live, so the world behind it is complete by
+the time it comes down.
+
+### The opening
+
+`openingCard()` assembles three fixed headings — the questions a player has in
+the first ten seconds, in the order they have them:
+
+| Heading | Prebuilt | Live | Procedural |
+| --- | --- | --- | --- |
+| Where you are | artifact lore + region + town | model lore, once it lands | fallback lore + landscape |
+| Who you are | `brief.protagonist` | `brief.protagonist` | a default line |
+| What brought you here | `arc.premise` | `brief.storyline` | admits there is no errand |
+
+Every part is optional and an empty part produces no heading, so the thinnest
+case — procedural, unbriefed — still reads as deliberate rather than broken. It
+never invents a motive: with no arc to hold the player to, there is no promise
+worth making.
+
+Timing is the one place the flavours differ. With no model the lore is already
+known, so `buildSession` raises the card immediately. With one, `getLore()` would
+answer with the deterministic fallback and the card would describe a world the
+game is about to replace — so it waits for `onLore`, which the director always
+fires, adopting its own fallback if the call fails.
+
+## People indoors
+
+Every interior was empty. You could walk into a house, read the furniture, search
+a crate and leave, and the only people in a town of twenty buildings were the
+three or four standing outdoors.
+
+`residentsOf(seed, interiorId, kind, interior)` is pure, like everything else
+about an interior, so a house always holds the same people without any of them
+being stored. Ids are `npc:in:{interiorId}:{slot}` — namespaced away from a
+site's `npc:{siteId}:{slot}`, since both halves are hashes and could otherwise
+collide into one shared memory record.
+
+The division of labour is deliberate. A town's **principals** come from the
+director: three or four per town, named by a model, carrying what they know and
+their part in the story. **Residents** are the other thirty, and a model call
+each would cost ten times the whole world for people whose function is to be
+somebody home when you knock. So the engine decides that a house holds a weaver
+and a child, and the model earns its keep in the *dialogue* — a live world
+improvises with them, a scenario falls back to the deterministic tree.
+
+They present as `PlacedNpc` at every read site. `engine.personAt` and
+`personById` promote a resident by filling in the two things that differ: their
+position is interior-local, and their site is resolved **from the doorway**
+(`inside.returnX/Y`) rather than from the player's own coordinates, which indoors
+would answer about whatever town sits near the world origin. That promotion is
+why a conversation with somebody's cooper works without the dialogue layer
+knowing residents exist — and why a resident can tell you the town's hook.
 
 ## Dialogue trees
 

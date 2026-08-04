@@ -75,6 +75,11 @@ function start() {
 		},
 		{ saveDebounceMs: 0 },
 	);
+	// Read the framing card, the way a player does before anything else. It blocks
+	// conversation on purpose, so a test that skipped it would be testing a state no
+	// player is ever in.
+	session.engine.dispatch({ t: "DismissCard" });
+
 	const anchor = npcId(siteId, 0);
 	const spec = artifact.sites[String(siteId)]?.npcs[0];
 	if (!spec) throw new Error("fixture has no anchor npc");
@@ -181,5 +186,66 @@ describe("an arc in play", () => {
 		expect(state.flags["arc:met-ilse"]).toBe(true);
 		expect(state.quests.map((q) => q.id)).toEqual(["find-rope"]);
 		resumed.dispose();
+	});
+});
+
+describe("a beat that frames itself", () => {
+	it("puts a full screen in front of the player as the beat opens", async () => {
+		const artifact = demoArtifact();
+		const siteId = Number(Object.keys(artifact.sites)[0]);
+		const anchor = npcId(siteId, 0);
+		const spec = artifact.sites[String(siteId)]?.npcs[0];
+		if (!spec) throw new Error("fixture has no anchor npc");
+
+		const session = buildSession(
+			{
+				worldId: "beat-card",
+				seed: 0,
+				flavour: "prebuilt",
+				scenario: {
+					...artifact,
+					arc: {
+						title: "The Tithe",
+						premise: "Somebody has to pay for the rope.",
+						beats: [
+							{
+								id: "the-barge",
+								order: 0,
+								siteId,
+								npcSlot: 0,
+								requires: [],
+								setsFlag: "arc:the-barge",
+								journal: "The barge went down with every coil aboard.",
+								card: {
+									title: "The narrows",
+									sections: [
+										{ heading: "What she tells you", body: "It went down in the narrows." },
+									],
+								},
+							},
+						],
+					},
+				},
+			},
+			{ saveDebounceMs: 0 },
+		);
+		session.engine.dispatch({ t: "DismissCard" });
+
+		session.engine.dispatch({ t: "DialogueOpened", npcId: anchor, npcName: spec.name });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const state = session.engine.getState();
+		expect(state.card?.id).toBe("beat:the-barge");
+		expect(state.card?.title).toBe("The narrows");
+		// And what it describes is already true behind it.
+		expect(state.journal.some((entry) => entry.text.includes("every coil aboard"))).toBe(true);
+
+		// Read once. Dismissing and reopening the conversation must not raise it again.
+		session.engine.dispatch({ t: "DismissCard" });
+		session.engine.dispatch({ t: "CloseDialogue" });
+		session.engine.dispatch({ t: "DialogueOpened", npcId: anchor, npcName: spec.name });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(session.engine.getState().card).toBeUndefined();
+		session.dispose();
 	});
 });

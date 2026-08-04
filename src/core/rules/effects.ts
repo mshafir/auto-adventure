@@ -1,4 +1,5 @@
 import type { ChunkCoord } from "../world/coords.js";
+import type { Card } from "./card.js";
 import type { NpcTurn } from "./npc.js";
 import type { Facing, JournalEntry, QuestObjective } from "./state.js";
 
@@ -33,6 +34,15 @@ export type DomainEffect =
 	| { readonly t: "CompleteQuest"; readonly id: string }
 	| { readonly t: "AbandonQuest"; readonly id: string }
 	| { readonly t: "SetFlag"; readonly key: string; readonly value: string | number | boolean }
+	/**
+	 * Put a full screen of prose in front of the player.
+	 *
+	 * Ignored if this card's id has already been read. That check lives in the
+	 * reducer rather than in the callers because the callers are the places least
+	 * able to know: a beat re-applied after a partial save, a session resumed, an
+	 * arrival re-entered. One idempotent effect is cheaper than five careful guards.
+	 */
+	| { readonly t: "ShowCard"; readonly card: Card }
 	| { readonly t: "AdjustDisposition"; readonly npcId: string; readonly delta: number }
 	| { readonly t: "AdjustReputation"; readonly faction: string; readonly delta: number }
 	/** Create the memory record for an NPC the player has just met. */

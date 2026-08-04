@@ -1,5 +1,6 @@
 import { getInterior } from "../core/gen/features/interior.js";
 import type { StructureKind } from "../core/gen/features/patch.js";
+import { isResidentId, type Resident } from "../core/gen/features/residents.js";
 import { invalidateSettlement, settlementBounds } from "../core/gen/features/settlement.js";
 import type { Command } from "../core/rules/commands.js";
 import type { Effect } from "../core/rules/effects.js";
@@ -10,11 +11,12 @@ import { reduce, type WorldProbe } from "../core/rules/reduce.js";
 import type { GameState } from "../core/rules/state.js";
 import { EMPTY_SURROUNDINGS, type Surroundings } from "../core/rules/surroundings.js";
 import { parseChunkKey, toChunk } from "../core/world/coords.js";
-import { type MacroSite, sitesAround } from "../core/world/macro.js";
+import { type MacroSite, regionIdAt, sitesAround } from "../core/world/macro.js";
 import type { SiteSpec } from "../core/world/spec.js";
 import { ChunkManager } from "./chunk-manager.js";
+import { InteriorPeople } from "./interior-people.js";
 import { createInteriorView } from "./interior-view.js";
-import { NpcDirectory } from "./npc-directory.js";
+import { NpcDirectory, type PlacedNpc } from "./npc-directory.js";
 import { createWorldView, type WorldView } from "./world-view.js";
 
 export interface EngineServices {
@@ -49,6 +51,7 @@ export class GameEngine {
 	private readonly listeners = new Set<() => void>();
 	private readonly chunks: ChunkManager;
 	private readonly npcs: NpcDirectory;
+	private readonly residents: InteriorPeople;
 	private readonly view: WorldView;
 	private draining = false;
 	private readonly queue: Effect[] = [];
@@ -65,6 +68,7 @@ export class GameEngine {
 		});
 		this.chunks.setDeltas(initial.deltas);
 		this.npcs = new NpcDirectory(this.chunks, (siteId) => this.services.siteSpec?.(siteId));
+		this.residents = new InteriorPeople(initial.world.seed);
 		this.view = createWorldView({
 			seed: initial.world.seed,
 			chunkAt: (cx, cy) => this.chunks.get(cx, cy),
@@ -84,6 +88,95 @@ export class GameEngine {
 
 	getNpcs(): NpcDirectory {
 		return this.npcs;
+	}
+
+	getResidents(): InteriorPeople {
+		return this.residents;
+	}
+
+	/**
+	 * Whoever is standing on a tile, indoors or out.
+	 *
+	 * One question with one answer, because every caller — the reducer deciding
+	 * whether a step is a conversation, the renderer drawing a glyph, the examine
+	 * verb — wants "who is here", not "who is here, and also which of two indexes
+	 * should I have asked". Indoors the position is interior-local, so the building
+	 * the player is in decides which roster is consulted.
+	 */
+	personAt(x: number, y: number): PlacedNpc | undefined {
+		const inside = this.state.player.inside;
+		if (!inside) return this.npcs.at(x, y);
+		const resident = this.residents.at(inside.interiorId, inside.structure, x, y);
+		return resident ? this.asPlaced(resident, inside) : undefined;
+	}
+
+	/**
+	 * Resolve anyone the player could be talking to, by id.
+	 *
+	 * A resident is only resolvable while the player is in their building, which is
+	 * also the only time a conversation with one can be open — walking out ends it,
+	 * because the panel closes with the step.
+	 */
+	personById(id: string): PlacedNpc | undefined {
+		if (isResidentId(id)) {
+			const inside = this.state.player.inside;
+			if (!inside) return undefined;
+			const resident = this.residents.byId(inside.interiorId, inside.structure, id);
+			return resident ? this.asPlaced(resident, inside) : undefined;
+		}
+		return this.npcs.byNpcId(id);
+	}
+
+	/**
+	 * Present a resident as an ordinary NPC.
+	 *
+	 * Everything downstream of "who is this" — the dialogue prompt, the shop stock,
+	 * the memory record, the examine line — already speaks `PlacedNpc`, and a
+	 * resident differs from one in exactly two ways: their position is interior-local,
+	 * and their site has to be looked up rather than being what placed them. Filling
+	 * those in here means none of those call sites need a second code path, which is
+	 * what makes a conversation with somebody's cooper work without touching the
+	 * dialogue layer at all.
+	 *
+	 * The site comes from the doorway. Indoors the player's own coordinates are
+	 * interior-local, so asking which settlement covers them would answer about a
+	 * town near the world origin — the same trap `reduce` documents for place names.
+	 */
+	private asPlaced(
+		resident: Resident,
+		inside: NonNullable<GameState["player"]["inside"]>,
+	): PlacedNpc {
+		const site = this.siteAt(inside.returnX, inside.returnY);
+		const station = { x: resident.x, y: resident.y };
+		return {
+			id: resident.id,
+			name: resident.name,
+			role: resident.role,
+			glyph: resident.glyph,
+			x: resident.x,
+			y: resident.y,
+			siteId: site?.id ?? 0,
+			regionId: site?.regionId ?? regionIdAt(this.state.world.seed, inside.returnX, inside.returnY),
+			spec: resident.spec,
+			// Indoors there is no schedule: a house is where these people already are,
+			// and the hour moving on must not remove them from the only room they have.
+			stations: {
+				dawn: station,
+				morning: station,
+				afternoon: station,
+				dusk: station,
+				evening: station,
+				night: station,
+			},
+		};
+	}
+
+	/** The settlement covering a world position. */
+	private siteAt(x: number, y: number): MacroSite | undefined {
+		const cc = toChunk(x, y);
+		return sitesAround(this.state.world.seed, cc.cx, cc.cy, 1).find(
+			(site) => Math.hypot(site.site.x - x, site.site.y - y) <= site.radius,
+		);
 	}
 
 	/** Derive NPC placements for every site reaching a position. */
@@ -137,16 +230,11 @@ export class GameEngine {
 	 * with one name.
 	 */
 	placeNameAt(x: number, y: number): string | undefined {
-		const cc = toChunk(x, y);
-		for (const site of sitesAround(this.state.world.seed, cc.cx, cc.cy, 1)) {
-			if (Math.hypot(site.site.x - x, site.site.y - y) > site.radius) continue;
-			// State first, because that is what persists; the director's own copy is
-			// the fallback for the frame between a spec landing and being dispatched.
-			const named =
-				this.state.sites[String(site.id)]?.name ?? this.services.siteSpec?.(site.id)?.name;
-			if (named) return named;
-		}
-		return undefined;
+		const site = this.siteAt(x, y);
+		if (!site) return undefined;
+		// State first, because that is what persists; the director's own copy is
+		// the fallback for the frame between a spec landing and being dispatched.
+		return this.state.sites[String(site.id)]?.name ?? this.services.siteSpec?.(site.id)?.name;
 	}
 
 	/**
@@ -242,7 +330,8 @@ export class GameEngine {
 		const probe: WorldProbe = {
 			isPassable: (x, y) => view.isPassable(x, y),
 			isLoaded: (x, y) => view.isLoaded(x, y),
-			npcAt: (x, y) => (inside ? undefined : this.npcs.at(x, y)),
+			npcAt: (x, y) =>
+				inside ? this.residents.at(inside.interiorId, inside.structure, x, y) : this.npcs.at(x, y),
 			doorAt: (x, y) => {
 				if (inside) return undefined;
 				const building = this.chunks.doorAt(x, y);

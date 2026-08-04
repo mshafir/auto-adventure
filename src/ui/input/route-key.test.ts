@@ -5,6 +5,7 @@ import { type KeyFlags, type RouteContext, routeKey } from "./route-key.js";
 function context(overrides: Partial<RouteContext> = {}): RouteContext {
 	return {
 		inDialogue: false,
+		onCard: false,
 		hud: initialHud(),
 		listCount: 0,
 		canDrop: false,
@@ -167,5 +168,50 @@ describe("a question that cannot be undone", () => {
 		expect(
 			routeKey("y", NONE, asking({ action: { t: "quit" }, prompt: "Save and quit?" })),
 		).toEqual({ t: "quit" });
+	});
+});
+
+describe("a card in front of everything", () => {
+	it("goes away on the keys that mean 'read'", () => {
+		for (const [input, key] of [
+			[" ", NONE],
+			["", { return: true }],
+			["", { escape: true }],
+		] as const) {
+			expect(routeKey(input, key, context({ onCard: true }))).toEqual({
+				t: "command",
+				command: { t: "DismissCard" },
+			});
+		}
+	});
+
+	it("swallows the arrow keys, so framing cannot be walked out of unread", () => {
+		expect(routeKey("", { upArrow: true }, context({ onCard: true }))).toBeUndefined();
+		expect(routeKey("", { rightArrow: true }, context({ onCard: true }))).toBeUndefined();
+	});
+
+	it("swallows the panel and quit keys too", () => {
+		// These would otherwise fire behind the card and look like the game had hung.
+		expect(routeKey("j", NONE, context({ onCard: true }))).toBeUndefined();
+		expect(routeKey("s", NONE, context({ onCard: true }))).toBeUndefined();
+	});
+
+	it("comes second to a pending confirmation, which is irreversible", () => {
+		const hud = initialHud();
+		const asking: HudState = {
+			...hud,
+			confirm: { action: { t: "quit" }, prompt: "Save and quit?" },
+		};
+		expect(routeKey("y", NONE, context({ onCard: true, hud: asking }))).toEqual({ t: "quit" });
+	});
+
+	it("outranks a conversation, because a beat can raise one mid-sentence", () => {
+		expect(
+			routeKey("", { upArrow: true }, context({ onCard: true, inDialogue: true })),
+		).toBeUndefined();
+		expect(routeKey(" ", NONE, context({ onCard: true, inDialogue: true }))).toEqual({
+			t: "command",
+			command: { t: "DismissCard" },
+		});
 	});
 });

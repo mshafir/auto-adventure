@@ -1,4 +1,5 @@
 import { npcId as makeNpcId } from "../world/spec.js";
+import type { CardSection } from "./card.js";
 import type { DomainEffect } from "./effects.js";
 import type { GameState, QuestObjective } from "./state.js";
 
@@ -38,6 +39,19 @@ export interface ScenarioBeat {
 	};
 	/** Written to the journal when the beat opens. */
 	readonly journal?: string;
+	/**
+	 * A full screen shown as the beat opens.
+	 *
+	 * For the turns in a story that a line of dialogue cannot carry — a revelation,
+	 * a passage of time, the moment the errand becomes something else. The id is
+	 * derived from the beat, so a card cannot be shown twice however often the
+	 * beat's effects are applied.
+	 */
+	readonly card?: {
+		readonly title: string;
+		readonly subtitle?: string;
+		readonly sections: readonly CardSection[];
+	};
 }
 
 export interface ScenarioArc {
@@ -45,6 +59,11 @@ export interface ScenarioArc {
 	/** What the story is, in a sentence or two. Shown when a scenario starts. */
 	readonly premise: string;
 	readonly beats: readonly ScenarioBeat[];
+}
+
+/** A beat's card id, namespaced so it cannot collide with the opening. */
+export function beatCardId(beat: Pick<ScenarioBeat, "id">): string {
+	return `beat:${beat.id}`;
 }
 
 /** The npc who opens a beat. */
@@ -110,6 +129,11 @@ export function beatEffects(beat: ScenarioBeat): DomainEffect[] {
 	}
 	if (beat.journal) {
 		effects.push({ t: "RecordJournal", entry: { kind: "event", text: beat.journal } });
+	}
+	// After the quest and the journal, so what the player reads is already true of
+	// the game behind the card — the errand is in the log by the time they look.
+	if (beat.card) {
+		effects.push({ t: "ShowCard", card: { ...beat.card, id: beatCardId(beat) } });
 	}
 	effects.push({ t: "SetFlag", key: beat.setsFlag, value: true });
 	return effects;

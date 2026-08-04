@@ -3,6 +3,7 @@ import { hashString } from "../rand/hash.js";
 import { npcId } from "../world/spec.js";
 import {
 	arcProgress,
+	beatCardId,
 	beatEffects,
 	beatIsOpen,
 	beatNpcId,
@@ -170,5 +171,40 @@ describe("beatIsOpen and arcProgress", () => {
 	it("reads a beat as open once its flag is set", () => {
 		expect(beatIsOpen(stateWith(), beat())).toBe(false);
 		expect(beatIsOpen(stateWith({ "arc:met-clerk": true }), beat())).toBe(true);
+	});
+});
+
+describe("a beat that raises a card", () => {
+	const withCard = {
+		id: "the-reveal",
+		order: 0,
+		siteId: 1,
+		npcSlot: 0,
+		requires: [],
+		setsFlag: "arc:the-reveal",
+		journal: "The ledger was in her hand.",
+		card: {
+			title: "The hand you know",
+			sections: [{ heading: "The ledger", body: "Every figure is in your sister's hand." }],
+		},
+	} as const;
+
+	it("names the card after the beat, so it cannot be shown twice", () => {
+		expect(beatCardId(withCard)).toBe("beat:the-reveal");
+		const card = beatEffects(withCard).find((effect) => effect.t === "ShowCard");
+		expect(card?.t === "ShowCard" && card.card.id).toBe("beat:the-reveal");
+	});
+
+	it("raises it after the quest and the journal, so the world behind it is already true", () => {
+		// The player reads the card and then looks at their log; the entry has to be
+		// there already, or the card describes something that has not happened yet.
+		const kinds = beatEffects(withCard).map((effect) => effect.t);
+		expect(kinds.indexOf("RecordJournal")).toBeLessThan(kinds.indexOf("ShowCard"));
+		expect(kinds.indexOf("ShowCard")).toBeLessThan(kinds.indexOf("SetFlag"));
+	});
+
+	it("raises nothing for a beat that did not ask for one", () => {
+		const { card: _card, ...plain } = withCard;
+		expect(beatEffects(plain).some((effect) => effect.t === "ShowCard")).toBe(false);
 	});
 });

@@ -1,4 +1,5 @@
 import { chunkKey, toChunk } from "../world/coords.js";
+import { cardKey, cardSeen, tidyCard } from "./card.js";
 import type { Command } from "./commands.js";
 import { type DomainEffect, type Effect, facingDelta, type Reduction } from "./effects.js";
 import type { LootItem } from "./loot.js";
@@ -136,7 +137,29 @@ function recordArrival(
 	};
 }
 
+/**
+ * Commands a card is allowed to interrupt.
+ *
+ * Gated in one place rather than with a guard in each handler: the failure this
+ * prevents is a card that can be walked out from under, and a list of what still
+ * works is far easier to check than five scattered early returns. Everything
+ * asynchronous stays live — a chunk landing or a spec arriving while the player
+ * reads must not be dropped, or the world behind the card would be missing pieces.
+ */
+const CARD_BLOCKS: ReadonlySet<Command["t"]> = new Set([
+	"Move",
+	"Interact",
+	"DropItem",
+	"Advance",
+	"ChoiceUp",
+	"ChoiceDown",
+	"Confirm",
+	"DialogueOpened",
+]);
+
 function step(state: GameState, command: Command, world: WorldProbe): Reduction {
+	if (state.card && CARD_BLOCKS.has(command.t)) return { state, effects: [] };
+
 	switch (command.t) {
 		case "Move":
 			return move(state, command.facing, world);
@@ -156,6 +179,11 @@ function step(state: GameState, command: Command, world: WorldProbe): Reduction 
 			return moveChoice(state, 1);
 		case "Confirm":
 			return confirm(state);
+		case "DismissCard": {
+			if (!state.card) return { state, effects: [] };
+			const { card: _card, ...rest } = state;
+			return { state: rest as GameState, effects: [] };
+		}
 		case "CloseDialogue":
 			return { state: withoutDialogue(state), effects: [] };
 		case "DialogueOpened":
@@ -243,10 +271,12 @@ function move(
 
 	// Walking into someone is how you talk to them. Doing it on movement rather
 	// than only on SPACE also makes NPCs solid without a separate collision pass.
-	if (!state.player.inside) {
-		const npc = world.npcAt(nx, ny);
-		if (npc) return openDialogue(state, npc);
-	}
+	//
+	// Indoors as well as out. This was guarded on being outdoors back when interiors
+	// held nobody, and the guard outlived the reason: once buildings had residents in
+	// them the player walked straight through the people standing in them.
+	const npc = world.npcAt(nx, ny);
+	if (npc) return openDialogue(state, npc);
 
 	if (!world.isLoaded(nx, ny)) {
 		// Refuse to step into ungenerated ground and ask for it to be built.
@@ -614,6 +644,18 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 			return { ...state, quests: state.quests.filter((q) => q.id !== effect.id) };
 		case "SetFlag":
 			return { ...state, flags: { ...state.flags, [effect.key]: effect.value } };
+		case "ShowCard": {
+			// Read once, ever. The flag goes down in the same step the card goes up, so
+			// a beat re-applied after a partial save cannot show its card a second time.
+			if (cardSeen(state.flags, effect.card.id)) return state;
+			const card = tidyCard(effect.card);
+			if (card.sections.length === 0 && !card.subtitle) return state;
+			return {
+				...state,
+				card,
+				flags: { ...state.flags, [cardKey(card.id)]: true },
+			};
+		}
 		case "RecordJournal":
 			return {
 				...state,

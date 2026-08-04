@@ -11,7 +11,7 @@ import { normalizeBrief } from "../core/world/brief.js";
 import type { RegionSpec, SiteSpec } from "../core/world/spec.js";
 import { npcId } from "../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "./artifact.js";
-import { ScenarioBriefSchema } from "./schema.js";
+import { CardBodySchema, ScenarioBriefSchema } from "./schema.js";
 import { surveyWorld } from "./survey.js";
 
 /**
@@ -84,6 +84,8 @@ const BeatDraftSchema = z.object({
 	siteId: z.number().int(),
 	npcSlot: z.number().int().min(0),
 	journal: z.string().max(240).optional(),
+	/** A full screen shown as this beat opens. For the turns dialogue cannot carry. */
+	card: CardBodySchema.optional(),
 	quest: z
 		.object({
 			name: z.string().min(1).max(80),
@@ -346,6 +348,7 @@ function lowerArc(
 					}
 				: {}),
 			...(raw.journal ? { journal: raw.journal } : {}),
+			...(raw.card ? { card: raw.card } : {}),
 		};
 	});
 	return { title: draft.title, premise: draft.premise, beats };

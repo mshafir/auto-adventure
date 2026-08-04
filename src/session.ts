@@ -2,9 +2,13 @@ import { createDialogueService } from "./ai/dialogue/dialogue.js";
 import { Director } from "./ai/director/director.js";
 import { logTelemetry } from "./ai/telemetry.js";
 import { hasGatewayKey } from "./config.js";
+import { cardSeen } from "./core/rules/card.js";
+import { openingCard } from "./core/rules/opening.js";
 import { createInitialState, type GameState } from "./core/rules/state.js";
+import { biomeDef } from "./core/world/biome.js";
 import type { ScenarioBrief } from "./core/world/brief.js";
 import { toChunk } from "./core/world/coords.js";
+import { regionIdAt } from "./core/world/macro.js";
 import type { SpecSource } from "./core/world/spec.js";
 import { createEffectRunner } from "./engine/effect-runner.js";
 import { GameEngine } from "./engine/engine.js";
@@ -102,7 +106,10 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 		sites: state.sites,
 		sources: state.specSources,
 		disabled: !live,
-		onLore: (lore) => host.engine?.dispatch({ t: "LoreLearned", lore }),
+		onLore: (lore) => {
+			host.engine?.dispatch({ t: "LoreLearned", lore });
+			showOpening();
+		},
 		onRegion: (spec) => host.engine?.dispatch({ t: "RegionLearned", spec }),
 		onSite: (spec, source) => host.engine?.dispatch({ t: "SiteLearned", spec, source }),
 		onSiteChanged: (site) => host.engine?.rebuildSite(site),
@@ -134,9 +141,51 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 	);
 	host.engine = engine;
 
+	/**
+	 * Put the framing card up, as soon as there is anything worth framing with.
+	 *
+	 * Idempotent by construction: `ShowCard` is ignored once the card's id is in the
+	 * flags, so this can be called from both paths below without either needing to
+	 * know whether the other already fired — or whether this world was resumed from a
+	 * save that had already read it.
+	 */
+	const showOpening = () => {
+		const engine = host.engine;
+		if (!engine || cardSeen(engine.getState().flags, "opening")) return;
+		const now = engine.getState();
+		const at = now.player;
+		const region = director.regionSpec(regionIdAt(now.world.seed, at.x, at.y));
+		const summary = engine.getChunks().summaryFor(toChunk(at.x, at.y).cx, toChunk(at.x, at.y).cy);
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [
+				{
+					t: "ShowCard",
+					card: openingCard({
+						lore: director.getLore(),
+						...(region ? { region } : {}),
+						...(engine.placeNameAt(at.x, at.y)
+							? { placeName: engine.placeNameAt(at.x, at.y) as string }
+							: {}),
+						...(summary ? { landscape: biomeDef(summary.dominantBiome).name.toLowerCase() } : {}),
+						...(now.brief ? { brief: now.brief } : {}),
+						...(now.arc ? { arc: now.arc } : {}),
+					}),
+				},
+			],
+		});
+	};
+
 	// Kick the director once so the place the player wakes up in has a name before
 	// they take their first step.
 	director.request(toChunk(state.player.x, state.player.y));
+
+	// With no model the lore and the region are already known, so the card is
+	// complete now. With one, `getLore()` would answer with the deterministic
+	// fallback and the card would describe a world the game is about to replace — so
+	// it waits for `onLore`, which the director always fires, adopting its own
+	// fallback if the call fails.
+	if (!live || !hasGatewayKey()) showOpening();
 
 	let disposed = false;
 	return {

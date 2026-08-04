@@ -15,6 +15,7 @@ import type { GameEngine } from "../engine/engine.js";
 import type { WorldView } from "../engine/world-view.js";
 import { hudReducer, initialHud, LIST_TABS } from "./hud-state.js";
 import { useGameInput } from "./input/use-game-input.js";
+import { CardScreen } from "./panels/card-screen.js";
 import { DialoguePanel, panelHeightFor } from "./panels/dialogue-panel.js";
 import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
 import { type PanelTab, SidePanel } from "./panels/side-panel.js";
@@ -140,7 +141,9 @@ export default function App({ initialTab = "map", initialCursor = 0 }: AppProps 
 					if (x === player.x && y === player.y) {
 						return { ch: PLAYER_GLYPH, fg: PAL.player, bold: true };
 					}
-					const npc = npcs.at(x, y);
+					// `personAt` rather than the outdoor directory: indoors the coordinates
+					// are interior-local and the people are the building's own residents.
+					const npc = engine.personAt(x, y);
 					// A letter per role is the classic roguelike answer and the only one
 					// with no glyph-width risk at all.
 					return npc ? { ch: npc.glyph, fg: dispositionColor(npc.spec.disposition) } : undefined;
@@ -152,7 +155,7 @@ export default function App({ initialTab = "map", initialCursor = 0 }: AppProps 
 						? { ch: FACING_MARKER, fg: PAL.player, bold: true }
 						: undefined,
 			}),
-		[view, npcs, npcs.revision, player.x, player.y, facedX, facedY],
+		[view, engine, npcs, npcs.revision, player.x, player.y, facedX, facedY, player.inside],
 	);
 
 	// Stay one row short of the window. Ink updates incrementally only while the
@@ -186,7 +189,7 @@ export default function App({ initialTab = "map", initialCursor = 0 }: AppProps 
 			engine.placeNameAt(player.inside.returnX, player.inside.returnY) ??
 			player.inside.structure)
 		: engine.placeNameAt(player.x, player.y);
-	const facedNpc = npcs.at(facedX, facedY);
+	const facedNpc = engine.personAt(facedX, facedY);
 
 	const inside = player.inside !== undefined;
 	const weather = useMemo(
@@ -225,11 +228,26 @@ export default function App({ initialTab = "map", initialCursor = 0 }: AppProps 
 		[light.tint, light.strength, fov],
 	);
 
-	const keyMode: KeyBarMode = state.dialogue
-		? { t: "dialogue" }
-		: hud.focus && LIST_TABS.has(hud.tab)
-			? { t: "panel", canDrop: held !== undefined }
-			: { t: "world" };
+	const keyMode: KeyBarMode = state.card
+		? { t: "card" }
+		: state.dialogue
+			? { t: "dialogue" }
+			: hud.focus && LIST_TABS.has(hud.tab)
+				? { t: "panel", canDrop: held !== undefined }
+				: { t: "world" };
+
+	// A card takes the whole frame rather than overlaying the map. Everything above
+	// is still computed, which costs a frame's worth of work nobody sees — but the
+	// alternative is hooks that run conditionally, and the map has to be ready the
+	// instant the card comes down anyway.
+	if (state.card) {
+		return (
+			<Box flexDirection="column" width={width} height={frameHeight}>
+				<CardScreen card={state.card} width={width} height={bodyHeight} />
+				<KeyBar width={width} mode={keyMode} />
+			</Box>
+		);
+	}
 
 	return (
 		<Box flexDirection="column" width={width} height={frameHeight}>
@@ -281,7 +299,7 @@ function describeFaced(
 	standingX: number,
 	standingY: number,
 ): string {
-	const npc = engine.getNpcs().at(x, y);
+	const npc = engine.personAt(x, y);
 	if (npc) return `${npc.name}, ${npc.role}. ${npc.spec.appearance}`;
 
 	const door = engine.getChunks().doorAt(x, y);

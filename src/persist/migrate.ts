@@ -74,14 +74,16 @@ function validate(value: Record<string, unknown>): GameState | undefined {
 	}
 
 	const state = value as unknown as GameState;
-	// `dialogue` and `notice` are UI-transient and must never come back from disk
-	// mid-turn: a restored notice would announce a discovery the player made in a
-	// previous session.
+	// `dialogue`, `notice` and `card` are UI-transient and must never come back from
+	// disk mid-turn: a restored notice would announce a discovery the player made in
+	// a previous session, and a restored card would block the first keypress of one.
+	// A card that has been read is recorded in the flags, which do persist, so
+	// dropping it here cannot bring it back.
 	//
 	// `brief` is dropped for a different reason and re-derived below: it is the one
 	// field a player is likely to hand-edit, and a blank string in it would read as
 	// an instruction rather than as silence.
-	const { dialogue: _dialogue, notice: _notice, brief: _brief, ...rest } = state;
+	const { dialogue: _dialogue, notice: _notice, card: _card, brief: _brief, ...rest } = state;
 	const brief = normalizeBrief(value.brief as ScenarioBrief | undefined);
 	return {
 		...(rest as GameState),

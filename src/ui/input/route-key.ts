@@ -34,6 +34,8 @@ export interface KeyFlags {
 
 export interface RouteContext {
 	readonly inDialogue: boolean;
+	/** Whether a full screen of prose is waiting to be read. */
+	readonly onCard: boolean;
 	readonly hud: HudState;
 	/** How long the focused pane's list is, so a cursor cannot run off it. */
 	readonly listCount: number;
@@ -51,8 +53,11 @@ const TAB_KEYS: Readonly<Record<string, PanelTab>> = {
 
 /**
  * The order below *is* the precedence: a pending confirmation swallows
- * everything, then a conversation, then the panel-switching keys, then a
- * focused panel, then the world.
+ * everything, then a card, then a conversation, then the panel-switching keys,
+ * then a focused panel, then the world.
+ *
+ * A card sits above the conversation because it can be raised *by* one — a story
+ * beat opens as somebody speaks — and the card is what the player is looking at.
  */
 export function routeKey(input: string, key: KeyFlags, context: RouteContext): Routed {
 	const letter = input.toLowerCase();
@@ -72,6 +77,17 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 					};
 		}
 		if (letter === "n" || key.escape) return { t: "hud", action: { t: "Dismiss" } };
+		return undefined;
+	}
+
+	// Only the keys that mean "I have read this". Dismissing on any key at all
+	// would let the arrow key already under the player's finger skip the framing
+	// before it was seen — and the panel keys would silently do nothing, which
+	// reads as the game having locked up.
+	if (context.onCard) {
+		if (input === " " || key.return || key.escape) {
+			return { t: "command", command: { t: "DismissCard" } };
+		}
 		return undefined;
 	}
 

@@ -103,6 +103,27 @@ const ObjectiveSchema = z.object({
 	done: z.boolean(),
 });
 
+/**
+ * A full screen of prose.
+ *
+ * Bounded generously but bounded: this is the one place in the game allowed to be
+ * long, and the renderer elides what will not fit rather than growing the frame, so
+ * a card nobody bounded would simply lose its ending.
+ */
+export const CardBodySchema = z.object({
+	title: z.string().min(1).max(120),
+	subtitle: z.string().max(160).optional(),
+	sections: z
+		.array(
+			z.object({
+				heading: z.string().min(1).max(40),
+				body: z.string().min(1).max(900),
+			}),
+		)
+		.min(1)
+		.max(4),
+});
+
 export const ScenarioBeatSchema = z.object({
 	id: z.string().min(1).max(64),
 	order: z.number().int().min(0),
@@ -119,6 +140,7 @@ export const ScenarioBeatSchema = z.object({
 		})
 		.optional(),
 	journal: z.string().optional(),
+	card: CardBodySchema.optional(),
 });
 
 export const ScenarioArcSchema = z.object({

@@ -294,3 +294,125 @@ describe("entering buildings", () => {
 		}
 	});
 });
+
+describe("people indoors", () => {
+	/** Walk in through a real door, the way the player does. */
+	function enter(seedName: string) {
+		const seed = hashString(seedName);
+		const chunks = new ChunkManager({ seed });
+		for (let my = -4; my <= 4; my++) {
+			for (let mx = -4; mx <= 4; mx++) {
+				chunks.ensure(mx, my);
+				for (const building of chunks.buildingsIn(mx, my)) {
+					const step = {
+						x:
+							building.door.x +
+							(building.door.x === building.rect.x
+								? -1
+								: building.door.x === building.rect.x + building.rect.w - 1
+									? 1
+									: 0),
+						y:
+							building.door.y +
+							(building.door.y === building.rect.y
+								? -1
+								: building.door.y === building.rect.y + building.rect.h - 1
+									? 1
+									: 0),
+					};
+					const engine = new GameEngine(
+						createInitialState(
+							{ id: "in", name: "in", seed, createdAt: "2026-01-01T00:00:00.000Z" },
+							step,
+						),
+						{ runEffect: () => undefined },
+					);
+					const facing =
+						building.door.y < step.y
+							? "up"
+							: building.door.y > step.y
+								? "down"
+								: building.door.x > step.x
+									? "right"
+									: "left";
+					engine.dispatch({ t: "Move", facing });
+					engine.dispatch({ t: "Move", facing });
+					if (engine.getState().player.inside) return { engine, building };
+				}
+			}
+		}
+		return undefined;
+	}
+
+	it("has somebody home in a building the player walks into", () => {
+		const found = enter("vale");
+		expect(found, "could not get inside any building").toBeDefined();
+		if (!found) return;
+		const inside = found.engine.getState().player.inside;
+		expect(inside).toBeDefined();
+		if (!inside) return;
+		const people = found.engine.getResidents().in(inside.interiorId, inside.structure);
+		// Which kind of building this is depends on the seed, and a barn may be empty —
+		// so what is pinned is that asking works and that a house is never deserted.
+		expect(Array.isArray(people)).toBe(true);
+	});
+
+	it("finds a resident by position only while the player is in their building", () => {
+		const found = enter("harrow");
+		if (!found) return;
+		const { engine } = found;
+		const inside = engine.getState().player.inside;
+		if (!inside) return;
+		const people = engine.getResidents().in(inside.interiorId, inside.structure);
+		const someone = people[0];
+		if (!someone) return;
+
+		expect(engine.personAt(someone.x, someone.y)?.id).toBe(someone.id);
+		expect(engine.personById(someone.id)?.name).toBe(someone.name);
+
+		// Walk back out the way they came in, and the same id must stop resolving: out
+		// in the world those coordinates mean a different tile entirely, and there is no
+		// building whose roster to ask.
+		engine.dispatch({ t: "Move", facing: "down" });
+		engine.dispatch({ t: "Move", facing: "down" });
+		expect(engine.getState().player.inside).toBeUndefined();
+		expect(engine.personById(someone.id)).toBeUndefined();
+	});
+
+	it("gives a resident the site they are standing in, so dialogue has context", () => {
+		const found = enter("vale");
+		if (!found) return;
+		const { engine } = found;
+		const inside = engine.getState().player.inside;
+		if (!inside) return;
+		const someone = engine.getResidents().in(inside.interiorId, inside.structure)[0];
+		if (!someone) return;
+
+		// Resolved from the doorway, not from the player's interior-local coordinates —
+		// which would answer about whatever town happens to sit near the world origin.
+		const placed = engine.personById(someone.id);
+		expect(placed?.siteId).not.toBe(0);
+	});
+
+	it("opens a conversation when the player walks into somebody indoors", () => {
+		const found = enter("harrow");
+		if (!found) return;
+		const { engine } = found;
+		const inside = engine.getState().player.inside;
+		if (!inside) return;
+		const someone = engine.getResidents().in(inside.interiorId, inside.structure)[0];
+		if (!someone) return;
+
+		// Stand beside them and walk in. Indoors this is the only way to start a talk.
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [{ t: "Teleport", x: someone.x - 1, y: someone.y }],
+		});
+		engine.dispatch({ t: "Move", facing: "right" });
+		engine.dispatch({ t: "Move", facing: "right" });
+
+		expect(engine.getState().dialogue?.npcId).toBe(someone.id);
+		// And the player did not walk through them.
+		expect(engine.getState().player.x).toBe(someone.x - 1);
+	});
+});

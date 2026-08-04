@@ -18,6 +18,7 @@ import type { PendingConfirm } from "../hud-state.js";
  */
 export type KeyBarMode =
 	| { readonly t: "world" }
+	| { readonly t: "card" }
 	| { readonly t: "dialogue" }
 	| { readonly t: "panel"; readonly canDrop: boolean };
 
@@ -47,6 +48,8 @@ interface BarContent {
 
 function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 	switch (mode.t) {
+		case "card":
+			return [{ key: "Space", label: "go on" }];
 		case "dialogue":
 			return [
 				{ key: "Up/Dn", label: "choose" },
@@ -101,12 +104,16 @@ function contentFor(mode: KeyBarMode, confirm: PendingConfirm | undefined): BarC
 	return {
 		left: keys(bindingsFor(mode)),
 		right: keys(
-			mode.t === "dialogue"
-				? [{ key: "Esc", label: "leave" }]
-				: [
-						{ key: "MWIQJ", label: "panels" },
-						{ key: "S", label: "save+quit" },
-					],
+			// A card swallows the panel keys too, and saying so is better than letting
+			// the player press J and watch nothing happen.
+			mode.t === "card"
+				? []
+				: mode.t === "dialogue"
+					? [{ key: "Esc", label: "leave" }]
+					: [
+							{ key: "MWIQJ", label: "panels" },
+							{ key: "S", label: "save+quit" },
+						],
 		),
 	};
 }

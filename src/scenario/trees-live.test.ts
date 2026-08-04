@@ -88,6 +88,10 @@ function start(withTrees = true) {
 		{ saveDebounceMs: 0 },
 	);
 
+	// Read the framing card first, the way a player does. It blocks conversation on
+	// purpose, so a test that skipped it would be testing a state no player is in.
+	session.engine.dispatch({ t: "DismissCard" });
+
 	const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 	const talkTo = async () => {
 		session.engine.dispatch({ t: "DialogueOpened", npcId: anchor, npcName: spec.name });
@@ -232,6 +236,7 @@ describe("authored conversation in play", () => {
 			{ saveDebounceMs: 0 },
 		);
 
+		session.engine.dispatch({ t: "DismissCard" });
 		session.engine.dispatch({ t: "DialogueOpened", npcId: anchor, npcName: spec.name });
 		await new Promise((resolve) => setTimeout(resolve, 0));
 

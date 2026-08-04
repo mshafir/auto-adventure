@@ -29,6 +29,8 @@ export type Command =
 	| { readonly t: "ChoiceDown" }
 	| { readonly t: "Confirm" }
 	| { readonly t: "CloseDialogue" }
+	/** Put the card away and give the player the world back. */
+	| { readonly t: "DismissCard" }
 	| { readonly t: "ChunkReady"; readonly key: ChunkKey }
 	| {
 			readonly t: "DialogueOpened";

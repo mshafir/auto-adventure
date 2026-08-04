@@ -104,6 +104,14 @@ That recording is a real session, played offline with no model calls: waking up
 in a village, walking up the road to the shopkeeper, going through a crate in
 his house, and quitting. The stills below are particular moments.
 
+How a game introduces itself. Every flavour opens on a full screen saying where
+you are, who you are and what brought you here — assembled from the world's own
+lore, the brief it was given and the story's premise, so it works with no model
+at all. The same mechanism is reused mid-journey: a story beat can raise one for
+a turn a line of dialogue cannot carry.
+
+![How a game introduces itself](docs/screens/opening.svg)
+
 A town from the road, with the local map, the clock and a key to the glyphs.
 
 ![A town, seen from the road](docs/screens/town.svg)
@@ -113,11 +121,14 @@ might say, and every option is a real branch rather than a text box.
 
 ![Talking to somebody](docs/screens/conversation.svg)
 
-Inside a building. Crates, barrels, chests and shelves can be searched, and what
-a building stores depends on what it is for — a mill really does hold timber.
+Inside a building. Somebody is usually home — a weaver at her loom, a farrier
+with scorched hands, a child entirely unsurprised to see you — derived from the
+seed rather than written, so a town of thirty buildings costs nothing extra to
+populate. Crates, barrels, chests and shelves can be searched, and what a
+building stores depends on what it is for; a mill really does hold timber.
 Outdoors the same key gathers from the ground.
 
-![Inside a building, where the crates are](docs/screens/inside.svg)
+![Inside a building, where somebody is home](docs/screens/inside.svg)
 
 An open errand. Quest targets are resolved against what the engine actually
 built, so an NPC cannot send you after something that was never placed; the

@@ -50,7 +50,10 @@ export function createDialogueService(deps: DialogueDeps) {
 		choice: string | undefined,
 		engine: GameEngine,
 	): Promise<void> {
-		const placed = engine.getNpcs().byNpcId(npcId);
+		// Covers residents as well as the people standing outdoors. A resident is only
+		// resolvable while the player is in their building, which is also the only time a
+		// conversation with one can be open.
+		const placed = engine.personById(npcId);
 		if (!placed) {
 			engine.dispatch({
 				t: "DialogueTurn",
