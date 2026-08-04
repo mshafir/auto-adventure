@@ -5,10 +5,12 @@ import { hasGatewayKey } from "./config.js";
 import { createInitialState, type GameState } from "./core/rules/state.js";
 import type { ScenarioBrief } from "./core/world/brief.js";
 import { toChunk } from "./core/world/coords.js";
+import type { SpecSource } from "./core/world/spec.js";
 import { createEffectRunner } from "./engine/effect-runner.js";
 import { GameEngine } from "./engine/engine.js";
 import { findSpawn } from "./engine/spawn.js";
 import { SaveRepository } from "./persist/save-repo.js";
+import type { ScenarioArtifact } from "./scenario/artifact.js";
 import { type Flavour, type LaunchChoice, usesLiveModel } from "./scenario/scenario.js";
 import { logger } from "./utils/log.js";
 
@@ -63,20 +65,23 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 	const loaded = saves.load(choice.worldId);
 	if (!loaded && choice.mustExist) throw new MissingSaveError(choice.worldId);
 
+	// Resolved before the world is built, because a world can arrive already
+	// briefed from two directions — a save, or an artifact whose content was
+	// *written* to that brief — and in both cases the offer loses.
+	const owned = loaded?.brief ?? choice.scenario?.brief;
+	const { brief, ignored } = resolveBrief(owned, choice.brief);
+	if (ignored) logger.warn("this world already has a brief; the offered one is ignored");
+	if (brief) logger.info(`brief (${owned ? "the world's own" : "offered"})`, brief);
+
 	// A save carries its own seed, so loading an existing world ignores the
 	// configured one rather than regenerating the terrain under the player.
-	const existing = loaded ?? newWorld(choice);
+	const existing = loaded ?? newWorld(choice, brief);
 	if (loaded)
 		logger.info(
 			`loaded world "${existing.world.name}" at ${existing.player.x},${existing.player.y}`,
 		);
 
-	// Read from `loaded`, not `existing`: a new world's brief *is* the offered one,
-	// so testing `existing` reports that every briefed new world is ignoring it.
-	const { brief, ignored } = resolveBrief(loaded?.brief, choice.brief);
-	if (ignored) logger.warn("this world already has a brief; the offered one is ignored");
 	const state = brief === existing.brief ? existing : { ...existing, brief };
-	if (brief) logger.info(`brief (${loaded?.brief ? "from save" : "offered"})`, brief);
 
 	const live = usesLiveModel(choice.flavour);
 	if (!live) logger.info(`director disabled (${choice.flavour}); world names are procedural`);
@@ -143,7 +148,9 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 	};
 }
 
-function newWorld(choice: LaunchChoice): GameState {
+function newWorld(choice: LaunchChoice, brief: ScenarioBrief | undefined): GameState {
+	if (choice.scenario) return newScenarioWorld(choice, choice.scenario, brief);
+
 	const spawn = findSpawn(choice.seed);
 	logger.info(
 		`new world "${choice.worldId}" seed ${choice.seed}, spawn ${spawn.x},${spawn.y}, ${choice.flavour}`,
@@ -156,6 +163,48 @@ function newWorld(choice: LaunchChoice): GameState {
 			createdAt: new Date().toISOString(),
 		},
 		spawn,
-		choice.brief,
+		brief,
 	);
+}
+
+/**
+ * Open a world that is already written.
+ *
+ * The specs go straight into the state the engine starts from, which is what
+ * makes prebuilt different in kind rather than in degree: they are not "arriving
+ * early", they are simply there, so the first frame the player sees is the
+ * authored town. Marked `llm` because that is what they are, and recording them as
+ * sources is also what tells the director they are settled — a fallback must never
+ * overwrite an authored roster.
+ */
+function newScenarioWorld(
+	choice: LaunchChoice,
+	artifact: ScenarioArtifact,
+	brief: ScenarioBrief | undefined,
+): GameState {
+	logger.info(
+		`new world "${choice.worldId}" from scenario "${artifact.id}" seed ${artifact.seed}, spawn ${artifact.spawn.x},${artifact.spawn.y}`,
+	);
+	const specSources: Record<string, SpecSource> = {};
+	for (const key of Object.keys(artifact.sites)) specSources[key] = "llm";
+
+	const base = createInitialState(
+		{
+			id: choice.worldId,
+			name: artifact.title,
+			seed: artifact.seed,
+			createdAt: new Date().toISOString(),
+			bounds: artifact.bounds,
+			scenarioId: artifact.id,
+		},
+		artifact.spawn,
+		brief,
+	);
+	return {
+		...base,
+		lore: artifact.lore,
+		regions: artifact.regions,
+		sites: artifact.sites,
+		specSources,
+	};
 }

@@ -16,6 +16,25 @@ export function saveRoot(): string {
 	return process.env.AUTO_ADVENTURE_HOME ?? join(homedir(), ".auto-adventure");
 }
 
+/**
+ * Write via a temporary file and rename into place.
+ *
+ * A crash mid-write leaves the previous contents intact rather than a truncated
+ * file. Shared with the scenario repository, which has the same requirement for
+ * the same reason.
+ */
+export function writeFileAtomic(path: string, contents: string): void {
+	mkdirSync(dirname(path), { recursive: true });
+	const temp = `${path}.tmp`;
+	writeFileSync(temp, contents, "utf8");
+	try {
+		renameSync(temp, path);
+	} catch (error) {
+		if (existsSync(temp)) unlinkSync(temp);
+		throw error;
+	}
+}
+
 export function savePath(worldId: string): string {
 	return join(saveRoot(), "saves", worldId, "save.json");
 }
@@ -66,7 +85,7 @@ export class SaveRepository {
 		const state = this.latest;
 		this.dirty = false;
 		try {
-			this.writeAtomic(savePath(state.world.id), JSON.stringify(state));
+			writeFileAtomic(savePath(state.world.id), JSON.stringify(state));
 		} catch (error) {
 			logger.error("failed to write save", error);
 			// Keep the state pending so a later flush can retry.
@@ -80,18 +99,6 @@ export class SaveRepository {
 			this.timer = undefined;
 		}
 		this.flush();
-	}
-
-	private writeAtomic(path: string, contents: string): void {
-		mkdirSync(dirname(path), { recursive: true });
-		const temp = `${path}.tmp`;
-		writeFileSync(temp, contents, "utf8");
-		try {
-			renameSync(temp, path);
-		} catch (error) {
-			if (existsSync(temp)) unlinkSync(temp);
-			throw error;
-		}
 	}
 }
 

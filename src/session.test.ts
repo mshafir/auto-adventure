@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { demoArtifact } from "../test/fixtures/scenario.js";
 import { hashString } from "./core/rand/hash.js";
 import type { ScenarioBrief } from "./core/world/brief.js";
 import type { LaunchChoice } from "./scenario/scenario.js";
@@ -136,5 +137,84 @@ describe("buildSession", () => {
 		const session = buildSession(choice(), { saveDebounceMs: 0 });
 		session.dispose();
 		expect(() => session.dispose()).not.toThrow();
+	});
+});
+
+describe("a prebuilt world", () => {
+	const artifact = demoArtifact();
+	const siteId = Object.keys(artifact.sites)[0] as string;
+
+	function prebuilt(overrides: Partial<LaunchChoice> = {}) {
+		return buildSession(
+			// A deliberately wrong seed: the artifact's must win, because its specs are
+			// keyed to site ids derived from it and mean nothing paired with any other.
+			choice({ flavour: "prebuilt", scenario: artifact, seed: hashString("wrong"), ...overrides }),
+			{ saveDebounceMs: 0 },
+		);
+	}
+
+	it("takes its seed, spawn and bounds from the artifact", () => {
+		const session = prebuilt();
+		expect(session.state.world.seed).toBe(artifact.seed);
+		expect(session.state.player.x).toBe(artifact.spawn.x);
+		expect(session.state.player.y).toBe(artifact.spawn.y);
+		expect(session.state.world.bounds).toEqual(artifact.bounds);
+		expect(session.state.world.scenarioId).toBe(artifact.id);
+		session.dispose();
+	});
+
+	it("has every spec before the first frame is drawn", () => {
+		// The property that makes prebuilt different in kind rather than degree. In
+		// live play a spec can arrive after the player is standing in the town, which
+		// is the whole reason the director has a commitment rule; here there is
+		// nothing to commit, because nothing is still coming.
+		const session = prebuilt();
+		expect(session.state.sites[siteId]).toEqual(artifact.sites[siteId]);
+		expect(session.state.lore).toEqual(artifact.lore);
+		// Recorded as sources too, which is what stops a fallback roster from
+		// overwriting an authored one.
+		expect(session.state.specSources[siteId]).toBe("llm");
+		session.dispose();
+	});
+
+	it("names the place from the artifact on the first frame", () => {
+		const session = prebuilt();
+		expect(session.engine.placeNameAt(artifact.spawn.x, artifact.spawn.y)).toBe("Thornwick");
+		session.dispose();
+	});
+
+	it("is bounded, and the boundary is impassable", () => {
+		const session = prebuilt();
+		const view = session.engine.getWorldView();
+		const { maxX } = artifact.bounds;
+		const y = artifact.spawn.y;
+		// Force the chunk containing a point outside the rectangle to exist, then
+		// read it: the engine must be generating with bounds applied.
+		session.engine.getChunks().ensure(Math.floor((maxX + 20) / 64), Math.floor(y / 64));
+		expect(view.isPassable(maxX + 20, y)).toBe(false);
+		session.dispose();
+	});
+
+	it("keeps the artifact's brief and refuses to be re-briefed", () => {
+		// The content was written to this brief. Offering another cannot change what
+		// is already on the page, so the artifact's wins.
+		const session = prebuilt({ brief: { premise: "a desert of glass towers" } });
+		expect(session.state.brief).toEqual(artifact.brief);
+		session.dispose();
+	});
+
+	it("stays bounded and authored after a reload without the artifact", () => {
+		// A save carries the bounds and the specs, so a scenario world survives its
+		// file being deleted. Only the arc and the dialogue trees need re-attaching.
+		const first = prebuilt();
+		saveNow(first);
+		first.dispose();
+
+		const resumed = buildSession(choice({ flavour: "prebuilt" }), { saveDebounceMs: 0 });
+		expect(resumed.state.world.bounds).toEqual(artifact.bounds);
+		expect(resumed.state.world.scenarioId).toBe(artifact.id);
+		expect(resumed.state.sites[siteId]).toEqual(artifact.sites[siteId]);
+		expect(resumed.state.brief).toEqual(artifact.brief);
+		resumed.dispose();
 	});
 });

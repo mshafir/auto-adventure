@@ -1,4 +1,5 @@
 import type { ScenarioBrief } from "../core/world/brief.js";
+import type { ScenarioArtifact } from "./artifact.js";
 
 /**
  * How a world's content gets authored.
@@ -39,6 +40,14 @@ export interface LaunchChoice {
 	readonly seed: number;
 	readonly flavour: Flavour;
 	readonly brief?: ScenarioBrief;
+	/**
+	 * The authored world, for `prebuilt`.
+	 *
+	 * Supplies the seed, the spawn, the bounds and every spec, so the fields above
+	 * that would otherwise decide those are ignored — the artifact's seed in
+	 * particular, since its specs mean nothing paired with any other.
+	 */
+	readonly scenario?: ScenarioArtifact;
 	/**
 	 * Refuse to create the slot, failing instead if it is absent.
 	 *
