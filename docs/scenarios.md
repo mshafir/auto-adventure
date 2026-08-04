@@ -377,6 +377,7 @@ is optional, so `SAVE_VERSION` does not move.
 | `src/scenario/arc.ts` | Beat → quest/flag lowering (pure) |
 | `src/ai/dialogue/scripted.ts` | Tree walker and the scripted service |
 | `src/ai/author/` | The offline pipeline and its prompts |
+| `src/scenario/draft.ts` | The hand-authored format, and lowering it to an artifact |
 | `src/tools/author.ts` | CLI entry point |
 | `src/ui/launcher/` | The selector |
 | `src/session.ts` | Session assembly, extracted from `main.tsx` |
@@ -396,7 +397,12 @@ Each phase leaves the game playable.
 | 5 | ✅ The arc: baked quests, flags, journal. |
 | 6 | ✅ Dialogue trees, authored and walked. |
 
-All six have landed.
+All six have landed, plus a seventh way in that was not in the original plan:
+**authoring by hand**. `npm run survey` prints the map for free and
+`npm run assemble` takes a written draft, so a scenario can be produced with no API
+key — by a person, or by an agent in an editor session via the `author-scenario`
+skill. The draft format asks only for judgement and derives every mechanical part,
+which is what makes a hand-written arc impossible to mis-wire.
 
 Two things the implementation learned that the design did not know:
 
@@ -405,7 +411,14 @@ game — one town, generated once — and wrong for validation, which measures s
 candidate rosters for the same site in one process and would otherwise report the
 first layout for all of them. The pass drops the entry before generating.
 
-The anchor-existence check is weaker than hoped. A settlement of any size lays down
+The anchor check was also *wrong*, not merely weak, and stayed wrong until a real
+draft ran through it. `pickAnchor` treats `yard` as `doorstep` and falls back to any
+free anchor otherwise — its own comment says the placement is advisory — so an
+unbuilt anchor relocates somebody rather than stranding them. As an error it would
+have refused to install perfectly playable scenarios, including every one built from
+the deterministic roster, which asks for a `yard` routinely.
+
+Beyond that, the anchor check is weaker than hoped. A settlement of any size lays down
 eight of the nine anchor kinds, so only `yard` is realistically ever missing from a
 town, and the check earns its keep mainly on hamlets and camps. It stays because
 the failure it catches — a named character standing nowhere — is invisible

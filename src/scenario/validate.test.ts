@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
+import { PLACEMENTS } from "../ai/director/schemas.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { buildPassability, hasErrors, validateArtifact } from "./validate.js";
 
@@ -60,20 +61,26 @@ describe("validateArtifact", SLOW, () => {
 		expect(hasErrors(findings), messages(BASE)).toBe(false);
 	});
 
-	it("catches an NPC standing at an anchor that was never built", () => {
-		// The check no live director can make. `placement` comes from a closed set, but
-		// whether *this* settlement has one of those anchors depends on its layout,
-		// which only the generator knows. A fort of this size lays down eight of the
-		// nine kinds and no yard, so a yard is a person standing nowhere.
-		const broken = withSite({ npcs: [{ ...NPC, placement: "yard" }] });
-		expect(messages(broken)).toContain("that was not built");
-		expect(hasErrors(validateArtifact(broken))).toBe(true);
+	it("treats a yard as the doorstep the engine serves it from", () => {
+		// `pickAnchor` maps `yard` to `doorstep`. Reporting it as missing was wrong, and
+		// as an *error* it refused scenarios that play perfectly — including every one
+		// built from the deterministic roster, which asks for a yard routinely.
+		expect(messages(withSite({ npcs: [{ ...NPC, placement: "yard" }] }))).not.toContain(
+			"does not build",
+		);
 	});
 
-	it("accepts an anchor the settlement does lay down", () => {
-		expect(messages(withSite({ npcs: [{ ...NPC, placement: "well" }] }))).not.toContain(
-			"that was not built",
-		);
+	it("never blocks an install over where somebody stands", () => {
+		// Placement is advisory by design: the engine falls back to any free anchor, so
+		// the worst case is a character standing somewhere else in the same town. That
+		// is worth a warning and never worth refusing.
+		for (const placement of PLACEMENTS) {
+			const findings = validateArtifact(withSite({ npcs: [{ ...NPC, placement }] }));
+			const blocking = findings.filter(
+				(finding) => finding.severity === "error" && finding.message.includes("does not build"),
+			);
+			expect(blocking, `placement "${placement}" blocked the install`).toEqual([]);
+		}
 	});
 
 	it("warns when a person is assigned a building that did not fit", () => {

@@ -16,6 +16,8 @@ npm run preview -- --at 0,0 --ascii        # ...as one ASCII byte per tile
 npm run preview -- --at 0,0 --flat         # ...with shadows and slope shading off
 npm run preview -- --at 0,0 --xscale 1     # ...one column per tile instead of two
 npm run author -- --id thornwick --prompt "..." --duration short   # build a scenario
+npm run survey -- --seed thornwick --duration short                # dump the map, free
+npm run assemble -- --draft drafts/thornwick.json                  # install a written one
 npm run check             # typecheck + lint + tests
 ```
 
@@ -221,6 +223,30 @@ npm run author -- --id drowned-archipelago \
 
 It lands in `~/.auto-adventure/scenarios/` and appears in the launcher. Roughly
 sixty model calls for a medium world, a couple of minutes.
+
+### Writing one by hand, or with an agent
+
+There is a second way in, which needs no API key at all: survey the world, write a
+draft, assemble it.
+
+```
+npm run survey -- --seed thornwick --duration short     # what is actually out there
+$EDITOR drafts/thornwick.json                           # name it and people it
+npm run assemble -- --draft drafts/thornwick.json --check
+npm run assemble -- --draft drafts/thornwick.json
+```
+
+The survey prints every settlement with its position, its building capacity, the
+ground it stands on and its distance from the start — all free, because the
+generator is pure. A draft says only what needs judgement: beat order, gating flags,
+quest ids and npc ids are derived on assembly, so a hand-written story cannot wait on
+a flag nothing sets. Anything left out falls back to the deterministic content, which
+makes authoring incremental — write the towns that matter, play it, come back.
+
+The `author-scenario` skill drives exactly this loop from a Claude Code session,
+asking for the pieces the game needs (duration above all, since it sets both the
+number of beats and the size of the world) before it surveys anything.
+`drafts/thornwick-road.json` is a worked example.
 
 Two things make a pre-generated world better than a live one rather than merely
 cheaper. First, nothing arrives late: every spec is in the state the engine starts

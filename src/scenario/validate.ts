@@ -1,3 +1,4 @@
+import type { AnchorKind } from "../core/gen/features/patch.js";
 import { generateSettlement, invalidateSettlement } from "../core/gen/features/settlement.js";
 import { generateChunk } from "../core/gen/pipeline.js";
 import { findPath } from "../core/geom/astar.js";
@@ -47,6 +48,17 @@ export function hasErrors(findings: readonly Finding[]): boolean {
  * error. Treat the estimate as an ordering, not a promise.
  */
 const TILES_PER_BEAT = 500;
+
+/**
+ * The anchor a placement really resolves to.
+ *
+ * Mirrors `pickAnchor`: a `yard` is served by a `doorstep`. Kept in step with it by
+ * hand, which is a small risk, but the alternative is reaching into the engine from
+ * a validation pass to ask one question.
+ */
+function anchorAliasFor(placement: AnchorKind): AnchorKind {
+	return placement === "yard" ? "doorstep" : placement;
+}
 
 /**
  * Where every site of this seed is.
@@ -260,9 +272,16 @@ function checkSettlements(artifact: ScenarioArtifact, sites: Map<number, MacroSi
 			);
 
 		for (const npc of spec.npcs) {
-			if (!anchors.has(npc.placement))
+			// Placement is advisory and the engine says so: `pickAnchor` treats `yard` as
+			// a `doorstep`, and anything it cannot match falls through to any free
+			// outdoor anchor. So an unbuilt anchor is a placement that will not be
+			// honoured, not a person standing nowhere — a warning, and never a reason to
+			// refuse a scenario that plays perfectly well.
+			if (!anchors.has(anchorAliasFor(npc.placement)))
 				findings.push(
-					error(`${spec.name}: ${npc.name} stands at a "${npc.placement}" that was not built`),
+					warning(
+						`${spec.name}: ${npc.name} asked for a "${npc.placement}", which this town does not build; they will stand at another anchor`,
+					),
 				);
 			if (npc.structureName && !names.has(npc.structureName))
 				findings.push(
