@@ -657,6 +657,9 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 				lastSeenTick: state.time.tick,
 			}));
 
+		case "SetNpcNode":
+			return withNpc(state, effect.npcId, (record) => ({ ...record, node: effect.node }));
+
 		case "FoldNpcMemory":
 			return withNpc(state, effect.npcId, (record) => ({
 				...record,

@@ -32,6 +32,16 @@ export interface NpcRecord {
 	/** The last few exchanges, verbatim. */
 	readonly recentTurns: readonly NpcTurn[];
 	readonly totalTurns: number;
+	/**
+	 * Which node of their authored conversation they are on.
+	 *
+	 * Lives here because it is exactly what this record is for — what an NPC
+	 * remembers — and because it has to survive ESC, a reload and the chunk being
+	 * evicted, all of which this record already does. Absent for anyone whose
+	 * dialogue is not scripted, which is everyone in a live or procedural world.
+	 */
+	readonly node?: string;
+
 	readonly lastSeenTick: number;
 	readonly flags: Readonly<Record<string, boolean>>;
 }

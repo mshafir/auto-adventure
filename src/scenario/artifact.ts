@@ -1,3 +1,4 @@
+import type { DialogueTree } from "../ai/dialogue/tree.js";
 import type { ScenarioArc } from "../core/rules/arc.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import type { ScenarioBrief } from "../core/world/brief.js";
@@ -55,6 +56,14 @@ export interface ScenarioArtifact {
 	 * is a legitimate thing to author and the shape the first artifacts had.
 	 */
 	readonly arc?: ScenarioArc;
+	/**
+	 * Authored conversations, keyed by `npcId(siteId, slot)`.
+	 *
+	 * Not persisted into the save, unlike the arc. These are static content that
+	 * never changes, so re-reading them costs nothing — and if the file is gone,
+	 * `cannedTurn` is a designed floor rather than a silent failure.
+	 */
+	readonly trees?: Readonly<Record<string, DialogueTree>>;
 
 	readonly authoredWith: ArtifactProvenance;
 }

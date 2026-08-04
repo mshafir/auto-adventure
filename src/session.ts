@@ -108,12 +108,17 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 		onSiteChanged: (site) => host.engine?.rebuildSite(site),
 	});
 
+	// Trees come from the artifact rather than the save, so a resumed scenario needs
+	// its file to still be there for authored conversation. Missing means canned
+	// dialogue, which is a real conversation, not an error state.
+	const trees = choice.scenario?.trees;
 	const dialogue = createDialogueService({
 		seed: state.world.seed,
 		lore: () => director.getLore(),
 		regionSpec: (regionId) => director.regionSpec(regionId),
 		siteSpec: (siteId) => director.siteSpec(siteId),
 		disabled: !live,
+		...(trees ? { tree: (npcId: string) => trees[npcId] } : {}),
 	});
 
 	const engine = new GameEngine(

@@ -10,6 +10,7 @@ import {
 } from "../../test/fixtures/scenario.js";
 import { hashString } from "../core/rand/hash.js";
 import type { SiteSpec } from "../core/world/spec.js";
+import { npcId } from "../core/world/spec.js";
 import {
 	listScenarios,
 	loadScenario,
@@ -279,6 +280,83 @@ describe("verifyArtifact", () => {
 			}),
 		);
 		expect(problems.join(" ")).toContain("defined twice");
+	});
+
+	it("accepts a sound tree", () => {
+		const anchor = npcId(SITE.id, 0);
+		expect(
+			verifyArtifact(
+				artifact({
+					trees: {
+						[anchor]: {
+							npcId: anchor,
+							entry: ["hello"],
+							nodes: {
+								hello: { id: "hello", speech: "Aye?", choices: [{ text: "Bye.", goto: null }] },
+							},
+						},
+					},
+				}),
+			),
+		).toEqual([]);
+	});
+
+	it("rejects a tree whose goto points nowhere", () => {
+		// At runtime a dangling goto ends the conversation, so a renamed node turns a
+		// branch of dialogue into an abrupt goodbye that looks like a character with
+		// nothing to say.
+		const anchor = npcId(SITE.id, 0);
+		const problems = verifyArtifact(
+			artifact({
+				trees: {
+					[anchor]: {
+						npcId: anchor,
+						entry: ["hello"],
+						nodes: {
+							hello: { id: "hello", speech: "Aye?", choices: [{ text: "On.", goto: "gone" }] },
+						},
+					},
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain("missing node");
+	});
+
+	it("rejects a tree belonging to nobody", () => {
+		const orphan = npcId(SITE.id, 9);
+		const problems = verifyArtifact(
+			artifact({
+				trees: {
+					[orphan]: {
+						npcId: orphan,
+						entry: ["hello"],
+						nodes: {
+							hello: { id: "hello", speech: "Aye?", choices: [{ text: "Bye.", goto: null }] },
+						},
+					},
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain("belongs to nobody");
+	});
+
+	it("rejects a conversation with no way out", () => {
+		const anchor = npcId(SITE.id, 0);
+		const problems = verifyArtifact(
+			artifact({
+				trees: {
+					[anchor]: {
+						npcId: anchor,
+						entry: ["a"],
+						nodes: {
+							a: { id: "a", speech: "One.", choices: [{ text: "On.", goto: "b" }] },
+							b: { id: "b", speech: "Two.", choices: [{ text: "Back.", goto: "a" }] },
+						},
+					},
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain("no way to end");
 	});
 
 	it("rejects a region whose key and id disagree", () => {

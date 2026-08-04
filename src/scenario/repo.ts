@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { danglingTargets } from "../ai/dialogue/tree.js";
 import { MACRO, macroSite } from "../core/world/macro.js";
+import { npcId } from "../core/world/spec.js";
 import { saveRoot, writeFileAtomic } from "../persist/save-repo.js";
 import { logger } from "../utils/log.js";
 import type { ScenarioArtifact } from "./artifact.js";
@@ -133,10 +135,49 @@ export function verifyArtifact(artifact: ScenarioArtifact): string[] {
 	}
 
 	problems.push(...arcProblems(artifact));
+	problems.push(...treeProblems(artifact));
 
 	// Report a handful rather than a wall: if the seed is wrong every site is
 	// wrong, and the first few say so just as well.
 	return problems.slice(0, 6);
+}
+
+/**
+ * Whether the authored conversations can actually be held.
+ *
+ * A dangling `goto` is the one that matters: at runtime it ends the conversation,
+ * so a renamed node turns a branch of dialogue into an abrupt goodbye that looks
+ * like the character has nothing more to say. Trees keyed to nobody are the other
+ * half — the file is carrying words no one will ever speak.
+ */
+function treeProblems(artifact: ScenarioArtifact): string[] {
+	const trees = artifact.trees;
+	if (!trees) return [];
+	const problems: string[] = [];
+
+	const people = new Set<string>();
+	for (const spec of Object.values(artifact.sites)) {
+		for (const npc of spec.npcs) people.add(npcId(spec.siteId, npc.slot));
+	}
+
+	for (const [key, tree] of Object.entries(trees)) {
+		if (tree.npcId !== key) problems.push(`tree ${key} carries npcId ${tree.npcId}`);
+		if (!people.has(key)) problems.push(`tree ${key} belongs to nobody in this world`);
+
+		const dangling = danglingTargets(tree);
+		if (dangling.length > 0)
+			problems.push(`tree ${key} points at missing node(s) ${dangling.slice(0, 3).join(", ")}`);
+
+		// A conversation with no way out would trap the panel open. ESC always works,
+		// but a tree should not rely on the player knowing that.
+		const closes = Object.values(tree.nodes).some(
+			(node) => node.choices.length === 0 || node.choices.some((choice) => choice.goto === null),
+		);
+		if (Object.keys(tree.nodes).length > 0 && !closes)
+			problems.push(`tree ${key} has no way to end`);
+	}
+
+	return problems;
 }
 
 /**

@@ -15,6 +15,8 @@ import { mapActions } from "./actions.js";
 import { cannedTurn } from "./canned.js";
 import { dialoguePrompt, dialogueSystem, SUMMARY_SYSTEM, summaryPrompt } from "./persona.js";
 import { DialogueTurnSchema, NpcSummarySchema } from "./schema.js";
+import { isSilentEnd, scriptedTurn } from "./scripted.js";
+import type { DialogueTree } from "./tree.js";
 
 export interface DialogueDeps {
 	readonly seed: number;
@@ -22,6 +24,14 @@ export interface DialogueDeps {
 	readonly regionSpec: (regionId: number) => RegionSpec | undefined;
 	readonly siteSpec: (siteId: number) => SiteSpec | undefined;
 	readonly disabled?: boolean;
+	/**
+	 * Authored conversations, by npc id. Supplied for a prebuilt scenario.
+	 *
+	 * Takes precedence over a live call when present, which is the whole point of
+	 * the flavour: the words were written and paid for already. Anyone without a
+	 * tree still falls through to the deterministic one.
+	 */
+	readonly tree?: (npcId: string) => DialogueTree | undefined;
 }
 
 /**
@@ -78,12 +88,37 @@ export function createDialogueService(deps: DialogueDeps) {
 		// what the NPC is allowed to promise and what the engine will accept are the
 		// same list rather than two views that can disagree.
 		const surroundings = engine.surroundingsFor(placed.siteId);
-		const turn = enabled
-			? await generateTurn(state, record, placed, site, stock, choice, surroundings)
-			: cannedTurn(record, placed.spec, site, choice);
+
+		// Written words first. A prebuilt scenario has already paid for this
+		// conversation, so there is nothing to gain by asking a model to improvise
+		// over the top of it.
+		const scripted = deps.tree
+			? scriptedTurn({
+					tree: deps.tree(npcId),
+					state,
+					record,
+					spec: placed.spec,
+					site,
+					answered: choice,
+				})
+			: undefined;
+
+		const turn =
+			scripted?.turn ??
+			(enabled
+				? await generateTurn(state, record, placed, site, stock, choice, surroundings)
+				: cannedTurn(record, placed.spec, site, choice));
+
+		// A node that closed with `goto: null` said its piece on the previous line, so
+		// there is nothing to add; dispatching it would put a blank row in the panel.
+		if (scripted && isSilentEnd(turn)) {
+			engine.dispatch({ t: "CloseDialogue" });
+			return;
+		}
 
 		const effects: DomainEffect[] = [
 			{ t: "RecordTurn", npcId, turn: { role: "npc", text: turn.speech } },
+			...(scripted?.effects ?? []),
 			...mapActions(turn.actions, {
 				state: engine.getState(),
 				npcId,

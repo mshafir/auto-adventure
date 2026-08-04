@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ActionSchema } from "../ai/dialogue/schema.js";
 import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
 import { ARTIFACT_VERSION } from "./artifact.js";
 
@@ -126,6 +127,27 @@ export const ScenarioArcSchema = z.object({
 	beats: z.array(ScenarioBeatSchema),
 });
 
+const DialogueChoiceSchema = z.object({
+	text: z.string().min(1).max(120),
+	goto: z.string().max(64).nullable(),
+	requires: z.array(z.string().min(1)).optional(),
+});
+
+export const DialogueNodeSchema = z.object({
+	id: z.string().min(1).max(64),
+	speech: z.string().max(600),
+	requires: z.array(z.string().min(1)).optional(),
+	choices: z.array(DialogueChoiceSchema).max(6),
+	actions: z.array(ActionSchema).max(3).optional(),
+});
+
+export const DialogueTreeSchema = z.object({
+	npcId: z.string().min(1),
+	entry: z.array(z.string().min(1)).min(1),
+	revisit: z.array(z.string().min(1)).optional(),
+	nodes: z.record(z.string(), DialogueNodeSchema),
+});
+
 export const ScenarioArtifactSchema = z.object({
 	artifactVersion: z.literal(ARTIFACT_VERSION),
 	id: z
@@ -145,6 +167,7 @@ export const ScenarioArtifactSchema = z.object({
 	regions: z.record(z.string(), StoredRegionSpecSchema),
 	sites: z.record(z.string(), StoredSiteSpecSchema),
 	arc: ScenarioArcSchema.optional(),
+	trees: z.record(z.string(), DialogueTreeSchema).optional(),
 	authoredWith: z.object({
 		models: z.record(z.string(), z.string()),
 		calls: z.number().int().min(0),

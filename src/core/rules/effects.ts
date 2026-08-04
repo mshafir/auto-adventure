@@ -46,6 +46,9 @@ export type DomainEffect =
 	  }
 	/** Append one exchange to an NPC's verbatim history. */
 	| { readonly t: "RecordTurn"; readonly npcId: string; readonly turn: NpcTurn }
+	// Where a scripted conversation has got to. Its own effect rather than a flag so
+	// the cursor lives with the rest of what an NPC remembers.
+	| { readonly t: "SetNpcNode"; readonly npcId: string; readonly node: string }
 	/** Replace the rolling summary, folding away the turns it now covers. */
 	| {
 			readonly t: "FoldNpcMemory";

@@ -248,25 +248,38 @@ and set flags through zero new runtime machinery.
 ## Dialogue trees
 
 ```ts
+interface DialogueChoice {
+  readonly text: string;
+  readonly goto: string | null;           // null ends the conversation
+  readonly requires?: readonly string[];  // hidden until these flags are set
+}
+
 interface DialogueNode {
   readonly id: string;
   readonly speech: string;
-  readonly requires?: readonly string[];    // flags / quest ids — state variants
-  readonly choices: readonly { text: string; goto: string | null }[];
+  readonly requires?: readonly string[];  // eligibility as an opening
+  readonly choices: readonly DialogueChoice[];
   readonly actions?: readonly ActionResponse[];
 }
 
 interface DialogueTree {
   readonly npcId: string;
-  readonly entry: string;      // first meeting
-  readonly revisit?: string;   // every meeting after
+  readonly entry: readonly string[];      // first meeting, most specific first
+  readonly revisit?: readonly string[];   // every meeting after
   readonly nodes: Record<string, DialogueNode>;
 }
 ```
 
-The runtime cursor is a new `node?: string` on `NpcRecord` — already persisted
-per NPC, already survives ESC, a reload and chunk eviction, and already the home
-of the stable-id invariant this depends on.
+State-sensitivity arrives two ways, and both are list-shaped rather than
+single-valued: `entry`/`revisit` are ordered candidates so a character can greet
+the player differently once the story has moved, and a choice can be hidden until
+its flags are set so the same node offers different ground depending on what the
+player knows.
+
+The runtime cursor is a new `node?: string` on `NpcRecord`, moved by a
+`SetNpcNode` effect. It belongs there because it is exactly what that record is
+for — what an NPC remembers — and because it must survive ESC, a reload and chunk
+eviction, all of which that record already does.
 
 `scripted.ts` returns the same `{runDialogueTurn, summarizeNpc}` pair
 `createDialogueService` does, so `effect-runner.ts` does not change.
@@ -380,7 +393,7 @@ Each phase leaves the game playable.
 | 3 | ✅ Artifact format, repo, `prebuilt` loading of lore/regions/sites. A working pre-gen mode with canned conversation. |
 | 3b | ✅ `bounds` in `GenContext`, S9, threading, seam tests. |
 | 4 | The authoring tool and its validation pass, including the boundary solve. |
-| 5 | The arc: baked quests, flags, journal. |
-| 6 | Dialogue trees, authored and walked. |
+| 5 | ✅ The arc: baked quests, flags, journal. |
+| 6 | ✅ Dialogue trees, authored and walked. |
 
 Phase 3 plus 4 is the feature in rough form. Phase 6 is where it gets good.
