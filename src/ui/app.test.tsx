@@ -1,7 +1,7 @@
-import { render } from "ink-testing-library";
 import stringWidth from "string-width";
 import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";
+import { renderInk } from "../../test/harness/ink.js";
 import { createDialogueService } from "../ai/dialogue/dialogue.js";
 import { fallbackLore, fallbackSite } from "../ai/director/fallback.js";
 import { hashString } from "../core/rand/hash.js";
@@ -63,7 +63,7 @@ describe("the game screen", () => {
 		const rows = process.stdout.rows || 24;
 		const { engine } = engineBesideSomeone();
 		bindEngine(engine);
-		const { lastFrame, unmount } = render(<App />);
+		const { lastFrame, unmount } = renderInk(<App />);
 		const height = (lastFrame() ?? "").split("\n").length;
 		unmount();
 		expect(height, `frame is ${height} lines in a ${rows}-row terminal`).toBeLessThan(rows);
@@ -84,7 +84,7 @@ describe("the game screen", () => {
 			choices: ["one ".repeat(30), "two", "three", "four"],
 		});
 
-		const { lastFrame, unmount } = render(<App />);
+		const { lastFrame, unmount } = renderInk(<App />);
 		const height = (lastFrame() ?? "").split("\n").length;
 		unmount();
 		expect(height, `frame is ${height} lines in a ${rows}-row terminal`).toBeLessThan(rows);
@@ -96,7 +96,7 @@ describe("the game screen", () => {
 		// column too long.
 		const { engine } = engineBesideSomeone();
 		bindEngine(engine);
-		const { lastFrame, unmount } = render(<App />);
+		const { lastFrame, unmount } = renderInk(<App />);
 		const rows = (lastFrame() ?? "").split("\n").filter((row) => row.length > 0);
 		unmount();
 
@@ -108,7 +108,7 @@ describe("the game screen", () => {
 	it("names the place the player is standing in", () => {
 		const { engine, spec } = engineBesideSomeone();
 		bindEngine(engine);
-		const { lastFrame, unmount } = render(<App />);
+		const { lastFrame, unmount } = renderInk(<App />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).toContain(spec.name);
@@ -121,7 +121,7 @@ describe("the game screen", () => {
 		// only turns.
 		engine.dispatch({ t: "Move", facing: "down" });
 
-		const { lastFrame, unmount } = render(<App />);
+		const { lastFrame, unmount } = renderInk(<App />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).toContain(target.name);
@@ -141,7 +141,7 @@ describe("the game screen", () => {
 		engine.dispatch({ t: "DialogueOpened", npcId: target.id, npcName: target.name });
 		await dialogue.runDialogueTurn(target.id, undefined, engine);
 
-		const { lastFrame, unmount } = render(<App />);
+		const { lastFrame, unmount } = renderInk(<App />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 

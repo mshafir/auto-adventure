@@ -1,8 +1,10 @@
 import {
 	existsSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	renameSync,
+	statSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -37,6 +39,53 @@ export function writeFileAtomic(path: string, contents: string): void {
 
 export function savePath(worldId: string): string {
 	return join(saveRoot(), "saves", worldId, "save.json");
+}
+
+export interface SaveSummary {
+	readonly worldId: string;
+	readonly name: string;
+	readonly seed: number;
+	readonly at: { readonly x: number; readonly y: number };
+	readonly day: number;
+	readonly scenarioId?: string;
+	/** Modification time, for ordering. Most recently played first. */
+	readonly playedAt: number;
+}
+
+/**
+ * Every world that can be resumed.
+ *
+ * Each candidate goes through `migrateSave`, so a save the game could not
+ * actually load is not offered — the launcher must never present a world that
+ * turns out to be unopenable, or a retired save would look like a lost one.
+ */
+export function listSaves(): SaveSummary[] {
+	const root = join(saveRoot(), "saves");
+	if (!existsSync(root)) return [];
+
+	const summaries: SaveSummary[] = [];
+	for (const worldId of readdirSync(root)) {
+		const path = savePath(worldId);
+		if (!existsSync(path)) continue;
+		let state: GameState | undefined;
+		try {
+			state = migrateSave(JSON.parse(readFileSync(path, "utf8")));
+		} catch {
+			state = undefined;
+		}
+		if (!state) continue;
+		summaries.push({
+			worldId,
+			name: state.world.name,
+			seed: state.world.seed,
+			at: { x: state.player.x, y: state.player.y },
+			day: state.time.day,
+			...(state.world.scenarioId ? { scenarioId: state.world.scenarioId } : {}),
+			playedAt: statSync(path).mtimeMs,
+		});
+	}
+	summaries.sort((a, b) => b.playedAt - a.playedAt);
+	return summaries;
 }
 
 /**

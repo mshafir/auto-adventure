@@ -7,7 +7,8 @@ LLM as its author rather than its renderer.
 
 ```
 npm install
-npm start                 # play
+npm start                 # pick a world, or start one
+WORLD_NAME=hollowmoor npm start   # skip the menu, open that slot
 NO_AI=1 npm start         # play with no model at all
 SCENARIO_PROMPT="a drowned archipelago run by debt-collectors" npm start
 npm run preview -- --seed vale --at 0,0    # dump a chunk to stdout
@@ -164,6 +165,22 @@ minute and a move is a tick, so an hour of world time is sixty steps. The world
 panel carries its own key, since one character stands for a whole chunk there and
 means something different. An open errand is marked `!` on the world map and
 carries a bearing in the quest list, in chunks — `E 2` rather than a tile count.
+
+## Choosing what to play
+
+`npm start` opens a menu: worlds to continue, scenarios to begin, and a new world
+either briefed or unguided. Saves are listed most recently played first, and a
+scenario world says which scenario it came from.
+
+Two cases skip the menu, because a menu would be wrong for both: naming a slot
+with `WORLD_NAME` (the caller already knows which world it wants) and having no
+TTY (nothing can answer it). Both resume that slot and create it if absent, which
+is what every invocation did before there was anything to choose between.
+
+Starting a new world never lands on an existing slot — the name is derived and
+then made unique. Each new world also takes its seed from its slot name, so two
+new worlds are two different worlds rather than the same one twice; `WORLD_SEED`
+still wins when it is set.
 
 ## Asking for a particular world
 

@@ -4,6 +4,7 @@ import { CONFIG } from "./config.js";
 import type { LaunchChoice } from "./scenario/scenario.js";
 import { buildSession } from "./session.js";
 import App from "./ui/app.js";
+import { pickLaunch } from "./ui/launcher/pick-launch.js";
 import { endSynchronizedOutput, withSynchronizedOutput } from "./ui/render/sync-output.js";
 import { bindEngine } from "./ui/store.js";
 import { logger } from "./utils/log.js";
@@ -23,10 +24,11 @@ function enterAltScreen(): () => void {
 }
 
 /**
- * What the bare `npm start` path launches.
+ * Resume the configured slot, creating it if absent.
  *
- * Resumes the configured slot if it exists and creates it otherwise, which is the
- * behaviour every invocation had before there was anything to choose between.
+ * The behaviour every invocation had before there was anything to choose between,
+ * kept for the two cases where a menu is wrong: a named slot, which means the
+ * caller already knows which world it wants, and no terminal to draw a menu on.
  */
 function choiceFromEnv(): LaunchChoice {
 	return {
@@ -37,8 +39,18 @@ function choiceFromEnv(): LaunchChoice {
 	};
 }
 
+function wantsLauncher(): boolean {
+	if (CONFIG.worldNameExplicit) return false;
+	// Ink cannot read keys without a TTY, so a piped or redirected run would hang
+	// on a menu nobody can answer.
+	return Boolean(process.stdin.isTTY);
+}
+
 async function startGame() {
-	const session = buildSession(choiceFromEnv(), { saveDebounceMs: CONFIG.saveDebounceMs });
+	const choice = wantsLauncher() ? await pickLaunch() : choiceFromEnv();
+	if (!choice) return;
+
+	const session = buildSession(choice, { saveDebounceMs: CONFIG.saveDebounceMs });
 	bindEngine(session.engine);
 
 	const restoreScreen = enterAltScreen();

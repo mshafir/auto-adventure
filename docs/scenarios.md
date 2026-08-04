@@ -131,8 +131,9 @@ interface ScenarioArtifact {
   readonly lore: WorldLore;
   readonly regions: Record<string, RegionSpec>;
   readonly sites: Record<string, SiteSpec>;
-  readonly arc: ScenarioArc;
-  readonly trees: Record<string, DialogueTree>;
+  // Added, optional, in phases 5 and 6 — a v1 reader ignores what it does not know.
+  readonly arc?: ScenarioArc;
+  readonly trees?: Record<string, DialogueTree>;
 
   readonly authoredWith: {
     readonly models: Record<string, string>;
@@ -163,6 +164,8 @@ Two constraints shape the implementation. The flags byte is fully allocated, and
 `flags.ts` asks that new state be derived from terrain where it can be — so
 **there is no `Boundary` flag**. The band is made of terrain that is already
 impassable: `deepWater`, `cliff`, `mountain`, none of which carry `Passable`.
+Three styles, not the four first sketched — a chasm has no terrain to be made of,
+and a style the renderer cannot express is not a style.
 This also makes it unbreakable for free. The rewrite removed runtime
 wall-breaking outright (`settlement.test.ts`: "the old design let the player
 punch through stone when an objective was unreachable"), so nothing in the game
@@ -172,7 +175,7 @@ mutates terrain for passability and nothing can open the band.
 interface WorldBounds {
   readonly minX: number; readonly minY: number;
   readonly maxX: number; readonly maxY: number;
-  readonly style: "ocean" | "cliffs" | "mountains" | "chasm";
+  readonly style: "ocean" | "cliffs" | "mountains";
   readonly thickness: number;   // ~6-10 tiles
 }
 ```
@@ -213,7 +216,7 @@ because the generator is pure and available offline:
   the validator checks the choice against `biomeAt` along the band.
 
 A road that runs into the band simply dead-ends. That reads acceptably for
-`cliffs` and `mountains`; for `ocean` and `chasm` it reads better still. Not
+`cliffs` and `mountains`; for `ocean` it reads better still. Not
 worth a generator change in v1.
 
 ## The arc
@@ -336,6 +339,15 @@ everything if it breaks.
 There is no text input component yet, because dialogue is choice-only. A ~40-line
 `useInput` field is preferable to adding `ink-text-input` for one screen.
 
+Testing it needed `test/harness/ink.tsx`. `ink-testing-library` cannot drive the
+installed Ink: its fake stdin has no `ref`, which Ink calls to enable raw mode, and
+in raw mode Ink reads with `readable`/`read()` while the library emits `data`. The
+`ref` failure lands inside a `useEffect`, so the first frame is already committed
+and correct and only the *next* one is an error message — which is why the existing
+`app.test.tsx` passed while every render under it was throwing. The harness
+implements both contracts, so a test can assert what a keypress does rather than
+only what a screen looks like.
+
 Saves gain `world.scenarioId?`, so resuming re-attaches the artifact: the save
 carries the specs, but the trees, arc and bounds live only in the file. The field
 is optional, so `SAVE_VERSION` does not move.
@@ -347,7 +359,8 @@ is optional, so `SAVE_VERSION` does not move.
 | `src/core/world/brief.ts` | `ScenarioBrief` and `Duration`, pure — it is saved state |
 | `src/scenario/scenario.ts` | Artifact and arc types, `ARTIFACT_VERSION` |
 | `src/scenario/schema.ts` | Zod schemas for the artifact |
-| `src/scenario/repo.ts` | List and load artifacts |
+| `src/scenario/repo.ts` | List, load, write and verify artifacts |
+| `test/harness/ink.tsx` | Render an Ink tree and type at it |
 | `src/scenario/arc.ts` | Beat → quest/flag lowering (pure) |
 | `src/ai/dialogue/scripted.ts` | Tree walker and the scripted service |
 | `src/ai/author/` | The offline pipeline and its prompts |
@@ -363,9 +376,9 @@ Each phase leaves the game playable.
 | # | Lands |
 |---|---|
 | 1 | ✅ `ScenarioBrief`; brief-aware prompts; brief persisted; `SCENARIO_*` env. Promptable `live`, no new UI. |
-| 2 | Launcher, selector, flavour picker, `session.ts` split. |
-| 3 | Artifact format, repo, `prebuilt` loading of lore/regions/sites. A working pre-gen mode with canned conversation. |
-| 3b | `bounds` in `GenContext`, S9, threading, seam tests. Small and independent; can land beside 3. |
+| 2 | ✅ Launcher, selector, flavour picker, `session.ts` split. |
+| 3 | ✅ Artifact format, repo, `prebuilt` loading of lore/regions/sites. A working pre-gen mode with canned conversation. |
+| 3b | ✅ `bounds` in `GenContext`, S9, threading, seam tests. |
 | 4 | The authoring tool and its validation pass, including the boundary solve. |
 | 5 | The arc: baked quests, flags, journal. |
 | 6 | Dialogue trees, authored and walked. |

@@ -54,6 +54,17 @@ export function briefFromEnv(env: NodeJS.ProcessEnv = process.env): ScenarioBrie
 export const CONFIG = {
 	worldName: process.env.WORLD_NAME ?? "default",
 	seed: resolveSeed(process.env.WORLD_SEED),
+	/**
+	 * Whether the seed and the slot were actually asked for.
+	 *
+	 * Both have defaults, so their values alone cannot say whether anyone chose
+	 * them. The launcher needs to know: a named slot means "open that world" and
+	 * skips the menu entirely, which is what keeps scripted and headless runs
+	 * working, and a named seed must survive into a new world rather than being
+	 * replaced by one derived from the slot.
+	 */
+	worldNameExplicit: Boolean(process.env.WORLD_NAME),
+	seedExplicit: Boolean(process.env.WORLD_SEED),
 	/** What this world was asked to be about. Undefined is the default premise. */
 	brief: briefFromEnv(),
 	/** Play with no LLM at all. The world is fully generated and traversable. */
