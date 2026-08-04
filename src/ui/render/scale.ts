@@ -131,21 +131,29 @@ const TEXTURE: ReadonlySet<string> = new Set([
  *
  * Always choosing the left half lines every speck of grass up into vertical
  * pinstripes — an artifact the 1x view does not have, and the most obvious tell
- * that a scene has been stretched. Selecting by position breaks the columns up
- * and reads as scatter again. It is a function of world position rather than of
- * anything mutable, so a tile's texture never moves once drawn.
+ * that a scene has been stretched. Alternating by position breaks the columns up
+ * and reads as scatter again.
+ *
+ * The arguments must be **world** coordinates, not viewport indices. Keying this
+ * on the index within the row is the same arithmetic and looks correct in a still
+ * frame, but every tile's index shifts by one when the camera moves a step, so
+ * each speck flips to the other half of its tile on every footfall and the whole
+ * ground appears to shimmer. Tying it to world position instead means a tile's
+ * texture is fixed for as long as it exists.
  */
-function slotFor(col: number, row: number, scale: number): number {
-	return (((col + row) % scale) + scale) % scale;
+function slotFor(worldX: number, worldY: number, scale: number): number {
+	return (((worldX + worldY) % scale) + scale) % scale;
 }
 
 /**
- * Widen one row by `scale`, given its index within the scene.
+ * Widen one row by `scale`.
  *
- * `row` participates in choosing each tile's half, so the offset alternates
- * between adjacent rows instead of producing diagonal banding.
+ * `worldX` is the world coordinate of the first cell and `worldY` the world row,
+ * so texture placement is stable under camera movement. `worldY` also
+ * participates in the choice, so the offset alternates between adjacent rows
+ * rather than producing diagonal banding.
  */
-export function expandRow(cells: readonly Cell[], scale: number, row = 0): Cell[] {
+export function expandRow(cells: readonly Cell[], scale: number, worldX = 0, worldY = 0): Cell[] {
 	if (scale <= 1) return [...cells];
 
 	const out: Cell[] = new Array(cells.length * scale);
@@ -165,7 +173,7 @@ export function expandRow(cells: readonly Cell[], scale: number, row = 0): Cell[
 		// Rules 2 and 3. Only ground texture is free to move within its tile; a
 		// person that drifted between halves would appear to wobble as they walk.
 		const dither = !cell.entity && TEXTURE.has(cell.ch);
-		const slot = dither ? slotFor(col, row, scale) : 0;
+		const slot = dither ? slotFor(worldX + col, worldY, scale) : 0;
 		for (let n = 0; n < scale; n++) {
 			// The style is identical across the pair either way, so the run-length
 			// encoder still emits one escape sequence for the whole tile. The
@@ -179,7 +187,17 @@ export function expandRow(cells: readonly Cell[], scale: number, row = 0): Cell[
 	return out;
 }
 
-export function expandScene(rows: readonly (readonly Cell[])[], scale: number): Cell[][] {
+/**
+ * Widen a whole scene, anchored at the world position of its top-left cell.
+ *
+ * The origin is required in practice: default it and texture placement keys off
+ * viewport indices again, which shimmers as the camera moves.
+ */
+export function expandScene(
+	rows: readonly (readonly Cell[])[],
+	scale: number,
+	origin: { readonly x: number; readonly y: number } = { x: 0, y: 0 },
+): Cell[][] {
 	if (scale <= 1) return rows.map((row) => [...row]);
-	return rows.map((row, y) => expandRow(row, scale, y));
+	return rows.map((row, y) => expandRow(row, scale, origin.x, origin.y + y));
 }

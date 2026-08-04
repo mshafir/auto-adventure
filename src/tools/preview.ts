@@ -90,7 +90,7 @@ function main() {
 			shadows: !args.has("flat"),
 			relief: !args.has("flat"),
 		});
-		const scaled = expandScene(scene, xscale);
+		const scaled = expandScene(scene, xscale, camera);
 		process.stdout.write(`${encodeScene(scaled, depth).join("\n")}\n`);
 	}
 

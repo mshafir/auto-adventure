@@ -41,8 +41,11 @@ export function Viewport({ source, camera, options }: ViewportProps) {
 	const depth = colorDepth();
 	const rows = useMemo(
 		// The camera is in tiles; expansion to columns happens after compositing,
-		// so lighting, autotiling and field of view all still work per tile.
-		() => encodeScene(expandScene(composeScene(source, camera, options), TILE_WIDTH), depth),
+		// so lighting, autotiling and field of view all still work per tile. The
+		// camera is also the scene's world origin, which is what keeps texture
+		// placement fixed to the ground instead of to the viewport.
+		() =>
+			encodeScene(expandScene(composeScene(source, camera, options), TILE_WIDTH, camera), depth),
 		[source, camera, options, depth],
 	);
 
