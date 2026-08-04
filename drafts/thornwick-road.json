@@ -8,10 +8,8 @@
 		"protagonist": "a timber-tallier walking the road out of season",
 		"duration": "short"
 	},
-
 	"title": "The Hollow Tithe",
 	"blurb": "A toll road, a levy counted in timber, and a warden who stopped writing home.",
-
 	"content": {
 		"id": "thornwick",
 		"names": {
@@ -205,7 +203,6 @@
 			"The stumps beside the road are fresh, and numbered in white paint."
 		]
 	},
-
 	"lore": {
 		"title": "The Hollow Tithe",
 		"premise": "The crown stopped asking for coin three winters ago and started asking for timber. The forest has been paying ever since, and the road that carries it is the only law out here.",
@@ -214,7 +211,6 @@
 		"factions": ["The Warden's Road", "The Fellers' Compact"],
 		"deities": ["Ossa of the Standing Trees"]
 	},
-
 	"regions": [
 		{
 			"regionId": 4222914290,
@@ -249,7 +245,6 @@
 			]
 		}
 	],
-
 	"sites": [
 		{
 			"siteId": 2150566345,
@@ -265,12 +260,38 @@
 					"name": "The Green Measure",
 					"signText": "Beds, Beer, Tally Kept"
 				},
-				{ "kind": "warehouse", "size": "large", "importance": 4, "name": "The Cord House" },
-				{ "kind": "smithy", "size": "medium", "importance": 3, "name": "Halloway & Daughter" },
-				{ "kind": "shrine", "size": "small", "importance": 3 },
-				{ "kind": "house", "size": "small", "importance": 2 },
-				{ "kind": "house", "size": "small", "importance": 1 },
-				{ "kind": "barn", "size": "medium", "importance": 1 }
+				{
+					"kind": "warehouse",
+					"size": "large",
+					"importance": 4,
+					"name": "The Cord House"
+				},
+				{
+					"kind": "smithy",
+					"size": "medium",
+					"importance": 3,
+					"name": "Halloway & Daughter"
+				},
+				{
+					"kind": "shrine",
+					"size": "small",
+					"importance": 3
+				},
+				{
+					"kind": "house",
+					"size": "small",
+					"importance": 2
+				},
+				{
+					"kind": "house",
+					"size": "small",
+					"importance": 1
+				},
+				{
+					"kind": "barn",
+					"size": "medium",
+					"importance": 1
+				}
 			],
 			"npcs": [
 				{
@@ -322,10 +343,28 @@
 			"description": "A weighing station that grew walls. The road runs straight through it and stops, twice, whether you like it or not.",
 			"walled": true,
 			"structures": [
-				{ "kind": "barracks", "size": "large", "importance": 5, "name": "The Warden's Hall" },
-				{ "kind": "tower", "size": "medium", "importance": 4 },
-				{ "kind": "stable", "size": "medium", "importance": 3, "name": "The Second Weight" },
-				{ "kind": "house", "size": "small", "importance": 2 }
+				{
+					"kind": "barracks",
+					"size": "large",
+					"importance": 5,
+					"name": "The Warden's Hall"
+				},
+				{
+					"kind": "tower",
+					"size": "medium",
+					"importance": 4
+				},
+				{
+					"kind": "stable",
+					"size": "medium",
+					"importance": 3,
+					"name": "The Second Weight"
+				},
+				{
+					"kind": "house",
+					"size": "small",
+					"importance": 2
+				}
 			],
 			"npcs": [
 				{
@@ -363,7 +402,12 @@
 			"description": "Where the timber finally stops being timber and starts being money. The biggest place on the road and the one least interested in the forest that pays for it.",
 			"walled": false,
 			"structures": [
-				{ "kind": "warehouse", "size": "large", "importance": 5, "name": "The Crown Yard" },
+				{
+					"kind": "warehouse",
+					"size": "large",
+					"importance": 5,
+					"name": "The Crown Yard"
+				},
 				{
 					"kind": "inn",
 					"size": "large",
@@ -371,8 +415,16 @@
 					"name": "The Weighed Anchor",
 					"signText": "No Tally Kept"
 				},
-				{ "kind": "temple", "size": "large", "importance": 4 },
-				{ "kind": "mill", "size": "large", "importance": 4 },
+				{
+					"kind": "temple",
+					"size": "large",
+					"importance": 4
+				},
+				{
+					"kind": "mill",
+					"size": "large",
+					"importance": 4
+				},
 				{
 					"kind": "shop",
 					"size": "medium",
@@ -380,13 +432,41 @@
 					"name": "Odell's",
 					"signText": "Paper Bought"
 				},
-				{ "kind": "apothecary", "size": "medium", "importance": 3 },
-				{ "kind": "smithy", "size": "medium", "importance": 2 },
-				{ "kind": "stable", "size": "medium", "importance": 2 },
-				{ "kind": "house", "size": "small", "importance": 2 },
-				{ "kind": "house", "size": "small", "importance": 1 },
-				{ "kind": "house", "size": "small", "importance": 1 },
-				{ "kind": "barn", "size": "medium", "importance": 1 }
+				{
+					"kind": "apothecary",
+					"size": "medium",
+					"importance": 3
+				},
+				{
+					"kind": "smithy",
+					"size": "medium",
+					"importance": 2
+				},
+				{
+					"kind": "stable",
+					"size": "medium",
+					"importance": 2
+				},
+				{
+					"kind": "house",
+					"size": "small",
+					"importance": 2
+				},
+				{
+					"kind": "house",
+					"size": "small",
+					"importance": 1
+				},
+				{
+					"kind": "house",
+					"size": "small",
+					"importance": 1
+				},
+				{
+					"kind": "barn",
+					"size": "medium",
+					"importance": 1
+				}
 			],
 			"npcs": [
 				{
@@ -418,7 +498,6 @@
 			"hooks": ["The Crown Yard takes in more timber than the road could possibly deliver."]
 		}
 	],
-
 	"arc": {
 		"title": "The Hollow Tithe",
 		"premise": "Your sister took the warden's badge, walked the road east, and stopped writing. The tally she was keeping stopped adding up at about the same time.",
@@ -431,7 +510,10 @@
 				"quest": {
 					"name": "Take the tally to Stonewait",
 					"description": "Ilse's own count is short by a cord a month. The weighing station up the high road is where the crown's number is made. Carry it there and find the warden at the gate.",
-					"objective": { "kind": "reach", "target": "Stonewait" }
+					"objective": {
+						"kind": "reach",
+						"target": "Stonewait"
+					}
 				}
 			},
 			{
@@ -442,60 +524,95 @@
 				"quest": {
 					"name": "Ask Ott Pell about the true weight",
 					"description": "Cull signs two tallies and only one is honest. Ott Pell keeps the honest one, and does not keep it here. He is on the bench inside the walls.",
-					"objective": { "kind": "talk", "target": "Ott Pell" }
+					"objective": {
+						"kind": "talk",
+						"target": "Ott Pell"
+					}
+				}
+			},
+			{
+				"id": "the-honest-weight",
+				"siteId": 2528282773,
+				"npcSlot": 1,
+				"journal": "Ott Pell keeps the honest weights nowhere near the station. He sold the lot down the road to a factor in Harrowmere who buys paper and does not ask where it came from.",
+				"quest": {
+					"name": "Follow the ledger to Harrowmere",
+					"description": "Ott sold his true count to Factor Odell, in Harrowmere, where the timber stops being timber and starts being money. The road runs on east. Go and read it.",
+					"objective": {
+						"kind": "reach",
+						"target": "Harrowmere"
+					}
 				}
 			},
 			{
 				"id": "the-crown-yard",
 				"siteId": 3139050156,
 				"npcSlot": 0,
-				"quest": {
-					"name": "Find the ledger in Harrowmere",
-					"description": "Ott's honest weights went down the road to a man who buys paper and does not ask. Factor Odell keeps a shop in Harrowmere, where the timber stops being timber.",
-					"objective": { "kind": "reach", "target": "Harrowmere" }
-				},
-				"journal": "Factor Odell bought a full ledger from a warden in autumn, at four parts in five, and was asked to forget her. He remembers the hand it was written in. So do you.",
-				"card": {
-					"title": "The hand you know",
-					"subtitle": "read in the back room of Odell's, by one lamp",
-					"sections": [
-						{
-							"heading": "The ledger",
-							"body": "It is not the crown's book and it was never meant to be. Two columns to a page: what the road carried, and what the yard received. The second is always the larger, and the difference is always about a cord, and it has been about a cord every month since the levy doubled."
-						},
-						{
-							"heading": "The hand",
-							"body": "Small, hard, and slanted to the left, the way she wrote everything from the time she was nine. She kept the true count for three winters, sold it to a man who buys paper and does not ask, and asked him to forget her. She did not stop writing. She stopped writing to you."
-						}
-					]
-				}
+				"journal": "Factor Odell bought a full ledger from a warden in autumn, at four parts in five, and was asked to forget her. He remembers the hand it was written in. So do you."
 			}
-		]
+		],
+		"ending": {
+			"title": "The hand you know",
+			"subtitle": "read in the back room of Odell's, by one lamp",
+			"sections": [
+				{
+					"heading": "The ledger",
+					"body": "It is not the crown's book and it was never meant to be. Two columns to a page: what the road carried, and what the yard received. The second is always the larger, and the difference is always about a cord, and it has been about a cord every month since the levy doubled."
+				},
+				{
+					"heading": "The hand",
+					"body": "Small, hard, and slanted to the left, the way she wrote everything from the time she was nine. She kept the true count for three winters, sold it to a man who buys paper and does not ask, and asked him to forget her. She did not stop writing. She stopped writing to you."
+				},
+				{
+					"heading": "And now",
+					"body": "You know where she went and why she stopped writing, and you are holding the reason in both hands. Nobody is waiting on you. The road out of Harrowmere runs west, back the way you came, and the levy will be counted again next month whatever you do about it."
+				}
+			]
+		}
 	},
-
 	"trees": [
 		{
 			"siteId": 2150566345,
 			"npcSlot": 0,
 			"entry": "hello",
-			"entryAfter": [{ "node": "hello-after", "flag": "arc:the-short-tally" }],
+			"entryAfter": [
+				{
+					"node": "hello-after",
+					"flag": "arc:the-short-tally"
+				}
+			],
 			"revisit": "again",
 			"nodes": [
 				{
 					"id": "hello",
 					"speech": "Out of season and on foot. You are either lost or you are looking for somebody.",
 					"choices": [
-						{ "text": "Looking for a warden. New badge, autumn.", "goto": "warden" },
-						{ "text": "What is wrong with the tally here?", "goto": "tally" },
-						{ "text": "Just a bed, thanks.", "goto": null }
+						{
+							"text": "Looking for a warden. New badge, autumn.",
+							"goto": "warden"
+						},
+						{
+							"text": "What is wrong with the tally here?",
+							"goto": "tally"
+						},
+						{
+							"text": "Just a bed, thanks.",
+							"goto": null
+						}
 					]
 				},
 				{
 					"id": "warden",
-					"speech": "She came through, yes. Would not give a name, which around here is the same as giving one. Went up the high road toward Stonewait \u2014 that is the weighing station, north and uphill, you cannot miss it \u2014 and did not come back down.",
+					"speech": "She came through, yes. Would not give a name, which around here is the same as giving one. Went up the high road toward Stonewait — that is the weighing station, north and uphill, you cannot miss it — and did not come back down.",
 					"choices": [
-						{ "text": "And the tally?", "goto": "tally" },
-						{ "text": "That is enough to go on.", "goto": null }
+						{
+							"text": "And the tally?",
+							"goto": "tally"
+						},
+						{
+							"text": "That is enough to go on.",
+							"goto": null
+						}
 					]
 				},
 				{
@@ -515,22 +632,39 @@
 							"value": null
 						}
 					],
-					"choices": [{ "text": "North to Stonewait, then.", "goto": null }]
+					"choices": [
+						{
+							"text": "North to Stonewait, then.",
+							"goto": null
+						}
+					]
 				},
 				{
 					"id": "hello-after",
 					"speech": "You still have my count, I see. Good. It is worth more out of this house than in it.",
 					"choices": [
-						{ "text": "Who weighs at Stonewait?", "goto": "warden" },
-						{ "text": "Later.", "goto": null }
+						{
+							"text": "Who weighs at Stonewait?",
+							"goto": "warden"
+						},
+						{
+							"text": "Later.",
+							"goto": null
+						}
 					]
 				},
 				{
 					"id": "again",
 					"speech": "Back again. There is stew, and there is the other stew.",
 					"choices": [
-						{ "text": "The first one.", "goto": null },
-						{ "text": "About the warden, again.", "goto": "warden" }
+						{
+							"text": "The first one.",
+							"goto": null
+						},
+						{
+							"text": "About the warden, again.",
+							"goto": "warden"
+						}
 					]
 				}
 			]
@@ -539,53 +673,96 @@
 			"siteId": 2528282773,
 			"npcSlot": 0,
 			"entry": "hello",
-			"entryAfter": [{ "node": "hello-tally", "flag": "arc:the-short-tally" }],
+			"entryAfter": [
+				{
+					"node": "hello-tally",
+					"flag": "arc:the-short-tally"
+				}
+			],
 			"revisit": "again",
 			"nodes": [
 				{
 					"id": "hello",
 					"speech": "The road is open and the weighbridge is not. State your business or use the verge.",
 					"choices": [
-						{ "text": "I am looking for a warden.", "goto": "badge" },
-						{ "text": "The verge, then.", "goto": null }
+						{
+							"text": "I am looking for a warden.",
+							"goto": "badge"
+						},
+						{
+							"text": "The verge, then.",
+							"goto": null
+						}
 					]
 				},
 				{
 					"id": "hello-tally",
 					"speech": "You are carrying paper. I can always tell. Whose is it?",
 					"choices": [
-						{ "text": "Bracken Cross's own count.", "goto": "badge" },
-						{ "text": "Mine.", "goto": "badge" }
+						{
+							"text": "Bracken Cross's own count.",
+							"goto": "badge"
+						},
+						{
+							"text": "Mine.",
+							"goto": "badge"
+						}
 					]
 				},
 				{
 					"id": "badge",
 					"speech": "Signed out in autumn. Never signed back in. I have written it up four times and four times it has come back initialled and unread.",
 					"choices": [
-						{ "text": "Who reads them, then?", "goto": "weights" },
-						{ "text": "Where did she go?", "goto": "east" },
-						{ "text": "That is all I needed.", "goto": null }
+						{
+							"text": "Who reads them, then?",
+							"goto": "weights"
+						},
+						{
+							"text": "Where did she go?",
+							"goto": "east"
+						},
+						{
+							"text": "That is all I needed.",
+							"goto": null
+						}
 					]
 				},
 				{
 					"id": "weights",
 					"speech": "Two tallies leave this station. One goes to the crown and one is true. I sign both, which is the part I would rather you did not write down.",
 					"choices": [
-						{ "text": "Who keeps the true one?", "goto": "east" },
-						{ "text": "I did not hear it.", "goto": null }
+						{
+							"text": "Who keeps the true one?",
+							"goto": "east"
+						},
+						{
+							"text": "I did not hear it.",
+							"goto": null
+						}
 					]
 				},
 				{
 					"id": "east",
-					"speech": "Ott keeps the honest weight and Ott does not keep it here. Ask him, not me \u2014 he is on the bench inside the wall, doing sums I cannot bear to watch.",
-					"choices": [{ "text": "The bench inside the wall. I will find him.", "goto": null }]
+					"speech": "Ott keeps the honest weight and Ott does not keep it here. Ask him, not me — he is on the bench inside the wall, doing sums I cannot bear to watch.",
+					"choices": [
+						{
+							"text": "The bench inside the wall. I will find him.",
+							"goto": null
+						}
+					]
 				},
 				{
 					"id": "again",
 					"speech": "Still here. Still open. Still not the weighbridge.",
 					"choices": [
-						{ "text": "About the badge.", "goto": "badge" },
-						{ "text": "Nothing.", "goto": null }
+						{
+							"text": "About the badge.",
+							"goto": "badge"
+						},
+						{
+							"text": "Nothing.",
+							"goto": null
+						}
 					]
 				}
 			]
@@ -600,39 +777,67 @@
 					"id": "hello",
 					"speech": "Paper, timber, or trouble? I buy the first, weigh the second, and price the third rather high.",
 					"choices": [
-						{ "text": "A ledger, sold to you in autumn.", "goto": "ledger" },
+						{
+							"text": "A ledger, sold to you in autumn.",
+							"goto": "ledger"
+						},
 						{
 							"text": "Why does the Crown Yard take more cord than the road carries?",
 							"goto": "yard"
 						},
-						{ "text": "None of the three.", "goto": null }
+						{
+							"text": "None of the three.",
+							"goto": null
+						}
 					]
 				},
 				{
 					"id": "ledger",
 					"speech": "A warden, yes. Four parts in five, which was generous, and she asked to be forgotten, which was cheap. I have an excellent memory and a very short one, depending.",
 					"choices": [
-						{ "text": "Depending on what?", "goto": "price" },
-						{ "text": "Do you still have it?", "goto": "price" }
+						{
+							"text": "Depending on what?",
+							"goto": "price"
+						},
+						{
+							"text": "Do you still have it?",
+							"goto": "price"
+						}
 					]
 				},
 				{
 					"id": "yard",
 					"speech": "Because the road is not the only way in, and the yard is not the only one counting. You did not need me to tell you that. You needed somebody to say it out loud.",
 					"choices": [
-						{ "text": "The ledger, then.", "goto": "ledger" },
-						{ "text": "It is said.", "goto": null }
+						{
+							"text": "The ledger, then.",
+							"goto": "ledger"
+						},
+						{
+							"text": "It is said.",
+							"goto": null
+						}
 					]
 				},
 				{
 					"id": "price",
 					"speech": "On whether the person asking is family. You have her hand about the mouth, if not the sense. It is in the back room, under the counter, and it is not for sale twice. Read it there and then decide what you are going to do about it.",
-					"choices": [{ "text": "Then I will read it here.", "goto": null }]
+					"choices": [
+						{
+							"text": "Then I will read it here.",
+							"goto": null
+						}
+					]
 				},
 				{
 					"id": "again",
 					"speech": "Back. The ledger has not moved and neither have I.",
-					"choices": [{ "text": "Good.", "goto": null }]
+					"choices": [
+						{
+							"text": "Good.",
+							"goto": null
+						}
+					]
 				}
 			]
 		}

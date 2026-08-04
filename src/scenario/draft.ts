@@ -163,6 +163,13 @@ export const ScenarioDraftSchema = z.object({
 			title: z.string().min(1).max(120),
 			premise: z.string().max(600),
 			beats: z.array(BeatDraftSchema).min(1).max(14),
+			/**
+			 * The last page, shown once every beat is reached and every errand closed.
+			 *
+			 * Optional: one is assembled from the premise and what the player actually did
+			 * when nobody writes one, so a scenario always ends rather than stopping.
+			 */
+			ending: CardBodySchema.optional(),
 		})
 		.optional(),
 	trees: z.array(TreeDraftSchema).optional(),
@@ -365,7 +372,12 @@ function lowerArc(
 			...(raw.card ? { card: raw.card } : {}),
 		};
 	});
-	return { title: draft.title, premise: draft.premise, beats };
+	return {
+		title: draft.title,
+		premise: draft.premise,
+		beats,
+		...(draft.ending ? { ending: draft.ending } : {}),
+	};
 }
 
 function lowerTrees(

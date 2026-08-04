@@ -86,7 +86,11 @@ function QuestReader({
 	// is why the player opened this, but the errand it handed out still has to fit.
 	const CLUE_ROWS = 3;
 	const storyWanted = outline
-		? 5 + outline.steps.length + (outline.remaining > 0 ? 1 : 0) + outline.clues.length * CLUE_ROWS
+		? 5 +
+			outline.steps.length +
+			(outline.remaining > 0 ? 1 : 0) +
+			(outline.finished ? 1 : 0) +
+			outline.clues.length * CLUE_ROWS
 		: 0;
 	const storyRows = Math.min(storyWanted, Math.floor((rows * 2) / 3));
 	const left = rows - storyRows;
@@ -97,7 +101,10 @@ function QuestReader({
 		<>
 			{outline && storyRows > 3 && (
 				<>
-					<Rule width={width} label={`${outline.title} — the story so far`} />
+					<Rule
+						width={width}
+						label={`${outline.title} — ${outline.finished ? "the story, told" : "the story so far"}`}
+					/>
 					<Prose text={outline.premise} width={width} rows={3} color="gray" />
 					{outline.steps.map((step) => (
 						<Text key={step.label} color={step.complete ? "green" : "white"} wrap="truncate">
@@ -108,6 +115,11 @@ function QuestReader({
 					{outline.remaining > 0 && (
 						<Text color="gray" wrap="truncate">
 							{`    …and ${outline.remaining} more to come`}
+						</Text>
+					)}
+					{outline.finished && (
+						<Text color="green" wrap="truncate">
+							The story is told. Nothing is waiting on you now.
 						</Text>
 					)}
 					{outline.clues.length > 0 && (

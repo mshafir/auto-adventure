@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { hashString } from "../rand/hash.js";
 import { npcId } from "../world/spec.js";
 import {
+	ARC_DONE_FLAG,
+	arcEndEffects,
 	arcOutline,
 	arcProgress,
 	beatCardId,
@@ -350,5 +352,92 @@ describe("the story so far", () => {
 			}),
 		);
 		expect(outline?.clues).toEqual([]);
+	});
+});
+
+describe("running out of story", () => {
+	const arc: ScenarioArc = {
+		title: "The Tithe",
+		premise: "Somebody has to pay for the rope.",
+		beats: [
+			{
+				id: "a",
+				order: 0,
+				siteId: 1,
+				npcSlot: 0,
+				requires: [],
+				setsFlag: "arc:a",
+				quest: {
+					id: "rope",
+					name: "Rope",
+					description: "d",
+					objectives: [{ kind: "have", target: "Rope", done: false }],
+				},
+			},
+			{ id: "b", order: 1, siteId: 1, npcSlot: 0, requires: ["arc:a"], setsFlag: "arc:b" },
+		],
+	};
+
+	function state(overrides: Partial<GameState> = {}): GameState {
+		const base = createInitialState(
+			{ id: "t", name: "t", seed: 1, createdAt: "2026-01-01T00:00:00.000Z" },
+			{ x: 0, y: 0 },
+		);
+		return { ...base, arc, ...overrides };
+	}
+
+	const outline = (s: GameState) => arcOutline(arc, s);
+
+	it("is not finished while a beat is unreached", () => {
+		const s = state({ flags: { "arc:a": true } });
+		expect(outline(s)?.finished).toBe(false);
+		expect(arcEndEffects(arc, s, outline(s))).toEqual([]);
+	});
+
+	it("is not finished while an errand it handed out is open", () => {
+		// The distinction the pane already draws with [~]: reaching the last beat is not
+		// the same as having nothing left to do.
+		const s = state({ flags: { "arc:a": true, "arc:b": true } });
+		expect(outline(s)?.finished).toBe(false);
+		expect(arcEndEffects(arc, s, outline(s))).toEqual([]);
+	});
+
+	function done(): GameState {
+		return state({
+			flags: { "arc:a": true, "arc:b": true },
+			quests: [
+				{
+					id: "rope",
+					name: "Rope",
+					description: "d",
+					objectives: [{ kind: "have", target: "Rope", done: true }],
+					progress: [],
+					completed: true,
+				},
+			],
+		});
+	}
+
+	it("is finished once every beat is reached and every errand closed", () => {
+		expect(outline(done())?.finished).toBe(true);
+	});
+
+	it("journals it, raises the ending, and marks itself done — in that order", () => {
+		// The flag last, so a partially applied set is retried rather than skipped, the
+		// same rule `beatEffects` follows.
+		const effects = arcEndEffects(arc, done(), outline(done()));
+		expect(effects.map((effect) => effect.t)).toEqual(["RecordJournal", "ShowCard", "SetFlag"]);
+	});
+
+	it("says nothing a second time", () => {
+		const already = { ...done(), flags: { ...done().flags, [ARC_DONE_FLAG]: true } };
+		expect(arcEndEffects(arc, already, outline(already))).toEqual([]);
+	});
+
+	it("says nothing for a world with no story, or a story with no beats", () => {
+		expect(arcEndEffects(undefined, done(), undefined)).toEqual([]);
+		const empty: ScenarioArc = { title: "t", premise: "p", beats: [] };
+		const s = state({ arc: empty });
+		expect(arcEndEffects(empty, s, arcOutline(empty, s))).toEqual([]);
 	});
 });

@@ -237,6 +237,18 @@ export interface GameState {
 	 * out of without being read is framing nobody reads.
 	 */
 	readonly card?: Card;
+	/**
+	 * Cards waiting behind the one on screen.
+	 *
+	 * One turn can raise two: the last beat of a story shows its revelation and the
+	 * story then runs out of story, so the ending is raised in the same step. With a
+	 * single slot the second silently replaced the first and the revelation was never
+	 * read — while its flag said it had been.
+	 *
+	 * UI-transient like `card` itself. A queue that survived a save would resume into
+	 * a stack of screens the player had already dismissed.
+	 */
+	readonly pendingCards?: readonly Card[];
 }
 
 export function createInitialState(

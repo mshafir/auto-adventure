@@ -122,7 +122,15 @@ judgement:
           ]
         }
       }
-    ]
+    ],
+    "ending": {                       // optional; one is assembled if you leave it out
+      "title": "The hand you know",
+      "subtitle": "read in the back room, by one lamp",
+      "sections": [
+        { "heading": "The ledger", "body": "Every figure is in your sister's hand." },
+        { "heading": "And now", "body": "Nobody is waiting on you. The road is still there." }
+      ]
+    }
   },
 
   "content": {                        // optional; the world's own names and trades
@@ -212,6 +220,13 @@ judgement:
 - A trade you invent needs only a `households` entry; an unwritten `appearance` still
   produces a line. Write one anyway — it is the text the examine verb prints, so it
   is read more often than any dialogue.
+- `arc.ending` is the last thing a finished story shows, once every beat is reached
+  and every errand closed. Leave it out and one is assembled from your premise and the
+  steps the player finished — so a scenario always ends rather than stopping — but a
+  written one is how it gets a real last page.
+- Do **not** point a beat's errand at the place that beat happens. `reach Harrowmere`
+  on a beat anchored to somebody in Harrowmere completes the instant it is given. A
+  final beat usually wants no errand at all.
 - A `card` is for the turns a line of dialogue cannot carry: a revelation, a passage
   of time, the moment the errand becomes something else. It stops the game until it
   is read, so use two or three across a whole scenario, not one per beat. The game

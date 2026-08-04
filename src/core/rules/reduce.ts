@@ -1,4 +1,5 @@
 import { chunkKey, toChunk } from "../world/coords.js";
+import { arcEndEffects, arcOutline } from "./arc.js";
 import { cardKey, cardSeen, tidyCard } from "./card.js";
 import type { Command } from "./commands.js";
 import { type DomainEffect, type Effect, facingDelta, type Reduction } from "./effects.js";
@@ -94,8 +95,6 @@ export function reduce(state: GameState, command: Command, world: WorldProbe): R
 	});
 
 	const arrival = recordArrival(progress.state, placeName);
-	const changed = progress.state !== result.state || arrival.state !== progress.state;
-	if (!changed) return result;
 
 	const journal = [
 		...arrival.entries,
@@ -115,10 +114,33 @@ export function reduce(state: GameState, command: Command, world: WorldProbe): R
 		})),
 	];
 
+	const logged =
+		journal.length > 0
+			? { ...arrival.state, journal: [...arrival.state.journal, ...journal] }
+			: arrival.state;
+
+	// Checked here rather than beside the beat that opened, because an arc can run out
+	// of story on any of three unrelated acts: the last beat opening, the last
+	// objective latching, or a conversation completing a quest outright. Asking once,
+	// after everything else has settled, is the only place that catches all three.
+	//
+	// And checked *before* the no-change shortcut below. The command that opens the
+	// final beat changes nothing about quests or arrivals, so an early return would
+	// have skipped exactly the case this exists for.
+	const ended = applyEffects(
+		logged,
+		arcEndEffects(logged.arc, logged, arcOutline(logged.arc, logged)),
+	);
+
+	if (ended.state === result.state) return result;
+
 	const notable =
-		progress.completed.length > 0 || progress.advanced.length > 0 || arrival.entries.length > 0;
+		progress.completed.length > 0 ||
+		progress.advanced.length > 0 ||
+		arrival.entries.length > 0 ||
+		ended.state !== logged;
 	return {
-		state: { ...arrival.state, journal: [...arrival.state.journal, ...journal] },
+		state: ended.state,
 		effects: notable ? [...result.effects, { t: "Save", reason: "checkpoint" }] : result.effects,
 	};
 }
@@ -191,8 +213,16 @@ function step(state: GameState, command: Command, world: WorldProbe): Reduction 
 			return confirm(state);
 		case "DismissCard": {
 			if (!state.card) return { state, effects: [] };
-			const { card: _card, ...rest } = state;
-			return { state: rest as GameState, effects: [] };
+			const [next, ...rest] = state.pendingCards ?? [];
+			const { card: _card, pendingCards: _pending, ...bare } = state;
+			const cleared = bare as GameState;
+			// The next card takes the screen directly, so a finale reads as consecutive
+			// pages rather than flashing the map between them.
+			if (!next) return { state: cleared, effects: [] };
+			return {
+				state: { ...cleared, card: next, ...(rest.length > 0 ? { pendingCards: rest } : {}) },
+				effects: [],
+			};
 		}
 		case "CloseDialogue":
 			return { state: withoutDialogue(state), effects: [] };
@@ -674,11 +704,14 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 			if (cardSeen(state.flags, effect.card.id)) return state;
 			const card = tidyCard(effect.card);
 			if (card.sections.length === 0 && !card.subtitle) return state;
-			return {
-				...state,
-				card,
-				flags: { ...state.flags, [cardKey(card.id)]: true },
-			};
+			const flags = { ...state.flags, [cardKey(card.id)]: true };
+			// Behind whatever is already up rather than over it. The flag is set either
+			// way, because a queued card *will* be shown — it is the replacing that lost
+			// one, not the queueing.
+			if (state.card) {
+				return { ...state, flags, pendingCards: [...(state.pendingCards ?? []), card] };
+			}
+			return { ...state, card, flags };
 		}
 		case "RecordJournal":
 			return {

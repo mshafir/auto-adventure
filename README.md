@@ -143,6 +143,11 @@ send you after something that was never placed.
 
 ![The story so far, and the errand in hand](docs/screens/quest.svg)
 
+When the last beat closes and the last errand is done, the story says so — a line in
+the journal, `told` in the quest pane, and a closing card the way it opened on one.
+A scenario can write its own last page; one is assembled from what the player
+actually did if it does not.
+
 The same log, read in full. The panel is 32 columns and everything in it is prose
 written for a human, so a quest description or a story clue arrived elided
 mid-sentence. `Enter` hands the focused list the whole frame — same tab, same

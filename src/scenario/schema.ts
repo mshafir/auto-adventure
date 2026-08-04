@@ -148,6 +148,7 @@ export const ScenarioArcSchema = z.object({
 	title: z.string().min(1).max(120),
 	premise: z.string().max(600),
 	beats: z.array(ScenarioBeatSchema),
+	ending: CardBodySchema.optional(),
 });
 
 const DialogueChoiceSchema = z.object({

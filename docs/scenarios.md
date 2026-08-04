@@ -367,6 +367,39 @@ Cards block movement, interaction and conversation while up (`CARD_BLOCKS` in
 reads. Everything asynchronous stays live, so the world behind it is complete by
 the time it comes down.
 
+### The ending
+
+A player finished a scenario, saw `Completed: Find the ledger in Harrowmere` as the
+last line of their log, and asked whether that was it. It was. Nothing said so.
+
+The game *knew* — every beat reached, every errand closed — and reported it as `3/3`
+in a rule label, leaving the player to do arithmetic and still be unsure. An ending
+is not a status.
+
+`arcOutline` now carries `finished`, and `arcEndEffects` fires once when it becomes
+true: a journal line in the words the question was asked in (*"the story is told.
+Nothing is waiting on you now"*), a closing card, and a flag so it is said exactly
+once. The pane says `told` rather than `3/3`, and both pane and reader state it in a
+sentence.
+
+`arc.ending` is authorable, and one is **assembled when nobody writes it** — the
+premise, the steps actually finished, and plainly that nothing is waiting — so every
+scenario ends rather than stopping. Inventing an epilogue would be putting words in
+an author's mouth about a story this code has never read.
+
+Completion is checked in `reduce`'s tail rather than beside the beat that opened,
+because an arc can run out of story on any of three unrelated acts: the last beat
+opening, the last objective latching, or a conversation completing a quest outright.
+It is checked *before* the no-change shortcut, since the command that opens the final
+beat changes nothing about quests or arrivals — an early return skipped exactly the
+case this exists for.
+
+**Cards queue.** Raising two in one step used to replace the first, and the last beat
+of a story is precisely where that happens: its revelation and the ending arrive
+together, and the revelation was lost while its flag claimed it had been read.
+`state.pendingCards` holds what is waiting; dismissing hands the screen straight to
+the next, so a finale reads as consecutive pages.
+
 ### The opening
 
 `openingCard()` assembles three fixed headings — the questions a player has in

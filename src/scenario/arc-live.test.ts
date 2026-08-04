@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { demoArtifact } from "../../test/fixtures/scenario.js";
-import type { ScenarioArc } from "../core/rules/arc.js";
+import { arcOutline, type ScenarioArc } from "../core/rules/arc.js";
 import { npcId } from "../core/world/spec.js";
 import { buildSession } from "../session.js";
 
@@ -240,12 +240,156 @@ describe("a beat that frames itself", () => {
 		// And what it describes is already true behind it.
 		expect(state.journal.some((entry) => entry.text.includes("every coil aboard"))).toBe(true);
 
+		// This is the only beat and it carries no errand, so the story also ends here —
+		// and the ending waits its turn behind the revelation rather than replacing it.
+		expect(state.pendingCards?.map((card) => card.id)).toEqual(["arc:end"]);
+		session.engine.dispatch({ t: "DismissCard" });
+		expect(session.engine.getState().card?.id).toBe("arc:end");
+
 		// Read once. Dismissing and reopening the conversation must not raise it again.
 		session.engine.dispatch({ t: "DismissCard" });
 		session.engine.dispatch({ t: "CloseDialogue" });
 		session.engine.dispatch({ t: "DialogueOpened", npcId: anchor, npcName: spec.name });
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(session.engine.getState().card).toBeUndefined();
+		session.dispose();
+	});
+});
+
+describe("a story that runs out of story", () => {
+	/** Two beats on one anchor: the first hands out an errand, the second is the end. */
+	function endingArc(siteId: number, ending?: ScenarioArc["ending"]): ScenarioArc {
+		return {
+			title: "The Tithe",
+			premise: "Somebody has to pay for the rope.",
+			...(ending ? { ending } : {}),
+			beats: [
+				{
+					id: "the-rope",
+					order: 0,
+					siteId,
+					npcSlot: 0,
+					requires: [],
+					setsFlag: "arc:the-rope",
+					quest: {
+						id: "rope",
+						name: "Find the season's rope",
+						description: "It went down in the narrows.",
+						objectives: [{ kind: "have", target: ROPE, done: false }],
+					},
+				},
+				{
+					id: "the-reckoning",
+					order: 1,
+					siteId,
+					npcSlot: 0,
+					requires: ["arc:the-rope"],
+					setsFlag: "arc:the-reckoning",
+					journal: "So that is where it went.",
+				},
+			],
+		};
+	}
+
+	async function playToTheEnd(ending?: ScenarioArc["ending"]) {
+		const artifact = demoArtifact();
+		const siteId = Number(Object.keys(artifact.sites)[0]);
+		const anchor = npcId(siteId, 0);
+		const spec = artifact.sites[String(siteId)]?.npcs[0];
+		if (!spec) throw new Error("fixture has no anchor npc");
+
+		const session = buildSession(
+			{
+				worldId: `ending-${ending ? "written" : "assembled"}`,
+				seed: 0,
+				flavour: "prebuilt",
+				scenario: { ...artifact, arc: endingArc(siteId, ending) },
+			},
+			{ saveDebounceMs: 0 },
+		);
+		const engine = session.engine;
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+		const talk = async () => {
+			// Cards first, and *before* speaking: a card blocks `DialogueOpened`, so the
+			// opening one left up would make every conversation in this test a no-op.
+			for (let i = 0; i < 8 && engine.getState().card; i++) engine.dispatch({ t: "DismissCard" });
+			engine.dispatch({ t: "DialogueOpened", npcId: anchor, npcName: spec.name });
+			await settle();
+			for (let i = 0; i < 8 && engine.getState().dialogue; i++) {
+				engine.dispatch({ t: "CloseDialogue" });
+				await settle();
+			}
+		};
+
+		// Beat one, its errand finished, then beat two — which is the last, so the story
+		// ends as it opens.
+		await talk();
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [{ t: "GrantItem", name: ROPE, description: "Tarred.", quantity: 1 }],
+		});
+		return { session, engine, talk };
+	}
+
+	it("says so in the journal, once, in the words the player would ask in", async () => {
+		// The complaint this answers: a finished scenario's last log line was an errand
+		// name, and the player could not tell whether that was the end.
+		const { session, engine, talk } = await playToTheEnd();
+		expect(arcOutline(engine.getState().arc, engine.getState())?.finished).toBe(false);
+
+		await talk();
+		const state = engine.getState();
+		expect(arcOutline(state.arc, state)?.finished).toBe(true);
+		expect(state.journal.map((entry) => entry.text)).toContain(
+			"The Tithe: the story is told. Nothing is waiting on you now.",
+		);
+		expect(state.flags["arc:complete"]).toBe(true);
+		session.dispose();
+	});
+
+	it("closes on a card assembled from what the player actually did", async () => {
+		// So a scenario that never wrote an ending still ends rather than stopping.
+		const { session, engine, talk } = await playToTheEnd();
+		await talk();
+
+		const card = engine.getState().card;
+		expect(card?.id).toBe("arc:end");
+		expect(card?.subtitle).toBe("the story is told");
+		const headings = card?.sections.map((section) => section.heading) ?? [];
+		expect(headings).toEqual(["What you set out to do", "What you did", "And now"]);
+		expect(card?.sections.find((s) => s.heading === "What you did")?.body).toContain(
+			"Find the season's rope",
+		);
+		session.dispose();
+	});
+
+	it("prefers a written ending over the assembled one", async () => {
+		const { session, engine, talk } = await playToTheEnd({
+			title: "The hand you know",
+			subtitle: "by one lamp",
+			sections: [{ heading: "The ledger", body: "Every figure is in your sister's hand." }],
+		});
+		await talk();
+
+		const card = engine.getState().card;
+		expect(card?.id).toBe("arc:end");
+		expect(card?.title).toBe("The hand you know");
+		expect(card?.sections.map((section) => section.heading)).toEqual(["The ledger"]);
+		session.dispose();
+	});
+
+	it("says it once, however many commands follow", async () => {
+		const { session, engine, talk } = await playToTheEnd();
+		await talk();
+		engine.dispatch({ t: "DismissCard" });
+		for (let i = 0; i < 6; i++) engine.dispatch({ t: "Move", facing: "down" });
+
+		const told = engine
+			.getState()
+			.journal.filter((entry) => entry.text.includes("the story is told"));
+		expect(told).toHaveLength(1);
+		// And it does not come back up as a card either.
+		expect(engine.getState().card).toBeUndefined();
 		session.dispose();
 	});
 });

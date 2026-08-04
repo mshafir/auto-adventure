@@ -1,6 +1,7 @@
 import { npcId as makeNpcId } from "../world/spec.js";
 import type { CardSection } from "./card.js";
 import type { DomainEffect } from "./effects.js";
+import { endingCard } from "./ending.js";
 import type { GameState, QuestObjective } from "./state.js";
 
 /**
@@ -59,7 +60,21 @@ export interface ScenarioArc {
 	/** What the story is, in a sentence or two. Shown when a scenario starts. */
 	readonly premise: string;
 	readonly beats: readonly ScenarioBeat[];
+	/**
+	 * A last page, shown once every beat is reached and every errand closed.
+	 *
+	 * Optional because one is assembled from the arc when nobody writes one — a story
+	 * with no ending at all is what left a player asking whether they had finished.
+	 */
+	readonly ending?: {
+		readonly title: string;
+		readonly subtitle?: string;
+		readonly sections: readonly CardSection[];
+	};
 }
+
+/** The flag recording that the story has been told, so it is said exactly once. */
+export const ARC_DONE_FLAG = "arc:complete";
 
 /**
  * The journal source a beat's entry is filed under.
@@ -193,6 +208,15 @@ export interface ArcStep {
 export interface ArcOutline {
 	readonly title: string;
 	readonly premise: string;
+	/**
+	 * Whether there is nothing left to do.
+	 *
+	 * Every beat reached and every errand they handed out finished. Worth its own
+	 * field rather than being left as arithmetic on the two below: a player asking
+	 * "have I finished this?" was reading `3/3` and still not sure, which is the whole
+	 * reason this exists.
+	 */
+	readonly finished: boolean;
 	/** Beats already reached, oldest first, as the player would list them. */
 	readonly steps: readonly ArcStep[];
 	/** How many beats have not been reached, without saying what they are. */
@@ -222,16 +246,55 @@ export function arcOutline(arc: ScenarioArc | undefined, state: GameState): ArcO
 		state.quests.filter((quest) => quest.completed).map((quest) => quest.id),
 	);
 
+	const steps = opened.map((beat) => ({
+		label: beatLabel(beat),
+		complete: !beat.quest || finished.has(beat.quest.id),
+	}));
+
 	return {
 		title: arc.title,
 		premise: arc.premise,
-		steps: opened.map((beat) => ({
-			label: beatLabel(beat),
-			complete: !beat.quest || finished.has(beat.quest.id),
-		})),
+		finished: opened.length === beats.length && steps.every((step) => step.complete),
+		steps,
 		remaining: beats.length - opened.length,
 		clues: state.journal
 			.filter((entry) => entry.source !== undefined && sources.has(entry.source))
 			.map((entry) => entry.text),
 	};
+}
+
+/**
+ * What happens the moment a story runs out of story.
+ *
+ * Returns nothing at all unless the arc has *just* finished, so this is safe to ask
+ * after every command — which is what it has to be, because an arc can close on any
+ * of three unrelated acts: the last beat opening, the last errand's objective
+ * latching, or a quest being completed outright by a conversation.
+ *
+ * The flag is set here rather than left to the card's own dedupe, because the journal
+ * entry needs the same guard and a scenario may have no card to dedupe against.
+ */
+export function arcEndEffects(
+	arc: ScenarioArc | undefined,
+	state: GameState,
+	outline: ArcOutline | undefined,
+): DomainEffect[] {
+	if (!arc || !outline?.finished) return [];
+	if (state.flags[ARC_DONE_FLAG]) return [];
+	if (arc.beats.length === 0) return [];
+
+	return [
+		{
+			t: "RecordJournal",
+			entry: {
+				kind: "event",
+				// Says it in the words the player asked the question in. "3/3" was what
+				// they had before, and it was not an answer.
+				text: `${arc.title}: the story is told. Nothing is waiting on you now.`,
+				source: ARC_DONE_FLAG,
+			},
+		},
+		{ t: "ShowCard", card: endingCard(arc, outline) },
+		{ t: "SetFlag", key: ARC_DONE_FLAG, value: true },
+	];
 }

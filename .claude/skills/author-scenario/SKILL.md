@@ -168,6 +168,17 @@ at. So:
   the *clues* pinned to the main quest pane, so a beat without one leaves a gap in
   the only running summary of the story the player gets. One or two sentences saying
   what was just learned, in the voice of the person who said it.
+- **Never point an errand at where it was given.** `reach Harrowmere` on a beat
+  anchored to somebody *in* Harrowmere completes the instant it is handed over — the
+  log reads `New errand: …` and `Completed: …` back to back, and it directs nobody.
+  This is the same trap as the one above and it is easy to miss on the *last* beat.
+  A final beat is usually a revelation and wants no errand at all; the beat before it
+  is what should send the player there.
+- **Write an `ending`.** The last thing a finished story shows is a card, and one is
+  assembled from your premise and what the player did if you leave it out. Writing one
+  is how a story gets a real last page instead of a summary. It also answers the
+  question a player actually asks — "is that it?" — which nothing else in a scenario
+  does.
 - **Beat ids become labels.** `the-short-tally` shows as "The short tally" when a beat
   carries no quest, so name beats as if somebody will read them — because they will.
 

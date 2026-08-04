@@ -364,14 +364,16 @@ function MainQuest({ outline, width, rows }: { outline: ArcOutline; width: numbe
 
 	const settled = outline.steps.filter((step) => step.complete).length;
 	const total = outline.steps.length + outline.remaining;
-	const progress = settled === total ? "done" : `${settled}/${total}`;
+	// "done" was what a player read while still not knowing whether they had finished,
+	// so the finished case says so in words instead of in arithmetic.
+	const progress = outline.finished ? "told" : `${settled}/${total}`;
 
 	// The rule takes one row and the premise one or two; whatever is left goes to the
 	// ticked objectives first, because those are the answer to "where was I", and the
 	// clues take the remainder. A clue cut short is still a reminder; a missing
 	// objective reads as progress lost.
 	const premiseRows = Math.min(2, Math.max(0, rows - 2));
-	let left = rows - 1 - premiseRows;
+	let left = rows - 1 - premiseRows - (outline.finished ? 1 : 0);
 	const doneRows = Math.min(outline.steps.length, Math.max(0, left - 1));
 	left -= doneRows;
 	const clueRows = outline.clues.length > 0 ? Math.max(0, left - 1) : 0;
@@ -386,6 +388,11 @@ function MainQuest({ outline, width, rows }: { outline: ArcOutline; width: numbe
 					{step.label}
 				</Text>
 			))}
+			{outline.finished && (
+				<Text color="green" wrap="truncate">
+					The story is told.
+				</Text>
+			)}
 			{clueRows > 0 && (
 				<>
 					<Rule width={width} label="clues" />

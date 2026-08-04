@@ -895,3 +895,68 @@ describe("what the journal remembers", () => {
 		);
 	});
 });
+
+describe("two cards raised in one turn", () => {
+	const card = (id: string, title: string) => ({
+		id,
+		title,
+		sections: [{ heading: "h", body: "b" }],
+	});
+
+	function withCards() {
+		const base = createInitialState(
+			{ id: "c", name: "c", seed: 1, createdAt: "2026-01-01T00:00:00.000Z" },
+			{ x: 0, y: 0 },
+		);
+		return reduce(
+			base,
+			{
+				t: "ApplyEffects",
+				effects: [
+					{ t: "ShowCard", card: card("first", "The narrows") },
+					{ t: "ShowCard", card: card("second", "The story is told") },
+				],
+			},
+			probe(),
+		).state;
+	}
+
+	it("queues the second rather than replacing the first", () => {
+		// The failure this pins was silent and total: the last beat of a story shows its
+		// revelation and the story then ends in the same step, so the ending replaced the
+		// revelation — which was never read, while its flag said it had been.
+		const state = withCards();
+		expect(state.card?.id).toBe("first");
+		expect(state.pendingCards?.map((entry) => entry.id)).toEqual(["second"]);
+	});
+
+	it("marks both read, because a queued card will be shown", () => {
+		const state = withCards();
+		expect(state.flags["card:first"]).toBe(true);
+		expect(state.flags["card:second"]).toBe(true);
+	});
+
+	it("hands the screen straight to the next one", () => {
+		// Not back to the map and then to the second card: a finale should read as
+		// consecutive pages.
+		const dismissed = reduce(withCards(), { t: "DismissCard" }, probe()).state;
+		expect(dismissed.card?.id).toBe("second");
+		expect(dismissed.pendingCards).toBeUndefined();
+	});
+
+	it("gives the world back when the queue is empty", () => {
+		let state = withCards();
+		state = reduce(state, { t: "DismissCard" }, probe()).state;
+		state = reduce(state, { t: "DismissCard" }, probe()).state;
+		expect(state.card).toBeUndefined();
+		expect(state.pendingCards).toBeUndefined();
+	});
+
+	it("still blocks the world while any of them is up", () => {
+		let state = withCards();
+		const before = state.player;
+		state = reduce(state, { t: "Move", facing: "down" }, probe()).state;
+		state = reduce(state, { t: "Move", facing: "down" }, probe()).state;
+		expect(state.player).toEqual(before);
+	});
+});
