@@ -162,7 +162,7 @@ describe("the key bar", () => {
 	it("names the keys, including the one that saves and leaves", () => {
 		const { engine } = engineBesideSomeone();
 		bindEngine(engine);
-		const { lastFrame, unmount } = render(<App />);
+		const { lastFrame, unmount } = renderInk(<App />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).toContain("MWIQJ panels");
@@ -181,7 +181,7 @@ describe("the key bar", () => {
 			text: "Aye?",
 			choices: ["Hello.", "Nothing."],
 		});
-		const { lastFrame, unmount } = render(<App />);
+		const { lastFrame, unmount } = renderInk(<App />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).toContain("Up/Dn choose");
@@ -195,7 +195,7 @@ describe("the side panels", () => {
 	it("explains the map's glyphs rather than leaving them to be guessed", () => {
 		const { engine } = engineBesideSomeone();
 		bindEngine(engine);
-		const { lastFrame, unmount } = render(<App initialTab="map" />);
+		const { lastFrame, unmount } = renderInk(<App initialTab="map" />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).toContain("KEY");
@@ -207,7 +207,7 @@ describe("the side panels", () => {
 	it("explains the minimap's glyphs too, which are a different alphabet", () => {
 		const { engine } = engineBesideSomeone();
 		bindEngine(engine);
-		const { lastFrame, unmount } = render(<App initialTab="world" />);
+		const { lastFrame, unmount } = renderInk(<App initialTab="world" />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		for (const label of ["here", "town", "village", "errand"]) {
@@ -222,7 +222,7 @@ describe("the side panels", () => {
 			effects: [{ t: "GrantItem", name: "Timber", description: "Rough-sawn planks.", quantity: 3 }],
 		});
 		bindEngine(engine);
-		const { lastFrame, unmount } = render(<App initialTab="inventory" />);
+		const { lastFrame, unmount } = renderInk(<App initialTab="inventory" />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).toContain("3x Timber");
@@ -256,7 +256,7 @@ describe("the side panels", () => {
 			],
 		});
 		bindEngine(engine);
-		const { lastFrame, unmount } = render(<App initialTab="quests" />);
+		const { lastFrame, unmount } = renderInk(<App initialTab="quests" />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).toContain("carry 3 Timber");
