@@ -16,7 +16,13 @@ export interface PlacedNpc {
 	readonly siteId: number;
 	readonly regionId: number;
 	readonly spec: NpcSpec;
-	/** Where they are at each part of the day. Absent means indoors and away. */
+	/**
+	 * Where they are at each part of the day.
+	 *
+	 * Every bucket is filled. A missing one removes that person from the world for
+	 * those hours — not indoors, since placement is in world coordinates and an
+	 * interior is its own space, but nowhere at all.
+	 */
 	readonly stations: Readonly<Partial<Record<TimeOfDay, { x: number; y: number }>>>;
 }
 
@@ -69,7 +75,8 @@ export class NpcDirectory {
 	 *
 	 * Schedules are the cheapest thing in the game that makes a village feel
 	 * inhabited: no model call, no stored state, just a different anchor per part
-	 * of the day, and people who are simply not outside at night.
+	 * of the day. Nobody is ever moved out of the world entirely — a town with
+	 * nobody in it cannot be asked anything, and looks broken rather than asleep.
 	 */
 	setHour(hour: number): void {
 		const bucket = timeOfDay(hour);
@@ -123,8 +130,10 @@ export class NpcDirectory {
 		this.byId.clear();
 		for (const list of this.roster.values()) {
 			for (const npc of list) {
+				// Every bucket should be filled; skipping is a guard, not a schedule.
+				// When `night` and `dawn` were left absent for most roles, this quietly
+				// emptied every town between 23:00 and 07:00.
 				const station = npc.stations[this.bucket];
-				// No station for this bucket means they have gone inside.
 				if (!station) continue;
 				npc.x = station.x;
 				npc.y = station.y;
@@ -280,16 +289,28 @@ function pickAnchor(
 
 /** Roles that are still about after dark. */
 const NIGHT_ROLES = /\b(guard|watch|innkeep|inn|sentry|warden|night|priest|toll)\b/i;
-/** Roles that start before everyone else. */
-const EARLY_ROLES = /\b(farm|baker|miller|stable|carter|fisher|shepherd)\b/i;
 
 /**
  * Where one person is at each part of the day.
  *
- * Work in the working hours, the square in the evening, indoors at night. It is
- * three lines of table and it is the single largest contributor to a village
- * reading as inhabited rather than as a diorama — and it costs nothing, because
- * it is derived rather than simulated.
+ * Work in the working hours, the square in the evening, their own doorstep
+ * overnight. Derived rather than simulated, and the single largest contributor to
+ * a village reading as inhabited rather than as a diorama.
+ *
+ * Every bucket is filled for everybody, which was not true before: only nocturnal
+ * roles had a `night` station and only nocturnal or early ones had `dawn`, so
+ * between 23:00 and 07:00 almost every station was absent, `reindex` skipped
+ * almost everybody, and a town had *nobody at all* in it. Measured on a
+ * five-person town: five visible from 07:00 to 22:00, zero for the other eight
+ * hours of the day. They were not indoors either — placement is in world
+ * coordinates and an interior is its own space — so they were nowhere, and any
+ * errand that needed a person could not be progressed for a third of the clock,
+ * with nothing to tell the player that waiting would help.
+ *
+ * Keeping them on their doorstep overnight preserves the rhythm — the square
+ * empties, the workday ends — without anyone ceasing to exist. It matches what
+ * this class already accepts for the daytime: everybody stands outdoors, because
+ * placing them inside needs a per-interior entity layer.
  */
 function stationsFor(
 	npc: NpcSpec,
@@ -299,11 +320,14 @@ function stationsFor(
 	const at = { x: work.x, y: work.y };
 	const social = plaza ? { x: plaza.x, y: plaza.y } : at;
 	const nocturnal = NIGHT_ROLES.test(npc.role);
-	const early = EARLY_ROLES.test(npc.role);
 
+	// Only two places are available to vary between — an NPC's own anchor and the
+	// square — because that is all the geometry the generator gives. A separate home
+	// distinct from a workplace is what would let this say more than it does.
 	return {
-		...(nocturnal ? { night: at } : {}),
-		...(nocturnal || early ? { dawn: at } : {}),
+		// A watchman is in the square at two in the morning; everyone else is home.
+		night: nocturnal ? social : at,
+		dawn: at,
 		morning: at,
 		afternoon: at,
 		dusk: at,

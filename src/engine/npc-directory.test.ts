@@ -126,20 +126,35 @@ describe("bumping into people", () => {
 });
 
 describe("schedules", () => {
-	it("sends most people indoors at night and brings them back in the morning", () => {
+	it("sends people home at night and back to work in the morning", () => {
+		// This used to assert that *fewer* people were present at night, which is how
+		// the bug got in: a station left absent does not put somebody indoors, it
+		// removes them from the world. Everyone is still somewhere at two in the
+		// morning — just not where they stand at noon.
 		const site = findTown(SEED);
 		const { npcs } = populated(SEED, site);
 
 		npcs.setHour(11);
 		const byDay = npcs.all().length;
+		const dayPlaces = npcs
+			.all()
+			.map((n) => `${n.x},${n.y}`)
+			.sort()
+			.join("|");
 		expect(byDay).toBeGreaterThan(0);
 
 		npcs.setHour(2);
-		const atNight = npcs.all().length;
-		expect(atNight).toBeLessThan(byDay);
+		expect(npcs.all().length).toBe(byDay);
 
 		npcs.setHour(11);
 		expect(npcs.all().length).toBe(byDay);
+		expect(
+			npcs
+				.all()
+				.map((n) => `${n.x},${n.y}`)
+				.sort()
+				.join("|"),
+		).toBe(dayPlaces);
 	});
 
 	it("still resolves an NPC by id while they are indoors", () => {
@@ -212,4 +227,56 @@ describe("towns whose halos overlap", () => {
 		const spots = npcs.all().map((npc) => `${npc.x},${npc.y}`);
 		expect(new Set(spots).size).toBe(spots.length);
 	});
+});
+
+describe("a town is never empty", () => {
+	/**
+	 * Reported from play: arrived somewhere to hand over a delivery and there was
+	 * nobody there to hand it to.
+	 *
+	 * Only nocturnal roles were given a `night` station and only nocturnal or early
+	 * ones a `dawn`, so for eight hours in every twenty-four almost every station
+	 * was absent, `reindex` skipped almost everybody, and the town held nobody at
+	 * all. They were not indoors either — placement is in world coordinates and an
+	 * interior is its own space — so any errand needing a person could not be
+	 * progressed for a third of the clock, with nothing to suggest waiting.
+	 */
+	it("has somebody findable at every hour of the day", () => {
+		const site = findTown(SEED);
+		const { npcs } = populated(SEED, site);
+		const roster = npcs.atSite(site.id).length;
+		expect(roster).toBeGreaterThan(0);
+
+		for (let hour = 0; hour < 24; hour++) {
+			npcs.setHour(hour);
+			expect(npcs.all().length, `nobody is anywhere at ${String(hour).padStart(2, "0")}:00`).toBe(
+				roster,
+			);
+		}
+	});
+
+	it("still moves people about, so the day has a shape somewhere", () => {
+		// The cheap way to satisfy the test above is to pin everyone to one tile for
+		// the whole day, so at least one town has to actually vary. Searched across
+		// seeds rather than asserted on one, because the evening move is to a bench,
+		// stall or well and a small town may have none — in which case there is
+		// genuinely nowhere else for its two residents to be.
+		const moves = ["hollowmoor", "vale", "default", "harrow", "moss", "ember"].filter((name) => {
+			const seed = hashString(name);
+			const { npcs } = populated(seed, findTown(seed));
+			const seen = new Set<string>();
+			for (let hour = 0; hour < 24; hour++) {
+				npcs.setHour(hour);
+				seen.add(
+					npcs
+						.all()
+						.map((npc) => `${npc.x},${npc.y}`)
+						.sort()
+						.join("|"),
+				);
+			}
+			return seen.size > 1;
+		});
+		expect(moves.length, "no town anywhere changes through the day").toBeGreaterThan(0);
+	}, 30_000);
 });
