@@ -476,11 +476,18 @@ describe("searching a container", () => {
 	 * were an NPC handing something over and buying it. So "go and find timber" was
 	 * impossible to complete by exploring, however well the quest was grounded.
 	 */
-	function withCrate(contents: { name: string; description: string; quantity: number }[]) {
+	function withCrate(
+		contents: { name: string; description: string; quantity: number }[],
+	): WorldProbe {
+		// Typed as WorldProbe on purpose. Returning an inferred object hid a stale
+		// `containerAt` from the compiler through a rename, and the tests failed at
+		// runtime instead of at build time.
 		return {
 			...probe(),
-			containerAt: (x: number, y: number) =>
-				x === 10 && y === 11 ? { place: 7, contents, emptyText: "The crate is empty." } : undefined,
+			searchableAt: (x: number, y: number) =>
+				x === 10 && y === 11
+					? { key: "looted:7:10,11", contents, emptyText: "The crate is empty." }
+					: undefined,
 		};
 	}
 
@@ -642,5 +649,68 @@ describe("where the player is while indoors", () => {
 			],
 		});
 		expect(enter(quest, world).quests[0]?.completed).toBe(true);
+	});
+});
+
+describe("gathering from the ground", () => {
+	/**
+	 * The gesture is the same as opening a crate, so it is the same code — but it
+	 * only worked indoors. An errand to fetch moss from the crops near the forest
+	 * named things the player could see and walk up to and had no way to pick.
+	 */
+	function withPatch(
+		contents: { name: string; description: string; quantity: number }[],
+	): WorldProbe {
+		return {
+			...probe(),
+			searchableAt: (x: number, y: number) =>
+				x === 10 && y === 11
+					? {
+							key: "gathered:10,11",
+							contents,
+							emptyText: "Nothing more worth taking from the forest floor.",
+						}
+					: undefined,
+		};
+	}
+
+	const MOSS = { name: "Cushion Moss", description: "Deep green.", quantity: 1 };
+
+	it("puts what it gathers into the inventory", () => {
+		const world = withPatch([MOSS]);
+		const { state } = run(makeState(), [{ t: "Interact" }], world);
+		expect(state.inventory.find((i) => i.name === "Cushion Moss")?.quantity).toBe(1);
+		expect(state.notice).toBe("You find Cushion Moss.");
+	});
+
+	it("does not regrow, and says the patch is picked over", () => {
+		const world = withPatch([MOSS]);
+		let state = run(makeState(), [{ t: "Interact" }], world).state;
+		state = run(state, [{ t: "Interact" }], world).state;
+		expect(state.inventory.find((i) => i.name === "Cushion Moss")?.quantity).toBe(1);
+		expect(state.notice).toBe("Nothing more worth taking from the forest floor.");
+	});
+
+	it("uses a key that cannot collide with an emptied crate", () => {
+		const { state } = run(makeState(), [{ t: "Interact" }], withPatch([MOSS]));
+		expect(state.flags["gathered:10,11"]).toBe(true);
+		expect(state.flags["looted:10,11"]).toBeUndefined();
+	});
+
+	it("completes a `have` objective for what it gathered", () => {
+		const quest = makeState({
+			quests: [
+				{
+					id: "q1",
+					name: "Moss for the poultice",
+					description: "From the crops by the forest.",
+					objectives: [{ kind: "have", target: "Cushion Moss", done: false }],
+					progress: [],
+					completed: false,
+				},
+			],
+		});
+		const { state } = run(quest, [{ t: "Interact" }], withPatch([MOSS]));
+		expect(state.quests[0]?.completed).toBe(true);
 	});
 });

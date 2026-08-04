@@ -3,6 +3,7 @@ import { fallbackSite } from "../ai/director/fallback.js";
 import { getInterior } from "../core/gen/features/interior.js";
 import type { StructureKind } from "../core/gen/features/patch.js";
 import { hashString } from "../core/rand/hash.js";
+import { forageYields, isForageable } from "../core/rules/forage.js";
 import { containerContents, isContainer } from "../core/rules/loot.js";
 import { shopStock, tradeKind } from "../core/rules/shop.js";
 import { createInitialState } from "../core/rules/state.js";
@@ -89,11 +90,26 @@ describe("what a town tells the model it has", () => {
 
 			const carried = new Set(engine.getState().inventory.map((i) => i.name));
 
+			// And whatever the ground around the town can be gathered for.
+			const gatherable = new Set<string>();
+			const reach = site.radius + 24;
+			for (let y = site.site.y - reach; y <= site.site.y + reach; y++) {
+				for (let x = site.site.x - reach; x <= site.site.x + reach; x++) {
+					const terrain = engine.getWorldView().terrainAt(x, y);
+					if (isForageable(terrain)) for (const n of forageYields(terrain)) gatherable.add(n);
+				}
+			}
+
 			for (const offered of engine.surroundingsFor(site.id).items) {
-				const obtainable = buyable.has(offered) || findable.has(offered) || carried.has(offered);
-				expect(obtainable, `${name}: offered "${offered}" but it cannot be bought or found`).toBe(
-					true,
-				);
+				const obtainable =
+					buyable.has(offered) ||
+					findable.has(offered) ||
+					gatherable.has(offered) ||
+					carried.has(offered);
+				expect(
+					obtainable,
+					`${name}: offered "${offered}" but it cannot be bought, found or gathered`,
+				).toBe(true);
 			}
 		}
 	}, 30_000);

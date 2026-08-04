@@ -93,6 +93,7 @@ might say, and every option is a real branch rather than a text box.
 
 Inside a building. Crates, barrels, chests and shelves can be searched, and what
 a building stores depends on what it is for — a mill really does hold timber.
+Outdoors the same key gathers from the ground.
 
 ![Inside a building, where the crates are](docs/screens/inside.svg)
 
@@ -111,9 +112,10 @@ refreshing them after a change is one command.
 
 Arrows move; the first press of a new direction only turns, so looking at a sign
 costs nothing. Walking into a door enters the building. Walking into a person
-starts a conversation, as does `SPACE`. `SPACE` facing a crate, barrel, chest or
-shelf searches it — what a building stores depends on what it is for, and a mill
-really does hold timber. Conversations are choice-only — up/down
+starts a conversation, as does `SPACE`. `SPACE` searches whatever you are facing:
+a crate, barrel, chest or shelf indoors, or the ground itself outdoors. What a
+building stores depends on what it is for — a mill really does hold timber — and
+crops, forest floor, marsh, reeds and bramble each give up their own things. Conversations are choice-only — up/down
 to pick, `SPACE` to answer, `ESC` to leave. `M` `W` `I` `Q` `J` switch the side
 panel between the local map, the world map, inventory, quests and the journal. An
 open errand is marked `!` on the world map and carries a bearing in the quest

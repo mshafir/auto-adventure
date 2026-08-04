@@ -2,6 +2,7 @@ import { Box, useStdout } from "ink";
 import { useEffect, useMemo, useState } from "react";
 import { computeFov, lightAt } from "../core/geom/fov.js";
 import { facingDelta } from "../core/rules/effects.js";
+import { forageKey, isForageable } from "../core/rules/forage.js";
 import { isContainer, lootKey } from "../core/rules/loot.js";
 import { decorDef } from "../core/tiles/decor.js";
 import { TFlag } from "../core/tiles/flags.js";
@@ -242,6 +243,12 @@ function describeFaced(
 	const facedTerrain = view.terrainAt(x, y);
 	if (facedTerrain !== 0) {
 		const def = terrainDef(facedTerrain);
+		// Ground worth gathering from says so, and says so only while it still is.
+		if (!engine.getState().player.inside && isForageable(facedTerrain)) {
+			return engine.getState().flags[forageKey(x, y)]
+				? `${def.describe} You have been through this patch.`
+				: `${def.describe} SPACE to gather.`;
+		}
 		// A blank patch of the same ground you stand on is not worth narrating.
 		if (facedTerrain !== view.terrainAt(standingX, standingY)) return def.describe;
 	}

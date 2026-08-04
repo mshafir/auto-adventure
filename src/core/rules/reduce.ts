@@ -1,7 +1,7 @@
 import { chunkKey, toChunk } from "../world/coords.js";
 import type { Command } from "./commands.js";
 import { type DomainEffect, type Effect, facingDelta, type Reduction } from "./effects.js";
-import { type LootItem, lootKey } from "./loot.js";
+import type { LootItem } from "./loot.js";
 import { clampDisposition, createNpcRecord, MAX_FACTS, type NpcRecord } from "./npc.js";
 import { verifyQuests } from "./quests.js";
 import {
@@ -39,18 +39,20 @@ export interface WorldProbe {
 	/** The settlement covering a position, used to resolve `reach` objectives. */
 	placeNameAt?(x: number, y: number): string | undefined;
 	/**
-	 * A searchable container, with what it holds already resolved.
+	 * Something worth searching, with what it holds already resolved.
 	 *
-	 * Resolved by the caller rather than here so the reducer stays pure: contents
-	 * are a function of the seed and the position, which the engine knows and the
-	 * reducer deliberately does not.
+	 * Covers a crate indoors and a patch of ground outdoors alike, because to the
+	 * player they are the same gesture. Resolved by the caller rather than here so
+	 * the reducer stays pure: contents are a function of the seed and the position,
+	 * which the engine knows and the reducer deliberately does not.
 	 */
-	containerAt?(
+	searchableAt?(
 		x: number,
 		y: number,
 	):
 		| {
-				readonly place: number;
+				/** Flag identifying this exact thing, for remembering it was emptied. */
+				readonly key: string;
 				readonly contents: readonly LootItem[];
 				readonly emptyText: string;
 		  }
@@ -340,27 +342,30 @@ function interact(state: GameState, world: WorldProbe): Reduction {
 /**
  * Search whatever the player is facing.
  *
- * The only way anything enters the inventory used to be an NPC handing it over,
+ * The only way anything entered the inventory used to be an NPC handing it over,
  * so every "go and find X" errand was impossible however well it was grounded.
- * Contents are a pure function of position, so nothing about a container is
- * saved — only the fact that this one has been emptied, as a single flag, which
- * is what stops it refilling when the chunk is evicted and regenerated.
+ * A crate indoors and a patch of crops outdoors are the same gesture to the
+ * player, so they are the same code here.
+ *
+ * Contents are a pure function of position, so nothing about the thing searched is
+ * saved — only the fact that it has been emptied, as a single flag, which is what
+ * stops it refilling when the chunk is evicted and regenerated.
  */
 function search(state: GameState, world: WorldProbe, x: number, y: number): Reduction {
-	const container = world.containerAt?.(x, y);
-	if (!container) return { state, effects: [] };
+	const searchable = world.searchableAt?.(x, y);
+	if (!searchable) return { state, effects: [] };
 
-	const key = lootKey(container.place, x, y);
+	const key = searchable.key;
 	if (state.flags[key]) {
-		return { state: { ...state, notice: container.emptyText }, effects: [] };
+		return { state: { ...state, notice: searchable.emptyText }, effects: [] };
 	}
 
-	const found = container.contents;
+	const found = searchable.contents;
 	if (found.length === 0) {
 		// Marked even when empty, so a fruitless search is not repeated forever and
 		// the description settles on the truth.
 		return {
-			state: { ...state, notice: container.emptyText, flags: { ...state.flags, [key]: true } },
+			state: { ...state, notice: searchable.emptyText, flags: { ...state.flags, [key]: true } },
 			effects: [],
 		};
 	}

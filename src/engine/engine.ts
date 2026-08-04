@@ -3,6 +3,13 @@ import type { StructureKind } from "../core/gen/features/patch.js";
 import { invalidateSettlement, settlementBounds } from "../core/gen/features/settlement.js";
 import type { Command } from "../core/rules/commands.js";
 import type { Effect } from "../core/rules/effects.js";
+import {
+	forageAt,
+	forageKey,
+	forageYields,
+	isForageable,
+	pickedOverMessage,
+} from "../core/rules/forage.js";
 import { containerContents, emptyMessage, isContainer, lootKey } from "../core/rules/loot.js";
 import { reduce, type WorldProbe } from "../core/rules/reduce.js";
 import { shopStock, tradeKind } from "../core/rules/shop.js";
@@ -32,6 +39,13 @@ export interface EngineServices {
 	/** The authored description of a site, used to place its people. */
 	siteSpec?: (siteId: number) => SiteSpec | undefined;
 }
+
+/**
+ * How far past a town's edge an errand may point, and how coarsely that ground is
+ * sampled. Three tiles cannot step over a field or a treeline.
+ */
+const FORAGE_MARGIN = 24;
+const FORAGE_STRIDE = 3;
 
 /**
  * The single writer.
@@ -251,8 +265,36 @@ export class GameEngine {
 			}
 		}
 
+		// What the ground around the town gives up. Sampled rather than walked tile
+		// by tile: this only needs to know *which kinds* of ground are present, and a
+		// stride of three cannot miss a patch of crops or a stretch of forest floor
+		// while costing a ninth as many reads.
+		for (const name of this.groundYieldsNear(site)) names.add(name);
+
 		for (const carried of this.state.inventory) names.add(carried.name);
 		return [...names];
+	}
+
+	/**
+	 * Everything the land immediately around a settlement can be gathered for.
+	 *
+	 * Reaches past the town's own footprint, because "the crops near the forest" is
+	 * exactly the sort of errand an NPC gives and the forest is rarely inside the
+	 * walls. Only ground in chunks that are actually resident counts, so this never
+	 * promises a field the player would have to generate to find.
+	 */
+	private groundYieldsNear(site: MacroSite): Set<string> {
+		const names = new Set<string>();
+		const reach = site.radius + FORAGE_MARGIN;
+		for (let y = site.site.y - reach; y <= site.site.y + reach; y += FORAGE_STRIDE) {
+			for (let x = site.site.x - reach; x <= site.site.x + reach; x += FORAGE_STRIDE) {
+				if (!this.view.isLoaded(x, y)) continue;
+				const terrain = this.view.terrainAt(x, y);
+				if (!isForageable(terrain)) continue;
+				for (const name of forageYields(terrain)) names.add(name);
+			}
+		}
+		return names;
 	}
 
 	subscribe = (listener: () => void): (() => void) => {
@@ -296,24 +338,36 @@ export class GameEngine {
 				return x === interior.entrance.x && y === interior.entrance.y + 1;
 			},
 			placeNameAt: (x, y) => this.placeNameAt(x, y),
-			containerAt: (x, y) => {
-				// Only interiors hold containers, which is also where the generator puts
-				// them; a crate in an open field would have nowhere to belong to.
-				if (!inside) return undefined;
+			searchableAt: (x, y) => {
 				const view = this.getView();
-				const decor = view.decorAt(x, y);
-				if (!isContainer(decor)) return undefined;
+
+				// Indoors: the crates the generator furnished the room with.
+				if (inside) {
+					const decor = view.decorAt(x, y);
+					if (!isContainer(decor)) return undefined;
+					return {
+						key: lootKey(inside.interiorId, x, y),
+						contents: containerContents(
+							this.state.world.seed,
+							inside.interiorId,
+							x,
+							y,
+							decor,
+							inside.structure,
+						),
+						emptyText: emptyMessage(decor),
+					};
+				}
+
+				// Outdoors: the ground itself. Crops, forest floor, marsh and the rest
+				// were scenery the player could walk up to and had no way to touch, which
+				// is why an errand to gather from them could never be satisfied.
+				const terrain = view.terrainAt(x, y);
+				if (!isForageable(terrain)) return undefined;
 				return {
-					place: inside.interiorId,
-					contents: containerContents(
-						this.state.world.seed,
-						inside.interiorId,
-						x,
-						y,
-						decor,
-						inside.structure,
-					),
-					emptyText: emptyMessage(decor),
+					key: forageKey(x, y),
+					contents: forageAt(this.state.world.seed, x, y, terrain),
+					emptyText: pickedOverMessage(terrain),
 				};
 			},
 		};
