@@ -8,11 +8,11 @@ import { activeQuests, type GameState } from "../../core/rules/state.js";
 import { biomeDef } from "../../core/world/biome.js";
 import { toChunk } from "../../core/world/coords.js";
 import type { Weather } from "../../core/world/weather.js";
-import { type HudState, listWindow } from "../hud-state.js";
-import { wrapToLines } from "../render/text.js";
+import type { HudState } from "../hud-state.js";
 import { useGameState } from "../store.js";
 import { type LegendEntry, mapLegend, minimapLegend } from "./legend.js";
 import { Minimap } from "./minimap.js";
+import { Field, Prose, Rule, ScrollList } from "./primitives.js";
 
 export type PanelTab = "map" | "world" | "inventory" | "quests" | "journal";
 
@@ -108,37 +108,6 @@ export function SidePanel({
  * already the shortest thing on screen, and every pane wants at least two
  * sections.
  */
-function Rule({ width, label }: { width: number; label?: string }) {
-	const text = label ? `─ ${label.toUpperCase()} ` : "";
-	return (
-		<Text color="gray" wrap="truncate">
-			{text}
-			{"─".repeat(Math.max(0, width - stringWidth(text)))}
-		</Text>
-	);
-}
-
-/** A grey label on the left, its value hard against the right margin. */
-function Field({
-	label,
-	value,
-	width,
-	color = "white",
-}: {
-	label: string;
-	value: string;
-	width: number;
-	color?: string;
-}) {
-	const room = Math.max(0, width - stringWidth(label) - stringWidth(value));
-	return (
-		<Text wrap="truncate">
-			<Text color="gray">{label}</Text>
-			{" ".repeat(room)}
-			<Text color={color}>{value}</Text>
-		</Text>
-	);
-}
 
 /**
  * The key, two columns wide.
@@ -179,28 +148,6 @@ function LegendGrid({
 }
 
 /** Prose that fills whatever rows are left, and says so when it does not fit. */
-function Prose({
-	text,
-	width,
-	rows,
-	color = "white",
-}: {
-	text: string;
-	width: number;
-	rows: number;
-	color?: string;
-}) {
-	return (
-		<>
-			{wrapToLines(text, width, Math.max(0, rows)).map((line, index) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: wrapped lines are positional
-				<Text key={index} color={color} wrap="truncate">
-					{line}
-				</Text>
-			))}
-		</>
-	);
-}
 
 /**
  * A selectable list, windowed to the rows it was given.
@@ -208,42 +155,6 @@ function Prose({
  * Shared by all three list panes so that "how do I scroll this" has one answer
  * everywhere, and so the cursor cannot be drawn off the end of one of them.
  */
-function ScrollList({
-	count,
-	cursor,
-	rows,
-	focus,
-	render,
-}: {
-	count: number;
-	cursor: number;
-	rows: number;
-	focus: boolean;
-	render: (index: number, selected: boolean) => React.ReactNode;
-}) {
-	const view = listWindow(count, cursor, rows);
-	const lines: React.ReactElement[] = [];
-	for (let index = view.start; index < view.end; index++) {
-		const selected = index === cursor;
-		lines.push(
-			<Text key={index} wrap="truncate">
-				<Text bold={selected} color={selected ? (focus ? "cyan" : "gray") : "gray"}>
-					{selected ? "▸ " : "  "}
-				</Text>
-				{render(index, selected)}
-			</Text>,
-		);
-	}
-	// Only shown when there is genuinely more than fits, so it never nags.
-	if (view.more) {
-		lines.push(
-			<Text key="more" color="gray">
-				{`  ${cursor + 1}/${count}`}
-			</Text>,
-		);
-	}
-	return <>{lines}</>;
-}
 
 // --- panes ------------------------------------------------------------------
 

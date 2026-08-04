@@ -70,7 +70,7 @@ describe("a conversation", () => {
 });
 
 describe("a focused panel", () => {
-	const browsing: HudState = { tab: "inventory", focus: true, cursor: 1 };
+	const browsing: HudState = { tab: "inventory", focus: true, expanded: false, cursor: 1 };
 
 	it("moves the cursor instead of the player", () => {
 		const ctx = context({ hud: browsing, listCount: 4 });
@@ -112,7 +112,7 @@ describe("a focused panel", () => {
 	it("does nothing on a pane that is only a display", () => {
 		// `focus` should never be true here, but if it ever were, the arrow keys
 		// must not vanish into a minimap.
-		const ctx = context({ hud: { tab: "world", focus: true, cursor: 0 } });
+		const ctx = context({ hud: { tab: "world", focus: true, expanded: false, cursor: 0 } });
 		expect(routeKey("", { upArrow: true }, ctx)).toEqual({
 			t: "command",
 			command: { t: "Move", facing: "up" },
@@ -122,7 +122,7 @@ describe("a focused panel", () => {
 
 describe("a question that cannot be undone", () => {
 	const asking = (confirm: NonNullable<HudState["confirm"]>): RouteContext =>
-		context({ hud: { tab: "inventory", focus: true, cursor: 0, confirm } });
+		context({ hud: { tab: "inventory", focus: true, expanded: false, cursor: 0, confirm } });
 
 	const dropTimber = asking({
 		action: { t: "drop", name: "Timber", quantity: 3 },
@@ -213,5 +213,89 @@ describe("a card in front of everything", () => {
 			t: "command",
 			command: { t: "DismissCard" },
 		});
+	});
+});
+
+describe("reading a list in full", () => {
+	const focused = (tab: "quests" | "journal" | "inventory" = "quests"): HudState => ({
+		...initialHud(tab),
+		focus: true,
+	});
+	const reading = (tab: "quests" | "journal" | "inventory" = "quests"): HudState => ({
+		...focused(tab),
+		expanded: true,
+	});
+
+	it("expands on Enter from a focused list", () => {
+		expect(routeKey("", { return: true }, context({ hud: focused() }))).toEqual({
+			t: "hud",
+			action: { t: "Expand" },
+		});
+	});
+
+	it("leaves space alone, so a keypress meant for the world cannot reach it", () => {
+		// Space is the world's look-and-act key and was already swallowed here on
+		// purpose; borrowing it for the reader would undo that.
+		expect(routeKey(" ", NONE, context({ hud: focused() }))).toBeUndefined();
+	});
+
+	it("collapses on Esc", () => {
+		expect(routeKey("", { escape: true }, context({ hud: reading() }))).toEqual({
+			t: "hud",
+			action: { t: "Collapse" },
+		});
+	});
+
+	it("moves through the entries on the arrow keys", () => {
+		expect(routeKey("", { downArrow: true }, context({ hud: reading(), listCount: 4 }))).toEqual({
+			t: "hud",
+			action: { t: "MoveCursor", delta: 1, count: 4 },
+		});
+		expect(routeKey("", { upArrow: true }, context({ hud: reading(), listCount: 4 }))).toEqual({
+			t: "hud",
+			action: { t: "MoveCursor", delta: -1, count: 4 },
+		});
+	});
+
+	it("switches what is being read without leaving the reader", () => {
+		expect(routeKey("j", NONE, context({ hud: reading() }))).toEqual({
+			t: "hud",
+			action: { t: "SelectTab", tab: "journal" },
+		});
+	});
+
+	it("still lets an item be dropped while reading it", () => {
+		expect(routeKey("d", NONE, context({ hud: reading("inventory"), canDrop: true }))).toEqual({
+			t: "askDrop",
+		});
+	});
+
+	it("swallows everything else, including the keys that would walk away", () => {
+		expect(routeKey("", { leftArrow: true }, context({ hud: reading() }))).toBeUndefined();
+		expect(routeKey("s", NONE, context({ hud: reading() }))).toBeUndefined();
+		expect(routeKey("", { tab: true }, context({ hud: reading() }))).toBeUndefined();
+	});
+
+	it("comes second to a pending confirmation", () => {
+		const asking: HudState = {
+			...reading("inventory"),
+			confirm: { action: { t: "drop", name: "Timber", quantity: 1 }, prompt: "Drop it?" },
+		};
+		expect(routeKey("y", NONE, context({ hud: asking }))).toEqual({
+			t: "command",
+			command: { t: "DropItem", name: "Timber", quantity: 1 },
+		});
+	});
+
+	it("outranks a conversation, so a turn landing cannot steal the arrows", () => {
+		// A dialogue turn resolves asynchronously and can arrive at any moment; taking
+		// the arrow keys off somebody mid-read would be indistinguishable from a bug.
+		expect(
+			routeKey(
+				"",
+				{ downArrow: true },
+				context({ hud: reading(), inDialogue: true, listCount: 3 }),
+			),
+		).toEqual({ t: "hud", action: { t: "MoveCursor", delta: 1, count: 3 } });
 	});
 });

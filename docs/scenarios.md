@@ -278,6 +278,36 @@ the entry reporting it cannot disagree. `beatEffects` tags its journal line with
 `arc:<beatId>`; matching on prose would orphan every clue in an existing save the
 first time an author edited a line.
 
+### Reading in full
+
+The panel is 32 columns wide and a fixed number of rows tall, which is right for
+checking a bearing and hopeless for reading. A quest description, a journal entry
+and a story clue are all prose written for a human, and all three were being cut
+mid-sentence — on exactly the part worth reading.
+
+Widening the panel is wrong twice over: the map pays for the columns, and a pane
+tall enough to hold a quest log reaches the terminal height, at which point Ink
+stops updating incrementally and clears the screen on every keypress.
+
+So `Enter` on a focused list hands it the whole frame instead. Not a separate
+screen: the **same tab, the same cursor, the same list**, which is why the cursor
+survives collapsing — the two views agree about what an index means. Arrows move
+through entries, the panel keys switch what is being read without leaving, `Esc`
+returns to the map.
+
+`Enter` and not `Space`: space is the world's look-and-act key and was already
+swallowed inside a focused panel on purpose, so a keypress meant for the world
+cannot reach it from a list.
+
+The reader sits above dialogue in `routeKey`'s precedence. A dialogue turn resolves
+asynchronously and can land at any moment; taking the arrow keys off somebody
+mid-read would be indistinguishable from a bug.
+
+Its layout is the same primitives the panel uses (`Rule`, `Prose`, `Field`,
+`ScrollList`, extracted to `panels/primitives.tsx` when the second consumer
+arrived), plus `Bullet` — a hanging indent, written because clues were the last
+thing still being cut and a wrapped clue with no indent reads as several items.
+
 **The journal** recorded only outcomes. An errand appeared in the log when it
 finished and never when it was given, and a three-step errand left no trace at all
 until the moment it closed — which made the log useless for remembering where you

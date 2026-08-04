@@ -143,6 +143,14 @@ send you after something that was never placed.
 
 ![The story so far, and the errand in hand](docs/screens/quest.svg)
 
+The same log, read in full. The panel is 32 columns and everything in it is prose
+written for a human, so a quest description or a story clue arrived elided
+mid-sentence. `Enter` hands the focused list the whole frame — same tab, same
+cursor, same list, just more room — arrows move through the entries, `Esc` goes
+back to the map. It works for the journal and the inventory too.
+
+![The same quest log, given the whole frame to be read in](docs/screens/reader.svg)
+
 What you are carrying. The list takes the arrow keys while it is open — the
 border says so — and `D` drops the selection. Dropping destroys the item, so it
 asks first, and it tells you when an open errand still wants it.

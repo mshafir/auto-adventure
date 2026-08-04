@@ -18,6 +18,7 @@ import { useGameInput } from "./input/use-game-input.js";
 import { CardScreen } from "./panels/card-screen.js";
 import { DialoguePanel, panelHeightFor } from "./panels/dialogue-panel.js";
 import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
+import { Reader, readable } from "./panels/reader.js";
 import { type PanelTab, SidePanel } from "./panels/side-panel.js";
 import { FACING_MARKER, PLAYER_GLYPH } from "./render/glyphs.js";
 import { lightFor } from "./render/lighting.js";
@@ -61,9 +62,21 @@ export interface AppProps {
 	readonly initialTab?: PanelTab;
 	/** Which row of it is selected. Same callers, same reason. */
 	readonly initialCursor?: number;
+	/**
+	 * Start with the list already filling the frame.
+	 *
+	 * Same callers again. Simulating the keypress worked in the test harness and not
+	 * in the screenshot tool, where a captured frame is taken on a timer — and a shot
+	 * that quietly came out as the unexpanded panel reads as the feature not existing.
+	 */
+	readonly initialExpanded?: boolean;
 }
 
-export default function App({ initialTab = "map", initialCursor = 0 }: AppProps = {}) {
+export default function App({
+	initialTab = "map",
+	initialCursor = 0,
+	initialExpanded = false,
+}: AppProps = {}) {
 	const engine = getEngine();
 	const state = useGameState();
 	const { width, height } = useTerminalSize();
@@ -71,6 +84,7 @@ export default function App({ initialTab = "map", initialCursor = 0 }: AppProps 
 	const [hud, hudDispatch] = useReducer(hudReducer, initialTab, (tab) => ({
 		...initialHud(tab),
 		cursor: initialCursor,
+		expanded: initialExpanded && LIST_TABS.has(tab),
 	}));
 
 	// How long the focused pane's list is, so a cursor cannot survive the list
@@ -230,11 +244,13 @@ export default function App({ initialTab = "map", initialCursor = 0 }: AppProps 
 
 	const keyMode: KeyBarMode = state.card
 		? { t: "card" }
-		: state.dialogue
-			? { t: "dialogue" }
-			: hud.focus && LIST_TABS.has(hud.tab)
-				? { t: "panel", canDrop: held !== undefined }
-				: { t: "world" };
+		: hud.expanded && LIST_TABS.has(hud.tab)
+			? { t: "reader", canDrop: held !== undefined }
+			: state.dialogue
+				? { t: "dialogue" }
+				: hud.focus && LIST_TABS.has(hud.tab)
+					? { t: "panel", canDrop: held !== undefined }
+					: { t: "world" };
 
 	// A card takes the whole frame rather than overlaying the map. Everything above
 	// is still computed, which costs a frame's worth of work nobody sees — but the
@@ -245,6 +261,18 @@ export default function App({ initialTab = "map", initialCursor = 0 }: AppProps 
 			<Box flexDirection="column" width={width} height={frameHeight}>
 				<CardScreen card={state.card} width={width} height={bodyHeight} />
 				<KeyBar width={width} mode={keyMode} />
+			</Box>
+		);
+	}
+
+	// Reading takes the frame the same way a card does. The map is still computed
+	// above, which costs a frame nobody sees but keeps the hooks unconditional — and
+	// it has to be ready the instant the reader closes anyway.
+	if (hud.expanded && readable(hud.tab)) {
+		return (
+			<Box flexDirection="column" width={width} height={frameHeight}>
+				<Reader state={state} hud={hud} width={width} height={bodyHeight} />
+				<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />
 			</Box>
 		);
 	}

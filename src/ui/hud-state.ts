@@ -47,6 +47,20 @@ export interface HudState {
 	 * key bar, so the mode is never invisible.
 	 */
 	readonly focus: boolean;
+	/**
+	 * Whether the focused list has taken the whole frame.
+	 *
+	 * The side panel is 32 columns wide and a fixed number of rows tall, which is
+	 * fine for checking a bearing and hopeless for reading. A quest description, a
+	 * journal entry and a story clue all arrive as prose written for a human, and all
+	 * three were being elided mid-sentence. Rather than grow the panel — which would
+	 * cost the map the width, and at the terminal's full height makes Ink clear the
+	 * screen on every keypress — the same list can be read full-frame.
+	 *
+	 * Not a separate screen: the same tab, the same cursor, the same list. Only the
+	 * space it is given changes.
+	 */
+	readonly expanded: boolean;
 	readonly cursor: number;
 	readonly confirm?: PendingConfirm;
 }
@@ -55,6 +69,9 @@ export type HudAction =
 	| { readonly t: "SelectTab"; readonly tab: PanelTab }
 	| { readonly t: "Focus" }
 	| { readonly t: "Blur" }
+	/** Give the focused list the whole frame, so its prose can be read in full. */
+	| { readonly t: "Expand" }
+	| { readonly t: "Collapse" }
 	/** `count` is the current list length, so a stale cursor cannot outlive it. */
 	| { readonly t: "MoveCursor"; readonly delta: number; readonly count: number }
 	| { readonly t: "Ask"; readonly confirm: PendingConfirm }
@@ -66,7 +83,7 @@ export type HudAction =
  * of the inventory should show the inventory as the player would meet it.
  */
 export function initialHud(tab: PanelTab = "map"): HudState {
-	return { tab, focus: LIST_TABS.has(tab), cursor: 0 };
+	return { tab, focus: LIST_TABS.has(tab), expanded: false, cursor: 0 };
 }
 
 export function hudReducer(state: HudState, action: HudAction): HudState {
@@ -77,14 +94,26 @@ export function hudReducer(state: HudState, action: HudAction): HudState {
 			return {
 				tab: action.tab,
 				focus: LIST_TABS.has(action.tab),
+				// Switching while reading keeps reading. The map has no list to read, so
+				// asking for it is also how you leave.
+				expanded: state.expanded && LIST_TABS.has(action.tab),
 				cursor: action.tab === state.tab ? state.cursor : 0,
 			};
 		case "Focus":
 			if (!LIST_TABS.has(state.tab) || state.focus) return withoutConfirm(state);
 			return { ...withoutConfirm(state), focus: true };
 		case "Blur":
-			if (!state.focus && !state.confirm) return state;
-			return { ...withoutConfirm(state), focus: false };
+			if (!state.focus && !state.confirm && !state.expanded) return state;
+			return { ...withoutConfirm(state), focus: false, expanded: false };
+		case "Expand":
+			if (!LIST_TABS.has(state.tab) || state.expanded) return withoutConfirm(state);
+			// Reading implies the list has the keys, so this focuses too: expanding from
+			// an unfocused pane and then finding the arrows still moved the player would
+			// be the worst of both modes.
+			return { ...withoutConfirm(state), focus: true, expanded: true };
+		case "Collapse":
+			if (!state.expanded) return state;
+			return { ...withoutConfirm(state), expanded: false };
 		case "MoveCursor":
 			return { ...state, cursor: clampCursor(state.cursor + action.delta, action.count) };
 		case "Ask":

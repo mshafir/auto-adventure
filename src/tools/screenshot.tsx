@@ -365,6 +365,8 @@ async function capture(
 	tab?: "map" | "world" | "inventory" | "quests" | "journal",
 	cursor?: number,
 	withArc = false,
+	/** Open the full-frame reader, as pressing Enter on a focused list does. */
+	expand = false,
 ) {
 	const { engine, site } = buildEngine(withArc);
 	prepare(engine, site);
@@ -373,7 +375,11 @@ async function capture(
 	const stdout = fakeStdout();
 	const stdin = fakeStdin();
 	const instance = render(
-		<App {...(tab ? { initialTab: tab } : {})} {...(cursor ? { initialCursor: cursor } : {})} />,
+		<App
+			{...(tab ? { initialTab: tab } : {})}
+			{...(cursor ? { initialCursor: cursor } : {})}
+			{...(expand ? { initialExpanded: true } : {})}
+		/>,
 		{
 			stdout,
 			stdin,
@@ -461,6 +467,64 @@ async function main() {
 		},
 		"quests",
 		undefined,
+		true,
+	);
+
+	await capture(
+		"reader",
+		"The same quest log, given the whole frame to be read in",
+		(engine, site) => {
+			engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx, site.my) });
+			engine.dispatch({
+				t: "ApplyEffects",
+				effects: [
+					{ t: "SetFlag", key: "arc:the-short-tally", value: true },
+					{ t: "SetFlag", key: "arc:the-second-weight", value: true },
+					{
+						t: "RecordJournal",
+						entry: {
+							kind: "event",
+							text: "Ilse Marrow says a warden came through in autumn with a new badge and would not give a name, and that the Cord House tally has been short by about a cord every month since the levy doubled.",
+							source: "arc:the-short-tally",
+						},
+					},
+					{
+						t: "RecordJournal",
+						entry: {
+							kind: "event",
+							text: "Warden Cull confirms it: the badge was signed out in autumn and never signed back in. Two tallies leave the weighing station and only one of them is true.",
+							source: "arc:the-second-weight",
+						},
+					},
+					{
+						t: "CreateQuest",
+						id: "tally",
+						name: "Take the tally to Stonewait",
+						description: "Carry Ilse's own count up the high road.",
+						objectives: [{ kind: "reach", target: "Stonewait", done: true }],
+						siteId: site.id,
+					},
+					{ t: "CompleteQuest", id: "tally" },
+					{
+						t: "CreateQuest",
+						id: "timber",
+						name: "Timber for the mill",
+						description:
+							"The miller wants three lengths of sawn timber, and will not take the ones that came off the barge because they have been in the water since the narrows.",
+						objectives: [
+							{ kind: "have", target: "Timber", quantity: 3, done: false },
+							{ kind: "talk", target: "Sedge", done: false },
+						],
+						siteId: site.id,
+					},
+					{ t: "GrantItem", name: "Timber", description: "Rough-sawn planks.", quantity: 1 },
+					{ t: "Teleport", x: site.site.x + CHUNK * 2, y: site.site.y - CHUNK },
+				],
+			});
+		},
+		"quests",
+		undefined,
+		true,
 		true,
 	);
 

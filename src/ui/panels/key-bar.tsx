@@ -19,6 +19,7 @@ import type { PendingConfirm } from "../hud-state.js";
 export type KeyBarMode =
 	| { readonly t: "world" }
 	| { readonly t: "card" }
+	| { readonly t: "reader"; readonly canDrop: boolean }
 	| { readonly t: "dialogue" }
 	| { readonly t: "panel"; readonly canDrop: boolean };
 
@@ -50,6 +51,12 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 	switch (mode.t) {
 		case "card":
 			return [{ key: "Space", label: "go on" }];
+		case "reader":
+			return [
+				{ key: "Up/Dn", label: "read" },
+				...(mode.canDrop ? [{ key: "D", label: "drop" }] : []),
+				{ key: "Esc", label: "back to map" },
+			];
 		case "dialogue":
 			return [
 				{ key: "Up/Dn", label: "choose" },
@@ -58,6 +65,7 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 		case "panel":
 			return [
 				{ key: "Up/Dn", label: "select" },
+				{ key: "Enter", label: "read in full" },
 				...(mode.canDrop ? [{ key: "D", label: "drop" }] : []),
 				{ key: "Esc", label: "back to map" },
 			];

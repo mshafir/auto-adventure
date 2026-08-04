@@ -1,7 +1,7 @@
 import stringWidth from "string-width";
 import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";
-import { renderInk } from "../../test/harness/ink.js";
+import { KEY, renderInk } from "../../test/harness/ink.js";
 import { createDialogueService } from "../ai/dialogue/dialogue.js";
 import { fallbackLore, fallbackSite } from "../ai/director/fallback.js";
 import { hashString } from "../core/rand/hash.js";
@@ -320,5 +320,138 @@ describe("the side panels", () => {
 		// Elided at 32 columns, which is the pane doing its job — the journal tab is
 		// where a clue is read in full.
 		expect(text).toContain("Ilse says the barge");
+	});
+});
+
+describe("reading a list in full", () => {
+	/**
+	 * The screen with its line breaks collapsed.
+	 *
+	 * Wrapping is the point of the reader, so asserting on a whole sentence has to
+	 * ignore where it wrapped — and collapsing whitespace is a stronger check than
+	 * picking a fragment that happens to fit one line: it proves the sentence is
+	 * present *entire*, which is exactly what was failing before.
+	 */
+	const flat = (screen: string) => screen.replace(/\s+/g, " ");
+
+	/** The prose that was being cut in a 32-column pane. */
+	const DESCRIPTION =
+		"The miller wants three lengths of sawn timber, and will not take the ones that came off the barge because they have been in the water.";
+	const CLUE =
+		"Ilse Marrow says a warden came through in autumn with a new badge and would not give a name, and the tally has been short ever since.";
+
+	function readingQuests() {
+		const site = findTown(SEED);
+		const timber = {
+			id: "timber",
+			name: "Timber for the mill",
+			description: DESCRIPTION,
+			objectives: [{ kind: "have" as const, target: "Timber", quantity: 3, done: false }],
+		};
+		const { engine } = engineBesideSomeone({
+			title: "The Hollow Tithe",
+			premise: "Your sister took the warden's badge and stopped writing.",
+			beats: [
+				{
+					id: "the-short-tally",
+					order: 0,
+					siteId: site.id,
+					npcSlot: 0,
+					requires: [],
+					setsFlag: "arc:the-short-tally",
+					quest: timber,
+				},
+				{
+					id: "the-second-weight",
+					order: 1,
+					siteId: site.id,
+					npcSlot: 0,
+					requires: ["arc:the-short-tally"],
+					setsFlag: "arc:the-second-weight",
+				},
+			],
+		});
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [
+				{ t: "SetFlag", key: "arc:the-short-tally", value: true },
+				{
+					t: "RecordJournal",
+					entry: { kind: "event", text: CLUE, source: "arc:the-short-tally" },
+				},
+				{ t: "CreateQuest", ...timber, siteId: site.id },
+			],
+		});
+		bindEngine(engine);
+		return engine;
+	}
+
+	it("shows a quest description in full once the list has the frame", async () => {
+		// The complaint this answers: at 32 columns the panel showed "The miller wants
+		// three…" and the rest was simply gone.
+		readingQuests();
+		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
+		await harness.settle();
+		expect(harness.screen()).not.toContain(DESCRIPTION.slice(0, 60));
+
+		await harness.type(KEY.enter);
+		const read = harness.screen();
+		harness.unmount();
+
+		expect(flat(read)).toContain(flat(DESCRIPTION));
+	});
+
+	it("shows a story clue in full, with its continuation lined up under it", async () => {
+		readingQuests();
+		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
+		await harness.settle();
+		await harness.type(KEY.enter);
+		const read = harness.screen();
+		harness.unmount();
+
+		expect(flat(read)).toContain(flat(CLUE));
+		// The bullet's continuation is indented under the text, not under the marker.
+		expect(read).toContain("• Ilse Marrow says");
+	});
+
+	it("comes back to the map on Esc, with the world still there", async () => {
+		readingQuests();
+		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
+		await harness.settle();
+		await harness.type(KEY.enter);
+		expect(harness.screen()).toContain("THE HOLLOW TITHE");
+
+		await harness.type(KEY.escape);
+		const back = harness.screen();
+		harness.unmount();
+		// The tab strip is part of the side panel, so its presence means the map layout
+		// is back rather than the reader still holding the frame.
+		expect(back).toContain("Map World Inv Quests Jrnl");
+	});
+
+	it("switches what is being read without dropping out of the reader", async () => {
+		readingQuests();
+		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
+		await harness.settle();
+		await harness.type(KEY.enter);
+		await harness.type("j");
+		const read = harness.screen();
+		harness.unmount();
+
+		expect(read).toContain("JOURNAL");
+		expect(read).not.toContain("Map World Inv Quests Jrnl");
+	});
+
+	it("says which keys it has taken", async () => {
+		readingQuests();
+		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
+		await harness.settle();
+		expect(harness.screen()).toContain("Enter read in full");
+
+		await harness.type(KEY.enter);
+		const read = harness.screen();
+		harness.unmount();
+		expect(read).toContain("Up/Dn read");
+		expect(read).toContain("Esc back to map");
 	});
 });

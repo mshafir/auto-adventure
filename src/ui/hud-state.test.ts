@@ -51,8 +51,10 @@ describe("the cursor", () => {
 		// Wrapping a five-item list means one press past the bottom is the top,
 		// which in a panel this short reads as the list having jumped.
 		const at = (cursor: number, delta: number) =>
-			hudReducer({ tab: "inventory", focus: true, cursor }, { t: "MoveCursor", delta, count: 5 })
-				.cursor;
+			hudReducer(
+				{ tab: "inventory", focus: true, expanded: false, cursor },
+				{ t: "MoveCursor", delta, count: 5 },
+			).cursor;
 		expect(at(0, -1)).toBe(0);
 		expect(at(4, 1)).toBe(4);
 		expect(at(2, 1)).toBe(3);
@@ -98,6 +100,48 @@ describe("hud state", () => {
 		// mid-action load permanently locked in the previous design; this type
 		// exists to keep that separation visible.
 		const state: HudState = initialHud();
-		expect(Object.keys(state).sort()).toEqual(["cursor", "focus", "tab"]);
+		expect(Object.keys(state).sort()).toEqual(["cursor", "expanded", "focus", "tab"]);
+	});
+});
+
+describe("expanding a list to read it", () => {
+	it("focuses as well, so the arrows cannot still be moving the player", () => {
+		const state = hudReducer(initialHud("map"), { t: "SelectTab", tab: "quests" });
+		const reading = hudReducer(state, { t: "Expand" });
+		expect(reading.expanded).toBe(true);
+		expect(reading.focus).toBe(true);
+	});
+
+	it("refuses on a tab with no list to read", () => {
+		expect(hudReducer(initialHud("map"), { t: "Expand" }).expanded).toBe(false);
+		expect(hudReducer(initialHud("world"), { t: "Expand" }).expanded).toBe(false);
+	});
+
+	it("keeps reading when the player switches to another list", () => {
+		const reading = hudReducer(initialHud("quests"), { t: "Expand" });
+		const moved = hudReducer(reading, { t: "SelectTab", tab: "journal" });
+		expect(moved.expanded).toBe(true);
+		expect(moved.tab).toBe("journal");
+	});
+
+	it("stops reading when the player asks for a tab that has no list", () => {
+		// Asking for the map is how you leave, so it must not leave a reader up over it.
+		const reading = hudReducer(initialHud("quests"), { t: "Expand" });
+		expect(hudReducer(reading, { t: "SelectTab", tab: "map" }).expanded).toBe(false);
+	});
+
+	it("keeps the cursor across expanding and collapsing", () => {
+		// The two views index the same list, which is the whole reason the reader is the
+		// same tab rather than a screen of its own.
+		const at = hudReducer(initialHud("quests"), { t: "MoveCursor", delta: 2, count: 5 });
+		const reading = hudReducer(at, { t: "Expand" });
+		expect(hudReducer(reading, { t: "Collapse" }).cursor).toBe(2);
+	});
+
+	it("is closed by blurring, not merely unfocused behind a reader", () => {
+		const reading = hudReducer(initialHud("quests"), { t: "Expand" });
+		const blurred = hudReducer(reading, { t: "Blur" });
+		expect(blurred.expanded).toBe(false);
+		expect(blurred.focus).toBe(false);
 	});
 });
