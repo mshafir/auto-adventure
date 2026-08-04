@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import stringWidth from "string-width";
 import type { TerrainSummary } from "../../core/gen/pipeline.js";
+import { arcProgress } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { questNeeding } from "../../core/rules/quests.js";
 import { activeQuests, type GameState } from "../../core/rules/state.js";
@@ -574,6 +575,10 @@ function JournalTab({
 		);
 	}
 
+	// A scenario has a known number of beats, so it can say how far through you are.
+	// An unbounded world cannot, and says nothing rather than inventing a total.
+	const progress = arcProgress(state.arc, state);
+
 	const detail = detailRows(rows, 4);
 	const listRows = Math.max(1, rows - detail - (detail > 0 ? 2 : 1));
 	const cursor = Math.min(hud.cursor, entries.length - 1);
@@ -581,7 +586,14 @@ function JournalTab({
 
 	return (
 		<Box flexDirection="column">
-			<Rule width={width} label={`journal ${entries.length}`} />
+			<Rule
+				width={width}
+				label={
+					state.arc && progress.total > 0
+						? `${state.arc.title} ${progress.opened}/${progress.total}`
+						: `journal ${entries.length}`
+				}
+			/>
 			<ScrollList
 				count={entries.length}
 				cursor={cursor}

@@ -1,3 +1,4 @@
+import type { ScenarioArc } from "../core/rules/arc.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import type { ScenarioBrief } from "../core/world/brief.js";
 import type { RegionSpec, SiteSpec, WorldLore } from "../core/world/spec.js";
@@ -49,6 +50,11 @@ export interface ScenarioArtifact {
 	readonly lore: WorldLore;
 	readonly regions: Readonly<Record<string, RegionSpec>>;
 	readonly sites: Readonly<Record<string, SiteSpec>>;
+	/**
+	 * The story. Optional so a scenario can be a *place* with no plot in it, which
+	 * is a legitimate thing to author and the shape the first artifacts had.
+	 */
+	readonly arc?: ScenarioArc;
 
 	readonly authoredWith: ArtifactProvenance;
 }

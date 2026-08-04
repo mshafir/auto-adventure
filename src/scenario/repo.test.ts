@@ -167,6 +167,120 @@ describe("verifyArtifact", () => {
 		expect(problems.join(" ")).toContain("bounds are inverted");
 	});
 
+	it("accepts an arc whose beats point at real people", () => {
+		const problems = verifyArtifact(
+			artifact({
+				arc: {
+					title: "The Tithe",
+					premise: "Somebody has to pay for the rope.",
+					beats: [
+						{ id: "a", order: 0, siteId: SITE.id, npcSlot: 0, requires: [], setsFlag: "f1" },
+						{ id: "b", order: 1, siteId: SITE.id, npcSlot: 0, requires: ["f1"], setsFlag: "f2" },
+					],
+				},
+			}),
+		);
+		expect(problems).toEqual([]);
+	});
+
+	it("rejects a beat anchored to somebody who is not there", () => {
+		// A silent dead end at runtime: the beat never opens, and everything gated
+		// behind its flag never opens either, with nothing to tell the player why.
+		const problems = verifyArtifact(
+			artifact({
+				arc: {
+					title: "T",
+					premise: "",
+					beats: [{ id: "a", order: 0, siteId: SITE.id, npcSlot: 7, requires: [], setsFlag: "f1" }],
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain("slot 7");
+	});
+
+	it("rejects a beat anchored to an unauthored site", () => {
+		const problems = verifyArtifact(
+			artifact({
+				arc: {
+					title: "T",
+					premise: "",
+					beats: [{ id: "a", order: 0, siteId: 424242, requires: [], npcSlot: 0, setsFlag: "f1" }],
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain("unauthored site");
+	});
+
+	it("rejects a requirement nothing ever sets", () => {
+		const problems = verifyArtifact(
+			artifact({
+				arc: {
+					title: "T",
+					premise: "",
+					beats: [
+						{ id: "a", order: 0, siteId: SITE.id, npcSlot: 0, requires: [], setsFlag: "f1" },
+						{
+							id: "b",
+							order: 1,
+							siteId: SITE.id,
+							npcSlot: 0,
+							requires: ["never-set"],
+							setsFlag: "f2",
+						},
+					],
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain('waits on "never-set"');
+	});
+
+	it("rejects an arc with no way in", () => {
+		const problems = verifyArtifact(
+			artifact({
+				arc: {
+					title: "T",
+					premise: "",
+					beats: [
+						{ id: "a", order: 0, siteId: SITE.id, npcSlot: 0, requires: ["f2"], setsFlag: "f1" },
+						{ id: "b", order: 1, siteId: SITE.id, npcSlot: 0, requires: ["f1"], setsFlag: "f2" },
+					],
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain("no beat can open first");
+	});
+
+	it("rejects a beat that waits on itself", () => {
+		const problems = verifyArtifact(
+			artifact({
+				arc: {
+					title: "T",
+					premise: "",
+					beats: [
+						{ id: "a", order: 0, siteId: SITE.id, npcSlot: 0, requires: ["f1"], setsFlag: "f1" },
+					],
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain("waits on its own flag");
+	});
+
+	it("rejects a duplicated beat id", () => {
+		const problems = verifyArtifact(
+			artifact({
+				arc: {
+					title: "T",
+					premise: "",
+					beats: [
+						{ id: "a", order: 0, siteId: SITE.id, npcSlot: 0, requires: [], setsFlag: "f1" },
+						{ id: "a", order: 1, siteId: SITE.id, npcSlot: 0, requires: [], setsFlag: "f2" },
+					],
+				},
+			}),
+		);
+		expect(problems.join(" ")).toContain("defined twice");
+	});
+
 	it("rejects a region whose key and id disagree", () => {
 		const problems = verifyArtifact(
 			artifact({

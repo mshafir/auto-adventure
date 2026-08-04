@@ -2,6 +2,7 @@ import type { WorldBounds } from "../world/bounds.js";
 import type { ScenarioBrief } from "../world/brief.js";
 import type { ChunkKey } from "../world/coords.js";
 import type { RegionSpec, SiteSpec, SpecSource, WorldLore } from "../world/spec.js";
+import type { ScenarioArc } from "./arc.js";
 import type { NpcRecord } from "./npc.js";
 
 export const SAVE_VERSION = 3;
@@ -189,6 +190,16 @@ export interface GameState {
 	 * discovered after the reload.
 	 */
 	readonly brief?: ScenarioBrief;
+	/**
+	 * The story this world is telling, for a pre-generated scenario.
+	 *
+	 * Persisted, unlike the dialogue trees, and the difference is what happens when
+	 * the artifact goes missing halfway through a playthrough. A world with no trees
+	 * still holds real conversations, because `cannedTurn` is a designed floor. A
+	 * world with no arc simply stops having a story, silently, with no way to notice
+	 * — so the arc travels with the save and the trees are re-read.
+	 */
+	readonly arc?: ScenarioArc;
 	readonly regions: Readonly<Record<string, RegionSpec>>;
 	readonly sites: Readonly<Record<string, SiteSpec>>;
 	readonly specSources: Readonly<Record<string, SpecSource>>;

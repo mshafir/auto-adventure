@@ -95,6 +95,37 @@ export const StoredSiteSpecSchema = z.object({
 	hooks: z.array(z.string()),
 });
 
+const ObjectiveSchema = z.object({
+	kind: z.enum(["reach", "talk", "have", "flag"]),
+	target: z.string().min(1),
+	quantity: z.number().int().min(1).optional(),
+	done: z.boolean(),
+});
+
+export const ScenarioBeatSchema = z.object({
+	id: z.string().min(1).max(64),
+	order: z.number().int().min(0),
+	siteId: z.number().int(),
+	npcSlot: z.number().int().min(0),
+	requires: z.array(z.string().min(1)),
+	setsFlag: z.string().min(1),
+	quest: z
+		.object({
+			id: z.string().min(1).max(64),
+			name: z.string().min(1),
+			description: z.string(),
+			objectives: z.array(ObjectiveSchema),
+		})
+		.optional(),
+	journal: z.string().optional(),
+});
+
+export const ScenarioArcSchema = z.object({
+	title: z.string().min(1).max(120),
+	premise: z.string().max(600),
+	beats: z.array(ScenarioBeatSchema),
+});
+
 export const ScenarioArtifactSchema = z.object({
 	artifactVersion: z.literal(ARTIFACT_VERSION),
 	id: z
@@ -113,6 +144,7 @@ export const ScenarioArtifactSchema = z.object({
 	lore: StoredWorldLoreSchema,
 	regions: z.record(z.string(), StoredRegionSpecSchema),
 	sites: z.record(z.string(), StoredSiteSpecSchema),
+	arc: ScenarioArcSchema.optional(),
 	authoredWith: z.object({
 		models: z.record(z.string(), z.string()),
 		calls: z.number().int().min(0),

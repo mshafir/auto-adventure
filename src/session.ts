@@ -206,5 +206,6 @@ function newScenarioWorld(
 		regions: artifact.regions,
 		sites: artifact.sites,
 		specSources,
+		...(artifact.arc ? { arc: artifact.arc } : {}),
 	};
 }

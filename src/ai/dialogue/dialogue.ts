@@ -1,4 +1,5 @@
 import { MODELS } from "../../config.js";
+import { beatEffects, beatOpenedBy } from "../../core/rules/arc.js";
 import type { DomainEffect } from "../../core/rules/effects.js";
 import { type NpcRecord, needsSummary, SUMMARY_BATCH } from "../../core/rules/npc.js";
 import { type StockItem, shopStock, tradeKind } from "../../core/rules/shop.js";
@@ -53,6 +54,13 @@ export function createDialogueService(deps: DialogueDeps) {
 		// Meeting someone creates their memory record; it must exist before the
 		// turn is recorded against it.
 		ensureRecord(engine, placed);
+		// Then the story, before the line is written: a live NPC given the quest in
+		// its prompt can mention it, and a scripted one can gate a node on its flag.
+		//
+		// Only on the opening turn. Beats gate on flags set by earlier beats, so
+		// checking every turn would let one conversation walk the entire story —
+		// answer a question, open beat two, answer again, open beat three.
+		if (!choice) openBeat(engine, npcId);
 		if (choice) {
 			engine.dispatch({
 				t: "ApplyEffects",
@@ -200,6 +208,21 @@ export function createDialogueService(deps: DialogueDeps) {
 	}
 
 	return { runDialogueTurn, summarizeNpc };
+}
+
+/**
+ * Advance the story, if this is the person who advances it.
+ *
+ * Talking to someone is the trigger because it is the one thing the player does
+ * deliberately to a *specific* named character. Walking into a place is too easy to
+ * do by accident, and picking something up is too easy to do without noticing.
+ */
+function openBeat(engine: GameEngine, npcId: string): void {
+	const state = engine.getState();
+	const beat = beatOpenedBy(state.arc, state, npcId);
+	if (!beat) return;
+	logger.debug(`arc: opening beat ${beat.id} at ${npcId}`);
+	engine.dispatch({ t: "ApplyEffects", effects: beatEffects(beat) });
 }
 
 function ensureRecord(engine: GameEngine, placed: PlacedNpc): void {

@@ -132,7 +132,59 @@ export function verifyArtifact(artifact: ScenarioArtifact): string[] {
 		if (region.id !== key) problems.push(`region ${key} carries id ${region.id}`);
 	}
 
+	problems.push(...arcProblems(artifact));
+
 	// Report a handful rather than a wall: if the seed is wrong every site is
 	// wrong, and the first few say so just as well.
 	return problems.slice(0, 6);
+}
+
+/**
+ * Whether the story can actually be told.
+ *
+ * Every one of these is a silent failure at runtime rather than a crash: a beat
+ * anchored to somebody who does not exist simply never opens, and because later
+ * beats gate on its flag, the story stops there with nothing to show the player
+ * why. Checked here so a broken arc is a file that will not load, not a
+ * playthrough that quietly dead-ends four hours in.
+ */
+function arcProblems(artifact: ScenarioArtifact): string[] {
+	const arc = artifact.arc;
+	if (!arc) return [];
+	const problems: string[] = [];
+
+	const ids = new Set<string>();
+	const flags = new Set<string>();
+	for (const beat of arc.beats) {
+		if (ids.has(beat.id)) problems.push(`beat ${beat.id} is defined twice`);
+		ids.add(beat.id);
+		flags.add(beat.setsFlag);
+	}
+
+	for (const beat of arc.beats) {
+		const site = artifact.sites[String(beat.siteId)];
+		if (!site) {
+			problems.push(`beat ${beat.id} is anchored to unauthored site ${beat.siteId}`);
+			continue;
+		}
+		if (!site.npcs.some((npc) => npc.slot === beat.npcSlot))
+			problems.push(
+				`beat ${beat.id} is anchored to slot ${beat.npcSlot}, who is not in ${site.name}`,
+			);
+
+		// A requirement no beat ever sets can never be satisfied, so the beat is
+		// unreachable and so is everything gated behind it.
+		for (const flag of beat.requires) {
+			if (!flags.has(flag)) problems.push(`beat ${beat.id} waits on "${flag}", which nothing sets`);
+		}
+		if (beat.requires.includes(beat.setsFlag))
+			problems.push(`beat ${beat.id} waits on its own flag`);
+	}
+
+	// The first beat has to be openable with nothing done yet, or the story has no
+	// way in at all.
+	if (arc.beats.length > 0 && !arc.beats.some((beat) => beat.requires.length === 0))
+		problems.push("no beat can open first; every one waits on another");
+
+	return problems;
 }
