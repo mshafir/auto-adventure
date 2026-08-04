@@ -15,6 +15,7 @@ npm run preview -- --seed vale --at 0,0    # dump a chunk to stdout
 npm run preview -- --at 0,0 --ascii        # ...as one ASCII byte per tile
 npm run preview -- --at 0,0 --flat         # ...with shadows and slope shading off
 npm run preview -- --at 0,0 --xscale 1     # ...one column per tile instead of two
+npm run author -- --id thornwick --prompt "..." --duration short   # build a scenario
 npm run check             # typecheck + lint + tests
 ```
 
@@ -42,6 +43,8 @@ four chunks is one town seen four ways.
 | `src/core/rules` | `reduce(state, command, probe) → {state, effects}` — pure and total |
 | `src/engine/` | Chunk manager, stitched world view, effect runner, NPC directory |
 | `src/ai/` | Gateway client, director (regions and sites), dialogue and memory |
+| `src/ai/author/` | The offline authoring pipeline and its prompts |
+| `src/scenario/` | Artifacts, the survey, and validation against the real generator |
 | `src/persist/` | Deltas-only saves, atomic writes, versioned migration |
 | `src/ui/` | Ink app, glyphs, autotile, ANSI run-length encoding, panels |
 
@@ -79,7 +82,7 @@ All variables are optional.
 | `SCENARIO_TONE` | — | Refines the brief. |
 | `SCENARIO_PROTAGONIST` | — | Who the player is. |
 | `SCENARIO_AVOID` | — | Genres, tropes or subjects to keep out. |
-| `SCENARIO_DURATION` | — | `short`, `medium` or `long`. Inert until scenarios are pre-generated. |
+| `SCENARIO_DURATION` | — | `short`, `medium` or `long`. Only means something when authoring. |
 | `MODEL_DIRECTOR` | `google/gemini-2.5-flash-lite` | Region and site specs. |
 | `MODEL_DIALOGUE` | `google/gemini-2.5-flash` | What NPCs say. |
 | `MODEL_SUMMARY` | `google/gemini-2.5-flash-lite` | Rolling NPC memory. |
@@ -204,8 +207,38 @@ default premise for every region found after the reload. That also means the
 environment cannot re-brief a world that already has one — start a new save slot
 instead. A world that has *no* brief will adopt a configured one.
 
-See `docs/scenarios.md` for where this is going: whole scenarios generated ahead
-of time, with the story, the people and the conversations already written.
+## Pre-generated scenarios
+
+A scenario is a whole world authored ahead of time — premise, regions, towns,
+people, story and conversations all written down before you play, so **no model
+call happens while the game runs**:
+
+```
+npm run author -- --id drowned-archipelago \
+  --prompt "a drowned archipelago run by debt-collectors" \
+  --duration short
+```
+
+It lands in `~/.auto-adventure/scenarios/` and appears in the launcher. Roughly
+sixty model calls for a medium world, a couple of minutes.
+
+Two things make a pre-generated world better than a live one rather than merely
+cheaper. First, nothing arrives late: every spec is in the state the engine starts
+from, so the first frame shows the authored town, and the whole
+late-spec-rebuild-commitment problem does not exist. Second, the generator is pure
+and runs offline, so the tool can execute the real thing over its own output and
+check what a live director structurally cannot — that the person the story hangs on
+is standing at an anchor that actually got built, that the town they were assigned
+to exists, that the road between two beats can be walked inside the boundary, and
+that the walking roughly matches the duration asked for. It refuses to write a file
+with errors in it.
+
+A scenario is bounded: `--duration` sets both how many story beats there are and
+how large the world is, since in a bounded world those are the same knob. The edge
+is made of deep water, cliffs or mountains, chosen to suit the ground it is drawn
+on, and it is placed so that it cuts no settlement in half.
+
+See `docs/scenarios.md` for the design.
 
 ## Playing without a model
 

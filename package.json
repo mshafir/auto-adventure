@@ -18,7 +18,8 @@
 		"lint": "./node_modules/.bin/biome check .",
 		"lint:fix": "./node_modules/.bin/biome check . --write",
 		"check": "npm run typecheck && npm run lint && npm test",
-		"screens": "vite-node src/tools/screenshot.tsx"
+		"screens": "vite-node src/tools/screenshot.tsx",
+		"author": "vite-node src/tools/author.ts --"
 	},
 	"files": [
 		"dist"

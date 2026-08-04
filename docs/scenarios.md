@@ -392,8 +392,21 @@ Each phase leaves the game playable.
 | 2 | ✅ Launcher, selector, flavour picker, `session.ts` split. |
 | 3 | ✅ Artifact format, repo, `prebuilt` loading of lore/regions/sites. A working pre-gen mode with canned conversation. |
 | 3b | ✅ `bounds` in `GenContext`, S9, threading, seam tests. |
-| 4 | The authoring tool and its validation pass, including the boundary solve. |
+| 4 | ✅ The authoring tool and its validation pass, including the boundary solve. |
 | 5 | ✅ The arc: baked quests, flags, journal. |
 | 6 | ✅ Dialogue trees, authored and walked. |
 
-Phase 3 plus 4 is the feature in rough form. Phase 6 is where it gets good.
+All six have landed.
+
+Two things the implementation learned that the design did not know:
+
+`generateSettlement` memoises by `(seed, siteId)`. That is right for a running
+game — one town, generated once — and wrong for validation, which measures several
+candidate rosters for the same site in one process and would otherwise report the
+first layout for all of them. The pass drops the entry before generating.
+
+The anchor-existence check is weaker than hoped. A settlement of any size lays down
+eight of the nine anchor kinds, so only `yard` is realistically ever missing from a
+town, and the check earns its keep mainly on hamlets and camps. It stays because
+the failure it catches — a named character standing nowhere — is invisible
+otherwise.
