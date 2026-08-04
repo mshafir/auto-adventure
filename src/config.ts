@@ -1,7 +1,13 @@
 import dotenvFlow from "dotenv-flow";
 import { hashString } from "./core/rand/hash.js";
+import { isDuration, normalizeBrief, type ScenarioBrief } from "./core/world/brief.js";
 
 dotenvFlow.config({ silent: true });
+
+// Nothing above may import `./utils/log.js`, directly or transitively. That
+// module reads LOG_LEVEL and LOG_FILE at evaluation time, and imports are
+// evaluated before this file's body — so importing it here would read those
+// variables before `dotenvFlow.config()` had a chance to define them.
 
 function envNumber(key: string, fallback: number): number {
 	const raw = process.env[key];
@@ -21,9 +27,35 @@ export function resolveSeed(value: string | undefined): number {
 	return /^-?\d+$/.test(value) ? Number(value) : hashString(value);
 }
 
+/**
+ * The brief, as environment variables.
+ *
+ * `SCENARIO_PROMPT` is the one most people want: freeform text describing the
+ * world and the story wanted from it. The rest refine it.
+ *
+ * An unrecognised `SCENARIO_DURATION` is dropped rather than rejected. Duration
+ * only does anything when a scenario is generated ahead of time — a live world is
+ * unbounded and has no arc to shorten — so the authoring tool is where a bad
+ * value deserves a real error, not here, where it would abort a playable game.
+ */
+export function briefFromEnv(env: NodeJS.ProcessEnv = process.env): ScenarioBrief | undefined {
+	const duration = env.SCENARIO_DURATION?.trim();
+	return normalizeBrief({
+		premise: env.SCENARIO_PROMPT,
+		setting: env.SCENARIO_SETTING,
+		storyline: env.SCENARIO_STORYLINE,
+		tone: env.SCENARIO_TONE,
+		protagonist: env.SCENARIO_PROTAGONIST,
+		avoid: env.SCENARIO_AVOID,
+		...(duration && isDuration(duration) ? { duration } : {}),
+	});
+}
+
 export const CONFIG = {
 	worldName: process.env.WORLD_NAME ?? "default",
 	seed: resolveSeed(process.env.WORLD_SEED),
+	/** What this world was asked to be about. Undefined is the default premise. */
+	brief: briefFromEnv(),
 	/** Play with no LLM at all. The world is fully generated and traversable. */
 	noAi: envFlag("NO_AI"),
 	saveDebounceMs: envNumber("SAVE_DEBOUNCE_MS", 2000),

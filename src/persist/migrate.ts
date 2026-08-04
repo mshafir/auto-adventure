@@ -1,4 +1,5 @@
 import { type GameState, SAVE_VERSION, START_TICK, timeFromTick } from "../core/rules/state.js";
+import { normalizeBrief, type ScenarioBrief } from "../core/world/brief.js";
 import { logger } from "../utils/log.js";
 
 /**
@@ -76,9 +77,15 @@ function validate(value: Record<string, unknown>): GameState | undefined {
 	// `dialogue` and `notice` are UI-transient and must never come back from disk
 	// mid-turn: a restored notice would announce a discovery the player made in a
 	// previous session.
-	const { dialogue: _dialogue, notice: _notice, ...rest } = state;
+	//
+	// `brief` is dropped for a different reason and re-derived below: it is the one
+	// field a player is likely to hand-edit, and a blank string in it would read as
+	// an instruction rather than as silence.
+	const { dialogue: _dialogue, notice: _notice, brief: _brief, ...rest } = state;
+	const brief = normalizeBrief(value.brief as ScenarioBrief | undefined);
 	return {
 		...(rest as GameState),
+		...(brief ? { brief } : {}),
 		// Day, hour and minute are all derived from the tick, so recomputing them is
 		// both a backfill for saves written before a field existed and a repair for
 		// any that disagree with their own tick.

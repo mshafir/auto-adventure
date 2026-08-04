@@ -9,6 +9,7 @@ LLM as its author rather than its renderer.
 npm install
 npm start                 # play
 NO_AI=1 npm start         # play with no model at all
+SCENARIO_PROMPT="a drowned archipelago run by debt-collectors" npm start
 npm run preview -- --seed vale --at 0,0    # dump a chunk to stdout
 npm run preview -- --at 0,0 --ascii        # ...as one ASCII byte per tile
 npm run preview -- --at 0,0 --flat         # ...with shadows and slope shading off
@@ -71,6 +72,13 @@ All variables are optional.
 | `NO_AI` | `0` | Force the deterministic path even with a key. |
 | `WORLD_SEED` | `auto-adventure` | A word or a number. |
 | `WORLD_NAME` | `default` | Save slot. |
+| `SCENARIO_PROMPT` | — | Freeform brief: what this world is about. |
+| `SCENARIO_SETTING` | — | Refines the brief. |
+| `SCENARIO_STORYLINE` | — | The story wanted from it. |
+| `SCENARIO_TONE` | — | Refines the brief. |
+| `SCENARIO_PROTAGONIST` | — | Who the player is. |
+| `SCENARIO_AVOID` | — | Genres, tropes or subjects to keep out. |
+| `SCENARIO_DURATION` | — | `short`, `medium` or `long`. Inert until scenarios are pre-generated. |
 | `MODEL_DIRECTOR` | `google/gemini-2.5-flash-lite` | Region and site specs. |
 | `MODEL_DIALOGUE` | `google/gemini-2.5-flash` | What NPCs say. |
 | `MODEL_SUMMARY` | `google/gemini-2.5-flash-lite` | Rolling NPC memory. |
@@ -157,9 +165,36 @@ panel carries its own key, since one character stands for a whole chunk there an
 means something different. An open errand is marked `!` on the world map and
 carries a bearing in the quest list, in chunks — `E 2` rather than a tile count.
 
+## Asking for a particular world
+
+By default the model invents a premise on first contact. `SCENARIO_PROMPT` tells
+it what you actually want instead:
+
+```
+SCENARIO_PROMPT="a drowned archipelago run by debt-collectors" \
+  SCENARIO_AVOID="dragons" npm start
+```
+
+A brief is *intent*, never geometry. It cannot move a coastline or place a town —
+the engine still decides what exists, exactly as it does with no brief at all.
+The brief only reaches the calls that name and populate what the engine already
+built, so an unsatisfiable brief gives you a differently-flavoured world rather
+than a broken one.
+
+A brief belongs to the world, like its seed: it is written into the save, so a
+resumed world keeps generating in the same key rather than reverting to the
+default premise for every region found after the reload. That also means the
+environment cannot re-brief a world that already has one — start a new save slot
+instead. A world that has *no* brief will adopt a configured one.
+
+See `docs/scenarios.md` for where this is going: whole scenarios generated ahead
+of time, with the story, the people and the conversations already written.
+
 ## Playing without a model
 
 `NO_AI=1` is a supported way to play, not a degraded mode. Every place still gets
 a name, every settlement still gets people with roles and things to tell you, and
 conversations are real dialogue trees built from what those people know. What is
 missing is a story tying it together — which is what the model is for.
+
+`NO_AI=1` ignores the brief, because nothing reads it: there is no model to steer.

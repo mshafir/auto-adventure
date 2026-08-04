@@ -59,6 +59,7 @@ world's generation" fall out of this work rather than being a second feature.
 
 ```ts
 interface ScenarioBrief {
+  readonly premise?: string;      // freeform, the main knob
   readonly setting?: string;      // "a drowned archipelago of debt-collectors"
   readonly storyline?: string;    // "find a sibling who joined the tithe-ships"
   readonly tone?: string;
@@ -67,6 +68,18 @@ interface ScenarioBrief {
   readonly duration?: Duration;   // "short" | "medium" | "long"
 }
 ```
+
+`premise` is freeform and is what most people will use — `SCENARIO_PROMPT`, or
+one text field in the launcher. The rest refine it. It lives in
+`core/world/brief.ts` rather than `src/scenario/`, for the reason `spec.ts`
+already gives for `WorldLore`: it is persisted in `GameState`, and core cannot
+depend on anything above it.
+
+Every prompt normalises its own brief instead of trusting the caller. Briefs
+arrive from environment variables, a launcher field and artifact JSON, and a
+whitespace-only field from any of them has to read as silence — a brief that says
+nothing must leave the default prompts byte-identical, or every world that
+predates briefs would start generating differently.
 
 The injection point is `prompt.ts`, and the house rule there does not change: the
 model is *naming and populating a place the engine already built*. A brief adds
@@ -331,7 +344,7 @@ is optional, so `SAVE_VERSION` does not move.
 
 | Path | What it is |
 |---|---|
-| `src/scenario/brief.ts` | `ScenarioBrief`, parsing from CLI and JSON |
+| `src/core/world/brief.ts` | `ScenarioBrief` and `Duration`, pure — it is saved state |
 | `src/scenario/scenario.ts` | Artifact and arc types, `ARTIFACT_VERSION` |
 | `src/scenario/schema.ts` | Zod schemas for the artifact |
 | `src/scenario/repo.ts` | List and load artifacts |
@@ -349,7 +362,7 @@ Each phase leaves the game playable.
 
 | # | Lands |
 |---|---|
-| 1 | `ScenarioBrief`; brief-aware prompts; brief persisted. Promptable `live`, no new UI. |
+| 1 | ✅ `ScenarioBrief`; brief-aware prompts; brief persisted; `SCENARIO_*` env. Promptable `live`, no new UI. |
 | 2 | Launcher, selector, flavour picker, `session.ts` split. |
 | 3 | Artifact format, repo, `prebuilt` loading of lore/regions/sites. A working pre-gen mode with canned conversation. |
 | 3b | `bounds` in `GenContext`, S9, threading, seam tests. Small and independent; can land beside 3. |

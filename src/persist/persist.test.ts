@@ -77,6 +77,26 @@ describe("migrateSave", () => {
 		expect(migrateSave(JSON.parse(JSON.stringify(state)))?.version).toBe(SAVE_VERSION);
 	});
 
+	it("carries a brief across a round trip", () => {
+		// A resumed world has to keep generating in the same key. Losing the brief
+		// here would name the regions found after a reload from the default premise.
+		const state = { ...newState(), brief: { premise: "a drowned archipelago" } } as GameState;
+		expect(migrateSave(JSON.parse(JSON.stringify(state)))?.brief).toEqual({
+			premise: "a drowned archipelago",
+		});
+	});
+
+	it("loads a save that predates briefs", () => {
+		const state = newState();
+		expect(state.brief).toBeUndefined();
+		expect(migrateSave(JSON.parse(JSON.stringify(state)))?.brief).toBeUndefined();
+	});
+
+	it("discards a hand-edited brief that says nothing", () => {
+		const state = { ...newState(), brief: { premise: "  ", tone: "" } } as GameState;
+		expect(migrateSave(JSON.parse(JSON.stringify(state)))?.brief).toBeUndefined();
+	});
+
 	it("retires pre-rewrite saves instead of mangling them", () => {
 		// The old format was an LLM-drawn string map per world coordinate with no
 		// seed; there is no honest way to reconstruct a procedural world from it.

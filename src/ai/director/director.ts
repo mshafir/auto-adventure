@@ -1,5 +1,6 @@
 import { MODELS } from "../../config.js";
 import type { SettlementSpec } from "../../core/gen/features/settlement.js";
+import type { ScenarioBrief } from "../../core/world/brief.js";
 import { regionContext, siteContext } from "../../core/world/context.js";
 import type { ChunkCoord } from "../../core/world/coords.js";
 import { HALO } from "../../core/world/coords.js";
@@ -20,6 +21,12 @@ import { RegionSpecSchema, SiteSpecSchema, WorldLoreSchema } from "./schemas.js"
 
 export interface DirectorOptions {
 	readonly seed: number;
+	/**
+	 * What the player asked this world to be about. Steers every authoring call.
+	 * Absent means the default premise, which is what every world before briefs
+	 * existed had.
+	 */
+	readonly brief?: ScenarioBrief;
 	/** Specs already known from the save. */
 	readonly lore?: WorldLore;
 	readonly regions?: Readonly<Record<string, RegionSpec>>;
@@ -167,7 +174,7 @@ export class Director {
 			model: MODELS.bible,
 			schema: WorldLoreSchema,
 			system: LORE_SYSTEM,
-			prompt: lorePrompt(),
+			prompt: lorePrompt(this.options.brief),
 			temperature: 1,
 		});
 		// A failed bible call is not worth retrying every chunk: adopt the
@@ -189,7 +196,7 @@ export class Director {
 			model: MODELS.director,
 			schema: RegionSpecSchema,
 			system: REGION_SYSTEM,
-			prompt: regionPrompt(lore, context),
+			prompt: regionPrompt(lore, context, this.options.brief),
 			temperature: 0.9,
 		});
 
@@ -223,7 +230,7 @@ export class Director {
 				model: MODELS.director,
 				schema: SiteSpecSchema,
 				system: SITE_SYSTEM,
-				prompt: sitePrompt(lore, region, context),
+				prompt: sitePrompt(lore, region, context, this.options.brief),
 				temperature: 0.9,
 			});
 

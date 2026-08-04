@@ -1,3 +1,4 @@
+import type { ScenarioBrief } from "../world/brief.js";
 import type { ChunkKey } from "../world/coords.js";
 import type { RegionSpec, SiteSpec, SpecSource, WorldLore } from "../world/spec.js";
 import type { NpcRecord } from "./npc.js";
@@ -168,6 +169,15 @@ export interface GameState {
 	 * is the same reason the settlement patch itself is cached by site.
 	 */
 	readonly lore?: WorldLore;
+	/**
+	 * What this world was asked to be about, if anything.
+	 *
+	 * Persisted so a resumed world keeps generating in the same key. Without it, a
+	 * world briefed as a drowned archipelago would name its first few regions
+	 * accordingly and then quietly revert to the default premise for every region
+	 * discovered after the reload.
+	 */
+	readonly brief?: ScenarioBrief;
 	readonly regions: Readonly<Record<string, RegionSpec>>;
 	readonly sites: Readonly<Record<string, SiteSpec>>;
 	readonly specSources: Readonly<Record<string, SpecSource>>;
@@ -186,10 +196,15 @@ export interface GameState {
 	readonly notice?: string;
 }
 
-export function createInitialState(world: WorldMeta, spawn: { x: number; y: number }): GameState {
+export function createInitialState(
+	world: WorldMeta,
+	spawn: { x: number; y: number },
+	brief?: ScenarioBrief,
+): GameState {
 	return {
 		version: SAVE_VERSION,
 		world,
+		...(brief ? { brief } : {}),
 		player: { x: spawn.x, y: spawn.y, facing: "down", hp: 20, maxHp: 20 },
 		time: timeFromTick(START_TICK),
 		inventory: [{ name: "Gold", description: "A handful of coins.", quantity: 12 }],
