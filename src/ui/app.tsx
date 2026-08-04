@@ -2,6 +2,7 @@ import { Box, useStdout } from "ink";
 import { useEffect, useMemo, useState } from "react";
 import { computeFov, lightAt } from "../core/geom/fov.js";
 import { facingDelta } from "../core/rules/effects.js";
+import { isContainer, lootKey } from "../core/rules/loot.js";
 import { decorDef } from "../core/tiles/decor.js";
 import { TFlag } from "../core/tiles/flags.js";
 import { terrainDef } from "../core/tiles/terrain.js";
@@ -114,7 +115,7 @@ export default function App() {
 
 	const cc = toChunk(player.x, player.y);
 	const summary = engine.getChunks().summaryFor(cc.cx, cc.cy);
-	const looking = describeFaced(engine, view, facedX, facedY, player.x, player.y);
+	const looking = state.notice ?? describeFaced(engine, view, facedX, facedY, player.x, player.y);
 	const placeName = player.inside?.name ?? engine.placeNameAt(player.x, player.y);
 	const facedNpc = npcs.at(facedX, facedY);
 
@@ -216,6 +217,14 @@ function describeFaced(
 		const def = decorDef(decor);
 		const sign = engine.getChunks().signNear(x, y);
 		if (sign) return `${def.describe} It reads "${sign}".`;
+		if (isContainer(decor)) {
+			const inside = engine.getState().player.inside;
+			const emptied =
+				inside !== undefined && engine.getState().flags[lootKey(inside.interiorId, x, y)];
+			return emptied
+				? `${def.describe} You have already been through it.`
+				: `${def.describe} SPACE to search it.`;
+		}
 		return def.describe;
 	}
 

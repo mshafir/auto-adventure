@@ -17,7 +17,7 @@ export interface Interior {
 	readonly anchors: readonly { readonly kind: string; readonly x: number; readonly y: number }[];
 }
 
-const interiorCache = new Map<number, Interior>();
+const interiorCache = new Map<string, Interior>();
 
 /**
  * Interiors are separate grids, generated on demand.
@@ -32,10 +32,16 @@ const interiorCache = new Map<number, Interior>();
  * entered.
  */
 export function getInterior(seed: number, interiorId: number, kind: StructureKind): Interior {
-	const cached = interiorCache.get(interiorId);
+	// Keyed on all three inputs, not on the id alone. An id identifies a building
+	// only within one world, so a process that opens a second world — which the
+	// launcher does — would otherwise serve the first world's rooms for it. It also
+	// makes the cache agree with `buildInterior`, which is a pure function of the
+	// same three arguments.
+	const key = `${seed}:${interiorId}:${kind}`;
+	const cached = interiorCache.get(key);
 	if (cached) return cached;
 	const built = buildInterior(seed, interiorId, kind);
-	interiorCache.set(interiorId, built);
+	interiorCache.set(key, built);
 	return built;
 }
 
@@ -128,6 +134,21 @@ function planFor(kind: StructureKind): {
 				furnishings: [
 					{ decor: D.crate, count: 8 },
 					{ decor: D.barrel, count: 6 },
+				],
+			};
+		case "mill":
+			// A mill used to fall through to the household plan — a hearth, two beds
+			// and a shelf — so the one building most likely to be sent an errand about
+			// had nothing in it and did not read as a mill either.
+			return {
+				size: [13, 11],
+				floor: T.floorStone,
+				wall: T.woodWall,
+				furnishings: [
+					{ decor: D.counter, count: 1, anchor: "counter" },
+					{ decor: D.crate, count: 4 },
+					{ decor: D.barrel, count: 3 },
+					{ decor: D.shelf, count: 2 },
 				],
 			};
 		case "ruin":

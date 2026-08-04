@@ -3,6 +3,7 @@ import type { StructureKind } from "../core/gen/features/patch.js";
 import { invalidateSettlement, settlementBounds } from "../core/gen/features/settlement.js";
 import type { Command } from "../core/rules/commands.js";
 import type { Effect } from "../core/rules/effects.js";
+import { containerContents, emptyMessage, isContainer, itemsStoredIn } from "../core/rules/loot.js";
 import { reduce, type WorldProbe } from "../core/rules/reduce.js";
 import { shopStock, tradeKind } from "../core/rules/shop.js";
 import type { GameState } from "../core/rules/state.js";
@@ -198,12 +199,15 @@ export class GameEngine {
 	/**
 	 * Item names a `have` objective could legitimately name.
 	 *
-	 * Everything on sale at this settlement, plus what the player already carries.
-	 * Deliberately assembled here rather than read from a catalogue constant, so
-	 * that whatever else comes to hold items later is added in one place.
+	 * Three sources, and all three have to be here or an NPC gets refused a request
+	 * the player could actually have satisfied: what is on sale, what the buildings
+	 * here store, and what the player already carries. This is why "fetch me timber"
+	 * is a legal errand in a milling town and an illegal one in a fishing village,
+	 * without either the model or the resolver holding a catalogue of its own.
 	 */
 	private obtainableItems(site: MacroSite): string[] {
 		const names = new Set<string>();
+
 		for (const npc of this.npcs.atSite(site.id)) {
 			const kind = tradeKind(npc.spec.role);
 			if (!kind) continue;
@@ -211,6 +215,13 @@ export class GameEngine {
 				names.add(item.name);
 			}
 		}
+
+		// What is in the crates. Every building kind that stands here, not just the
+		// ones with a shopkeeper in them.
+		for (const building of this.npcs.buildingsAt(site)) {
+			for (const name of itemsStoredIn(building.kind)) names.add(name);
+		}
+
 		for (const carried of this.state.inventory) names.add(carried.name);
 		return [...names];
 	}
@@ -256,6 +267,26 @@ export class GameEngine {
 				return x === interior.entrance.x && y === interior.entrance.y + 1;
 			},
 			placeNameAt: (x, y) => this.placeNameAt(x, y),
+			containerAt: (x, y) => {
+				// Only interiors hold containers, which is also where the generator puts
+				// them; a crate in an open field would have nowhere to belong to.
+				if (!inside) return undefined;
+				const view = this.getView();
+				const decor = view.decorAt(x, y);
+				if (!isContainer(decor)) return undefined;
+				return {
+					place: inside.interiorId,
+					contents: containerContents(
+						this.state.world.seed,
+						inside.interiorId,
+						x,
+						y,
+						decor,
+						inside.structure,
+					),
+					emptyText: emptyMessage(decor),
+				};
+			},
 		};
 
 		const { state, effects } = reduce(this.state, command, probe);

@@ -1,6 +1,7 @@
 import { chunkKey, toChunk } from "../world/coords.js";
 import type { Command } from "./commands.js";
 import { type DomainEffect, type Effect, facingDelta, type Reduction } from "./effects.js";
+import { type LootItem, lootKey } from "./loot.js";
 import { clampDisposition, createNpcRecord, MAX_FACTS, type NpcRecord } from "./npc.js";
 import { verifyQuests } from "./quests.js";
 import {
@@ -37,6 +38,23 @@ export interface WorldProbe {
 	describeAt?(x: number, y: number): string | undefined;
 	/** The settlement covering a position, used to resolve `reach` objectives. */
 	placeNameAt?(x: number, y: number): string | undefined;
+	/**
+	 * A searchable container, with what it holds already resolved.
+	 *
+	 * Resolved by the caller rather than here so the reducer stays pure: contents
+	 * are a function of the seed and the position, which the engine knows and the
+	 * reducer deliberately does not.
+	 */
+	containerAt?(
+		x: number,
+		y: number,
+	):
+		| {
+				readonly place: number;
+				readonly contents: readonly LootItem[];
+				readonly emptyText: string;
+		  }
+		| undefined;
 }
 
 /**
@@ -49,7 +67,9 @@ export interface WorldProbe {
  * player saw the step.
  */
 export function reduce(state: GameState, command: Command, world: WorldProbe): Reduction {
-	const result = step(state, command, world);
+	// A notice reports what just happened, so whatever happens next clears it —
+	// otherwise "You find 3 Timber." sits under the map for the rest of the game.
+	const result = step(withoutNotice(state), command, world);
 	const placeName = world.placeNameAt?.(result.state.player.x, result.state.player.y);
 
 	// Objectives are checked after every command rather than only when a model
@@ -298,11 +318,66 @@ function interact(state: GameState, world: WorldProbe): Reduction {
 	if (state.dialogue) return advanceDialogue(state);
 
 	const [dx, dy] = facingDelta(state.player.facing);
-	const npc =
-		world.npcAt(state.player.x + dx, state.player.y + dy) ??
-		world.npcAt(state.player.x, state.player.y);
-	if (!npc) return { state, effects: [] };
-	return openDialogue(state, npc);
+	const fx = state.player.x + dx;
+	const fy = state.player.y + dy;
+
+	// People first: walking up to someone and pressing SPACE should always talk to
+	// them, even if they happen to be standing beside a crate.
+	const npc = world.npcAt(fx, fy) ?? world.npcAt(state.player.x, state.player.y);
+	if (npc) return openDialogue(state, npc);
+
+	return search(state, world, fx, fy);
+}
+
+/**
+ * Search whatever the player is facing.
+ *
+ * The only way anything enters the inventory used to be an NPC handing it over,
+ * so every "go and find X" errand was impossible however well it was grounded.
+ * Contents are a pure function of position, so nothing about a container is
+ * saved — only the fact that this one has been emptied, as a single flag, which
+ * is what stops it refilling when the chunk is evicted and regenerated.
+ */
+function search(state: GameState, world: WorldProbe, x: number, y: number): Reduction {
+	const container = world.containerAt?.(x, y);
+	if (!container) return { state, effects: [] };
+
+	const key = lootKey(container.place, x, y);
+	if (state.flags[key]) {
+		return { state: { ...state, notice: container.emptyText }, effects: [] };
+	}
+
+	const found = container.contents;
+	if (found.length === 0) {
+		// Marked even when empty, so a fruitless search is not repeated forever and
+		// the description settles on the truth.
+		return {
+			state: { ...state, notice: container.emptyText, flags: { ...state.flags, [key]: true } },
+			effects: [],
+		};
+	}
+
+	const notice = found
+		.map((item) => (item.quantity > 1 ? `${item.quantity} ${item.name}` : item.name))
+		.join(", ");
+
+	// Applied here rather than returned as effects: `Reduction.effects` is the
+	// side-effect channel for the runner, and picking something up is a state
+	// change the reducer owns outright.
+	let inventory = state.inventory;
+	for (const item of found) inventory = addItem(inventory, item);
+
+	return {
+		state: {
+			...state,
+			inventory,
+			flags: { ...state.flags, [key]: true },
+			notice: `You find ${notice}.`,
+		},
+		// Worth a checkpoint: the player has gained something they would be annoyed
+		// to lose, and searching is not on the movement path.
+		effects: [{ t: "Save", reason: "checkpoint" }],
+	};
 }
 
 function openDialogue(
@@ -326,6 +401,12 @@ function openDialogue(
 }
 
 // --- dialogue ---------------------------------------------------------------
+
+function withoutNotice(state: GameState): GameState {
+	if (state.notice === undefined) return state;
+	const { notice: _notice, ...rest } = state;
+	return rest as GameState;
+}
 
 function withoutDialogue(state: GameState): GameState {
 	if (!state.dialogue) return state;

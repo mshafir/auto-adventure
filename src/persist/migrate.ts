@@ -73,8 +73,10 @@ function validate(value: Record<string, unknown>): GameState | undefined {
 	}
 
 	const state = value as unknown as GameState;
-	// `dialogue` is UI-transient and must never come back from disk mid-turn.
-	const { dialogue: _dialogue, ...rest } = state;
+	// `dialogue` and `notice` are UI-transient and must never come back from disk
+	// mid-turn: a restored notice would announce a discovery the player made in a
+	// previous session.
+	const { dialogue: _dialogue, notice: _notice, ...rest } = state;
 	return {
 		...(rest as GameState),
 		discovered: Array.isArray(value.discovered) ? (value.discovered as string[]) : [],

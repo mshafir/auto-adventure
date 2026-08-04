@@ -469,3 +469,104 @@ describe("reaching a building closes a quest", () => {
 		expect(state.quests[0]?.completed).toBe(true);
 	});
 });
+
+describe("searching a container", () => {
+	/**
+	 * Nothing in the world could be picked up: the only routes into the inventory
+	 * were an NPC handing something over and buying it. So "go and find timber" was
+	 * impossible to complete by exploring, however well the quest was grounded.
+	 */
+	function withCrate(contents: { name: string; description: string; quantity: number }[]) {
+		return {
+			...probe(),
+			containerAt: (x: number, y: number) =>
+				x === 10 && y === 11 ? { place: 7, contents, emptyText: "The crate is empty." } : undefined,
+		};
+	}
+
+	const TIMBER = { name: "Timber", description: "Rough-sawn planks.", quantity: 3 };
+
+	// The player spawns facing down, so the crate below them is already the faced
+	// tile. Pressing a direction first would walk them off it.
+	it("puts what it holds into the inventory", () => {
+		const world = withCrate([TIMBER]);
+		const facing = makeState();
+		const { state } = run(facing, [{ t: "Interact" }], world);
+		expect(state.inventory.find((i) => i.name === "Timber")?.quantity).toBe(3);
+	});
+
+	it("says what was found", () => {
+		const world = withCrate([TIMBER]);
+		const { state } = run(makeState(), [{ t: "Interact" }], world);
+		expect(state.notice).toBe("You find 3 Timber.");
+	});
+
+	it("cannot be searched twice", () => {
+		const world = withCrate([TIMBER]);
+		let state = makeState();
+		state = run(state, [{ t: "Interact" }], world).state;
+		state = run(state, [{ t: "Interact" }], world).state;
+		// Three, not six: emptying it is remembered.
+		expect(state.inventory.find((i) => i.name === "Timber")?.quantity).toBe(3);
+		expect(state.notice).toBe("The crate is empty.");
+	});
+
+	it("remembers a fruitless search, so it is not repeated forever", () => {
+		const world = withCrate([]);
+		const { state } = run(makeState(), [{ t: "Interact" }], world);
+		expect(state.notice).toBe("The crate is empty.");
+		expect(state.flags["looted:7:10,11"]).toBe(true);
+	});
+
+	it("clears the notice on the very next command", () => {
+		// A notice reports what just happened; left in place it becomes status text
+		// sitting under the map for the rest of the game.
+		const world = withCrate([TIMBER]);
+		let state = run(makeState(), [{ t: "Interact" }], world).state;
+		expect(state.notice).toBeDefined();
+		state = run(state, [{ t: "Move", facing: "left" }], world).state;
+		expect(state.notice).toBeUndefined();
+	});
+
+	it("talks to a person standing beside a crate rather than searching it", () => {
+		// Walking up to someone and pressing SPACE must always talk to them.
+		const world = {
+			...withCrate([TIMBER]),
+			npcAt: (x: number, y: number) =>
+				x === 10 && y === 11 ? { id: "npc:1:0", name: "Wren" } : undefined,
+		};
+		const { state } = run(makeState(), [{ t: "Interact" }], world);
+		expect(state.dialogue?.npcName).toBe("Wren");
+		expect(state.inventory.find((i) => i.name === "Timber")).toBeUndefined();
+	});
+
+	it("does nothing when facing something that is not a container", () => {
+		const world = withCrate([TIMBER]);
+		// Facing away from the crate, at open ground.
+		const looking = makeState({
+			player: { ...makeState().player, facing: "left" },
+		});
+		const { state } = run(looking, [{ t: "Interact" }], world);
+		expect(state.inventory.find((i) => i.name === "Timber")).toBeUndefined();
+		expect(state.notice).toBeUndefined();
+	});
+
+	it("completes a `have` objective for what it yielded", () => {
+		// The whole point: the errand can now be finished by exploring.
+		const world = withCrate([TIMBER]);
+		const quest = makeState({
+			quests: [
+				{
+					id: "q1",
+					name: "Timber",
+					description: "Fetch three lengths.",
+					objectives: [{ kind: "have", target: "Timber", quantity: 3, done: false }],
+					progress: [],
+					completed: false,
+				},
+			],
+		});
+		const { state } = run(quest, [{ t: "Interact" }], world);
+		expect(state.quests[0]?.completed).toBe(true);
+	});
+});

@@ -153,6 +153,14 @@ export interface GameState {
 	/** Standing with each named faction, -100..100. Surfaced into prompts. */
 	readonly reputation: Readonly<Record<string, number>>;
 	readonly dialogue?: DialogueState;
+	/**
+	 * One line of feedback for something that just happened — searching a crate,
+	 * finding it empty.
+	 *
+	 * UI-facing and never persisted, like `dialogue`, and cleared by the next
+	 * command so it reads as a reaction rather than as status.
+	 */
+	readonly notice?: string;
 }
 
 export function createInitialState(world: WorldMeta, spawn: { x: number; y: number }): GameState {
