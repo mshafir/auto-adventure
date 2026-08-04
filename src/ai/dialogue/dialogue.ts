@@ -84,6 +84,10 @@ export function createDialogueService(deps: DialogueDeps) {
 				disposition: record.disposition,
 				surroundings,
 				siteId: placed.siteId,
+				onDropped: (kind, target) =>
+					logger.info(
+						`dialogue: ${record.name} named a ${kind} target that does not exist here: ${target}`,
+					),
 			}),
 		];
 

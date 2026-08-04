@@ -35,6 +35,14 @@ export interface ActionContext {
 	readonly surroundings?: Surroundings;
 	/** The settlement this conversation is in, recorded on any quest given here. */
 	readonly siteId?: number;
+	/**
+	 * Told about each objective refused for naming something that does not exist.
+	 *
+	 * A dropped objective is otherwise completely silent — the player is handed a
+	 * quest with nothing in it and no way to tell whether that is a bug or the
+	 * point. Injected rather than logged from here so this stays a pure function.
+	 */
+	readonly onDropped?: (kind: string, target: string) => void;
 }
 
 /** Bounds on a single action, so one bad turn cannot rewrite the save. */
@@ -113,7 +121,12 @@ function mapOne(
 					id,
 					name,
 					description: clean(action.description) ?? name,
-					objectives: mapObjectives(action.objectives, context.surroundings, context.state),
+					objectives: mapObjectives(
+						action.objectives,
+						context.surroundings,
+						context.state,
+						context.onDropped,
+					),
 					...(context.siteId === undefined ? {} : { siteId: context.siteId }),
 				},
 			];
@@ -258,6 +271,7 @@ function mapObjectives(
 	objectives: ActionResponse["objectives"],
 	surroundings: Surroundings | undefined,
 	state: GameState,
+	onDropped?: (kind: string, target: string) => void,
 ): readonly QuestObjective[] {
 	if (!objectives) return [];
 	const mapped: QuestObjective[] = [];
@@ -267,7 +281,10 @@ function mapObjectives(
 		if (!requested) continue;
 
 		const target = resolveObjectiveTarget(objective.kind, requested, surroundings, state);
-		if (!target) continue;
+		if (!target) {
+			onDropped?.(objective.kind, requested);
+			continue;
+		}
 
 		mapped.push({
 			kind: objective.kind,

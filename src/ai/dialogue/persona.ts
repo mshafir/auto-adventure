@@ -48,14 +48,9 @@ function surroundingsLines(surroundings: Surroundings | undefined): string[] {
 	if (!surroundings) return [];
 	const lines: string[] = [];
 
-	if (surroundings.buildings.length > 0) {
-		lines.push(
-			"",
-			"Every building in this place, and there are no others:",
-			...surroundings.buildings.map((b) =>
-				b.name && b.name !== b.kind ? `- ${b.name} (${b.kind})` : `- the ${b.kind}`,
-			),
-		);
+	const buildings = describeBuildings(surroundings.buildings);
+	if (buildings.length > 0) {
+		lines.push("", "Every building in this place, and there are no others:", ...buildings);
 	}
 	if (surroundings.people.length > 0) {
 		lines.push(
@@ -67,14 +62,64 @@ function surroundingsLines(surroundings: Surroundings | undefined): string[] {
 		lines.push(`Places within travelling distance: ${surroundings.places.join(", ")}.`);
 	}
 
+	// Without this the model has no idea what any object in the world is called, so
+	// an errand to fetch something is a guess — it asks for firewood in a place that
+	// has Timber, the boundary cannot resolve that against anything, and the player
+	// is left holding a quest with nothing in it.
+	if (surroundings.items.length > 0) {
+		lines.push(
+			`Things that can be bought or found here, and nothing else: ${surroundings.items
+				.slice(0, MAX_LISTED_ITEMS)
+				.join(", ")}.`,
+		);
+	}
+
 	if (lines.length > 0) {
 		lines.push(
 			"When you send the traveller somewhere or after something, it must be one of the things " +
-				"named above. Do not invent a building, a person, or a place that is not listed — if the " +
-				"errand you have in mind has nowhere to happen, ask for something else instead.",
+				"named above, spelled the same way. Do not invent a building, a person, a place or an " +
+				"object that is not listed — if the errand you have in mind has nowhere to happen or " +
+				"nothing to fetch, ask for something else instead.",
 		);
 	}
 	return lines;
+}
+
+/** Long enough to be a real menu, short enough not to crowd out the persona. */
+const MAX_LISTED_ITEMS = 24;
+
+/**
+ * Buildings as something worth reading.
+ *
+ * Listing them one per line put "the house" in front of the model four times over
+ * and "the smithy" twice, which is not a list of places so much as a list of
+ * words — there is nothing there to name an errand after, so the model invents a
+ * name instead and the objective is dropped. Named buildings are listed
+ * individually because the name is the useful part; unnamed ones are counted,
+ * because "three houses" is the true and more legible statement.
+ */
+function describeBuildings(buildings: Surroundings["buildings"]): string[] {
+	const named: string[] = [];
+	const counts = new Map<string, number>();
+
+	for (const building of buildings) {
+		if (building.name && building.name !== building.kind) {
+			named.push(`- ${building.name} (${building.kind})`);
+		} else {
+			counts.set(building.kind, (counts.get(building.kind) ?? 0) + 1);
+		}
+	}
+
+	const grouped = [...counts.entries()].map(([kind, count]) =>
+		count === 1 ? `- the ${kind}` : `- ${count} ${plural(kind)}`,
+	);
+	return [...named, ...grouped];
+}
+
+function plural(kind: string): string {
+	if (kind.endsWith("y")) return `${kind.slice(0, -1)}ies`;
+	if (kind.endsWith("s") || kind.endsWith("h")) return `${kind}es`;
+	return `${kind}s`;
 }
 
 export function dialogueSystem(input: PersonaInput): string {

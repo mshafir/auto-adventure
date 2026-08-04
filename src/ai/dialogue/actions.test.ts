@@ -368,3 +368,63 @@ describe("grounding quest objectives", () => {
 		]);
 	});
 });
+
+describe("reporting a refused objective", () => {
+	/**
+	 * A dropped objective used to be completely silent. The player was handed a
+	 * quest with nothing in it and no way to tell whether that was a bug or the
+	 * point — which is exactly how it was reported: "I took a quest and cannot
+	 * find it."
+	 */
+	const WORLD = {
+		place: "Harrowfen",
+		buildings: [{ name: "Harrowmill Mill", kind: "mill" }],
+		people: [{ name: "Wren", role: "miller" }],
+		places: [],
+		items: ["Timber"],
+	};
+
+	function dropsFrom(objectives: ActionResponse["objectives"]) {
+		const dropped: string[] = [];
+		mapActions([action({ kind: "createQuest", questName: "Errand", objectives })], {
+			state: BASE,
+			npcId: "npc:1:0",
+			npcName: "Wren",
+			surroundings: WORLD,
+			onDropped: (kind, target) => dropped.push(`${kind}:${target}`),
+		});
+		return dropped;
+	}
+
+	it("reports each target it refused", () => {
+		expect(
+			dropsFrom([
+				{ kind: "reach", target: "the sawmill on the ridge", quantity: null },
+				{ kind: "have", target: "Moonsilver", quantity: null },
+			]),
+		).toEqual(["reach:the sawmill on the ridge", "have:Moonsilver"]);
+	});
+
+	it("says nothing when every target resolves", () => {
+		expect(
+			dropsFrom([
+				{ kind: "reach", target: "the mill", quantity: null },
+				{ kind: "have", target: "Timber", quantity: null },
+			]),
+		).toEqual([]);
+	});
+
+	it("is optional, so a caller that does not care is unaffected", () => {
+		const effects = mapActions(
+			[
+				action({
+					kind: "createQuest",
+					questName: "Errand",
+					objectives: [{ kind: "have", target: "Moonsilver", quantity: null }],
+				}),
+			],
+			{ state: BASE, npcId: "npc:1:0", npcName: "Wren", surroundings: WORLD },
+		);
+		expect(effects.find((e) => e.t === "CreateQuest")).toBeDefined();
+	});
+});

@@ -90,3 +90,66 @@ describe("grounding the prompt", () => {
 		expect(prompt).not.toContain("Do not invent");
 	});
 });
+
+describe("what the model is given to name things after", () => {
+	/**
+	 * The grounding has to be worth reading, not just present.
+	 *
+	 * Listed one per line, a real town put "the house" in front of the model five
+	 * times and "the smithy" twice — a list of words rather than a list of places.
+	 * With nothing distinctive to name an errand after, the model invents a name,
+	 * the boundary refuses it, and the player is handed a quest with nothing in it.
+	 */
+	const CROWDED: Surroundings = {
+		place: "Brackgate",
+		buildings: [
+			{ name: "house", kind: "house" },
+			{ name: "house", kind: "house" },
+			{ name: "house", kind: "house" },
+			{ name: "smithy", kind: "smithy" },
+			{ name: "smithy", kind: "smithy" },
+			{ name: "The Slaked Ox", kind: "inn" },
+		],
+		people: [{ name: "Wren", role: "miller" }],
+		places: [],
+		items: ["Timber", "Coil of Rope"],
+	};
+
+	it("counts repeated buildings instead of repeating them", () => {
+		const prompt = system(CROWDED);
+		expect(prompt).toContain("3 houses");
+		expect(prompt).toContain("2 smithies");
+		expect(prompt.match(/- the house/g)).toBeNull();
+	});
+
+	it("still lists a named building individually, because the name is the point", () => {
+		expect(system(CROWDED)).toContain("The Slaked Ox (inn)");
+	});
+
+	it("pluralises the awkward kinds correctly", () => {
+		const kinds: Surroundings = {
+			...CROWDED,
+			buildings: [
+				{ name: "smithy", kind: "smithy" },
+				{ name: "smithy", kind: "smithy" },
+				{ name: "warehouse", kind: "warehouse" },
+				{ name: "warehouse", kind: "warehouse" },
+			],
+		};
+		const prompt = system(kinds);
+		expect(prompt).toContain("2 smithies");
+		expect(prompt).toContain("2 warehouses");
+	});
+
+	it("names the things that can actually be fetched", () => {
+		// Without this the model has no idea what anything is called, so it asks for
+		// firewood in a place that has Timber and the objective is refused.
+		expect(system(CROWDED)).toContain("Timber");
+		expect(system(CROWDED)).toMatch(/bought or found here/);
+	});
+
+	it("says nothing about items when there are none", () => {
+		const bare: Surroundings = { ...CROWDED, items: [] };
+		expect(system(bare)).not.toMatch(/bought or found here/);
+	});
+});

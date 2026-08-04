@@ -160,6 +160,12 @@ function QuestsTab({ state }: { state: GameState }) {
 							) : null}
 							{mark && !bearing ? <Text color="green">{"  here"}</Text> : null}
 						</Text>
+						{quest.objectives.length === 0 ? (
+							// A quest can reach the log with nothing to track: the engine refuses
+							// objectives that name things it cannot find, and says so rather than
+							// showing an empty entry the player would read as broken.
+							<Text color="yellow">{"[!] nothing here I can follow — ask again"}</Text>
+						) : null}
 						{quest.objectives.map((objective) => (
 							<Text
 								key={`${objective.kind}:${objective.target}`}

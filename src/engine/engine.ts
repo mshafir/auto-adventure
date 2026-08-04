@@ -3,7 +3,7 @@ import type { StructureKind } from "../core/gen/features/patch.js";
 import { invalidateSettlement, settlementBounds } from "../core/gen/features/settlement.js";
 import type { Command } from "../core/rules/commands.js";
 import type { Effect } from "../core/rules/effects.js";
-import { containerContents, emptyMessage, isContainer, itemsStoredIn } from "../core/rules/loot.js";
+import { containerContents, emptyMessage, isContainer, lootKey } from "../core/rules/loot.js";
 import { reduce, type WorldProbe } from "../core/rules/reduce.js";
 import { shopStock, tradeKind } from "../core/rules/shop.js";
 import type { GameState } from "../core/rules/state.js";
@@ -216,10 +216,39 @@ export class GameEngine {
 			}
 		}
 
-		// What is in the crates. Every building kind that stands here, not just the
-		// ones with a shopkeeper in them.
+		// What is *in* the crates, not what a building of this kind could hold.
+		//
+		// Asking `itemsStoredIn(kind)` was the bug behind "I took a quest and cannot
+		// find it": a barn can store timber, so timber was offered to the model as
+		// fetchable, but whether any barn container actually rolled timber is a
+		// separate throw of the dice. In one measured town nothing held timber at
+		// all and the errand could never be finished. Contents are pure, so the real
+		// answer is available for the asking; interiors are cached after the first
+		// look, so only the first conversation in a town pays for it.
 		for (const building of this.npcs.buildingsAt(site)) {
-			for (const name of itemsStoredIn(building.kind)) names.add(name);
+			const interior = getInterior(
+				this.state.world.seed,
+				building.interiorId,
+				building.kind as StructureKind,
+			);
+			for (let y = 0; y < interior.height; y++) {
+				for (let x = 0; x < interior.width; x++) {
+					const decor = interior.decor[y * interior.width + x] ?? 0;
+					if (!isContainer(decor)) continue;
+					// Already emptied by the player, so no longer something to promise.
+					if (this.state.flags[lootKey(building.interiorId, x, y)]) continue;
+					for (const item of containerContents(
+						this.state.world.seed,
+						building.interiorId,
+						x,
+						y,
+						decor,
+						building.kind,
+					)) {
+						names.add(item.name);
+					}
+				}
+			}
 		}
 
 		for (const carried of this.state.inventory) names.add(carried.name);
