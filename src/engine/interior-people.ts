@@ -1,3 +1,5 @@
+import { DEFAULT_PACK } from "../core/content/default.js";
+import type { ContentPack } from "../core/content/pack.js";
 import { getInterior } from "../core/gen/features/interior.js";
 import type { StructureKind } from "../core/gen/features/patch.js";
 import { type Resident, residentsOf } from "../core/gen/features/residents.js";
@@ -21,14 +23,17 @@ import { type Resident, residentsOf } from "../core/gen/features/residents.js";
 export class InteriorPeople {
 	private readonly cache = new Map<number, readonly Resident[]>();
 
-	constructor(private readonly seed: number) {}
+	constructor(
+		private readonly seed: number,
+		private readonly pack: ContentPack = DEFAULT_PACK,
+	) {}
 
 	/** Everyone in one building. */
 	in(interiorId: number, kind: string): readonly Resident[] {
 		const known = this.cache.get(interiorId);
 		if (known) return known;
 		const interior = getInterior(this.seed, interiorId, kind as StructureKind);
-		const people = residentsOf(this.seed, interiorId, kind as StructureKind, interior);
+		const people = residentsOf(this.seed, interiorId, kind as StructureKind, interior, this.pack);
 		this.cache.set(interiorId, people);
 		return people;
 	}

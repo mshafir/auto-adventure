@@ -1,3 +1,4 @@
+import type { PackOverride } from "../core/content/pack.js";
 import type { ScenarioBrief } from "../core/world/brief.js";
 import type { ScenarioArtifact } from "./artifact.js";
 
@@ -40,6 +41,8 @@ export interface LaunchChoice {
 	readonly seed: number;
 	readonly flavour: Flavour;
 	readonly brief?: ScenarioBrief;
+	/** A pack override to offer a new world. A world with one of its own keeps it. */
+	readonly content?: PackOverride;
 	/**
 	 * The authored world, for `prebuilt`.
 	 *

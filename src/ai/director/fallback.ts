@@ -1,3 +1,5 @@
+import { DEFAULT_PACK } from "../../core/content/default.js";
+import type { ContentPack } from "../../core/content/pack.js";
 import { fallbackSettlementSpec } from "../../core/gen/features/fallback-spec.js";
 import { rngFor } from "../../core/rand/rng.js";
 import type { RegionContext, SiteContext } from "../../core/world/context.js";
@@ -14,21 +16,16 @@ import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/
  * lacks is a story tying them together — which is precisely what the LLM is for.
  */
 
-export function fallbackLore(): WorldLore {
-	return {
-		title: "The Long Weather",
-		premise:
-			"The old roads still run between the holdfasts, though fewer people walk them each year. " +
-			"Something in the weather has turned, and the villages have begun keeping their own counsel.",
-		era: "the late years of a long decline",
-		tone: "weatherbeaten and plainspoken",
-		factions: ["the Roadwardens", "the Hollow Assembly", "the Salt Factors"],
-		deities: ["the Patient Sister", "Ord of the Nine Gates"],
-	};
+export function fallbackLore(pack: ContentPack = DEFAULT_PACK): WorldLore {
+	return pack.lore;
 }
 
-export function fallbackRegion(seed: number, context: RegionContext): RegionSpec {
-	const name = regionName(seed, context.regionId, context.biome);
+export function fallbackRegion(
+	seed: number,
+	context: RegionContext,
+	pack: ContentPack = DEFAULT_PACK,
+): RegionSpec {
+	const name = regionName(seed, context.regionId, context.biome, pack);
 	return {
 		id: String(context.regionId),
 		name,
@@ -36,38 +33,20 @@ export function fallbackRegion(seed: number, context: RegionContext): RegionSpec
 		tone: "quiet",
 		culture: "smallholders and road-traders",
 		lore: [],
-		ambient: [
-			`The wind moves across the ${context.biomeName.toLowerCase()}.`,
-			"Somewhere behind you, a bird you cannot name calls twice and stops.",
-			"The road here is older than anything built beside it.",
-		],
+		// The first line names the landscape, so it is worth composing rather than
+		// quoting; the rest come from the pack, where a scenario can set its own.
+		ambient: [`The wind moves across the ${context.biomeName.toLowerCase()}.`, ...pack.ambient],
 	};
 }
 
-/** Roles worth standing outside, per structure kind. */
-const ROLE_BY_KIND: Readonly<Record<string, readonly [string, NpcSpec["placement"]]>> = {
-	shop: ["shopkeeper", "doorstep"],
-	inn: ["innkeeper", "doorstep"],
-	smithy: ["blacksmith", "doorstep"],
-	temple: ["priest", "doorstep"],
-	apothecary: ["apothecary", "doorstep"],
-	barracks: ["guard", "gate"],
-	stable: ["stablehand", "yard"],
-	mill: ["miller", "yard"],
-	farmhouse: ["farmer", "yard"],
-	warehouse: ["factor", "yard"],
-};
-
-const WANDERERS: readonly (readonly [string, NpcSpec["placement"]])[] = [
-	["carter", "well"],
-	["herbalist", "stall"],
-	["old resident", "bench"],
-	["messenger", "gate"],
-];
-
-export function fallbackSite(seed: number, site: MacroSite, context: SiteContext): SiteSpec {
+export function fallbackSite(
+	seed: number,
+	site: MacroSite,
+	context: SiteContext,
+	pack: ContentPack = DEFAULT_PACK,
+): SiteSpec {
 	const settlement = fallbackSettlementSpec(seed, site);
-	const name = placeName(seed, site.id, site.kind, context.biome);
+	const name = placeName(seed, site.id, site.kind, context.biome, pack);
 	const rng = rngFor(seed, "fallback-npcs", site.mx, site.my);
 
 	// One NPC per notable structure, then a couple of people in the square, up to
@@ -78,20 +57,22 @@ export function fallbackSite(seed: number, site: MacroSite, context: SiteContext
 
 	for (const structure of settlement.structures) {
 		if (npcs.length >= cap) break;
-		const role = ROLE_BY_KIND[structure.kind];
-		if (!role || seen.has(role[0])) continue;
-		seen.add(role[0]);
-		npcs.push(makeNpc(seed, site, npcs.length, role[0], role[1]));
+		const outdoor = pack.outdoorRoles[structure.kind];
+		if (!outdoor || seen.has(outdoor.role)) continue;
+		seen.add(outdoor.role);
+		npcs.push(makeNpc(seed, site, npcs.length, outdoor.role, outdoor.placement, pack));
 	}
-	while (npcs.length < Math.min(cap, 2)) {
-		const [role, placement] = WANDERERS[rng.int(WANDERERS.length)] ?? WANDERERS[0]!;
-		if (seen.has(role)) {
+	const wanderers = pack.wanderers;
+	while (npcs.length < Math.min(cap, 2) && wanderers.length > 0) {
+		const chosen = wanderers[rng.int(wanderers.length)] ?? wanderers[0];
+		if (!chosen) break;
+		if (seen.has(chosen.role)) {
 			// Only a handful of wanderers exist; stop rather than loop forever.
-			if (seen.size >= WANDERERS.length) break;
+			if (seen.size >= wanderers.length) break;
 			continue;
 		}
-		seen.add(role);
-		npcs.push(makeNpc(seed, site, npcs.length, role, placement));
+		seen.add(chosen.role);
+		npcs.push(makeNpc(seed, site, npcs.length, chosen.role, chosen.placement, pack));
 	}
 
 	return {
@@ -112,17 +93,20 @@ function makeNpc(
 	site: MacroSite,
 	slot: number,
 	role: string,
-	placement: NpcSpec["placement"],
+	placement: string,
+	pack: ContentPack,
 ): NpcSpec {
 	return {
 		slot,
-		name: personName(seed, site.id, slot),
+		name: personName(seed, site.id, slot, pack),
 		role,
 		glyph: (role[0] ?? "p").toUpperCase(),
 		appearance: `A ${role}, dressed for the work and the weather.`,
 		persona: `Plainspoken. Talks about the ${role === "guard" ? "road" : "trade"} and little else.`,
 		disposition: 0,
-		placement,
+		// A pack supplies placements as plain strings; an anchor kind the generator
+		// does not emit falls back to a doorstep rather than leaving somebody nowhere.
+		placement: placement as NpcSpec["placement"],
 		knows: [],
 	};
 }

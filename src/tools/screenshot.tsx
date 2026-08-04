@@ -445,6 +445,12 @@ async function main() {
 							protagonist: "a timber-tallier walking the road out of season",
 							storyline: "the player is looking for a sibling who stopped writing",
 						},
+						start: {
+							place: "Bracken Cross",
+							person: "Ilse Marrow",
+							bearing: "to the west",
+							distance: 150,
+						},
 					}),
 				},
 			],

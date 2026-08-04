@@ -16,6 +16,7 @@ export interface RunnerDeps {
 	readonly summarizeNpc?: (npcId: string, engine: GameEngine) => Promise<void>;
 	readonly specFor?: EngineServices["specFor"];
 	readonly siteSpec?: EngineServices["siteSpec"];
+	readonly content?: EngineServices["content"];
 }
 
 /**
@@ -30,6 +31,7 @@ export function createEffectRunner(deps: RunnerDeps): EngineServices {
 	return {
 		...(deps.specFor ? { specFor: deps.specFor } : {}),
 		...(deps.siteSpec ? { siteSpec: deps.siteSpec } : {}),
+		...(deps.content ? { content: deps.content } : {}),
 		runEffect(effect: Effect, engine: GameEngine) {
 			switch (effect.t) {
 				case "EnsureChunk":

@@ -3,6 +3,9 @@ import { ActionSchema } from "../ai/dialogue/schema.js";
 import type { DialogueTree } from "../ai/dialogue/tree.js";
 import { fallbackRegion, fallbackSite } from "../ai/director/fallback.js";
 import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
+import { DEFAULT_PACK } from "../core/content/default.js";
+import { isOverrideEmpty, mergePack } from "../core/content/pack.js";
+import { PackOverrideSchema } from "../core/content/schema.js";
 import { hashString } from "../core/rand/hash.js";
 import type { ScenarioArc, ScenarioBeat } from "../core/rules/arc.js";
 import type { QuestObjective } from "../core/rules/state.js";
@@ -163,6 +166,13 @@ export const ScenarioDraftSchema = z.object({
 		})
 		.optional(),
 	trees: z.array(TreeDraftSchema).optional(),
+	/**
+	 * Flavour tables for this scenario, laid over the defaults.
+	 *
+	 * Maps merge by key and lists replace, so overriding one trade's appearance is one
+	 * line while supplying `family` means "these are the families in my world".
+	 */
+	content: PackOverrideSchema.optional(),
 });
 
 export type ScenarioDraft = z.infer<typeof ScenarioDraftSchema>;
@@ -178,6 +188,9 @@ export function assembleArtifact(draft: ScenarioDraft, at: string): ScenarioArti
 	const brief = normalizeBrief(draft.brief) ?? {};
 	const seed = resolveDraftSeed(draft);
 	const survey = surveyWorld(seed, brief.duration);
+	// The filler is named from the scenario's own pack, or half the world reads in a
+	// different register from the half the author wrote.
+	const pack = mergePack(DEFAULT_PACK, draft.content);
 
 	const regions: Record<string, RegionSpec> = {};
 	const drafted = new Map(draft.regions?.map((region) => [region.regionId, region]) ?? []);
@@ -195,7 +208,7 @@ export function assembleArtifact(draft: ScenarioDraft, at: string): ScenarioArti
 					lore: written.lore,
 					ambient: written.ambient,
 				}
-			: fallbackRegion(seed, context);
+			: fallbackRegion(seed, context, pack);
 	}
 
 	const sites: Record<string, SiteSpec> = {};
@@ -206,7 +219,7 @@ export function assembleArtifact(draft: ScenarioDraft, at: string): ScenarioArti
 		if (!written) {
 			// Not authored: the deterministic roster, which is a real place with real
 			// people in it. This is what makes partial drafts worth assembling.
-			sites[key] = fallbackSite(seed, entry.site, entry.context);
+			sites[key] = fallbackSite(seed, entry.site, entry.context, pack);
 			continue;
 		}
 		sites[key] = {
@@ -252,6 +265,7 @@ export function assembleArtifact(draft: ScenarioDraft, at: string): ScenarioArti
 		title: draft.title,
 		blurb: draft.blurb,
 		brief,
+		...(draft.content && !isOverrideEmpty(draft.content) ? { content: draft.content } : {}),
 		seed,
 		spawn: survey.spawn,
 		bounds: survey.bounds,

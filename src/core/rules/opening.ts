@@ -29,6 +29,22 @@ export interface OpeningInput {
 	readonly landscape?: string;
 	readonly brief?: ScenarioBrief;
 	readonly arc?: ScenarioArc;
+	/**
+	 * Where the story actually begins, if it has one.
+	 *
+	 * The single most useful sentence on the card and the one that used to be missing:
+	 * a premise tells the player what the story is about, and leaves them standing in
+	 * a field with no idea which direction anybody is. Resolved by the caller, which
+	 * can look the first beat's anchor up in the world; `openingCard` stays pure.
+	 */
+	readonly start?: {
+		readonly place: string;
+		readonly person?: string;
+		/** Which way it lies from the spawn, in words. */
+		readonly bearing?: string;
+		/** Roughly how far, in tiles, so "a long walk" can be said honestly. */
+		readonly distance?: number;
+	};
 }
 
 /** Used when nobody said who the player is. Deliberately thin, not blank. */
@@ -44,6 +60,7 @@ export function openingCard(input: OpeningInput): Card {
 			{ heading: "Where you are", body: whereYouAre(input) },
 			{ heading: "Who you are", body: whoYouAre(input) },
 			{ heading: "What brought you here", body: whatBroughtYou(input) },
+			{ heading: "Where to start", body: whereToStart(input) },
 		],
 		footer: "SPACE to begin",
 	});
@@ -102,6 +119,41 @@ function whatBroughtYou(input: OpeningInput): string {
 	if (storyline) return capitalise(storyline.replace(/^the player is\s+/i, "You are "));
 
 	return "Nothing in particular, and nobody is expecting you. Whatever you end up doing here, you will be the one who decided to.";
+}
+
+/**
+ * The first concrete instruction.
+ *
+ * Everything above this is context; this is the only line that answers "so what do I
+ * do now". Omitted rather than invented when there is no arc — a live or procedural
+ * world has nobody in particular waiting, and pointing at a random town would be a
+ * lie the game cannot keep.
+ */
+function whereToStart(input: OpeningInput): string {
+	const start = input.start;
+	if (!start) return "";
+
+	const who = start.person ? `Ask for ${start.person}.` : "";
+	const how = start.bearing
+		? `${start.place} lies ${start.bearing}${distanceHint(start.distance)}.`
+		: `Make for ${start.place}.`;
+
+	return [how, who, "Open errands are marked on the map with a bearing."].filter(Boolean).join(" ");
+}
+
+/**
+ * How far, in words a player can act on.
+ *
+ * Tiles are the engine's unit and mean nothing to somebody holding an arrow key, so
+ * this converts to the only measure that matters — whether it is worth setting off
+ * now. The thresholds are deliberately coarse; a wrong number would be worse than a
+ * vague one.
+ */
+function distanceHint(tiles: number | undefined): string {
+	if (tiles === undefined) return "";
+	if (tiles < 60) return ", a few minutes' walk";
+	if (tiles < 250) return ", a fair walk";
+	return ", a long way off";
 }
 
 function capitalise(text: string): string {

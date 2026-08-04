@@ -1,14 +1,19 @@
 import { createDialogueService } from "./ai/dialogue/dialogue.js";
 import { Director } from "./ai/director/director.js";
 import { logTelemetry } from "./ai/telemetry.js";
-import { hasGatewayKey } from "./config.js";
+import { CONFIG, hasGatewayKey } from "./config.js";
+import { resolveOverride } from "./content/load.js";
+import { DEFAULT_PACK } from "./core/content/default.js";
+import { isOverrideEmpty, mergePack, type PackOverride } from "./core/content/pack.js";
+import { orderedBeats } from "./core/rules/arc.js";
 import { cardSeen } from "./core/rules/card.js";
-import { openingCard } from "./core/rules/opening.js";
+import { type OpeningInput, openingCard } from "./core/rules/opening.js";
+import { bearingTo, compassWords } from "./core/rules/quest-map.js";
 import { createInitialState, type GameState } from "./core/rules/state.js";
 import { biomeDef } from "./core/world/biome.js";
 import type { ScenarioBrief } from "./core/world/brief.js";
 import { toChunk } from "./core/world/coords.js";
-import { regionIdAt } from "./core/world/macro.js";
+import { regionIdAt, sitesAround } from "./core/world/macro.js";
 import type { SpecSource } from "./core/world/spec.js";
 import { createEffectRunner } from "./engine/effect-runner.js";
 import { GameEngine } from "./engine/engine.js";
@@ -77,15 +82,30 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 	if (ignored) logger.warn("this world already has a brief; the offered one is ignored");
 	if (brief) logger.info(`brief (${owned ? "the world's own" : "offered"})`, brief);
 
+	// The pack resolves the same way and for the same reason: a world's names are
+	// derived, so adopting a different pack mid-world would rename everybody already
+	// met. A save's own override wins, then the artifact's, and only a world with
+	// neither takes the offered one.
+	const ownedContent = loaded?.content ?? choice.scenario?.content;
+	const override = ownedContent ?? choice.content ?? resolveOfferedPack();
+	const pack = mergePack(DEFAULT_PACK, override);
+	if (override) {
+		logger.info(`content pack "${pack.id}" (${ownedContent ? "the world's own" : "offered"})`);
+	}
+
 	// A save carries its own seed, so loading an existing world ignores the
 	// configured one rather than regenerating the terrain under the player.
-	const existing = loaded ?? newWorld(choice, brief);
+	const existing = loaded ?? newWorld(choice, brief, override);
 	if (loaded)
 		logger.info(
 			`loaded world "${existing.world.name}" at ${existing.player.x},${existing.player.y}`,
 		);
 
-	const state = brief === existing.brief ? existing : { ...existing, brief };
+	const settled =
+		override && !loaded?.content && !isOverrideEmpty(override)
+			? { ...existing, content: override }
+			: existing;
+	const state = brief === settled.brief ? settled : { ...settled, brief };
 
 	const live = usesLiveModel(choice.flavour);
 	if (!live) logger.info(`director disabled (${choice.flavour}); world names are procedural`);
@@ -106,6 +126,7 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 		sites: state.sites,
 		sources: state.specSources,
 		disabled: !live,
+		content: pack,
 		onLore: (lore) => {
 			host.engine?.dispatch({ t: "LoreLearned", lore });
 			showOpening();
@@ -135,6 +156,7 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 			specFor: director.specFor,
 			siteSpec: (siteId) => director.siteSpec(siteId),
 			requestSpecs: (around) => director.request(around),
+			content: pack,
 			runDialogueTurn: dialogue.runDialogueTurn,
 			summarizeNpc: dialogue.summarizeNpc,
 		}),
@@ -155,6 +177,7 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 		const now = engine.getState();
 		const at = now.player;
 		const region = director.regionSpec(regionIdAt(now.world.seed, at.x, at.y));
+		const start = firstStop(now);
 		const summary = engine.getChunks().summaryFor(toChunk(at.x, at.y).cx, toChunk(at.x, at.y).cy);
 		engine.dispatch({
 			t: "ApplyEffects",
@@ -170,6 +193,7 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 						...(summary ? { landscape: biomeDef(summary.dominantBiome).name.toLowerCase() } : {}),
 						...(now.brief ? { brief: now.brief } : {}),
 						...(now.arc ? { arc: now.arc } : {}),
+						...(start ? { start } : {}),
 					}),
 				},
 			],
@@ -202,8 +226,70 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 	};
 }
 
-function newWorld(choice: LaunchChoice, brief: ScenarioBrief | undefined): GameState {
-	if (choice.scenario) return newScenarioWorld(choice, choice.scenario, brief);
+/**
+ * Where the story's first beat is, in terms a player can walk on.
+ *
+ * The card's most useful line and the one that was missing: a premise says what the
+ * story is about and still leaves the player in a field with no idea which direction
+ * anybody is. Resolved here rather than in `openingCard`, because it needs the world
+ * — the site's position comes from `macroSite`, and its name from the artifact.
+ *
+ * Silent when the world has no arc. A live or procedural world has nobody in
+ * particular waiting, and naming a town would be a promise nothing keeps.
+ */
+function firstStop(state: GameState): OpeningInput["start"] {
+	const arc = state.arc;
+	if (!arc || arc.beats.length === 0) return undefined;
+	const beat = orderedBeats(arc)[0];
+	if (!beat) return undefined;
+
+	const spec = state.sites[String(beat.siteId)];
+	if (!spec) return undefined;
+	const person = spec.npcs.find((npc) => npc.slot === beat.npcSlot)?.name;
+
+	// The site's position is not in the spec — `macroSite` is the only authority — so
+	// the footprint around the player is swept for the matching id.
+	const cc = toChunk(state.player.x, state.player.y);
+	const site = sitesAround(state.world.seed, cc.cx, cc.cy, SITE_SEARCH_HALO).find(
+		(candidate) => candidate.id === beat.siteId,
+	);
+	const bearing = site
+		? bearingTo(state.player.x, state.player.y, site.site.x, site.site.y)
+		: undefined;
+
+	return {
+		place: spec.name,
+		...(person ? { person } : {}),
+		...(bearing ? { bearing: compassWords(bearing.compass), distance: bearing.distance } : {}),
+	};
+}
+
+/**
+ * How far out to look for the first beat's site.
+ *
+ * A short scenario's footprint is four chunks across and a long one nine, so a halo
+ * of six macro cells covers every bounded world the survey can produce. Cheap: a few
+ * hundred `macroSite` calls, once, at startup.
+ */
+const SITE_SEARCH_HALO = 6;
+
+/**
+ * The pack named by the environment.
+ *
+ * Only consulted for a world that has none of its own, so `CONTENT_PACK` steers new
+ * games without ever rewriting one already in progress. Read as an *override* rather
+ * than as a merged pack, because what has to be persisted is what the author wrote.
+ */
+function resolveOfferedPack(): PackOverride | undefined {
+	return resolveOverride(CONFIG.contentPack);
+}
+
+function newWorld(
+	choice: LaunchChoice,
+	brief: ScenarioBrief | undefined,
+	content: PackOverride | undefined,
+): GameState {
+	if (choice.scenario) return newScenarioWorld(choice, choice.scenario, brief, content);
 
 	const spawn = findSpawn(choice.seed);
 	logger.info(
@@ -218,6 +304,7 @@ function newWorld(choice: LaunchChoice, brief: ScenarioBrief | undefined): GameS
 		},
 		spawn,
 		brief,
+		content,
 	);
 }
 
@@ -235,6 +322,7 @@ function newScenarioWorld(
 	choice: LaunchChoice,
 	artifact: ScenarioArtifact,
 	brief: ScenarioBrief | undefined,
+	content: PackOverride | undefined,
 ): GameState {
 	logger.info(
 		`new world "${choice.worldId}" from scenario "${artifact.id}" seed ${artifact.seed}, spawn ${artifact.spawn.x},${artifact.spawn.y}`,
@@ -253,6 +341,7 @@ function newScenarioWorld(
 		},
 		artifact.spawn,
 		brief,
+		content,
 	);
 	return {
 		...base,

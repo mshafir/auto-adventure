@@ -138,4 +138,51 @@ describe("the opening card", () => {
 	it("is shown once, by id", () => {
 		expect(openingCard({ lore: LORE }).id).toBe("opening");
 	});
+
+	it("says where to start, which is the only line that answers 'so what now'", () => {
+		const what = body(
+			openingCard({
+				lore: LORE,
+				arc: ARC,
+				start: {
+					place: "Bracken Cross",
+					person: "Ilse Marrow",
+					bearing: "to the west",
+					distance: 150,
+				},
+			}),
+			"Where to start",
+		);
+		expect(what).toContain("Bracken Cross lies to the west");
+		expect(what).toContain("a fair walk");
+		expect(what).toContain("Ask for Ilse Marrow");
+		// And tells them where the game will keep reminding them.
+		expect(what).toContain("marked on the map");
+	});
+
+	it("turns tiles into a decision rather than a number to endure", () => {
+		const at = (distance: number) =>
+			body(
+				openingCard({ lore: LORE, start: { place: "X", bearing: "to the north", distance } }),
+				"Where to start",
+			);
+		expect(at(20)).toContain("a few minutes' walk");
+		expect(at(150)).toContain("a fair walk");
+		expect(at(400)).toContain("a long way off");
+	});
+
+	it("still points somewhere when nobody in particular is waiting", () => {
+		const what = body(
+			openingCard({ lore: LORE, start: { place: "Bracken Cross" } }),
+			"Where to start",
+		);
+		expect(what).toContain("Make for Bracken Cross");
+	});
+
+	it("points nowhere rather than at a random town when there is no story", () => {
+		// Every live and procedural world. Naming a place would be a promise nothing
+		// keeps, and the player would walk a long way to find out.
+		const card = openingCard({ lore: LORE });
+		expect(headings(card)).not.toContain("Where to start");
+	});
 });

@@ -61,6 +61,28 @@ const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
  * the target is the chunk the player is already standing in, where a direction
  * would be actively misleading.
  */
+/** Compass points, spelled out, for prose that has room for them. */
+const COMPASS_WORDS: Readonly<Record<string, string>> = {
+	N: "to the north",
+	NE: "to the north-east",
+	E: "to the east",
+	SE: "to the south-east",
+	S: "to the south",
+	SW: "to the south-west",
+	W: "to the west",
+	NW: "to the north-west",
+};
+
+/**
+ * A compass abbreviation as words.
+ *
+ * The panel wants "E 3" because it has eleven columns; a full screen of prose wants
+ * "to the east". Same table, two registers.
+ */
+export function compassWords(compass: string): string {
+	return COMPASS_WORDS[compass] ?? compass;
+}
+
 export function bearingTo(
 	fromCx: number,
 	fromCy: number,

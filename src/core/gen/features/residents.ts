@@ -1,3 +1,5 @@
+import { DEFAULT_PACK } from "../../content/default.js";
+import type { ContentPack, Household } from "../../content/pack.js";
 import { rngFor } from "../../rand/rng.js";
 import { isContainer } from "../../rules/loot.js";
 import { TFlag } from "../../tiles/flags.js";
@@ -28,6 +30,10 @@ import type { StructureKind } from "./patch.js";
  * they survive eviction and reload without being stored: the same house always has
  * the same people in it, and their ids are stable enough to remember a conversation
  * against.
+ *
+ * Who lives where, what they look like and what they will talk about all come from
+ * the content pack, so a scenario can be peopled by fellers and tallymen rather than
+ * by weavers and coopers without a line of code changing.
  */
 
 /**
@@ -59,43 +65,15 @@ export function isResidentId(id: string): boolean {
 	return id.startsWith("npc:in:");
 }
 
-interface Household {
-	/** Inclusive range, rolled per building. */
-	readonly count: readonly [number, number];
-	readonly roles: readonly string[];
-}
-
 /**
  * How many people a building holds, and what they do.
  *
- * The counts are about what makes a room worth entering rather than about realism: a
- * barracks with one soldier in it is a disappointment, and a warehouse with a family
- * in it is a puzzle. Roles are plain nouns because they become the glyph and the
- * fallback dialogue, both of which read better for a "cooper" than for a "resident".
+ * `house` is the fallback, so a pack need not enumerate every structure kind — and a
+ * pack that lists none at all leaves every building empty rather than crashing, which
+ * is a legible way for a bad pack to fail.
  */
-const HOUSEHOLDS: Readonly<Record<string, Household>> = {
-	inn: { count: [2, 4], roles: ["cook", "server", "drover", "traveller", "harpist"] },
-	shop: { count: [1, 2], roles: ["shopkeeper", "porter"] },
-	apothecary: { count: [1, 2], roles: ["herbalist", "apprentice"] },
-	smithy: { count: [1, 2], roles: ["striker", "apprentice"] },
-	temple: { count: [1, 3], roles: ["priest", "acolyte", "mourner"] },
-	shrine: { count: [0, 1], roles: ["caretaker"] },
-	barracks: { count: [2, 4], roles: ["soldier", "sergeant", "recruit", "cook"] },
-	mill: { count: [1, 2], roles: ["miller", "carter"] },
-	stable: { count: [1, 2], roles: ["groom", "farrier"] },
-	warehouse: { count: [0, 2], roles: ["tallyman", "porter"] },
-	barn: { count: [0, 1], roles: ["farmhand"] },
-	tower: { count: [1, 2], roles: ["watchman", "signaller"] },
-	// Nobody lives in a ruin. Something might, but that is a different feature.
-	ruin: { count: [0, 0], roles: [] },
-	house: {
-		count: [1, 3],
-		roles: ["weaver", "cooper", "carpenter", "widow", "child", "labourer", "brewer", "netmaker"],
-	},
-};
-
-function householdFor(kind: StructureKind): Household {
-	return HOUSEHOLDS[kind] ?? (HOUSEHOLDS.house as Household);
+function householdFor(pack: ContentPack, kind: StructureKind): Household {
+	return pack.households[kind] ?? pack.households.house ?? { count: [0, 0], roles: [] };
 }
 
 export function residentsOf(
@@ -103,8 +81,9 @@ export function residentsOf(
 	interiorId: number,
 	kind: StructureKind,
 	interior: Interior,
+	pack: ContentPack = DEFAULT_PACK,
 ): readonly Resident[] {
-	const household = householdFor(kind);
+	const household = householdFor(pack, kind);
 	const rng = rngFor(seed, "residents", interiorId);
 	const [low, high] = household.count;
 	const count = low + (high > low ? rng.int(high - low + 1) : 0);
@@ -124,11 +103,11 @@ export function residentsOf(
 			slot,
 			// Keyed on the interior id, so a house's people are stable and are nobody
 			// else's: two buildings in one town cannot produce the same person.
-			name: personName(seed, interiorId, slot),
+			name: personName(seed, interiorId, slot, pack),
 			role,
 			glyph: (role[0] ?? "p").toUpperCase(),
-			appearance: appearanceFor(role, kind),
-			persona: personaFor(role),
+			appearance: appearanceFor(pack, role, kind),
+			persona: personaFor(pack, role),
 			// Somebody in their own house, spoken to civilly, starts out mildly warm.
 			// The principals outdoors start at zero; a household is not a stranger.
 			disposition: 8,
@@ -179,52 +158,14 @@ function standingRoom(interior: Interior): { x: number; y: number }[] {
 }
 
 /**
- * One telling detail per trade.
+ * One telling detail per trade, from the pack.
  *
- * Written out per role rather than generated from a template, because a template is
- * exactly what this reads as otherwise — the first draft gave nearly everybody "at
- * work on something that does not stop for visitors", and walking through a town of
- * thirty people saying the same sentence is worse than a town of nobody. This is the
- * line the examine verb prints, so it is read more often than any dialogue.
+ * A role the pack says nothing about still gets a line rather than a bare noun,
+ * which is what lets an author add `tallyman` to a household without also having to
+ * write his appearance before the game will run.
  */
-const APPEARANCE: Readonly<Record<string, string>> = {
-	weaver: "Sat at the loom, and not stopping it for you.",
-	cooper: "Hands pale with shavings, a half-hooped barrel between the knees.",
-	carpenter: "A pencil behind one ear and sawdust in the crease of both sleeves.",
-	widow: "Neat, grey, and entirely composed. Black worn past the point of mourning.",
-	child: "Small, unbothered, and entirely unsurprised to see you.",
-	labourer: "Big hands, borrowed boots, asleep in the chair until you came in.",
-	brewer: "Sleeves rolled past the elbow, forearms scalded pink.",
-	netmaker: "Knotting by feel, watching you instead of the work.",
-	cook: "Flour to the wrist, and a knife they have not put down.",
-	server: "Carrying four things and looking for somewhere to put two of them.",
-	drover: "Smells of the road and of somebody else's cattle.",
-	traveller: "Boots by the fire, coat still on, ready to be somewhere else.",
-	harpist: "Tuning something that will not stay tuned in this weather.",
-	shopkeeper: "Counting the shelf again, having lost the count once already.",
-	porter: "Waiting to be told which of two crates goes first.",
-	herbalist: "Sorting cuttings into piles that look identical to you.",
-	apprentice: "Young, watchful, and plainly not supposed to be talking to you.",
-	striker: "Shoulders like a door, deaf on the side nearest the anvil.",
-	priest: "Unhurried in the way of somebody whose day has no appointments in it.",
-	acolyte: "Trimming lamps, and glad of the interruption.",
-	mourner: "Sat where the light is worst, and not looking up.",
-	soldier: "Off duty, boots off, belt hung on the bedpost.",
-	sergeant: "Awake, dressed, and unimpressed by the door opening.",
-	recruit: "Standing straighter than anyone else in the room.",
-	miller: "White to the eyebrows, shouting a little out of habit.",
-	carter: "One boot up on a sack, resting a leg that has been walked on all day.",
-	groom: "Talking to a horse in the voice most people save for children.",
-	farrier: "Apron scorched through in three places, hands black to the wrist.",
-	tallyman: "A slate, a stub of chalk, and a very poor opinion of your timing.",
-	farmhand: "Up to the shins in straw, and glad of a reason to stand still.",
-	watchman: "Awake at the wrong end of the day, and making sure you know it.",
-	signaller: "One eye on the window the whole time.",
-	caretaker: "Sweeping something that does not need it, slowly.",
-};
-
-function appearanceFor(role: string, kind: StructureKind): string {
-	const written = APPEARANCE[role];
+function appearanceFor(pack: ContentPack, role: string, kind: StructureKind): string {
+	const written = pack.appearance[role];
 	if (written) return written;
 	// A kind not in the table still gets something better than a bare role name.
 	if (kind === "barracks") return `A ${role} off duty, boots off and belt hung up.`;
@@ -233,21 +174,8 @@ function appearanceFor(role: string, kind: StructureKind): string {
 }
 
 /** What they will talk about, which is what the canned dialogue leans on. */
-const TALKS_ABOUT: Readonly<Record<string, string>> = {
-	child: "the dog, the roof, and whatever you are carrying",
-	widow: "who has died, who has left, and who is pretending not to have",
-	soldier: "the watch, the food, and the officers",
-	sergeant: "the watch, and what the watch is for",
-	traveller: "the road behind them and the price of a bed",
-	drover: "prices at the last three markets",
-	priest: "the season, the dead, and the collection",
-	tallyman: "what came in, what went out, and the difference",
-	miller: "the grain, the water, and whoever is late",
-	shopkeeper: "stock, and what nobody will buy",
-};
-
-function personaFor(role: string): string {
+function personaFor(pack: ContentPack, role: string): string {
 	const about =
-		TALKS_ABOUT[role] ?? `the ${role === "labourer" ? "work" : role}'s work and the weather`;
+		pack.talksAbout[role] ?? `the ${role === "labourer" ? "work" : role}'s work and the weather`;
 	return `Talks about ${about}.`;
 }

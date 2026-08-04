@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ActionSchema } from "../ai/dialogue/schema.js";
 import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
+import { PackOverrideSchema } from "../core/content/schema.js";
 import { ARTIFACT_VERSION } from "./artifact.js";
 
 /**
@@ -182,6 +183,7 @@ export const ScenarioArtifactSchema = z.object({
 	title: z.string().min(1).max(80),
 	blurb: z.string().max(400),
 	brief: ScenarioBriefSchema,
+	content: PackOverrideSchema.optional(),
 	seed: z.number().int(),
 	spawn: z.object({ x: z.number().int(), y: z.number().int() }),
 	bounds: WorldBoundsSchema,

@@ -125,6 +125,26 @@ judgement:
     ]
   },
 
+  "content": {                        // optional; the world's own names and trades
+    "id": "thornwick",
+    "names": {
+      "given": ["Ott", "Bevan", "Ilse"],        // LISTS REPLACE the defaults
+      "family": ["Cordwright", "Tallow"],
+      "heads": { "green": ["thorn", "cord"] },  // per mood: wet green cold dry high plain
+      "tails": ["cross", "wait", "mere"]
+    },
+    "households": {                             // MAPS MERGE by key
+      "house": { "count": [1, 3], "roles": ["feller", "sawyer", "child"] }
+    },
+    "appearance": { "feller": "Shoulders built by the work." },
+    "talksAbout": { "feller": "which stands the wardens have marked" },
+    "outdoorRoles": { "mill": { "role": "sawyer", "placement": "yard" } },
+    "wanderers": [{ "role": "carter", "placement": "well" }],
+    "lore": { "title": "…", "premise": "…", "era": "…", "tone": "…",
+              "factions": ["…", "…"], "deities": ["…"] },
+    "ambient": ["Somewhere off the track, an axe stops mid-stroke."]
+  },
+
   "trees": [                          // optional; anyone omitted gets a real canned tree
     {
       "siteId": 2150566345,
@@ -182,6 +202,13 @@ judgement:
 - `kind` must be in `allowedStructureKinds` and `placement` in `allowedPlacements`;
   both are closed sets. Preferring a `placement` from the site's `likelyAnchors` is
   advisory — a mismatch relocates the person and warns, it does not fail.
+- `content` is inlined into the artifact, so the scenario carries its own flavour
+  with no file to install. Copy `assets/content/default.json` for the full shape, or
+  `assets/content/thornwick.json` for a worked partial. Nothing in it can make a
+  scenario unplayable — it decides names and trades, never passability or items.
+- A trade you invent needs only a `households` entry; an unwritten `appearance` still
+  produces a line. Write one anyway — it is the text the examine verb prints, so it
+  is read more often than any dialogue.
 - A `card` is for the turns a line of dialogue cannot carry: a revelation, a passage
   of time, the moment the errand becomes something else. It stops the game until it
   is read, so use two or three across a whole scenario, not one per beat. The game

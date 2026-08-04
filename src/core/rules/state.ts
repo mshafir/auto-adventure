@@ -1,3 +1,4 @@
+import type { PackOverride } from "../content/pack.js";
 import type { WorldBounds } from "../world/bounds.js";
 import type { ScenarioBrief } from "../world/brief.js";
 import type { ChunkKey } from "../world/coords.js";
@@ -192,6 +193,16 @@ export interface GameState {
 	 */
 	readonly brief?: ScenarioBrief;
 	/**
+	 * The flavour tables this world was generated with, as an override on the default.
+	 *
+	 * Owned by the world for the same reason the brief is: names are derived rather
+	 * than stored, so opening a save without the pack that made it would rename
+	 * everybody the player has already met while keeping their memories. The override
+	 * is stored rather than the merged pack because it is small — the default is
+	 * compiled in, so nothing on disk has to still exist to merge against.
+	 */
+	readonly content?: PackOverride;
+	/**
 	 * The story this world is telling, for a pre-generated scenario.
 	 *
 	 * Persisted, unlike the dialogue trees, and the difference is what happens when
@@ -232,11 +243,13 @@ export function createInitialState(
 	world: WorldMeta,
 	spawn: { x: number; y: number },
 	brief?: ScenarioBrief,
+	content?: PackOverride,
 ): GameState {
 	return {
 		version: SAVE_VERSION,
 		world,
 		...(brief ? { brief } : {}),
+		...(content ? { content } : {}),
 		player: { x: spawn.x, y: spawn.y, facing: "down", hp: 20, maxHp: 20 },
 		time: timeFromTick(START_TICK),
 		inventory: [{ name: "Gold", description: "A handful of coins.", quantity: 12 }],

@@ -333,6 +333,66 @@ would answer about whatever town sits near the world origin. That promotion is
 why a conversation with somebody's cooper works without the dialogue layer
 knowing residents exist — and why a resident can tell you the town's hook.
 
+## Content packs
+
+Everything a world is *called* used to be a `const` table in the module that read
+it: name syllables in `names.ts`, outdoor trades in `fallback.ts`, households and
+their appearance lines in `residents.ts`. A timber-levy road and a drowned
+archipelago want different registers, and the tables were the last thing in the
+pipeline a scenario could not touch.
+
+A `ContentPack` is those tables as data. Two rules keep it from becoming a
+configuration language:
+
+**Cosmetic only.** Nothing in a pack decides whether a tile is passable, what a
+container holds, or what a shop stocks. So a world opened with the wrong pack looks
+different but cannot become unplayable, and a quest can never start naming an item
+that no longer generates.
+
+**Owned by the world.** Names are *derived*, not stored — so adopting a different
+pack mid-world would rename everybody the player had already met while keeping
+their memories. A pack override travels in the save and in the artifact, exactly
+like the brief, and a world with one of its own ignores whatever is offered.
+
+| Table | What it changes |
+| --- | --- |
+| `names.given` / `family` | who people are called |
+| `names.heads` / `tails` / `ruinTails` / `fortTails` / `regionTails` | how places and regions are named |
+| `households` | who lives in each kind of building, and how many |
+| `appearance` | the one telling detail the examine verb prints |
+| `talksAbout` | what a resident will discuss, which the canned tree leans on |
+| `outdoorRoles` | who stands outside each kind of building |
+| `wanderers` | the people at the well and the bench |
+| `lore` | the premise a world with no model runs on |
+| `ambient` | flavour lines for a region nobody wrote |
+
+### Merge rules
+
+An override is partial, and the two rules differ on purpose:
+
+- **Maps merge by key.** Changing one trade's appearance is one line; the other
+  thirty keep the default. Restating thirty lines to change one is how a format
+  stops being used.
+- **Lists replace.** Supplying `given` means "these are the given names in my
+  world". Appending would leave exactly the names the author was trying to remove.
+
+### Where a pack comes from
+
+```
+CONTENT_PACK=thornwick npm start        # a shipped pack, by name
+CONTENT_PACK=./my-pack.json npm start   # or a path, so one can live beside a draft
+```
+
+…or `"content": { … }` in a scenario draft, which is inlined into the artifact so
+the scenario is self-contained: no file to install, nothing beside it to lose.
+
+The baked default is **code** (`core/content/default.ts`), not a file, so the pure
+generators always have a complete set of tables with no filesystem in the path —
+`core` has to stay callable from a validator and a test. `assets/content/default.json`
+is the same data as a file, for authors to copy, and a test pins the two together so
+they cannot drift. A missing or invalid pack logs and falls back to the default
+rather than refusing to start: a player asked to play, not to debug their JSON.
+
 ## Dialogue trees
 
 ```ts

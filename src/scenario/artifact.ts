@@ -1,4 +1,5 @@
 import type { DialogueTree } from "../ai/dialogue/tree.js";
+import type { PackOverride } from "../core/content/pack.js";
 import type { ScenarioArc } from "../core/rules/arc.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import type { ScenarioBrief } from "../core/world/brief.js";
@@ -34,6 +35,13 @@ export interface ScenarioArtifact {
 	readonly title: string;
 	readonly blurb: string;
 	readonly brief: ScenarioBrief;
+	/**
+	 * The flavour tables this scenario is peopled from, as an override on the default.
+	 *
+	 * Travels in the artifact so a scenario names its own trades and families wherever
+	 * it is opened, with no file beside it and nothing to install.
+	 */
+	readonly content?: PackOverride;
 
 	/**
 	 * The seed this content was authored against. Authoritative.

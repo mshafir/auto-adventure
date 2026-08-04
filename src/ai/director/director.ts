@@ -1,4 +1,6 @@
 import { MODELS } from "../../config.js";
+import { DEFAULT_PACK } from "../../core/content/default.js";
+import type { ContentPack } from "../../core/content/pack.js";
 import type { SettlementSpec } from "../../core/gen/features/settlement.js";
 import type { ScenarioBrief } from "../../core/world/brief.js";
 import { regionContext, siteContext } from "../../core/world/context.js";
@@ -40,6 +42,14 @@ export interface DirectorOptions {
 	readonly onSiteChanged: (site: MacroSite) => void;
 	/** Force the deterministic path even when a key is present. */
 	readonly disabled?: boolean;
+	/**
+	 * The flavour tables the deterministic path names things from.
+	 *
+	 * Only the fallbacks consult it. A model is given the brief instead, which says
+	 * the same thing in prose — a pack is how a world *without* a model gets a
+	 * register of its own.
+	 */
+	readonly content?: ContentPack;
 }
 
 /** At most this many model calls in flight, so a walk across a busy region does
@@ -71,8 +81,11 @@ export class Director {
 	private inFlight = 0;
 	private readonly enabled: boolean;
 
+	private readonly pack: ContentPack;
+
 	constructor(private readonly options: DirectorOptions) {
 		this.enabled = !options.disabled && aiAvailable();
+		this.pack = options.content ?? DEFAULT_PACK;
 		this.lore = options.lore;
 		for (const [id, spec] of Object.entries(options.regions ?? {})) this.regions.set(id, spec);
 		for (const [id, spec] of Object.entries(options.sites ?? {})) this.sites.set(id, spec);
@@ -88,7 +101,7 @@ export class Director {
 	}
 
 	getLore(): WorldLore {
-		return this.lore ?? fallbackLore();
+		return this.lore ?? fallbackLore(this.pack);
 	}
 
 	/** The settlement roster for a site, if one is known. Synchronous by
@@ -179,7 +192,7 @@ export class Director {
 		});
 		// A failed bible call is not worth retrying every chunk: adopt the
 		// deterministic one and move on, so the region calls below still happen.
-		this.lore = response ?? fallbackLore();
+		this.lore = response ?? fallbackLore(this.pack);
 		this.options.onLore(this.lore);
 		return this.lore;
 	}
@@ -211,7 +224,7 @@ export class Director {
 					lore: response.lore,
 					ambient: response.ambient,
 				}
-			: fallbackRegion(this.options.seed, context);
+			: fallbackRegion(this.options.seed, context, this.pack);
 
 		this.regions.set(key, spec);
 		this.options.onRegion(spec);
@@ -287,6 +300,6 @@ export class Director {
 	}
 
 	private materialiseFallback(site: MacroSite): SiteSpec {
-		return fallbackSite(this.options.seed, site, siteContext(this.options.seed, site));
+		return fallbackSite(this.options.seed, site, siteContext(this.options.seed, site), this.pack);
 	}
 }

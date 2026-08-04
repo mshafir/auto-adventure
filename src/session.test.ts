@@ -306,3 +306,122 @@ describe("the opening card", () => {
 		again.dispose();
 	});
 });
+
+describe("a world's content pack", () => {
+	const override = {
+		id: "testpack",
+		names: { given: ["Ott"], family: ["Pell"] },
+		households: { house: { count: [1, 1] as const, roles: ["feller"] } },
+	};
+
+	it("is remembered by the world that was made with it", () => {
+		// Names are derived, not stored, so a pack has to travel with the save: opening
+		// one without it would rename everybody already met and keep their memories.
+		const session = buildSession(choice({ worldId: "packed", content: override }), {
+			saveDebounceMs: 0,
+		});
+		expect(session.engine.getState().content?.id).toBe("testpack");
+		saveNow(session);
+		session.dispose();
+
+		const again = buildSession(choice({ worldId: "packed", mustExist: true }), {
+			saveDebounceMs: 0,
+		});
+		expect(again.engine.getState().content?.id).toBe("testpack");
+		again.dispose();
+	});
+
+	it("keeps its own pack rather than adopting an offered one", () => {
+		const first = buildSession(choice({ worldId: "settled", content: override }), {
+			saveDebounceMs: 0,
+		});
+		saveNow(first);
+		first.dispose();
+
+		const again = buildSession(
+			choice({ worldId: "settled", mustExist: true, content: { id: "different" } }),
+			{ saveDebounceMs: 0 },
+		);
+		expect(again.engine.getState().content?.id).toBe("testpack");
+		again.dispose();
+	});
+
+	it("names the people in its houses", () => {
+		const session = buildSession(choice({ worldId: "named", content: override }), {
+			saveDebounceMs: 0,
+		});
+		const engine = session.engine;
+		const chunks = engine.getChunks();
+		let found: { interiorId: number; kind: string } | undefined;
+		for (let my = -2; my <= 2 && !found; my++) {
+			for (let mx = -2; mx <= 2 && !found; mx++) {
+				chunks.ensure(mx, my);
+				found = chunks
+					.buildingsIn(mx, my)
+					.find((b) => b.kind === "house" || b.kind === "farmhouse");
+			}
+		}
+		if (found) {
+			const people = engine.getResidents().in(found.interiorId, found.kind);
+			expect(people.length).toBeGreaterThan(0);
+			expect(people[0]?.name).toBe("Ott Pell");
+			expect(people[0]?.role).toBe("feller");
+		}
+		session.dispose();
+	});
+
+	it("leaves a world with no pack on the default", () => {
+		const session = buildSession(choice({ worldId: "plain" }), { saveDebounceMs: 0 });
+		expect(session.engine.getState().content).toBeUndefined();
+		session.dispose();
+	});
+});
+
+describe("the opening card's directions", () => {
+	it("names the first beat's town, who to ask for, and which way it lies", () => {
+		const artifact = demoArtifact();
+		const siteId = Number(Object.keys(artifact.sites)[0]);
+		const spec = artifact.sites[String(siteId)];
+		if (!spec) throw new Error("fixture has no site");
+
+		const session = buildSession(
+			choice({
+				worldId: "directed",
+				flavour: "prebuilt",
+				scenario: {
+					...artifact,
+					arc: {
+						title: "The Tithe",
+						premise: "Somebody has to pay for the rope.",
+						beats: [
+							{
+								id: "meet",
+								order: 0,
+								siteId,
+								npcSlot: 0,
+								requires: [],
+								setsFlag: "arc:meet",
+							},
+						],
+					},
+				},
+			}),
+			{ saveDebounceMs: 0 },
+		);
+
+		const start = session.engine
+			.getState()
+			.card?.sections.find((section) => section.heading === "Where to start")?.body;
+		expect(start).toBeDefined();
+		expect(start).toContain(spec.name);
+		expect(start).toContain(spec.npcs[0]?.name ?? "");
+		session.dispose();
+	});
+
+	it("says nothing about where to start in a world with no story", () => {
+		const session = buildSession(choice({ worldId: "storyless" }), { saveDebounceMs: 0 });
+		const headings = session.engine.getState().card?.sections.map((s) => s.heading) ?? [];
+		expect(headings).not.toContain("Where to start");
+		session.dispose();
+	});
+});

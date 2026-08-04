@@ -1,3 +1,4 @@
+import type { ContentPack } from "../core/content/pack.js";
 import { getInterior } from "../core/gen/features/interior.js";
 import type { StructureKind } from "../core/gen/features/patch.js";
 import { isResidentId, type Resident } from "../core/gen/features/residents.js";
@@ -34,6 +35,8 @@ export interface EngineServices {
 	) => import("../core/gen/features/settlement.js").SettlementSpec | undefined;
 	/** The authored description of a site, used to place its people. */
 	siteSpec?: (siteId: number) => SiteSpec | undefined;
+	/** The flavour tables this world's residents are named and described from. */
+	content?: ContentPack;
 }
 
 /**
@@ -68,7 +71,7 @@ export class GameEngine {
 		});
 		this.chunks.setDeltas(initial.deltas);
 		this.npcs = new NpcDirectory(this.chunks, (siteId) => this.services.siteSpec?.(siteId));
-		this.residents = new InteriorPeople(initial.world.seed);
+		this.residents = new InteriorPeople(initial.world.seed, services.content);
 		this.view = createWorldView({
 			seed: initial.world.seed,
 			chunkAt: (cx, cy) => this.chunks.get(cx, cy),

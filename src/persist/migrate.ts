@@ -1,3 +1,5 @@
+import { isOverrideEmpty, type PackOverride } from "../core/content/pack.js";
+import { PackOverrideSchema } from "../core/content/schema.js";
 import { type GameState, SAVE_VERSION, START_TICK, timeFromTick } from "../core/rules/state.js";
 import { normalizeBrief, type ScenarioBrief } from "../core/world/brief.js";
 import { logger } from "../utils/log.js";
@@ -50,6 +52,16 @@ export function migrateSave(raw: unknown): GameState | undefined {
 	return validate(current);
 }
 
+function readContent(raw: unknown): PackOverride | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const parsed = PackOverrideSchema.safeParse(raw);
+	if (!parsed.success) {
+		logger.warn("save carries a content pack that no longer validates; using the default");
+		return undefined;
+	}
+	return isOverrideEmpty(parsed.data as PackOverride) ? undefined : (parsed.data as PackOverride);
+}
+
 /**
  * Reject a save whose shape does not match, rather than letting an undefined
  * field surface as a crash three screens later. The old loader handed the
@@ -85,9 +97,14 @@ function validate(value: Record<string, unknown>): GameState | undefined {
 	// an instruction rather than as silence.
 	const { dialogue: _dialogue, notice: _notice, card: _card, brief: _brief, ...rest } = state;
 	const brief = normalizeBrief(value.brief as ScenarioBrief | undefined);
+	// A pack that no longer validates is dropped rather than refused: the world still
+	// plays, with default names for anyone not yet met. Keeping a malformed one would
+	// hand `undefined` to a generator on the next chunk.
+	const content = readContent(value.content);
 	return {
 		...(rest as GameState),
 		...(brief ? { brief } : {}),
+		...(content ? { content } : {}),
 		// Day, hour and minute are all derived from the tick, so recomputing them is
 		// both a backfill for saves written before a field existed and a repair for
 		// any that disagree with their own tick.

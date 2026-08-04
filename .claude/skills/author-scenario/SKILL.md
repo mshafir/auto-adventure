@@ -37,6 +37,8 @@ calls rather than interrogating one field at a time.
 - **seed** — which world to author against; defaults to the id, so the same id
   always gets the same map. Offer to reroll if they dislike the surveyed world.
 - **how much to write** — see *Scope* below. This is a real cost decision.
+- **flavour** — whether the world's *names and trades* should be its own. See
+  *Content pack* below; it is the cheapest way to make a scenario feel like itself.
 
 If the user already gave some of these in their request, do not ask again. Ask only
 for what is genuinely missing, and always confirm duration explicitly — it is the
@@ -53,6 +55,32 @@ real place with real people and a working dialogue tree — not a gap. So offer:
 - **Full** — every surveyed settlement and every person. Best, and long.
 
 Default to the spine for `medium` and `long`, and to full for `short`.
+
+### Content pack
+
+Names, trades and household rosters come from a content pack, and by default a
+scenario gets the generic one — so a timber-levy road ends up with weavers and
+coopers in houses called Oakmarch. A `"content"` block in the draft fixes that, and
+it is high value for its length.
+
+Worth writing when the setting has a register of its own:
+
+- `names.given` / `names.family` — who people are called
+- `names.heads` (per mood) / `names.tails` — how towns are named
+- `households` — which trades live in each kind of building
+- `appearance` / `talksAbout` — one line each, per trade you invented
+- `outdoorRoles` / `wanderers` — who stands outside, and at the well
+- `lore` — the world premise, which also feeds the opening card
+- `ambient` — lines shown as the player crosses unwritten country
+
+Maps merge by key, so a pack that adds one trade is a few lines. **Lists replace**:
+supplying `given` means "these are the given names in my world". `assets/content/default.json`
+is the complete default to copy from, and `assets/content/thornwick.json` is a
+worked partial. The block is inlined into the artifact, so the scenario carries its
+own flavour with nothing to install.
+
+A trade you invent needs nothing but a `households` entry to work — an unwritten
+`appearance` still produces a line. Writing one is just better.
 
 ## 2. Survey the world
 
@@ -116,6 +144,26 @@ Warnings are judgement, not failure, and a healthy draft has several. Expect the
   than the duration implies. Worth fixing by choosing sites at different distances,
   since this is the one warning that changes how the scenario actually plays.
 - *N of M people have no written dialogue* — expected when writing a spine.
+
+## Say where to go next
+
+The commonest way a finished scenario disappoints is that it reads well and the
+player has no idea what to do. The game does some of this for you — the opening card
+names the first beat's town, who to ask for, and which way it lies; open errands are
+marked on the map with a bearing — but only if the draft gives it something to point
+at. So:
+
+- **Give most beats a quest, and point it at somewhere.** A `reach` objective is the
+  strongest, because it puts a bearing on the map and completes on arrival. A beat
+  with no quest is a revelation with no direction, which is fine once and poor twice.
+- **Never write a quest the same conversation satisfies.** `have: "X"` for an item
+  the NPC hands over in that breath completes instantly and directs nobody. Ask for
+  the *next* place instead, and let the item be the reason.
+- **Name the next place in dialogue, and say where it is.** "Went up toward
+  Stonewait" is weaker than "up the high road toward Stonewait — north and uphill,
+  you cannot miss it".
+- **Put the destination in the quest description too.** It is what the player reads
+  in the panel three sessions later when they have forgotten.
 
 ## Writing well
 

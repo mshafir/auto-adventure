@@ -1,3 +1,5 @@
+import { DEFAULT_PACK } from "../content/default.js";
+import type { ContentPack, NameMood } from "../content/pack.js";
 import { type Rng, rngFor } from "../rand/rng.js";
 import type { BiomeId } from "./biome.js";
 import type { SiteKind } from "./macro.js";
@@ -12,82 +14,7 @@ import type { SiteKind } from "./macro.js";
  * and costs nothing.
  */
 
-const HEADS: Readonly<Record<string, readonly string[]>> = {
-	wet: ["mire", "fen", "marl", "sedge", "bog", "reed", "silt", "drift"],
-	green: ["thorn", "brack", "elder", "haw", "brier", "wold", "bram", "willow"],
-	cold: ["frost", "cold", "rime", "hoar", "snow", "bleak", "grim", "north"],
-	dry: ["ash", "dust", "scald", "kiln", "ember", "sun", "barren", "salt"],
-	high: ["crag", "stone", "scar", "tor", "iron", "grey", "cliff", "pike"],
-	plain: ["hart", "oak", "wheat", "gold", "long", "fair", "bell", "mill"],
-};
-
-const TAILS: readonly string[] = [
-	"ford",
-	"hollow",
-	"reach",
-	"barrow",
-	"gate",
-	"mere",
-	"stead",
-	"combe",
-	"march",
-	"row",
-	"wick",
-	"holt",
-	"crest",
-	"bridge",
-];
-
-const RUIN_TAILS: readonly string[] = ["barrow", "cairn", "wrack", "ruin", "hush", "remnant"];
-const FORT_TAILS: readonly string[] = ["keep", "watch", "hold", "bastion", "gate", "ward"];
-
-const GIVEN: readonly string[] = [
-	"Alder",
-	"Bryn",
-	"Cass",
-	"Doryn",
-	"Elke",
-	"Fenn",
-	"Garrow",
-	"Hale",
-	"Isa",
-	"Joral",
-	"Kest",
-	"Lune",
-	"Marrow",
-	"Nessa",
-	"Orrin",
-	"Pell",
-	"Quill",
-	"Rhoswen",
-	"Sable",
-	"Tam",
-	"Ulric",
-	"Vess",
-	"Wren",
-	"Yarrow",
-];
-
-const FAMILY: readonly string[] = [
-	"Ashdown",
-	"Barrowmoor",
-	"Coldwick",
-	"Dunmere",
-	"Emberly",
-	"Fallowend",
-	"Grimsby",
-	"Harrowgate",
-	"Larkspur",
-	"Marchbank",
-	"Netherfield",
-	"Oakhame",
-	"Quillon",
-	"Ridderhelm",
-	"Stonecarve",
-	"Thistlewood",
-];
-
-function moodFor(biome: BiomeId): keyof typeof HEADS {
+function moodFor(biome: BiomeId): NameMood {
 	switch (biome) {
 		case "marsh":
 			return "wet";
@@ -119,10 +46,18 @@ function capitalize(word: string): string {
 }
 
 /** A place name for a site, biased by the biome it sits in. */
-export function placeName(seed: number, siteId: number, kind: SiteKind, biome: BiomeId): string {
+export function placeName(
+	seed: number,
+	siteId: number,
+	kind: SiteKind,
+	biome: BiomeId,
+	pack: ContentPack = DEFAULT_PACK,
+): string {
 	const rng = rngFor(seed, "name:place", siteId, 0);
-	const head = pick(rng, HEADS[moodFor(biome)] ?? HEADS.plain ?? []);
-	const tails = kind === "ruins" ? RUIN_TAILS : kind === "fort" ? FORT_TAILS : TAILS;
+	const names = pack.names;
+	const head = pick(rng, names.heads[moodFor(biome)] ?? names.heads.plain);
+	const tails =
+		kind === "ruins" ? names.ruinTails : kind === "fort" ? names.fortTails : names.tails;
 	const tail = pick(rng, tails);
 
 	// A two-word name reads as grander than a compound, so the larger the place
@@ -133,15 +68,25 @@ export function placeName(seed: number, siteId: number, kind: SiteKind, biome: B
 }
 
 /** A region name. Regions are large, so they read as "the ..." in prose. */
-export function regionName(seed: number, regionId: number, biome: BiomeId): string {
+export function regionName(
+	seed: number,
+	regionId: number,
+	biome: BiomeId,
+	pack: ContentPack = DEFAULT_PACK,
+): string {
 	const rng = rngFor(seed, "name:region", regionId, 0);
-	const head = pick(rng, HEADS[moodFor(biome)] ?? HEADS.plain ?? []);
-	const tail = pick(rng, ["moor", "wold", "reach", "vale", "expanse", "marches", "downs", "waste"]);
+	const head = pick(rng, pack.names.heads[moodFor(biome)] ?? pack.names.heads.plain);
+	const tail = pick(rng, pack.names.regionTails);
 	return `${capitalize(head)} ${capitalize(tail)}`;
 }
 
 /** A person's name, stable for a given NPC id. */
-export function personName(seed: number, siteId: number, slot: number): string {
+export function personName(
+	seed: number,
+	siteId: number,
+	slot: number,
+	pack: ContentPack = DEFAULT_PACK,
+): string {
 	const rng = rngFor(seed, "name:person", siteId, slot);
-	return `${pick(rng, GIVEN)} ${pick(rng, FAMILY)}`;
+	return `${pick(rng, pack.names.given)} ${pick(rng, pack.names.family)}`;
 }

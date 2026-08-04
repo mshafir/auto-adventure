@@ -94,6 +94,7 @@ All variables are optional.
 | `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Only needed if your terminal prints the escape instead of honouring it. |
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
 | `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. |
+| `CONTENT_PACK` | — | A flavour pack: a shipped name (`thornwick`) or a path (`./my-pack.json`). Steers a new world only; a save keeps the pack it was made with. |
 
 Model calls cost tokens, so they are counted: `src/ai/telemetry.ts` reports
 calls, tokens and latency per call type into the log on exit.
@@ -105,7 +106,8 @@ in a village, walking up the road to the shopkeeper, going through a crate in
 his house, and quitting. The stills below are particular moments.
 
 How a game introduces itself. Every flavour opens on a full screen saying where
-you are, who you are and what brought you here — assembled from the world's own
+you are, who you are, what brought you here and — if the world has a story —
+which town to make for and who to ask for when you get there — assembled from the world's own
 lore, the brief it was given and the story's premise, so it works with no model
 at all. The same mechanism is reused mid-journey: a story beat can raise one for
 a turn a line of dialogue cannot carry.
@@ -124,7 +126,8 @@ might say, and every option is a real branch rather than a text box.
 Inside a building. Somebody is usually home — a weaver at her loom, a farrier
 with scorched hands, a child entirely unsurprised to see you — derived from the
 seed rather than written, so a town of thirty buildings costs nothing extra to
-populate. Crates, barrels, chests and shelves can be searched, and what a
+populate. Which trades live where, and how they are described, comes from a
+content pack, so a scenario can be peopled by fellers and bark-peelers instead. Crates, barrels, chests and shelves can be searched, and what a
 building stores depends on what it is for; a mill really does hold timber.
 Outdoors the same key gathers from the ground.
 

@@ -69,6 +69,14 @@ export const CONFIG = {
 	brief: briefFromEnv(),
 	/** Play with no LLM at all. The world is fully generated and traversable. */
 	noAi: envFlag("NO_AI"),
+	/**
+	 * A shipped pack name (`thornwick`) or a path to one (`./my-pack.json`).
+	 *
+	 * Only steers a *new* world: a save carries the pack it was made with, because
+	 * names are derived and adopting a different one would rename everybody already
+	 * met while keeping their memories.
+	 */
+	contentPack: process.env.CONTENT_PACK,
 	saveDebounceMs: envNumber("SAVE_DEBOUNCE_MS", 2000),
 	prefetchRadius: envNumber("PREFETCH_RADIUS", 2),
 } as const;
