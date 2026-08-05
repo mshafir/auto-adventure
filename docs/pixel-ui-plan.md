@@ -177,6 +177,48 @@ Each step ends green: `npx tsc --noEmit`, `npx vitest run`, biome clean.
 8. **Goldens and screenshots.** `test/goldens/*` and `docs/screens/*.svg` will
    move; regenerate (`npm run screens`) and eyeball the diff.
 
+9. **Glyphs and colours out of TypeScript.** A pass of its own, after the layout
+   settles — see §7.
+
+---
+
+## 7. Theme packs (step 9)
+
+Glyphs, colours and sprite tables should be **resources**, not code, so a future
+pass can make them swappable. The repo already has the machinery and, more
+importantly, the convention: `src/content/load.ts` reads `assets/content/*.json`,
+validates with zod, and merges over a `DEFAULT_PACK` **baked into code**, so a
+missing or malformed file degrades to the default instead of stopping a run. A
+theme pack should work exactly the same way — this is not a new mechanism, it is
+a second pack kind.
+
+What is scattered today, roughly in order of how much of it there is:
+
+| where | what |
+| --- | --- |
+| `render/glyphs.ts` | terrain and decor glyph sources — the bulk of it |
+| `render/sprite.ts` | `AUTHORED` glyph→shape table, `BY_TERRAIN`, `BY_DECOR` |
+| `render/autotile.ts` | the autotile mask tables |
+| `render/palette.ts` | `PAL`, already a table and already the shared vocabulary |
+| `render/scale.ts` | `CONTINUATION`, `FILL`, `SPECK` |
+| `render/minimap-data.ts` | `THEME` — already in the target shape |
+| `panels/legend.ts` | reads the registries, so it follows for free |
+
+Two constraints worth knowing before starting:
+
+- **Sprites are procedures, not pixels.** `sprite.ts` composes shape functions
+  over the unit square. A pack can name and parameterise those primitives
+  (`{"kind": "disc", "r": 0.3}`), but shipping arbitrary code in a pack is a
+  different and much larger decision. Do the tables first and leave shapes.
+- **Colours should stay named.** `render/swatch.ts` resolves a palette name or a
+  `#rrggbb` literal, so a table can say `"moss"` and a legend, a minimap and the
+  tile they describe keep matching after somebody retunes the palette. Unknown
+  names resolve to magenta rather than throwing — a typo in data must not stop
+  the game from starting, but must be impossible to miss.
+
+Done *after* the restructure, not during: the tables are large, the diff would
+swamp the layout change, and `minimap-data.ts` already demonstrates the shape.
+
 ---
 
 ## 6. Risks
