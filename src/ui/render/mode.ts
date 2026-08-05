@@ -6,7 +6,12 @@
  * upgrade that a terminal either supports or does not, and every way of finding
  * out has to end in glyphs when the answer is no.
  */
-import { detectKittyGraphics, graphicsBlockedByMultiplexer } from "./kitty.js";
+import {
+	detectKittyGraphics,
+	graphicsBlockedByMultiplexer,
+	graphicsQuery,
+	graphicsSupported,
+} from "./kitty.js";
 import { TILE_WIDTH } from "./scale.js";
 
 export type TileMode = "glyph" | "kitty";
@@ -18,17 +23,44 @@ export interface ModeReason {
 }
 
 /**
+ * What the terminal said when it was asked, if it was asked.
+ *
+ * Three states, and the third is not the same as the second. `false` is a
+ * terminal that was given the chance to say yes and did not; `undefined` is a run
+ * where nobody asked — a pipe, a golden test, a tool that starts drawing before it
+ * gets round to probing. Collapsing the two would mean a screenshot run silently
+ * deciding the terminal is incapable.
+ */
+let probedGraphics: boolean | undefined;
+
+/** Test seam, and how a tool records a probe it ran itself. */
+export function setGraphicsProbe(answer: boolean | undefined): void {
+	probedGraphics = answer;
+}
+
+/** What the probe found, or undefined if none has run. */
+export function graphicsProbe(): boolean | undefined {
+	return probedGraphics;
+}
+
+/**
  * Resolve the tile mode.
  *
  * `TILE_MODE` is honoured in both directions and without a capability check,
- * because sniffing cannot know about a terminal that has not shipped yet and
- * the player is better placed to say than we are. `TILE_MODE=kitty` in a
- * terminal that cannot do it produces a mess rather than a crash, which is a
- * fair trade for being able to try.
+ * because no amount of asking can know about a terminal that has not shipped yet
+ * and the player is better placed to say than we are. `TILE_MODE=kitty` in a
+ * terminal that cannot do it produces a mess rather than a crash, which is a fair
+ * trade for being able to try — and it is the escape hatch if the probe below is
+ * ever wrong.
  *
- * Everything else defaults to glyphs. Detection is deliberately conservative:
- * guessing "yes" wrongly fills the map with base64, and guessing "no" wrongly
- * costs a player some detail they can turn on by hand.
+ * Otherwise the terminal's own answer decides. That is stricter than the
+ * environment sniffing it replaces, and the trade is worth stating: a terminal
+ * that implements the protocol but drops the reply now gets glyphs where the list
+ * would have given it pixels. In exchange, a terminal nobody thought to add to the
+ * list gets pixels, which is the case that was silently wrong before.
+ *
+ * {@link detectKittyGraphics} is left as the answer only where no question could
+ * be asked at all.
  */
 export function resolveTileMode(env: NodeJS.ProcessEnv = process.env): ModeReason {
 	const requested = env.TILE_MODE?.trim().toLowerCase();
@@ -51,10 +83,17 @@ export function resolveTileMode(env: NodeJS.ProcessEnv = process.env): ModeReaso
 	if (process.stdout.isTTY !== true) {
 		return { mode: "glyph", because: "output is not a terminal" };
 	}
-	if (!detectKittyGraphics(env)) {
-		return { mode: "glyph", because: "terminal not known to support kitty graphics" };
+
+	if (probedGraphics !== undefined) {
+		return probedGraphics
+			? { mode: "kitty", because: "the terminal answered the graphics query" }
+			: { mode: "glyph", because: "the terminal did not answer the graphics query" };
 	}
-	return { mode: "kitty", because: "terminal supports kitty graphics" };
+
+	if (!detectKittyGraphics(env)) {
+		return { mode: "glyph", because: "terminal not known to support kitty graphics (not probed)" };
+	}
+	return { mode: "kitty", because: "terminal is known to support kitty graphics (not probed)" };
 }
 
 export interface CellSize {
@@ -90,29 +129,53 @@ export function lastCellReply(): string {
 	return lastReply.replaceAll(ESC, "<ESC>");
 }
 
+export interface TerminalProbe {
+	readonly cell: CellSize;
+	/** Whether the graphics query came back `OK`. */
+	readonly graphics: boolean;
+}
+
+export interface ProbeOptions {
+	readonly timeoutMs?: number;
+	/**
+	 * Ask whether the terminal does graphics. Off for a multiplexer, which prints
+	 * an APC sequence it does not understand rather than eating it.
+	 */
+	readonly graphics?: boolean;
+}
+
 /**
- * Ask the terminal how big a cell is, once, before Ink starts.
+ * Ask the terminal about itself, once, before Ink starts.
  *
- * This has to happen before `render()`. The query works by writing an escape
- * and reading the answer off stdin, and once Ink is running stdin is its —
+ * This has to happen before `render()`. Every question here works by writing an
+ * escape and reading the answer off stdin, and once Ink is running stdin is its —
  * a reply arriving late is indistinguishable from the player typing, and would
- * walk their character somewhere they did not ask to go. Called at startup
- * there is no such race, and the answer is good for the life of the process
- * unless the font changes.
+ * walk their character somewhere they did not ask to go. Called at startup there
+ * is no such race, and the answers are good for the life of the process unless the
+ * font changes.
  *
- * `CSI 16 t` asks for the cell size directly. Terminals that do not implement
- * it simply never answer, which is why this gives up after a moment rather
- * than waiting: a missing reply is the common case, not an error.
+ * Three questions go out in one write, because they are independent and a terminal
+ * answers whichever it knows: `CSI 16 t` for the cell size, `CSI 14 t` for the text
+ * area as a fallback, and a one-pixel graphics query for whether the pixel renderer
+ * can work at all. Asking them together costs one round trip rather than three.
+ *
+ * **Every answer must be consumed before Ink reads stdin.** This has gone wrong
+ * once and the symptom was baffling: stopping at the first of two replies left
+ * `ESC[4;1554;3097t` in the terminal's input buffer, and the shell echoed it as
+ * `42;19t;1554;3097t` after the game exited. Hence the early finish waits for all
+ * three, and the timeout — not a reply — is what really ends this: a terminal
+ * answering only some of the three is the normal case, not an error.
  */
-export async function measureCellPixels(
+export async function probeTerminal(
 	stdin: NodeJS.ReadStream = process.stdin,
 	stdout: NodeJS.WriteStream = process.stdout,
-	timeoutMs = 100,
-): Promise<CellSize> {
-	if (!stdin.isTTY || !stdout.isTTY) return ASSUMED_CELL;
+	options: ProbeOptions = {},
+): Promise<TerminalProbe> {
+	const { timeoutMs = 100, graphics: askGraphics = true } = options;
+	if (!stdin.isTTY || !stdout.isTTY) return { cell: ASSUMED_CELL, graphics: false };
 
 	lastReply = "";
-	return new Promise<CellSize>((resolve) => {
+	return new Promise<TerminalProbe>((resolve) => {
 		let settled = false;
 		const wasRaw = stdin.isRaw;
 
@@ -129,22 +192,30 @@ export async function measureCellPixels(
 			// Only a real answer is recorded, so callers can tell a measurement from a
 			// guess and say which they are using.
 			if (size) measured = size;
-			resolve(size ?? ASSUMED_CELL);
+			const graphics = askGraphics && graphicsSupported(lastReply);
+			// Recorded only when the question was actually asked. A run that skipped it
+			// must leave the answer unknown rather than saying "no" on its behalf.
+			if (askGraphics) probedGraphics = graphics;
+			resolve({ cell: size ?? ASSUMED_CELL, graphics });
 		};
 
 		/*
 		 * Parsed from everything received so far rather than from the chunk in hand.
-		 * A reply can arrive split — it is two escape sequences and there is nothing
+		 * A reply can arrive split — it is three escape sequences and there is nothing
 		 * saying they come in one read — and matching per chunk would then miss an
 		 * answer that did in fact arrive.
 		 */
 		const onData = (chunk: Buffer) => {
 			lastReply += chunk.toString("latin1");
-			// Both answers, or the window closes. Stopping at the first would leave
-			// the second sitting in the terminal's input buffer, and the next thing
-			// to read stdin is Ink — which would take `<ESC>[4;1554;3097t` for
-			// somebody typing, print what it could not parse, and act on the rest.
-			if (fromCellReply(lastReply) && fromAreaReply(lastReply, stdout)) finish();
+			// All three, or the window closes. See the note above on what a reply left
+			// behind in the input buffer does.
+			if (
+				fromCellReply(lastReply) &&
+				fromAreaReply(lastReply, stdout) &&
+				(!askGraphics || graphicsSupported(lastReply))
+			) {
+				finish();
+			}
 		};
 
 		// Deliberately *not* unref'd. It is the only thing holding the event loop
@@ -157,11 +228,42 @@ export async function measureCellPixels(
 		stdin.setRawMode(true);
 		stdin.resume();
 		stdin.on("data", onData);
-		// Both at once. They are independent queries and a terminal answers the
-		// ones it knows, so asking for the fallback up front costs one round trip
-		// instead of two.
-		stdout.write(`${CSI}16t${CSI}14t`);
+		stdout.write(`${CSI}16t${CSI}14t${askGraphics ? graphicsQuery() : ""}`);
 	});
+}
+
+/** The cell size alone, for a caller that does not care about graphics. */
+export async function measureCellPixels(
+	stdin: NodeJS.ReadStream = process.stdin,
+	stdout: NodeJS.WriteStream = process.stdout,
+	timeoutMs = 100,
+): Promise<CellSize> {
+	return (await probeTerminal(stdin, stdout, { timeoutMs, graphics: false })).cell;
+}
+
+/**
+ * Whether it is worth asking the terminal anything, and what.
+ *
+ * `false` means do not write to the terminal at all: with glyphs forced there is
+ * nothing a measurement would change, and on a stream that is not a terminal there
+ * is nobody to answer.
+ *
+ * `{ graphics: false }` is the multiplexer case, and the distinction matters. tmux
+ * passes the size queries through happily but *prints* an unhandled APC sequence
+ * instead of swallowing it, so a graphics query there would spray its own escape
+ * across the screen to learn something the mode resolution ignores anyway. The cell
+ * size is still worth having, because `TILE_MODE=kitty` under tmux is a thing
+ * people try.
+ */
+export function probePlan(
+	env: NodeJS.ProcessEnv = process.env,
+	stdin: NodeJS.ReadStream = process.stdin,
+	stdout: NodeJS.WriteStream = process.stdout,
+): ProbeOptions | undefined {
+	const requested = env.TILE_MODE?.trim().toLowerCase();
+	if (requested === "glyph" || requested === "glyphs") return undefined;
+	if (!stdin.isTTY || !stdout.isTTY) return undefined;
+	return graphicsBlockedByMultiplexer(env) ? { graphics: false } : {};
 }
 
 /** `CSI 6 ; <height> ; <width> t` — the cell size, asked for directly. */

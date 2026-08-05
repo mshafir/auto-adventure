@@ -1,21 +1,35 @@
 import { EventEmitter } from "node:events";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { QUERY_IMAGE_ID } from "./kitty.js";
 import {
 	cellPixels,
 	cellPixelsWereMeasured,
+	graphicsProbe,
 	measureCellPixels,
+	probePlan,
+	probeTerminal,
 	resolveTileMode,
 	setCellPixels,
+	setGraphicsProbe,
 	tilePixels,
 } from "./mode.js";
 import { tileFit } from "./raster.js";
 import { TILE_WIDTH } from "./scale.js";
 
-afterEach(() => setCellPixels(undefined));
+afterEach(() => {
+	setCellPixels(undefined);
+	// Module state, so an answer left here would decide the mode for whichever test
+	// ran next — including the ones asserting what happens when nobody asked.
+	setGraphicsProbe(undefined);
+});
 
 /** What Ghostty actually answers, byte for byte: a 19x42 cell in a 1554px area. */
 const CELL_REPLY = "\u001B[6;42;19t";
 const AREA_REPLY = "\u001B[4;1554;3097t";
+/** And what it answers the graphics query with, byte for byte. */
+const OK_REPLY = `\u001B_Gi=${QUERY_IMAGE_ID};OK\u001B\\`;
+/** A terminal that speaks the protocol but will not do this: still an answer. */
+const ERROR_REPLY = `\u001B_Gi=${QUERY_IMAGE_ID};ENOTSUP:no\u001B\\`;
 
 /** A stdin that answers the cell-size query with whatever it is told to. */
 function fakeStdin(reply?: string) {
@@ -70,6 +84,14 @@ describe("measureCellPixels", () => {
 		const { stream, written } = fakeStdout();
 		await measureCellPixels(fakeStdin(), stream, 20);
 		expect(written.join("")).toBe("\u001B[16t\u001B[14t");
+	});
+
+	it("adds the graphics query when it is asked for, and nothing else", async () => {
+		const { stream, written } = fakeStdout();
+		await probeTerminal(fakeStdin(), stream, { timeoutMs: 20 });
+		expect(written.join("")).toBe(
+			`\u001B[16t\u001B[14t\u001B_Gi=${QUERY_IMAGE_ID},s=1,v=1,a=q,t=d,f=24;AAAA\u001B\\`,
+		);
 	});
 
 	it("falls back to the text-area query when the cell query is ignored", async () => {
@@ -168,6 +190,110 @@ describe("measureCellPixels", () => {
 	});
 });
 
+describe("the graphics probe", () => {
+	it("reads an OK as yes", async () => {
+		const { stream } = fakeStdout();
+		const probe = await probeTerminal(fakeStdin(OK_REPLY), stream, { timeoutMs: 50 });
+		expect(probe.graphics).toBe(true);
+		expect(graphicsProbe()).toBe(true);
+	});
+
+	// A terminal that knows the protocol and is refusing this particular request has
+	// answered — but the answer is no, and the pixel renderer must not run on it.
+	it("reads an error code as no, not as silence", async () => {
+		const { stream } = fakeStdout();
+		const probe = await probeTerminal(fakeStdin(ERROR_REPLY), stream, { timeoutMs: 50 });
+		expect(probe.graphics).toBe(false);
+		expect(graphicsProbe()).toBe(false);
+	});
+
+	it("ignores an OK about somebody else's image", async () => {
+		// Ids are global to the terminal, so a reply left over from a neighbouring
+		// program is a real possibility — and taking it for our own would turn the
+		// pixel renderer on for a terminal that never said anything.
+		const { stream } = fakeStdout();
+		const probe = await probeTerminal(fakeStdin("\u001B_Gi=1;OK\u001B\\"), stream, {
+			timeoutMs: 50,
+		});
+		expect(probe.graphics).toBe(false);
+	});
+
+	it("records no answer as no, and never asking as unknown", async () => {
+		const { stream } = fakeStdout();
+		expect((await probeTerminal(fakeStdin(), stream, { timeoutMs: 20 })).graphics).toBe(false);
+		expect(graphicsProbe()).toBe(false);
+
+		setGraphicsProbe(undefined);
+		await probeTerminal(fakeStdin(OK_REPLY), stream, { timeoutMs: 20, graphics: false });
+		// Asked nothing, so it has no business answering on the terminal's behalf.
+		expect(graphicsProbe()).toBeUndefined();
+	});
+
+	/*
+	 * Three questions now, so three answers, and every one of them has to be read.
+	 * The two-query version of this bug shipped: returning early left
+	 * `<ESC>[4;1554;3097t` in the terminal's input buffer, Ink took it for somebody
+	 * typing, and the shell printed `42;19t;1554;3097t` after the game exited.
+	 */
+	it("waits for all three answers rather than leaving one for Ink to eat", async () => {
+		const { stream } = fakeStdout();
+		const stdin = fakeStdin();
+		const promise = probeTerminal(stdin, stream, { timeoutMs: 500 });
+		await Promise.resolve();
+
+		stdin.emit("data", Buffer.from(CELL_REPLY, "latin1"));
+		expect(stdin.listenerCount("data")).toBe(1);
+		stdin.emit("data", Buffer.from(AREA_REPLY, "latin1"));
+		// Still listening: the graphics query has not been answered.
+		expect(stdin.listenerCount("data")).toBe(1);
+
+		stdin.emit("data", Buffer.from(OK_REPLY, "latin1"));
+		expect(await promise).toEqual({ cell: { width: 19, height: 42 }, graphics: true });
+		expect(stdin.listenerCount("data")).toBe(0);
+	});
+
+	it("reads all three when they arrive together, and when they arrive in pieces", async () => {
+		const { stream } = fakeStdout();
+		const whole = `${CELL_REPLY}${AREA_REPLY}${OK_REPLY}`;
+
+		expect(await probeTerminal(fakeStdin(whole), stream, { timeoutMs: 500 })).toEqual({
+			cell: { width: 19, height: 42 },
+			graphics: true,
+		});
+
+		const stdin = fakeStdin();
+		const promise = probeTerminal(stdin, stream, { timeoutMs: 500 });
+		await Promise.resolve();
+		for (let at = 0; at < whole.length; at += 7) {
+			stdin.emit("data", Buffer.from(whole.slice(at, at + 7), "latin1"));
+		}
+		expect(await promise).toEqual({ cell: { width: 19, height: 42 }, graphics: true });
+	});
+});
+
+describe("probePlan", () => {
+	const stdin = (isTTY: boolean) => ({ isTTY }) as NodeJS.ReadStream;
+	const stdout = (isTTY: boolean) => ({ isTTY }) as NodeJS.WriteStream;
+
+	it("asks everything of an ordinary terminal", () => {
+		expect(probePlan({}, stdin(true), stdout(true))).toEqual({});
+	});
+
+	it("skips the graphics query under a multiplexer but still measures", () => {
+		// tmux prints an APC sequence it does not understand rather than eating it, so
+		// asking would spray the escape across the screen to learn something the mode
+		// resolution ignores anyway. The cell size is still worth having, because
+		// TILE_MODE=kitty under tmux is a thing people try.
+		expect(probePlan({ TMUX: "/tmp/x" }, stdin(true), stdout(true))).toEqual({ graphics: false });
+	});
+
+	it("asks nothing when glyphs are forced or there is nobody to answer", () => {
+		expect(probePlan({ TILE_MODE: "glyph" }, stdin(true), stdout(true))).toBeUndefined();
+		expect(probePlan({}, stdin(false), stdout(true))).toBeUndefined();
+		expect(probePlan({}, stdin(true), stdout(false))).toBeUndefined();
+	});
+});
+
 describe("tilePixels", () => {
 	/*
 	 * A tile gets the room the glyph renderer gives it — TILE_WIDTH columns — so
@@ -230,5 +356,46 @@ describe("resolveTileMode", () => {
 	it("says why, so a bug report can include it", () => {
 		expect(resolveTileMode({ TILE_MODE: "sixel" }).because).toContain("sixel");
 		expect(resolveTileMode({ TMUX: "/tmp/x" }).because).toContain("multiplexer");
+	});
+
+	describe("once the terminal has been asked", () => {
+		// Under vitest stdout is not a terminal, and that check comes first — so
+		// without this every case below would resolve to "output is not a terminal"
+		// and pass for the wrong reason.
+		const wasTTY = process.stdout.isTTY;
+		beforeEach(() => {
+			Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+		});
+		afterEach(() => {
+			Object.defineProperty(process.stdout, "isTTY", { value: wasTTY, configurable: true });
+		});
+
+		/*
+		 * The whole point of asking. Ghostty, kitty and WezTerm were on the list;
+		 * every other capable terminal got glyphs and no explanation.
+		 */
+		it("takes the terminal's own answer over the list of known names", () => {
+			setGraphicsProbe(true);
+			const answered = resolveTileMode({ TERM: "xterm-256color" });
+			expect(answered.mode).toBe("kitty");
+			expect(answered.because).toContain("answered");
+		});
+
+		/*
+		 * And the cost of asking, stated plainly: a terminal on the list that drops
+		 * the reply now gets glyphs. `TILE_MODE=kitty` is the way back.
+		 */
+		it("believes a no from a terminal the list would have said yes to", () => {
+			setGraphicsProbe(false);
+			expect(resolveTileMode({ TERM_PROGRAM: "ghostty" }).mode).toBe("glyph");
+			expect(resolveTileMode({ TERM_PROGRAM: "ghostty", TILE_MODE: "kitty" }).mode).toBe("kitty");
+		});
+
+		it("falls back to the list only when nobody asked", () => {
+			expect(graphicsProbe()).toBeUndefined();
+			const sniffed = resolveTileMode({ TERM_PROGRAM: "ghostty" });
+			expect(sniffed.mode).toBe("kitty");
+			expect(sniffed.because).toContain("not probed");
+		});
 	});
 });

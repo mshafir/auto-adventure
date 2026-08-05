@@ -293,15 +293,65 @@ export function placeholderRows(
 }
 
 /**
- * Does this terminal implement the graphics protocol?
+ * A third id, for the one-pixel image that is only ever a question.
  *
- * Environment sniffing rather than a device query. A query means writing to the
- * terminal and reading the reply off stdin, and stdin belongs to Ink — a reply
- * that arrives a moment late is indistinguishable from the player typing. The
- * cost of guessing wrong is only that a capable terminal renders glyphs, which
- * is a working game either way.
+ * Its own id for the same reason the diagnostic tool has one: a query that shared
+ * the frame's id could delete or be deleted by a real frame, and the answer would
+ * then be about the wrong image.
+ */
+export const QUERY_IMAGE_ID = 0x61_64_78;
+
+/**
+ * Ask the terminal whether it speaks this protocol at all.
  *
- * `TILE_MODE` overrides in both directions, so a terminal this does not know
+ * One RGB pixel — three zero bytes, which is `AAAA` in base64 — sent with `a=q`.
+ * A query transmits nothing and displays nothing; it asks the terminal to say
+ * whether it *could* have. A terminal that implements the protocol answers
+ * `ESC _G i=<id>;OK ESC \`, one that implements it but cannot honour this
+ * particular request answers with an error code, and one that has never heard of
+ * it says nothing at all and swallows the escape.
+ *
+ * Deliberately *not* `q=2`. Every other command here silences the terminal,
+ * because an unsolicited reply reaches Ink as keystrokes and walks the player's
+ * character somewhere they did not ask to go. Here the reply is the entire point,
+ * so this may only be sent in the window before Ink owns stdin — see
+ * `mode.ts`'s `probeTerminal`, which is the only caller.
+ */
+export function graphicsQuery(imageId = QUERY_IMAGE_ID): string {
+	return `${APC}i=${imageId},s=1,v=1,a=q,t=d,f=24;AAAA${ST}`;
+}
+
+/**
+ * Whether a terminal's reply says yes.
+ *
+ * Scans for *our* id rather than for `OK` anywhere in the buffer, because the
+ * reply arrives mixed in with the answers to two unrelated size queries and, on a
+ * bad day, with whatever the player typed while it was waiting.
+ */
+export function graphicsSupported(reply: string, imageId = QUERY_IMAGE_ID): boolean {
+	// Everything before the first APC is not an answer to anything.
+	for (const part of reply.split(APC).slice(1)) {
+		const semi = part.indexOf(";");
+		if (semi === -1) continue;
+		if (!part.slice(0, semi).split(",").includes(`i=${imageId}`)) continue;
+		// `OK`, or an error code naming what went wrong. Either way the terminal
+		// answered, but only one of them means the image would have been drawn.
+		return part.slice(semi + 1).startsWith("OK");
+	}
+	return false;
+}
+
+/**
+ * Does this terminal implement the graphics protocol, going by its environment?
+ *
+ * A guess, and the fallback rather than the answer: {@link graphicsQuery} asks the
+ * terminal directly, and a terminal that answers is worth more than a list of the
+ * ones somebody remembered to add. This is what is left for the cases where no
+ * question can be asked — output that is not a terminal, or a run that skipped the
+ * probe — and it is the reason a terminal nobody listed used to get glyphs with no
+ * explanation.
+ *
+ * `TILE_MODE` overrides in both directions, so a terminal neither of them knows
  * about can still be asked to try.
  */
 export function detectKittyGraphics(env: NodeJS.ProcessEnv = process.env): boolean {

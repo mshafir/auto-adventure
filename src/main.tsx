@@ -5,9 +5,15 @@ import type { LaunchChoice } from "./scenario/scenario.js";
 import { buildSession } from "./session.js";
 import App from "./ui/app.js";
 import { pickLaunch } from "./ui/launcher/pick-launch.js";
-import { measureCellPixels, resolveTileMode } from "./ui/render/mode.js";
+import {
+	cellPixelsWereMeasured,
+	probePlan,
+	probeTerminal,
+	resolveTileMode,
+} from "./ui/render/mode.js";
 import { endSynchronizedOutput, withSynchronizedOutput } from "./ui/render/sync-output.js";
 import { bindEngine } from "./ui/store.js";
+import { setTileMode } from "./ui/viewport.js";
 import { logger } from "./utils/log.js";
 
 const ALT_SCREEN_ON = "\u001B[?1049h";
@@ -47,6 +53,37 @@ function wantsLauncher(): boolean {
 	return Boolean(process.stdin.isTTY);
 }
 
+/**
+ * Ask the terminal what it can do, then decide who draws the map.
+ *
+ * The order is the point, and it used to be the other way round: the cell size was
+ * measured only once the mode was already known to be kitty, which was fine while
+ * the mode came from an environment variable and is not now that the terminal's own
+ * answer decides it.
+ *
+ * Both answers come from one probe in the window before Ink takes stdin, and this
+ * is the only place either question can safely be asked — see `probeTerminal`.
+ * The result is logged in full because a screenshot cannot tell you what the game
+ * *thought* the terminal was, and a disagreement between the two is exactly the
+ * kind of bug that reads as a rendering fault.
+ */
+async function chooseRenderer(): Promise<void> {
+	const plan = probePlan();
+	if (plan) {
+		const probe = await probeTerminal(process.stdin, process.stdout, plan);
+		logger.info(
+			`terminal: cell ${probe.cell.width}x${probe.cell.height}px` +
+				`${cellPixelsWereMeasured() ? "" : " (assumed; it did not say)"}, graphics ` +
+				`${plan.graphics === false ? "not asked" : probe.graphics ? "yes" : "no answer"}`,
+		);
+	}
+	const mode = resolveTileMode();
+	// Pinned rather than left to be resolved lazily, so the answer the log reports
+	// is provably the one the renderer used.
+	setTileMode(mode.mode);
+	logger.info(`renderer: ${mode.mode} — ${mode.because}`);
+}
+
 async function startGame() {
 	const choice = wantsLauncher() ? await pickLaunch() : choiceFromEnv();
 	if (!choice) return;
@@ -54,13 +91,7 @@ async function startGame() {
 	const session = buildSession(choice, { saveDebounceMs: CONFIG.saveDebounceMs });
 	bindEngine(session.engine);
 
-	// Before Ink takes stdin, and only when the pixel renderer will actually use
-	// the answer. Guessing the cell size wrong sizes the camera for a viewport
-	// of the wrong shape, which puts the player off toward an edge.
-	if (resolveTileMode().mode === "kitty") {
-		const cell = await measureCellPixels();
-		logger.info(`cell size ${cell.width}x${cell.height}px`);
-	}
+	await chooseRenderer();
 
 	const restoreScreen = enterAltScreen();
 	const shutdown = (code: number) => {

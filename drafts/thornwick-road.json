@@ -16,13 +16,8 @@
 		"premise": "The crown stopped asking for coin three winters ago and started asking for timber. The forest has been paying ever since, and the road that carries it is the only law out here.",
 		"era": "the third winter of the timber levy",
 		"tone": "damp, wry, and short of daylight",
-		"factions": [
-			"The Warden's Road",
-			"The Fellers' Compact"
-		],
-		"deities": [
-			"Ossa of the Standing Trees"
-		]
+		"factions": ["The Warden's Road", "The Fellers' Compact"],
+		"deities": ["Ossa of the Standing Trees"]
 	},
 	"regions": [
 		{
@@ -147,9 +142,7 @@
 					]
 				}
 			],
-			"hooks": [
-				"The Cord House tally has come up short every month since the levy doubled."
-			]
+			"hooks": ["The Cord House tally has come up short every month since the levy doubled."]
 		},
 		{
 			"siteId": 2528282773,
@@ -208,9 +201,7 @@
 					]
 				}
 			],
-			"hooks": [
-				"A warden's badge was signed out in autumn and never signed back in."
-			]
+			"hooks": ["A warden's badge was signed out in autumn and never signed back in."]
 		},
 		{
 			"siteId": 3139050156,
@@ -312,9 +303,7 @@
 					]
 				}
 			],
-			"hooks": [
-				"The Crown Yard takes in more timber than the road could possibly deliver."
-			]
+			"hooks": ["The Crown Yard takes in more timber than the road could possibly deliver."]
 		}
 	],
 	"arc": {

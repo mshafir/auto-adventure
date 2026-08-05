@@ -6,7 +6,14 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["**", "!dist/**", "!maps/**", "!test/goldens/**", "!.claude/worktrees/**"]
+		"includes": [
+			"**",
+			"!dist/**",
+			"!maps/**",
+			"!test/goldens/**",
+			"!.claude/worktrees/**",
+			".packs/**"
+		]
 	},
 	"formatter": {
 		"enabled": true,

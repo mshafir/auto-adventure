@@ -95,7 +95,7 @@ All variables are optional.
 | `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Only needed if your terminal prints the escape instead of honouring it. |
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
 | `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
-| `TILE_MODE` | `auto` | `auto` uses pixels only where the terminal is known to support them. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
+| `TILE_MODE` | `auto` | `auto` asks the terminal whether it does graphics and uses pixels if it says yes. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
 | `ZOOM` | `1` | Scales the tiles in kitty mode. Above 1 is bigger tiles and less world on screen; below is the reverse. |
 | `TILE_PX` | derived | Pixels per tile edge, pinned. Left alone it is derived from the terminal's cell so pixel mode shows the same field of view as glyph mode. |
 | `KITTY_DEFLATE` | `1` | zlib level for the frame. Raise it to trade CPU for bytes on a slow link. |
@@ -229,17 +229,27 @@ The map draws as glyphs by default and can draw as pixels instead, on terminals
 that implement the kitty graphics protocol:
 
 ```bash
-npm start                   # pixels only if the terminal is known to do them
+npm start                   # asks the terminal, and uses pixels if it says yes
 TILE_MODE=kitty npm start   # pixels, no capability check
 TILE_MODE=glyph npm start   # glyphs, whatever the terminal can do
 npm run kitty-check         # does this terminal actually support it?
+npm run kitty-geometry      # what the game asked, and what came back
 ```
 
-Left to itself the detection is conservative and every uncertainty ends in
-glyphs, which are the permanent floor rather than a fallback that might one day
-be dropped. `TILE_MODE` overrides it in both directions and without a check,
-because a terminal that supports the protocol but does not advertise it is
-something the player is better placed to know than we are. Sprites are
+Left to itself the game **asks**: a one-pixel graphics query goes out with the
+cell-size queries in the window before Ink takes stdin, and a terminal that
+answers `OK` gets pixels. That replaced a list of terminal names, which was wrong
+in the quiet direction — a capable terminal nobody had added to the list got
+glyphs and no explanation. The trade is worth stating: a terminal that implements
+the protocol but drops the reply now gets glyphs where the list would have given
+it pixels, and `TILE_MODE=kitty` is the way back.
+
+`TILE_MODE` overrides in both directions and without a check, because a terminal
+that supports the protocol but will not say so is something the player is better
+placed to know than we are. Under tmux the query is not sent at all — a
+multiplexer *prints* an APC sequence it does not understand rather than eating
+it — and glyphs are the permanent floor rather than a fallback that might one day
+be dropped. Sprites are
 procedures over the unit square rather than a bitmap, so tile size is a free
 choice; both renderers consume the same composed scene, so lighting, field of
 view, autotiling and the minimap overlay are shared and cannot drift apart.

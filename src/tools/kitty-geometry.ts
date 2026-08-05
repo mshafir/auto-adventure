@@ -12,7 +12,8 @@ import {
 	cellPixels,
 	cellPixelsWereMeasured,
 	lastCellReply,
-	measureCellPixels,
+	probePlan,
+	probeTerminal,
 	resolveTileMode,
 } from "../ui/render/mode.js";
 import { tileFit } from "../ui/render/raster.js";
@@ -26,7 +27,10 @@ async function main() {
 	const columns = out.columns ?? 0;
 	const rows = out.rows ?? 0;
 
-	await measureCellPixels();
+	// The same probe the game runs, and in the same window, so the answers reported
+	// here are the ones it would act on.
+	const plan = probePlan();
+	const probe = plan ? await probeTerminal(process.stdin, out, plan) : undefined;
 	const cell = cellPixels();
 	const mode = resolveTileMode();
 
@@ -55,6 +59,15 @@ async function main() {
 					? "  (measured from the terminal)"
 					: "  (assumed; the terminal did not answer — set CELL_PX=WxH)"),
 		`tile size       ${TILE_PX} px`,
+		`graphics        ${
+			plan === undefined
+				? "not asked (glyphs forced, or not a terminal)"
+				: plan.graphics === false
+					? "not asked (a multiplexer is in the way)"
+					: probe?.graphics
+						? "the terminal answered OK"
+						: "no answer — this terminal gets glyphs"
+		}`,
 		`query reply     ${lastCellReply() || "(nothing came back)"}`,
 		"",
 		`map area        ${mapWidth} x ${mapHeight} cells`,
