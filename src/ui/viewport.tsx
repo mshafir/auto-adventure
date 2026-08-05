@@ -9,7 +9,9 @@ import {
 	type TileSource,
 } from "./render/compose.js";
 import { deleteFrame, placeholderRows, transmitFrame } from "./render/kitty.js";
+import type { MiniCell } from "./render/minimap-data.js";
 import { resolveTileMode, type TileMode } from "./render/mode.js";
+import { overlayMinimap } from "./render/overlay.js";
 import { rasterScene } from "./render/raster.js";
 import { expandScene, TILE_WIDTH, tilesAcross } from "./render/scale.js";
 
@@ -52,6 +54,15 @@ export interface ViewportProps {
 	 */
 	readonly columns: number;
 	readonly rows: number;
+	/**
+	 * The minimap, composited into the corner of the frame.
+	 *
+	 * Passed in rather than read from the store because it is *data*, and both
+	 * renderers paint the same data two different ways — into the cell grid here,
+	 * into the pixel buffer there. Undefined when the map is too small to spare
+	 * the room for it.
+	 */
+	readonly minimap?: readonly (readonly MiniCell[])[];
 }
 
 /**
@@ -67,17 +78,18 @@ export function Viewport(props: ViewportProps) {
 	return tileMode() === "kitty" ? <KittyViewport {...props} /> : <GlyphViewport {...props} />;
 }
 
-function GlyphViewport({ source, camera, options }: ViewportProps) {
+function GlyphViewport({ source, camera, options, minimap }: ViewportProps) {
 	const depth = colorDepth();
-	const rows = useMemo(
+	const rows = useMemo(() => {
 		// The camera is in tiles; expansion to columns happens after compositing,
 		// so lighting, autotiling and field of view all still work per tile. The
 		// camera is also the scene's world origin, which is what keeps texture
 		// placement fixed to the ground instead of to the viewport.
-		() =>
-			encodeScene(expandScene(composeScene(source, camera, options), TILE_WIDTH, camera), depth),
-		[source, camera, options, depth],
-	);
+		const cells = expandScene(composeScene(source, camera, options), TILE_WIDTH, camera);
+		// After expansion, not before: the minimap is one character per chunk and
+		// widening it 2:1 would stretch it the way the map needs and it does not.
+		return encodeScene(minimap ? overlayMinimap(cells, minimap) : cells, depth);
+	}, [source, camera, options, depth, minimap]);
 
 	return (
 		<Box flexDirection="column" flexShrink={0}>

@@ -368,6 +368,7 @@ async function capture(
 	/** Open the full-frame reader, as pressing Enter on a focused list does. */
 	expand = false,
 ) {
+	if (WANTED.size > 0 && !WANTED.has(name)) return;
 	const { engine, site } = buildEngine(withArc);
 	prepare(engine, site);
 	bindEngine(engine);
@@ -394,10 +395,23 @@ async function capture(
 	instance.unmount();
 	instance.cleanup();
 
+	// `--text` prints the frame instead of writing it. The SVGs are for the README
+	// and have to be looked at in a browser; this is for checking a layout change
+	// from the terminal that made it, without a round trip through a human.
+	if (TEXT_ONLY) {
+		process.stdout.write(`\n── ${name}: ${title} ${"─".repeat(Math.max(0, 60 - name.length))}\n`);
+		process.stdout.write(`${stripAnsi(frame)}\n`);
+		return;
+	}
+
 	const path = `docs/screens/${name}.svg`;
 	writeFileSync(path, toSvg(frame, title));
 	process.stdout.write(`${path}  ${frame.split("\n").length} lines\n`);
 }
+
+const TEXT_ONLY = process.argv.includes("--text");
+/** Only these shots, when named; all of them otherwise. */
+const WANTED = new Set(process.argv.slice(2).filter((arg) => !arg.startsWith("--")));
 
 async function main() {
 	setColorDepth("truecolor");

@@ -4,6 +4,8 @@ import stripAnsi from "strip-ansi";
 import { afterAll, describe, expect, it } from "vitest";
 import { T } from "../core/tiles/terrain.js";
 import type { TileSource } from "./render/compose.js";
+import type { MiniCell } from "./render/minimap-data.js";
+import { PAL } from "./render/palette.js";
 import { cameraCenteredOn, setColorDepth, TILE_WIDTH, tilesAcross, Viewport } from "./viewport.js";
 
 // Pin the depth so the assertions do not depend on the runner's environment.
@@ -17,13 +19,18 @@ const flatWorld: TileSource = {
 	entityAt: () => undefined,
 };
 
-function rowsOf(width: number, height: number): string[] {
+function rowsOf(
+	width: number,
+	height: number,
+	minimap?: readonly (readonly MiniCell[])[],
+): string[] {
 	const { lastFrame, unmount } = render(
 		<Viewport
 			source={flatWorld}
 			camera={{ x: 0, y: 0, width, height }}
 			columns={width * TILE_WIDTH}
 			rows={height}
+			{...(minimap ? { minimap } : {})}
 		/>,
 	);
 	const rows = (lastFrame() ?? "").split("\n").filter((row) => row.length > 0);
@@ -61,5 +68,30 @@ describe("tile width", () => {
 		const camera = cameraCenteredOn([100, 50], tilesAcross(80), 20);
 		expect(camera.x + Math.floor(camera.width / 2)).toBe(100);
 		expect(camera.y + Math.floor(camera.height / 2)).toBe(50);
+	});
+});
+
+describe("the minimap overlay", () => {
+	const mini: MiniCell[][] = Array.from({ length: 5 }, () =>
+		Array.from({ length: 9 }, () => ({ ch: "~", fg: PAL.deep, bold: false, fill: true })),
+	);
+
+	it("appears in the map's own rows", () => {
+		const rows = rowsOf(30, 16, mini);
+		const plain = rows.map((row) => stripAnsi(row));
+		expect(plain.some((row) => row.includes("╭"))).toBe(true);
+		expect(plain.some((row) => row.includes("~~~~~~~~~"))).toBe(true);
+	});
+
+	/*
+	 * The whole reason it is composited rather than laid out. A box beside the map
+	 * would be an Ink sibling, and a sibling on a row of kitty placeholders makes
+	 * Ink cut that row in half. Painting into the scene means every row is still
+	 * exactly as wide as it was without the minimap.
+	 */
+	it("does not change the width of a single row", () => {
+		const bare = rowsOf(30, 16).map((row) => stringWidth(stripAnsi(row)));
+		const over = rowsOf(30, 16, mini).map((row) => stringWidth(stripAnsi(row)));
+		expect(over).toEqual(bare);
 	});
 });

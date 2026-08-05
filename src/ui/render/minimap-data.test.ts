@@ -1,9 +1,11 @@
+import stringWidth from "string-width";
 import { describe, expect, it } from "vitest";
 import { hashString } from "../../core/rand/hash.js";
 import { createInitialState, type GameState, type Quest } from "../../core/rules/state.js";
 import { CHUNK, chunkKey } from "../../core/world/coords.js";
 import { isSettlement, macroSite } from "../../core/world/macro.js";
-import { minimapCells } from "./minimap-data.js";
+import { checkGlyph } from "./glyph-safety.js";
+import { minimapCells, minimapGlyphs } from "./minimap-data.js";
 
 const SEED = hashString("vale");
 const WORLD = { id: "t", name: "T", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" };
@@ -85,7 +87,7 @@ describe("minimapCells", () => {
 			5,
 		);
 		expect(rows[2]?.[4]?.ch).toBe("@");
-		expect(beside[2]?.[3]?.ch).toMatch(/[▣▪]/);
+		expect(beside[2]?.[3]?.ch).toMatch(/[▣□]/);
 	});
 
 	// Which town it is matters less than that something is waiting there, so the
@@ -107,5 +109,19 @@ describe("minimapCells", () => {
 			5,
 		);
 		expect(withQuest[2]?.[3]?.ch).toBe("!");
+	});
+});
+
+// The minimap is composited into map rows now, so it is held to the same rule as
+// the terrain it is drawn over: one terminal column per glyph, everywhere. `▪`
+// was the obvious village mark and is banned for exactly this reason — it has an
+// emoji presentation, and a double-width cell shifts the whole rest of its row.
+describe("minimap glyphs", () => {
+	it("are all single-width", () => {
+		for (const ch of minimapGlyphs()) {
+			if (ch === " ") continue;
+			expect(checkGlyph(ch), ch).toEqual({ ok: true });
+			expect(stringWidth(ch), ch).toBe(1);
+		}
 	});
 });

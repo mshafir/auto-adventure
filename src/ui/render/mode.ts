@@ -71,7 +71,8 @@ export interface CellSize {
  */
 const ASSUMED_CELL: CellSize = { width: 8, height: 16 };
 
-const CSI = "\u001B[";
+const ESC = "\u001B";
+const CSI = `${ESC}[`;
 
 let measured: CellSize | undefined;
 let lastReply = "";
@@ -83,7 +84,9 @@ let lastReply = "";
  * from a bug report rather than by guessing at it.
  */
 export function lastCellReply(): string {
-	return lastReply.replace(/\u001B/g, "<ESC>");
+	// A plain string replace rather than a regex: biome rejects a control character
+	// in a pattern however it is spelled, and a regex was buying nothing here.
+	return lastReply.replaceAll(ESC, "<ESC>");
 }
 
 /**

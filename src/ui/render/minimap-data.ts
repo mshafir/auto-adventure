@@ -26,6 +26,16 @@ export interface MiniCell {
 	readonly ch: string;
 	readonly fg: RGB;
 	readonly bold: boolean;
+	/**
+	 * The glyph shades the whole chunk rather than marking a spot in it.
+	 *
+	 * Only matters where a chunk is drawn more than one column wide, which it is
+	 * in glyph mode — a terminal cell is about twice as tall as it is wide, so one
+	 * column per chunk renders the whole minimap squashed 2:1. `scale.ts` makes
+	 * the same distinction for the same reason: `▲▲` is two woods where `▲` is
+	 * one, but `░░` is the same open ground `░` is, covering twice the area.
+	 */
+	readonly fill: boolean;
 }
 
 /** A themed entry, before its colour is resolved. */
@@ -33,6 +43,7 @@ interface Mark {
 	readonly ch: string;
 	readonly color: Swatch;
 	readonly bold?: boolean;
+	readonly fill?: boolean;
 }
 
 /**
@@ -53,30 +64,49 @@ const THEME: {
 	marks: {
 		here: { ch: "@", color: "player", bold: true },
 		errand: { ch: "!", color: "#e08cd6", bold: true },
+		// `▪` would be the obvious village mark and cannot be used: U+25AA carries an
+		// emoji presentation, so it renders double-width in some terminals. Harmless
+		// in a panel of its own; composited into a map row it shifts every cell after
+		// it out of line with the rows above and below.
 		town: { ch: "▣", color: "lamplight", bold: true },
-		village: { ch: "▪", color: "lamplight", bold: true },
-		unseen: { ch: " ", color: "ash" },
+		village: { ch: "□", color: "lamplight", bold: true },
+		unseen: { ch: " ", color: "ash", fill: true },
 	},
 	biomes: {
-		ocean: { ch: "~", color: "deep" },
+		ocean: { ch: "~", color: "deep", fill: true },
 		beach: { ch: ".", color: "sand" },
-		marsh: { ch: "~", color: "reed" },
-		grassland: { ch: "░", color: "moss" },
-		meadow: { ch: "░", color: "moss" },
-		shrubland: { ch: "░", color: "mossDark" },
+		marsh: { ch: "~", color: "reed", fill: true },
+		grassland: { ch: "░", color: "moss", fill: true },
+		meadow: { ch: "░", color: "moss", fill: true },
+		shrubland: { ch: "░", color: "mossDark", fill: true },
 		forest: { ch: "▲", color: "oak" },
 		rainforest: { ch: "▲", color: "leaf" },
 		taiga: { ch: "▲", color: "pine" },
-		savanna: { ch: "░", color: "wheat" },
+		savanna: { ch: "░", color: "wheat", fill: true },
 		desert: { ch: ".", color: "sand" },
-		badlands: { ch: "░", color: "tile" },
-		moor: { ch: "░", color: "#7a6a8a" },
+		badlands: { ch: "░", color: "tile", fill: true },
+		moor: { ch: "░", color: "#7a6a8a", fill: true },
 		highland: { ch: "^", color: "stone" },
 		alpine: { ch: "^", color: "snowShadow" },
 		glacier: { ch: "^", color: "ice" },
 	},
-	unknownBiome: { ch: "░", color: "slate" },
+	unknownBiome: { ch: "░", color: "slate", fill: true },
 };
+
+/**
+ * Every character the minimap can draw, for the glyph-safety check.
+ *
+ * Worth checking even though these never reach the tile registry: the minimap is
+ * composited into map rows now, so it is held to the same single-width rule as
+ * the terrain it is drawn over.
+ */
+export function minimapGlyphs(): string[] {
+	return [
+		...Object.values(THEME.marks).map((mark) => mark.ch),
+		...Object.values(THEME.biomes).map((mark) => mark.ch),
+		THEME.unknownBiome.ch,
+	];
+}
 
 /** Resolved once: the table is constant, and this runs per chunk per frame. */
 const CELLS = new Map<Mark, MiniCell>();
@@ -84,7 +114,12 @@ const CELLS = new Map<Mark, MiniCell>();
 function cellFor(mark: Mark): MiniCell {
 	let cell = CELLS.get(mark);
 	if (!cell) {
-		cell = { ch: mark.ch, fg: swatch(mark.color), bold: mark.bold ?? false };
+		cell = {
+			ch: mark.ch,
+			fg: swatch(mark.color),
+			bold: mark.bold ?? false,
+			fill: mark.fill ?? false,
+		};
 		CELLS.set(mark, cell);
 	}
 	return cell;

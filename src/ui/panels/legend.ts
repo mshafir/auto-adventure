@@ -94,7 +94,7 @@ export function minimapLegend(): readonly LegendEntry[] {
 	return [
 		{ ch: "@", color: "green", label: "here", bold: true },
 		{ ch: "▣", color: "yellow", label: "town", bold: true },
-		{ ch: "▪", color: "yellow", label: "village", bold: true },
+		{ ch: "□", color: "yellow", label: "village", bold: true },
 		{ ch: "!", color: "magenta", label: "errand", bold: true },
 		{ ch: "▲", color: "green", label: "wood" },
 		{ ch: "~", color: "blue", label: "water" },

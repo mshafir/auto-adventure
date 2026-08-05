@@ -23,7 +23,9 @@ import { Reader, readable } from "./panels/reader.js";
 import { type PanelTab, SidePanel } from "./panels/side-panel.js";
 import { FACING_MARKER, PLAYER_GLYPH } from "./render/glyphs.js";
 import { lightFor } from "./render/lighting.js";
+import { minimapCells } from "./render/minimap-data.js";
 import { cellPixels } from "./render/mode.js";
+import { minimapExtent } from "./render/overlay.js";
 import { PAL } from "./render/palette.js";
 import { tileFit } from "./render/raster.js";
 import { tileSourceFrom } from "./render/world-source.js";
@@ -250,6 +252,21 @@ export default function App({
 		[inside, view, player.x, player.y],
 	);
 
+	// Composited into the corner of the map rather than laid out beside it, so the
+	// same overlay works in both renderers — and so it survives the side panel
+	// going away. Sized in terminal cells for both, which keeps it the same
+	// fraction of the screen whichever one is drawing.
+	// Destructured to scalars: `minimapExtent` builds a fresh object every render,
+	// so depending on it would rebuild the map every frame and memoising it would
+	// be a lie.
+	const extent = minimapExtent(mapWidth, mapHeight);
+	const miniW = extent?.width ?? 0;
+	const miniH = extent?.height ?? 0;
+	const minimap = useMemo(
+		() => (miniW > 0 ? minimapCells(state, miniW, miniH) : undefined),
+		[state, miniW, miniH],
+	);
+
 	const composeOptions = useMemo(
 		() => ({
 			tint: light.tint,
@@ -306,6 +323,7 @@ export default function App({
 						options={composeOptions}
 						columns={mapWidth}
 						rows={mapHeight}
+						{...(minimap ? { minimap } : {})}
 					/>
 					<DialoguePanel
 						width={mapWidth}
