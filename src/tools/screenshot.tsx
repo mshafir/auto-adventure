@@ -411,7 +411,16 @@ const WANTED = new Set(process.argv.slice(2).filter((arg) => !arg.startsWith("--
 async function main() {
 	setColorDepth("truecolor");
 
-	await capture("town", "A town, seen from the road", () => undefined);
+	await capture("town", "A town, seen from the road", (engine, site) => {
+		// Walked here rather than dropped here. Without some ground behind them the
+		// minimap in the corner is an empty box, which reads as a panel that failed
+		// to load rather than as a map still to be filled in.
+		for (let dy = -4; dy <= 4; dy++) {
+			for (let dx = -6; dx <= 6; dx++) {
+				engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx + dx, site.my + dy) });
+			}
+		}
+	});
 
 	await capture("conversation", "Talking to somebody", (engine) => {
 		const npc = engine.getNpcs().all()[0];
@@ -521,6 +530,8 @@ async function main() {
 		// shows the warning that stops an errand item being thrown away.
 		1,
 	);
+
+	await capture("key", "What the glyphs on the map mean", () => undefined, "key");
 
 	await capture("opening", "How a game introduces itself", (engine) => {
 		// The card every flavour opens on, assembled from what the world knows about

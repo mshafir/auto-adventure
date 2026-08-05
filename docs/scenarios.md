@@ -248,20 +248,20 @@ and set flags through zero new runtime machinery.
 
 ## The story on screen
 
-Two panes read the arc, and both were thinner than the arc deserved.
+Two pages read the arc, and both were thinner than the arc deserved.
 
-**The quest pane** pins the main quest above the errand list, reachable without
+**The quest page** pins the main quest above the errand list, reachable without
 moving a cursor, because the arc is not an errand: it has no bearing, it cannot be
 completed by walking somewhere, and it is the thing a player most often wants
 reminding of. `arcOutline(arc, state)` assembles it:
 
 ```
-─ THE HOLLOW TITHE 1/3 ─────
-Your sister took the warden's badge, walked the…
+─ THE HOLLOW TITHE — THE STORY SO FAR ──────────────
+Your sister took the warden's badge, walked the road east, and stopped writing.
 [x] Take the tally to Stonewait
 [~] Timber for the mill
-─ CLUES ────────────────────
-• Ilse Marrow keeps her own count, and it is short…
+─ CLUES ────────────────────────────────────────────
+• Ilse Marrow keeps her own count, and it is short by a cord a month.
 ```
 
 It is deliberately **backwards-looking**. Steps already reached, the clues already
@@ -280,24 +280,25 @@ first time an author edited a line.
 
 ### Reading in full
 
-The panel is 32 columns wide and a fixed number of rows tall, which is right for
-checking a bearing and hopeless for reading. A quest description, a journal entry
-and a story clue are all prose written for a human, and all three were being cut
-mid-sentence — on exactly the part worth reading.
+This used to live in a side panel 32 columns wide and a fixed number of rows
+tall, which is right for checking a bearing and hopeless for reading. A quest
+description, a journal entry and a story clue are all prose written for a human,
+and all three were being cut mid-sentence — on exactly the part worth reading.
 
-Widening the panel is wrong twice over: the map pays for the columns, and a pane
+Widening the panel was wrong twice over: the map pays for the columns, and a pane
 tall enough to hold a quest log reaches the terminal height, at which point Ink
 stops updating incrementally and clears the screen on every keypress.
 
-So `Enter` on a focused list hands it the whole frame instead. Not a separate
-screen: the **same tab, the same cursor, the same list**, which is why the cursor
-survives collapsing — the two views agree about what an index means. Arrows move
-through entries, the panel keys switch what is being read without leaving, `Esc`
-returns to the map.
+So a list takes the whole frame, inside a heavy border that says you are in a
+mode. `Q` opens it and `Q` puts it down again, as does `Esc`; arrows move through
+the entries, and the other page keys switch what is being read without going back
+to the map first. Space is left alone throughout — it is the world's look-and-act
+key, and a keypress meant for the world must not reach it from a list.
 
-`Enter` and not `Space`: space is the world's look-and-act key and was already
-swallowed inside a focused panel on purpose, so a keypress meant for the world
-cannot reach it from a list.
+There is no smaller version to be in, which is a simplification the pixel
+renderer forced: Ink cuts a row of Unicode placeholders in half the moment
+anything shares the screen line with it, so the map has to own every column of
+its rows and there is no room beside it for a panel to live in.
 
 The reader sits above dialogue in `routeKey`'s precedence. A dialogue turn resolves
 asynchronously and can land at any moment; taking the arrow keys off somebody
