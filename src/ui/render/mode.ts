@@ -319,6 +319,59 @@ export function tilePixels(env: NodeJS.ProcessEnv = process.env, cell = cellPixe
 }
 
 /**
+ * The most pixels one frame may be.
+ *
+ * A frame is drawn at the map's own screen resolution, so its size is decided by
+ * the window rather than by anything we choose — and on a large one that gets out
+ * of hand fast. Measured at 163x70 cells with Ghostty's 19x42 cell: **3078x2584,
+ * which is 8 megapixels and 24MB of raw RGB, sent again on every keypress.** The
+ * terminal has to inflate that and reallocate a texture each time; hold a
+ * direction key and it is hundreds of megabytes a second. Ghostty died doing it.
+ *
+ * Four megapixels is where a 37-row window already sat, so the common case is
+ * untouched and only the large ones are pulled back. Past the cap the frame is
+ * drawn smaller and the terminal scales it up into the same cells — the protocol
+ * does that anyway, since `c` and `r` are sent explicitly. Slightly softer, which
+ * is a fair trade against taking the terminal down.
+ *
+ * `FRAME_PIXELS` moves it, for a machine with more or less room than this assumes.
+ */
+export const DEFAULT_FRAME_PIXELS = 4_000_000;
+
+function frameBudget(env: NodeJS.ProcessEnv): number {
+	const raw = Number(env.FRAME_PIXELS);
+	return Number.isFinite(raw) && raw >= 100_000 ? Math.trunc(raw) : DEFAULT_FRAME_PIXELS;
+}
+
+/** Below this a sprite stops being a picture of anything, cap or no cap. */
+const MIN_TILE_PX = 8;
+
+/**
+ * How many pixels a tile gets when it is actually drawn.
+ *
+ * {@link tilePixels} says how big a tile *wants* to be — the room the glyph
+ * renderer gives it, so the two show the same field of view. This says how big it
+ * may be drawn given how many of them there are, which is the same thing until the
+ * frame would be enormous.
+ *
+ * Only the drawing shrinks. The camera still covers the tiles it did, so the same
+ * amount of world is on screen and nothing about the layout moves; the image just
+ * arrives at a lower resolution and is scaled back up by the terminal.
+ */
+export function renderTilePixels(
+	tilesWide: number,
+	tilesHigh: number,
+	env: NodeJS.ProcessEnv = process.env,
+	cell = cellPixels(env),
+): number {
+	const wanted = tilePixels(env, cell);
+	const tiles = Math.max(1, tilesWide * tilesHigh);
+	// Area scales with the square of the tile size, so the cap does too.
+	const affordable = Math.floor(Math.sqrt(frameBudget(env) / tiles));
+	return Math.max(MIN_TILE_PX, Math.min(wanted, affordable));
+}
+
+/**
  * A terminal cell's size in pixels.
  *
  * `CELL_PX=WxH` wins, then whatever {@link measureCellPixels} found, then the

@@ -25,7 +25,7 @@ import { PLAYER_GLYPH } from "./render/glyphs.js";
 import { MAX_PLACEHOLDER_INDEX } from "./render/kitty.js";
 import { lightFor } from "./render/lighting.js";
 import { minimapCells } from "./render/minimap-data.js";
-import { cellPixels, tilePixels } from "./render/mode.js";
+import { cellPixels, renderTilePixels, tilePixels } from "./render/mode.js";
 import { minimapExtent } from "./render/overlay.js";
 import { PAL } from "./render/palette.js";
 import { tileFit } from "./render/raster.js";
@@ -208,9 +208,13 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	// bug that looks like a rendering fault.
 	useEffect(() => {
 		const cell = cellPixels();
+		const tilePx = renderTilePixels(fit.width, fit.height);
+		const megapixels = ((fit.width * tilePx * (fit.height * tilePx)) / 1_000_000).toFixed(1);
 		logger.info(
 			`layout: terminal ${width}x${height} cells, map ${mapWidth}x${mapHeight}, ` +
-				`cell ${cell.width}x${cell.height}px, tile ${tilePixels()}px, camera ${fit.width}x${fit.height} tiles`,
+				`cell ${cell.width}x${cell.height}px, tile ${tilePixels()}px` +
+				`${tilePx === tilePixels() ? "" : ` (drawn at ${tilePx}px)`}, ` +
+				`camera ${fit.width}x${fit.height} tiles, frame ${megapixels}MP`,
 		);
 	}, [width, height, mapWidth, mapHeight, fit.width, fit.height]);
 	const camera = useMemo(

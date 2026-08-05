@@ -269,9 +269,19 @@ that shows as flicker: the image and the frame that displays it have to reach
 the terminal inside a single synchronized update, or every step is presented
 twice.
 
-If it still flickers on your terminal, the next lever is the payload —
-`KITTY_DEFLATE=6` roughly halves the bytes for more CPU, and `ZOOM=0.8` reduces
-both.
+A frame is drawn at the map's own screen resolution, so a large window decides
+its size rather than anything the game chooses — and that gets out of hand fast.
+At 163x70 cells with a 19x42 cell it came to eight megapixels: 24MB of raw RGB,
+sent again on every keypress for the terminal to inflate and turn into a fresh
+texture. Hold a direction key and that is hundreds of megabytes a second, and it
+took Ghostty down. So a frame is capped at four megapixels — where a 37-row
+window already sat, so ordinary sizes are untouched — and past that the tiles are
+*drawn* smaller and the terminal scales the image back into the same cells.
+`FRAME_PIXELS` moves the cap; the log line says when one is being scaled.
+
+If it still flickers on your terminal, the next levers are the payload —
+`KITTY_DEFLATE=6` roughly halves the bytes for more CPU, `ZOOM=0.8` reduces both,
+and `FRAME_PIXELS=2000000` halves the picture again.
 
 ## Choosing what to play
 

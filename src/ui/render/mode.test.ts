@@ -4,10 +4,12 @@ import { QUERY_IMAGE_ID } from "./kitty.js";
 import {
 	cellPixels,
 	cellPixelsWereMeasured,
+	DEFAULT_FRAME_PIXELS,
 	graphicsProbe,
 	measureCellPixels,
 	probePlan,
 	probeTerminal,
+	renderTilePixels,
 	resolveTileMode,
 	setCellPixels,
 	setGraphicsProbe,
@@ -319,6 +321,79 @@ describe("tilePixels", () => {
 		expect(tilePixels({ ZOOM: "0" }, cell)).toBe(19 * TILE_WIDTH);
 		// Below four pixels a sprite is not a picture of anything.
 		expect(tilePixels({ ZOOM: "0.01" }, cell)).toBe(4);
+	});
+});
+
+/**
+ * How big a frame is allowed to be, which is not the same question as how big a
+ * tile wants to be.
+ *
+ * A frame is drawn at the map's own screen resolution, so a large window decides
+ * its size for us. At 163x70 cells with Ghostty's 19x42 cell that came to eight
+ * megapixels — 24MB of raw RGB, sent again on every keypress, inflated and turned
+ * into a fresh texture by the terminal each time. Hold a direction key and it is
+ * hundreds of megabytes a second, and the terminal died doing it.
+ */
+describe("renderTilePixels", () => {
+	const CELL = { width: 19, height: 42 };
+	const frame = (tiles: { width: number; height: number }, px: number) =>
+		tiles.width * px * (tiles.height * px);
+
+	it("draws a tile at its full size while the frame is a reasonable one", () => {
+		// A 37-row window: 81x32 tiles at 38px is 3.7MP, which is under the budget and
+		// is what the game was already doing happily.
+		expect(renderTilePixels(81, 32, {}, CELL)).toBe(tilePixels({}, CELL));
+	});
+
+	/*
+	 * And the case that killed the terminal. Same tile size, twice the rows.
+	 */
+	it("draws smaller rather than sending an eight-megapixel frame", () => {
+		const tiles = { width: 81, height: 68 };
+		const wanted = tilePixels({}, CELL);
+		expect(frame(tiles, wanted)).toBeGreaterThan(DEFAULT_FRAME_PIXELS);
+
+		const drawn = renderTilePixels(tiles.width, tiles.height, {}, CELL);
+		expect(drawn).toBeLessThan(wanted);
+		expect(frame(tiles, drawn)).toBeLessThanOrEqual(DEFAULT_FRAME_PIXELS);
+	});
+
+	it("keeps any frame inside the budget, at any size of window", () => {
+		for (let across = 20; across <= 200; across += 7) {
+			for (let down = 10; down <= 120; down += 7) {
+				const px = renderTilePixels(across, down, {}, CELL);
+				// The floor wins on an absurdly large grid, since a tile below it is not a
+				// picture of anything; everything reachable from a real window is capped.
+				if (px > 8) {
+					expect(
+						frame({ width: across, height: down }, px),
+						`${across}x${down}`,
+					).toBeLessThanOrEqual(DEFAULT_FRAME_PIXELS);
+				}
+			}
+		}
+	});
+
+	it("never draws a tile too small to be a picture of anything", () => {
+		expect(renderTilePixels(4000, 4000, {}, CELL)).toBe(8);
+	});
+
+	it("lets FRAME_PIXELS move the budget in both directions", () => {
+		const tiles = { width: 81, height: 68 };
+		const tight = renderTilePixels(tiles.width, tiles.height, { FRAME_PIXELS: "1000000" }, CELL);
+		const loose = renderTilePixels(tiles.width, tiles.height, { FRAME_PIXELS: "40000000" }, CELL);
+		expect(frame(tiles, tight)).toBeLessThanOrEqual(1_000_000);
+		// Above the budget the tile is back to the size it wanted, never larger.
+		expect(loose).toBe(tilePixels({}, CELL));
+	});
+
+	it("ignores a budget that is nonsense or absurdly small", () => {
+		const tiles = { width: 81, height: 68 };
+		const plain = renderTilePixels(tiles.width, tiles.height, {}, CELL);
+		expect(renderTilePixels(tiles.width, tiles.height, { FRAME_PIXELS: "banana" }, CELL)).toBe(
+			plain,
+		);
+		expect(renderTilePixels(tiles.width, tiles.height, { FRAME_PIXELS: "10" }, CELL)).toBe(plain);
 	});
 });
 
