@@ -6,13 +6,16 @@ import type { ScenarioSummary } from "../../scenario/repo.js";
 import type { LaunchChoice } from "../../scenario/scenario.js";
 import { Launcher } from "./launcher.js";
 
+const NOW = Date.parse("2026-08-05T12:00:00.000Z");
+
 const SAVE: SaveSummary = {
 	worldId: "hollowmoor",
 	name: "hollowmoor",
 	seed: hashString("hollowmoor"),
 	at: { x: 4, y: 9 },
 	day: 3,
-	playedAt: 1000,
+	playedAt: NOW - 26 * 60 * 60 * 1000,
+	createdAt: "2026-07-12T09:00:00.000Z",
 };
 
 const SCENARIO: ScenarioSummary = {
@@ -27,47 +30,115 @@ interface Mounted {
 	readonly ink: InkHarness;
 	readonly chosen: LaunchChoice[];
 	readonly quits: number[];
+	readonly deleted: string[];
 }
 
 function mount(
-	options: { saves?: SaveSummary[]; canUseModel?: boolean; unavailableNote?: string } = {},
+	options: {
+		saves?: SaveSummary[];
+		scenarios?: ScenarioSummary[];
+		canUseModel?: boolean;
+		unavailableNote?: string;
+	} = {},
 ): Mounted {
 	const chosen: LaunchChoice[] = [];
 	const quits: number[] = [];
+	const deleted: string[] = [];
 	const saves = options.saves ?? [SAVE];
 	const ink = renderInk(
 		<Launcher
 			saves={saves}
-			scenarios={[SCENARIO]}
+			scenarios={options.scenarios ?? [SCENARIO]}
 			canUseModel={options.canUseModel ?? true}
 			{...(options.unavailableNote ? { unavailableNote: options.unavailableNote } : {})}
 			context={{ saves, baseWorldId: "default", noAi: false }}
+			now={NOW}
 			onChoose={(choice) => chosen.push(choice)}
+			onDelete={(worldId) => deleted.push(worldId)}
 			onQuit={() => quits.push(1)}
 		/>,
 	);
-	return { ink, chosen, quits };
+	return { ink, chosen, quits, deleted };
 }
 
-/** Step onto the "Briefed" row and open the field. With no saves the rows are
- * scenario, then Briefed. */
-async function openBrief(m: Mounted) {
+/** A screen with its line wrapping undone, for matching a sentence that spans rows. */
+const flowed = (screen: string) => screen.replace(/\s+/g, " ");
+
+/** From the title screen to the New page. Continue is above it when saves exist. */
+async function toNew(m: Mounted, hasSaves = true) {
 	await m.ink.settle();
-	await m.ink.type(KEY.down);
+	if (hasSaves) await m.ink.type(KEY.down);
 	await m.ink.type(KEY.enter);
 }
 
-describe("the launcher", () => {
-	it("shows what there is to continue, play and start", async () => {
+describe("the title screen", () => {
+	it("names the game, its author, and how it was made", async () => {
+		const { ink } = mount();
+		await ink.settle();
+		const text = ink.screen();
+		expect(text).toContain("by Michael Shafir");
+		expect(text).toContain("produced with the help of large language models");
+		ink.unmount();
+	});
+
+	it("draws the banner as art, not as a wrapped mess", async () => {
+		// A banner wider than the terminal does not read as a small title; it reads as
+		// a rendering fault, which is the first thing anybody sees of the game.
+		const { ink } = mount();
+		await ink.settle();
+		for (const line of ink.screen().split("\n")) {
+			expect(line.length, line).toBeLessThanOrEqual(100);
+		}
+		expect(ink.screen()).toContain("#");
+		ink.unmount();
+	});
+
+	it("falls back to plain words in a terminal too narrow for any banner", async () => {
+		const chosen: LaunchChoice[] = [];
+		const ink = renderInk(
+			<Launcher
+				saves={[]}
+				scenarios={[]}
+				canUseModel={false}
+				context={{ saves: [], baseWorldId: "default", noAi: false }}
+				now={NOW}
+				onChoose={(choice) => chosen.push(choice)}
+				onQuit={() => undefined}
+			/>,
+			{ columns: 40 },
+		);
+		await ink.settle();
+		expect(ink.screen()).toContain("AUTO ADVENTURE");
+		expect(ink.screen()).not.toContain("#");
+		ink.unmount();
+	});
+
+	it("offers two ways on, and says how many worlds are waiting", async () => {
 		const { ink } = mount();
 		await ink.settle();
 		const text = ink.screen();
 		expect(text).toContain("Continue");
-		expect(text).toContain("hollowmoor");
-		expect(text).toContain("Scenarios");
-		expect(text).toContain("The Drowned Archipelago");
+		expect(text).toContain("1 world");
 		expect(text).toContain("New world");
 		ink.unmount();
+	});
+
+	it("does not offer Continue when there is nothing to continue", async () => {
+		const { ink } = mount({ saves: [] });
+		await ink.settle();
+		expect(ink.screen()).not.toContain("Continue");
+		ink.unmount();
+	});
+
+	it("quits on Q, and on Esc, without choosing anything", async () => {
+		for (const key of ["q", KEY.escape]) {
+			const { ink, chosen, quits } = mount();
+			await ink.settle();
+			await ink.type(key);
+			expect(quits, key).toHaveLength(1);
+			expect(chosen, key).toHaveLength(0);
+			ink.unmount();
+		}
 	});
 
 	it("does not crash once its effects have run", async () => {
@@ -79,47 +150,38 @@ describe("the launcher", () => {
 		expect(ink.screen()).not.toContain("ERROR");
 		ink.unmount();
 	});
+});
 
-	it("starts with a selection on the first real row", async () => {
-		const { ink } = mount();
-		await ink.settle();
-		expect(ink.screen()).toMatch(/❯ hollowmoor/);
-		ink.unmount();
-	});
-
-	it("resumes the highlighted save on ENTER", async () => {
-		const { ink, chosen } = mount();
-		await ink.settle();
-		await ink.type(KEY.enter);
-		expect(chosen).toHaveLength(1);
-		expect(chosen[0]?.worldId).toBe("hollowmoor");
-		expect(chosen[0]?.mustExist).toBe(true);
-		ink.unmount();
-	});
-
-	it("walks past the headings when moving down", async () => {
-		const { ink, chosen } = mount();
-		await ink.settle();
-		// One row below the only save is the scenario, with a heading in between that
-		// the cursor has to step over.
-		await ink.type(KEY.down);
-		await ink.type(KEY.enter);
-		expect(chosen[0]?.flavour).toBe("prebuilt");
-		expect(chosen[0]?.worldId).toBe("drowned-archipelago");
-		ink.unmount();
+describe("starting a new world", () => {
+	it("explains each way of starting one, rather than naming it", async () => {
+		const m = mount();
+		await toNew(m);
+		const text = m.ink.screen();
+		for (const label of ["Briefed", "Unguided", "Without a model", "A written scenario"]) {
+			expect(text, `no option called ${label}`).toContain(label);
+		}
+		// The paragraph is the whole reason this is its own page: five words cannot
+		// say that one of these needs a network and the others do not. Matched against
+		// the text with its wrapping collapsed, since a sentence spans several rows.
+		const prose = flowed(text);
+		expect(prose).toContain("No network and no key");
+		expect(prose).toContain("a model writes the places and the people to match");
+		m.ink.unmount();
 	});
 
 	it("asks for a brief before starting a briefed world", async () => {
-		const m = mount({ saves: [] });
-		await openBrief(m);
+		const m = mount();
+		await toNew(m);
+		await m.ink.type(KEY.enter);
 		expect(m.ink.screen()).toContain("What should this world be about?");
 		expect(m.chosen).toHaveLength(0);
 		m.ink.unmount();
 	});
 
 	it("carries the typed premise into the choice", async () => {
-		const m = mount({ saves: [] });
-		await openBrief(m);
+		const m = mount();
+		await toNew(m);
+		await m.ink.type(KEY.enter);
 		await m.ink.type("a drowned archipelago");
 		await m.ink.type(KEY.enter);
 		expect(m.chosen).toHaveLength(1);
@@ -127,41 +189,12 @@ describe("the launcher", () => {
 		m.ink.unmount();
 	});
 
-	it("shows what is being typed", async () => {
-		const m = mount({ saves: [] });
-		await openBrief(m);
-		await m.ink.type("rope");
-		expect(m.ink.screen()).toContain("rope");
-		m.ink.unmount();
-	});
-
-	it("erases on backspace", async () => {
-		const m = mount({ saves: [] });
-		await openBrief(m);
-		await m.ink.type("rope");
-		await m.ink.type(KEY.backspace);
-		await m.ink.type(KEY.enter);
-		expect(m.chosen[0]?.brief?.premise).toBe("rop");
-		m.ink.unmount();
-	});
-
-	it("does not put arrow keys into the brief", async () => {
-		// Without filtering these, pressing up would insert a raw escape sequence.
-		const m = mount({ saves: [] });
-		await openBrief(m);
-		await m.ink.type("rope");
-		await m.ink.type(KEY.up);
-		await m.ink.type(KEY.down);
-		await m.ink.type(KEY.enter);
-		expect(m.chosen[0]?.brief?.premise).toBe("rope");
-		m.ink.unmount();
-	});
-
 	it("treats an empty brief as no brief", async () => {
 		// Whitespace is not an instruction. The world should be unguided rather than
 		// prompted with a blank.
-		const m = mount({ saves: [] });
-		await openBrief(m);
+		const m = mount();
+		await toNew(m);
+		await m.ink.type(KEY.enter);
 		await m.ink.type("   ");
 		await m.ink.type(KEY.enter);
 		expect(m.chosen).toHaveLength(1);
@@ -169,39 +202,177 @@ describe("the launcher", () => {
 		m.ink.unmount();
 	});
 
-	it("goes back to the list when the brief is abandoned", async () => {
-		const m = mount({ saves: [] });
-		await openBrief(m);
+	it("goes back to the modes when the brief is abandoned", async () => {
+		const m = mount();
+		await toNew(m);
+		await m.ink.type(KEY.enter);
 		await m.ink.type(KEY.escape);
-		expect(m.ink.screen()).toContain("New world");
+		expect(m.ink.screen()).toContain("Unguided");
 		expect(m.chosen).toHaveLength(0);
 		m.ink.unmount();
 	});
 
-	it("says why a live world is missing, in the caller's words", async () => {
+	it("starts an unguided world straight away", async () => {
+		const m = mount();
+		await toNew(m);
+		await m.ink.type(KEY.down);
+		await m.ink.type(KEY.enter);
+		expect(m.chosen).toHaveLength(1);
+		expect(m.chosen[0]?.flavour).toBe("live");
+		expect(m.chosen[0]?.brief).toBeUndefined();
+		m.ink.unmount();
+	});
+
+	it("says why the live options are missing, in the caller's words", async () => {
 		// The reason differs — a missing key or a deliberate NO_AI — and giving the
 		// wrong one is worse than giving none, so the launcher does not guess.
-		const { ink } = mount({ canUseModel: false, unavailableNote: "NO_AI is set." });
-		await ink.settle();
-		const text = ink.screen();
+		const m = mount({ canUseModel: false, unavailableNote: "NO_AI is set." });
+		await toNew(m);
+		const text = m.ink.screen();
 		expect(text).toContain("NO_AI is set.");
-		expect(text).not.toContain("Unguided");
-		ink.unmount();
+		// Shown but greyed: hiding it would read as the wrong build rather than a
+		// missing key. Choosing lands on the one that works.
+		expect(text).toContain("Briefed");
+		await m.ink.type(KEY.enter);
+		expect(m.chosen[0]?.flavour).toBe("procedural");
+		m.ink.unmount();
 	});
 
-	it("offers no explanation when none was given", async () => {
-		const { ink } = mount({ canUseModel: false });
-		await ink.settle();
-		expect(ink.screen()).not.toContain("not on offer");
-		ink.unmount();
+	it("goes back to the title on Esc", async () => {
+		const m = mount();
+		await toNew(m);
+		await m.ink.type(KEY.escape);
+		expect(m.ink.screen()).toContain("by Michael Shafir");
+		m.ink.unmount();
+	});
+});
+
+describe("the scenarios page", () => {
+	async function toScenarios(m: Mounted) {
+		await toNew(m);
+		for (let i = 0; i < 3; i++) await m.ink.type(KEY.down);
+		await m.ink.type(KEY.enter);
+	}
+
+	it("gives a scenario its title and the blurb somebody wrote for it", async () => {
+		const m = mount();
+		await toScenarios(m);
+		const text = m.ink.screen();
+		expect(text).toContain("The Drowned Archipelago");
+		expect(text).toContain("Debt-collectors and rope.");
+		expect(text).toContain("13 places");
+		m.ink.unmount();
 	});
 
-	it("quits on Q without choosing anything", async () => {
-		const { ink, chosen, quits } = mount();
-		await ink.settle();
-		await ink.type("q");
-		expect(quits).toHaveLength(1);
-		expect(chosen).toHaveLength(0);
-		ink.unmount();
+	it("begins the chosen scenario as a prebuilt world", async () => {
+		const m = mount();
+		await toScenarios(m);
+		await m.ink.type(KEY.enter);
+		expect(m.chosen).toHaveLength(1);
+		expect(m.chosen[0]?.flavour).toBe("prebuilt");
+		expect(m.chosen[0]?.worldId).toBe("drowned-archipelago");
+		m.ink.unmount();
+	});
+
+	it("cannot be opened when there are none installed", async () => {
+		const m = mount({ scenarios: [] });
+		await toNew(m);
+		expect(m.ink.screen()).toContain("none installed");
+		for (let i = 0; i < 3; i++) await m.ink.type(KEY.down);
+		await m.ink.type(KEY.enter);
+		// The cursor never lands on it, so ENTER starts the mode above instead.
+		expect(m.chosen[0]?.flavour).toBe("procedural");
+		m.ink.unmount();
+	});
+
+	it("goes back to the modes on Esc", async () => {
+		const m = mount();
+		await toScenarios(m);
+		await m.ink.type(KEY.escape);
+		expect(m.ink.screen()).toContain("Unguided");
+		m.ink.unmount();
+	});
+});
+
+describe("continuing a world", () => {
+	async function toContinue(m: Mounted) {
+		await m.ink.settle();
+		await m.ink.type(KEY.enter);
+	}
+
+	it("says how far in the world is, and when it was last touched", async () => {
+		const m = mount();
+		await toContinue(m);
+		const text = m.ink.screen();
+		expect(text).toContain("hollowmoor");
+		expect(text).toContain("day 3");
+		expect(text).toContain("at 4,9");
+		// In words, because a timestamp makes the reader do the subtraction.
+		expect(text).toContain("played yesterday");
+		expect(text).toContain("made ");
+		m.ink.unmount();
+	});
+
+	it("resumes the highlighted world on ENTER", async () => {
+		const m = mount();
+		await toContinue(m);
+		await m.ink.type(KEY.enter);
+		expect(m.chosen).toHaveLength(1);
+		expect(m.chosen[0]?.worldId).toBe("hollowmoor");
+		expect(m.chosen[0]?.mustExist).toBe(true);
+		m.ink.unmount();
+	});
+
+	it("asks before deleting, and does nothing if the answer is no", async () => {
+		// A world is hours of play and there is no undo, so D can only ever raise the
+		// question.
+		const m = mount();
+		await toContinue(m);
+		await m.ink.type("d");
+		expect(m.ink.screen()).toContain("gone for good");
+		expect(m.deleted).toHaveLength(0);
+
+		await m.ink.type("n");
+		expect(m.deleted).toHaveLength(0);
+		expect(m.ink.screen()).toContain("hollowmoor");
+		m.ink.unmount();
+	});
+
+	it("deletes on Y, and the world leaves the page with it", async () => {
+		const m = mount();
+		await toContinue(m);
+		await m.ink.type("d");
+		await m.ink.type("y");
+		expect(m.deleted).toEqual(["hollowmoor"]);
+		expect(m.ink.screen()).not.toContain("hollowmoor");
+		expect(m.ink.screen()).toContain("no worlds to go back to");
+		m.ink.unmount();
+	});
+
+	it("does not resume anything while the question is up", async () => {
+		// The confirm owns the keyboard, or ENTER would answer it and start the world
+		// in the same keypress.
+		const m = mount();
+		await toContinue(m);
+		await m.ink.type("d");
+		await m.ink.type(KEY.enter);
+		expect(m.chosen).toHaveLength(0);
+		expect(m.deleted).toHaveLength(0);
+		m.ink.unmount();
+	});
+
+	it("names the scenario a world came from", async () => {
+		const m = mount({ saves: [{ ...SAVE, scenarioId: "drowned-archipelago" }] });
+		await toContinue(m);
+		expect(m.ink.screen()).toContain("drowned-archipelago");
+		m.ink.unmount();
+	});
+
+	it("goes back to the title on Esc", async () => {
+		const m = mount();
+		await toContinue(m);
+		await m.ink.type(KEY.escape);
+		expect(m.ink.screen()).toContain("by Michael Shafir");
+		m.ink.unmount();
 	});
 });

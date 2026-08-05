@@ -4,6 +4,7 @@ import {
 	readdirSync,
 	readFileSync,
 	renameSync,
+	rmSync,
 	statSync,
 	unlinkSync,
 	writeFileSync,
@@ -50,6 +51,15 @@ export interface SaveSummary {
 	readonly scenarioId?: string;
 	/** Modification time, for ordering. Most recently played first. */
 	readonly playedAt: number;
+	/**
+	 * When the world was made, as the ISO string the state has carried all along.
+	 *
+	 * Surfaced because the Continue page has to answer "which of these is which",
+	 * and two worlds last played the same evening are told apart by their age.
+	 * Optional: a save from before the field existed has none, and that is a world
+	 * worth still being able to resume.
+	 */
+	readonly createdAt?: string;
 }
 
 /**
@@ -82,10 +92,41 @@ export function listSaves(): SaveSummary[] {
 			day: state.time.day,
 			...(state.world.scenarioId ? { scenarioId: state.world.scenarioId } : {}),
 			playedAt: statSync(path).mtimeMs,
+			...(state.world.createdAt ? { createdAt: state.world.createdAt } : {}),
 		});
 	}
 	summaries.sort((a, b) => b.playedAt - a.playedAt);
 	return summaries;
+}
+
+/**
+ * Throw a world away, for good.
+ *
+ * The whole slot directory, not just `save.json`: leaving the folder behind would
+ * make the world invisible in the launcher while still holding its name, so a new
+ * world of the same name would be uniquified to `hollowmoor-2` for no reason the
+ * player could see.
+ *
+ * Guarded against deleting anything that is not a save slot. `worldId` reaches
+ * this from a save the launcher listed, so it is already trustworthy — but this is
+ * a recursive delete under the player's home directory, and a path separator
+ * arriving here from somewhere else must not be able to walk out of the saves
+ * folder. Cheap insurance against a mistake that has no undo.
+ */
+export function deleteSave(worldId: string): boolean {
+	if (!worldId || worldId.includes("/") || worldId.includes("\\") || worldId.includes("..")) {
+		logger.error(`refusing to delete a save called "${worldId}"`);
+		return false;
+	}
+	const dir = join(saveRoot(), "saves", worldId);
+	if (!existsSync(dir)) return false;
+	try {
+		rmSync(dir, { recursive: true, force: true });
+		return true;
+	} catch (error) {
+		logger.error(`failed to delete save "${worldId}"`, error);
+		return false;
+	}
 }
 
 /**

@@ -1,6 +1,6 @@
 import { render } from "ink";
 import { CONFIG, hasGatewayKey } from "../../config.js";
-import { listSaves } from "../../persist/save-repo.js";
+import { deleteSave, listSaves } from "../../persist/save-repo.js";
 import { listScenarios, loadScenario } from "../../scenario/repo.js";
 import type { LaunchChoice } from "../../scenario/scenario.js";
 import { logger } from "../../utils/log.js";
@@ -33,6 +33,11 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 			{...(CONFIG.brief ? { initialBrief: CONFIG.brief } : {})}
 			onChoose={(choice) => {
 				chosen = choice;
+			}}
+			onDelete={(worldId) => {
+				// Done here rather than in the component, which must stay renderable in a
+				// test without a temporary home directory to delete things out of.
+				if (deleteSave(worldId)) logger.info(`deleted save "${worldId}"`);
 			}}
 			onQuit={() => {
 				chosen = undefined;

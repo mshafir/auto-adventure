@@ -275,9 +275,40 @@ both.
 
 ## Choosing what to play
 
-`npm start` opens a menu: worlds to continue, scenarios to begin, and a new world
-either briefed or unguided. Saves are listed most recently played first, and a
-scenario world says which scenario it came from.
+`npm start` opens a title screen with two ways on:
+
+```
+ ###  #   # #####  ###   ###  ####  #   # ##### #   # ##### #   # ####  #####
+#   # #   #   #   #   # #   # #   # #   # #     ##  #   #   #   # #   # #
+##### #   #   #   #   # ##### #   # #   # ####  # # #   #   #   # ####  ####
+#   # #   #   #   #   # #   # #   #  # #  #     #  ##   #   #   # #  #  #
+#   #  ###    #    ###  #   # ####    #   ##### #   #   #    ###  #   # #####
+
+by Michael Shafir
+(produced with the help of large language models)
+
+❯ Continue  2 worlds
+  New world
+  Quit
+```
+
+**New world** explains the four ways to start one — briefed, unguided, without a
+model, or a written scenario — with a paragraph each rather than five words,
+because whether a model runs decides whether the world costs money, needs a
+network, and says things nobody wrote. An option that is unavailable is shown
+greyed with the reason, not hidden: a player who has heard the game writes its
+own worlds and cannot find the option concludes they have the wrong build.
+
+**Continue** lists each world with how far in it is, where you were standing,
+when you last played it in words ("yesterday") and when it was made. `D` deletes
+one, behind a confirm, which is the first time there has been any way to do that
+short of knowing where the game keeps its files.
+
+ESC goes back a page throughout, and back from the title is quitting. The banner
+is plain ASCII and comes from `assets/ui/title.txt` in several sizes; the widest
+that fits is used, and below the narrowest it falls back to the plain words. A
+wrapped banner does not read as a small title — it reads as a rendering fault, on
+the first screen anybody sees.
 
 Two cases skip the menu, because a menu would be wrong for both: naming a slot
 with `WORLD_NAME` (the caller already knows which world it wants) and having no

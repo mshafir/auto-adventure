@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import { createEffectRunner } from "../engine/effect-runner.js";
 import { GameEngine } from "../engine/engine.js";
 import { findSpawn } from "../engine/spawn.js";
 import { migrateSave } from "./migrate.js";
-import { SaveRepository, savePath } from "./save-repo.js";
+import { deleteSave, listSaves, SaveRepository, savePath } from "./save-repo.js";
 
 const SEED = hashString("persist-test");
 let home: string;
@@ -68,6 +68,61 @@ describe("SaveRepository", () => {
 		repo.schedule(newState());
 		repo.flush();
 		expect(() => readFileSync(`${savePath("test")}.tmp`)).toThrow();
+	});
+});
+
+describe("listing and deleting worlds", () => {
+	function write(id: string) {
+		const repo = new SaveRepository(0);
+		repo.schedule(newState(id));
+		repo.flush();
+	}
+
+	it("surfaces when a world was made, which is how two get told apart", () => {
+		write("hollowmoor");
+		const listed = listSaves();
+		expect(listed).toHaveLength(1);
+		expect(listed[0]?.createdAt).toBe("2026-01-01T00:00:00.000Z");
+		expect(listed[0]?.playedAt).toBeGreaterThan(0);
+	});
+
+	it("takes a world off the list, and its directory with it", () => {
+		write("hollowmoor");
+		write("thornwick");
+		expect(deleteSave("hollowmoor")).toBe(true);
+		expect(listSaves().map((save) => save.worldId)).toEqual(["thornwick"]);
+		expect(existsSync(dirname(savePath("hollowmoor")))).toBe(false);
+	});
+
+	/*
+	 * The whole directory rather than just `save.json`. A leftover folder makes the
+	 * world invisible in the launcher while still holding its name, so a new world
+	 * called the same thing would be uniquified to `hollowmoor-2` for no reason the
+	 * player could see.
+	 */
+	it("leaves nothing behind that would still hold the name", () => {
+		write("hollowmoor");
+		writeFileSync(join(dirname(savePath("hollowmoor")), "stray.txt"), "x");
+		deleteSave("hollowmoor");
+		expect(existsSync(dirname(savePath("hollowmoor")))).toBe(false);
+	});
+
+	it("says so rather than throwing when there is nothing to delete", () => {
+		expect(deleteSave("never-existed")).toBe(false);
+	});
+
+	/*
+	 * A recursive delete under the player's home directory. The id reaching this
+	 * comes from a save the launcher listed, so it is already trustworthy — but a
+	 * path separator arriving from anywhere else must not be able to walk out of the
+	 * saves folder, because there is no undo.
+	 */
+	it("refuses a name that could walk out of the saves directory", () => {
+		write("hollowmoor");
+		for (const bad of ["../saves", "a/b", "..", "", "a\\b"]) {
+			expect(deleteSave(bad), bad).toBe(false);
+		}
+		expect(listSaves()).toHaveLength(1);
 	});
 });
 
