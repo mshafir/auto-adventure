@@ -50,6 +50,14 @@ const DEFS = [
 	{ key: "campfire", name: "campfire", blocks: true, describe: "A campfire, still warm." },
 	{ key: "lamp", name: "lamppost", blocks: true, describe: "An iron lamppost." },
 	{ key: "item", name: "something", blocks: false, describe: "Something lies here." },
+	{
+		key: "boat",
+		name: "boat",
+		blocks: true,
+		describe: "A shallow-draught boat, tied fore and aft.",
+	},
+	{ key: "mooring", name: "mooring post", blocks: true, describe: "A tarred post, rope-worn." },
+	{ key: "banner", name: "banner", blocks: true, describe: "A banner, faded by weather." },
 ] as const satisfies readonly Omit<DecorDef, "id">[];
 
 export const DECOR: readonly DecorDef[] = DEFS.map((def, id) => ({ ...def, id }));

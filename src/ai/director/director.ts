@@ -7,6 +7,7 @@ import { regionContext, siteContext } from "../../core/world/context.js";
 import type { ChunkCoord } from "../../core/world/coords.js";
 import { HALO } from "../../core/world/coords.js";
 import { isSettlement, type MacroSite, sitesAround } from "../../core/world/macro.js";
+import type { WorldSeed } from "../../core/world/recipe.js";
 import type { RegionSpec, SiteSpec, SpecSource, WorldLore } from "../../core/world/spec.js";
 import { logger } from "../../utils/log.js";
 import { aiAvailable, structured } from "../client.js";
@@ -22,7 +23,7 @@ import {
 import { RegionSpecSchema, SiteSpecSchema, WorldLoreSchema } from "./schemas.js";
 
 export interface DirectorOptions {
-	readonly seed: number;
+	readonly world: WorldSeed;
 	/**
 	 * What the player asked this world to be about. Steers every authoring call.
 	 * Absent means the default premise, which is what every world before briefs
@@ -126,7 +127,7 @@ export class Director {
 	 * the real one, permanently.
 	 */
 	commitNear(cc: ChunkCoord): void {
-		for (const site of sitesAround(this.options.seed, cc.cx, cc.cy, 1)) {
+		for (const site of sitesAround(this.options.world, cc.cx, cc.cy, 1)) {
 			const key = String(site.id);
 			if (this.committed.has(key)) continue;
 			this.committed.add(key);
@@ -152,7 +153,7 @@ export class Director {
 		this.commitNear(cc);
 		if (!this.enabled) return;
 
-		for (const site of sitesAround(this.options.seed, cc.cx, cc.cy, HALO + 1)) {
+		for (const site of sitesAround(this.options.world, cc.cx, cc.cy, HALO + 1)) {
 			if (!isSettlement(site.kind) && site.kind !== "ruins") continue;
 			const key = String(site.id);
 			if (this.sites.has(key) || this.committed.has(key) || this.pending.has(key)) continue;
@@ -202,7 +203,7 @@ export class Director {
 		const known = this.regions.get(key);
 		if (known) return known;
 
-		const context = regionContext(this.options.seed, regionId, at);
+		const context = regionContext(this.options.world, regionId, at);
 		const lore = await this.ensureLore();
 		const response = await structured({
 			kind: "region",
@@ -224,7 +225,7 @@ export class Director {
 					lore: response.lore,
 					ambient: response.ambient,
 				}
-			: fallbackRegion(this.options.seed, context, this.pack);
+			: fallbackRegion(this.options.world.seed, context, this.pack);
 
 		this.regions.set(key, spec);
 		this.options.onRegion(spec);
@@ -234,7 +235,7 @@ export class Director {
 	private async resolveSite(site: MacroSite): Promise<void> {
 		const key = String(site.id);
 		try {
-			const context = siteContext(this.options.seed, site);
+			const context = siteContext(this.options.world, site);
 			const lore = await this.ensureLore();
 			const region = await this.ensureRegion(site.regionId, site.site);
 
@@ -300,6 +301,11 @@ export class Director {
 	}
 
 	private materialiseFallback(site: MacroSite): SiteSpec {
-		return fallbackSite(this.options.seed, site, siteContext(this.options.seed, site), this.pack);
+		return fallbackSite(
+			this.options.world.seed,
+			site,
+			siteContext(this.options.world, site),
+			this.pack,
+		);
 	}
 }

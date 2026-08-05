@@ -3,8 +3,9 @@ import type { DecorId } from "../../core/tiles/decor.js";
 import { T, TERRAIN, type TerrainId } from "../../core/tiles/terrain.js";
 import { autotileGlyph, neighborMask } from "./autotile.js";
 import type { RGB } from "./color.js";
-import { decorGlyphSource, type GlyphSource, terrainGlyphSource } from "./glyphs.js";
+import type { GlyphSource } from "./glyphs.js";
 import { PAL } from "./palette.js";
+import { DEFAULT_THEME, type TileTheme } from "./theme.js";
 
 /** A single resolved terminal cell, ready for {@link encodeRow}. */
 export interface Cell {
@@ -45,6 +46,17 @@ export interface Cell {
 	 */
 	terrain?: TerrainId;
 	decor?: DecorId;
+	/**
+	 * What everything atmospheric multiplied this cell's colours by.
+	 *
+	 * A two-colour sprite needs nothing of the sort — day/night, field of view, tint,
+	 * relief and contact shadows are already folded into `fg` and `bg`, so any shape
+	 * drawn in them inherits the lot for free. A **full-colour** tile from a pack's
+	 * atlas carries its own colours and cannot, so the factors are recorded here for
+	 * the rasteriser to apply to the atlas pixels instead. Absent when nothing was
+	 * applied, which is most of the map in broad daylight.
+	 */
+	mul?: readonly [number, number, number];
 }
 
 /** Drawn above decor: the player, NPCs, creatures. */
@@ -94,6 +106,21 @@ export interface Camera {
 }
 
 export interface ComposeOptions {
+	/**
+	 * How this world looks: palette, glyph tables, sprite overrides.
+	 *
+	 * Defaults to the built-in look, so every caller that does not care about tile
+	 * packs — the tests, the panels, the minimap — carries on unchanged.
+	 */
+	readonly theme?: TileTheme;
+	/**
+	 * Record the lighting multiplier on every cell.
+	 *
+	 * Off by default because it costs an allocation per lit cell and only a
+	 * full-colour tile pack has any use for it. The renderer turns it on when the
+	 * theme it was handed contains a bitmap.
+	 */
+	readonly multipliers?: boolean;
 	/** Multiplied into every colour. Drives day/night and interior lighting. */
 	readonly tint?: RGB;
 	/** 0 = untouched, 1 = fully tinted. */
@@ -262,6 +289,20 @@ export function composeScene(
 	const strength = tint ? (options.tintStrength ?? 1) : 0;
 	const shadows = options.shadows ?? false;
 	const relief = (options.relief ?? false) && source.elevationAt !== undefined;
+	const theme = options.theme ?? DEFAULT_THEME;
+	// A pack with full-colour tiles needs the multiplier; nothing else does, so the
+	// theme itself decides rather than every caller having to remember.
+	const wantMul = options.multipliers ?? theme.hasBitmaps;
+	// The tint is a blend toward `c * tint / 255`, which is per-channel multiplicative:
+	// `c * ((1 - s) + s * tint / 255)`. Precomputed once rather than per cell.
+	const tintMul: readonly [number, number, number] =
+		tint && strength > 0
+			? [
+					1 - strength + (strength * (tint[0] as number)) / 255,
+					1 - strength + (strength * (tint[1] as number)) / 255,
+					1 - strength + (strength * (tint[2] as number)) / 255,
+				]
+			: [1, 1, 1];
 	const rows: Cell[][] = new Array(height);
 
 	for (let row = 0; row < height; row++) {
@@ -282,7 +323,7 @@ export function composeScene(
 			const terrain = source.terrainAt(wx, wy);
 
 			let mask = 0;
-			const terrainSource = terrainGlyphSource(terrain);
+			const terrainSource = theme.terrain[terrain] ?? (theme.terrain[T.void] as GlyphSource);
 			if (terrainSource.kind === "autotile") {
 				mask = neighborMask(
 					terrainSource.set,
@@ -304,7 +345,7 @@ export function composeScene(
 
 			const decor = source.decorAt(wx, wy);
 			if (decor !== 0) {
-				const glyph = resolve(decorGlyphSource(decor), variant, 0);
+				const glyph = resolve(theme.decor[decor] ?? (theme.decor[0] as GlyphSource), variant, 0);
 				if (glyph) {
 					ch = glyph.ch;
 					fg = glyph.fg;
@@ -318,6 +359,7 @@ export function composeScene(
 			// hillside never changes how bright the player's own glyph is. The
 			// background still carries the shading under them, which is what keeps
 			// them standing on the terrain rather than in a hole punched through it.
+			let ground = 1;
 			if (relief || shadows) {
 				let factor = relief ? reliefAt(source, wx, wy) : 1;
 				if (shadows && !CASTS_SHADOW[terrain]) {
@@ -335,6 +377,7 @@ export function composeScene(
 					fg = scaleColor(fg, factor);
 					bg = scaleColor(bg, factor);
 				}
+				ground = factor;
 			}
 
 			let moving = false;
@@ -371,9 +414,33 @@ export function composeScene(
 				bg = scaleColor(bg, light);
 			}
 
+			// Relief and contact shadows are ground shading and were applied before the
+			// entity layer overwrote `fg`, so an entity's own colours never carry them —
+			// and neither should the multiplier handed to a bitmap of one.
+			const shade = moving ? 1 : ground;
+			const mul =
+				wantMul && (shade !== 1 || light < 1 || tintMul[0] !== 1)
+					? ([
+							shade * light * tintMul[0],
+							shade * light * tintMul[1],
+							shade * light * tintMul[2],
+						] as const)
+					: undefined;
+
 			cells[col] = moving
-				? { ch, fg, bg, bold, dim, entity: true, terrain, decor, ...(facing ? { facing } : {}) }
-				: { ch, fg, bg, bold, dim, terrain, decor };
+				? {
+						ch,
+						fg,
+						bg,
+						bold,
+						dim,
+						entity: true,
+						terrain,
+						decor,
+						...(facing ? { facing } : {}),
+						...(mul ? { mul } : {}),
+					}
+				: { ch, fg, bg, bold, dim, terrain, decor, ...(mul ? { mul } : {}) };
 		}
 
 		rows[row] = cells;

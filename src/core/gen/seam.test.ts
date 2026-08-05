@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { worldSeed } from "../../core/world/recipe.js";
 import { makeRng, rngFor } from "../rand/rng.js";
 import { chunkDigest } from "../tiles/chunk.js";
 import { CHUNK, type ChunkCoord, HALO, localIndex } from "../world/coords.js";
@@ -18,7 +19,7 @@ beforeEach(() => {
 });
 
 function digestOf(cc: ChunkCoord): string {
-	return chunkDigest(generateChunk({ seed: SEED }, cc).chunk);
+	return chunkDigest(generateChunk({ world: worldSeed(SEED) }, cc).chunk);
 }
 
 describe("seam invariant", () => {
@@ -53,8 +54,8 @@ describe("seam invariant", () => {
 		// compare how much terrain changes between the last two columns *inside*
 		// a chunk against how much it changes across the boundary itself. With a
 		// genuine seam the second number spikes; without one they are alike.
-		const left = generateChunk({ seed: SEED }, { cx: 0, cy: 0 }).chunk;
-		const right = generateChunk({ seed: SEED }, { cx: 1, cy: 0 }).chunk;
+		const left = generateChunk({ world: worldSeed(SEED) }, { cx: 0, cy: 0 }).chunk;
+		const right = generateChunk({ world: worldSeed(SEED) }, { cx: 1, cy: 0 }).chunk;
 
 		let interiorChanges = 0;
 		let boundaryChanges = 0;
@@ -78,11 +79,13 @@ describe("seam invariant", () => {
 			let maxJump = 0;
 			for (let t = -3; t <= 3; t++) {
 				const a =
-					axis === "x" ? elevationAt(SEED, CHUNK + t, 20) : elevationAt(SEED, 20, CHUNK + t);
+					axis === "x"
+						? elevationAt(worldSeed(SEED), CHUNK + t, 20)
+						: elevationAt(worldSeed(SEED), 20, CHUNK + t);
 				const b =
 					axis === "x"
-						? elevationAt(SEED, CHUNK + t + 1, 20)
-						: elevationAt(SEED, 20, CHUNK + t + 1);
+						? elevationAt(worldSeed(SEED), CHUNK + t + 1, 20)
+						: elevationAt(worldSeed(SEED), 20, CHUNK + t + 1);
 				maxJump = Math.max(maxJump, Math.abs(a - b));
 			}
 			expect(maxJump, `axis ${axis}`).toBeLessThan(0.1);
@@ -92,7 +95,7 @@ describe("seam invariant", () => {
 	it("keeps every feature within the halo the generator consults", () => {
 		// If a feature could reach further than HALO macro cells, two chunks
 		// would disagree about whether it exists at all.
-		expect(maxFeatureRadius()).toBeLessThanOrEqual(HALO * MACRO);
+		expect(maxFeatureRadius(worldSeed(SEED).rules)).toBeLessThanOrEqual(HALO * MACRO);
 	});
 });
 
@@ -106,10 +109,10 @@ describe("determinism", () => {
 	});
 
 	it("produces different worlds for different seeds", () => {
-		const a = chunkDigest(generateChunk({ seed: 1 }, { cx: 0, cy: 0 }).chunk);
+		const a = chunkDigest(generateChunk({ world: worldSeed(1) }, { cx: 0, cy: 0 }).chunk);
 		clearRoadCache();
 		clearRiverCache();
-		const b = chunkDigest(generateChunk({ seed: 2 }, { cx: 0, cy: 0 }).chunk);
+		const b = chunkDigest(generateChunk({ world: worldSeed(2) }, { cx: 0, cy: 0 }).chunk);
 		expect(a).not.toBe(b);
 	});
 
@@ -133,17 +136,17 @@ describe("field continuity", () => {
 			[-1, -1],
 			[-CHUNK, CHUNK * 3],
 		] as const) {
-			expect(elevationAt(SEED, x, y)).toBe(elevationAt(SEED, x, y));
-			expect(moistureAt(SEED, x, y)).toBe(moistureAt(SEED, x, y));
-			expect(temperatureAt(SEED, x, y)).toBe(temperatureAt(SEED, x, y));
+			expect(elevationAt(worldSeed(SEED), x, y)).toBe(elevationAt(worldSeed(SEED), x, y));
+			expect(moistureAt(worldSeed(SEED), x, y)).toBe(moistureAt(worldSeed(SEED), x, y));
+			expect(temperatureAt(worldSeed(SEED), x, y)).toBe(temperatureAt(worldSeed(SEED), x, y));
 		}
 	});
 
 	it("varies smoothly: adjacent tiles never jump the full range", () => {
 		let maxJump = 0;
 		for (let x = -200; x < 200; x++) {
-			const a = elevationAt(SEED, x, 17);
-			const b = elevationAt(SEED, x + 1, 17);
+			const a = elevationAt(worldSeed(SEED), x, 17);
+			const b = elevationAt(worldSeed(SEED), x + 1, 17);
 			maxJump = Math.max(maxJump, Math.abs(a - b));
 		}
 		// A discontinuity would show up here as a jump near 1.
@@ -151,9 +154,9 @@ describe("field continuity", () => {
 	});
 
 	it("stays smooth across a chunk boundary specifically", () => {
-		const before = elevationAt(SEED, CHUNK - 1, 33);
-		const at = elevationAt(SEED, CHUNK, 33);
-		const after = elevationAt(SEED, CHUNK + 1, 33);
+		const before = elevationAt(worldSeed(SEED), CHUNK - 1, 33);
+		const at = elevationAt(worldSeed(SEED), CHUNK, 33);
+		const after = elevationAt(worldSeed(SEED), CHUNK + 1, 33);
 		expect(Math.abs(at - before)).toBeLessThan(0.1);
 		expect(Math.abs(after - at)).toBeLessThan(0.1);
 	});
@@ -161,15 +164,15 @@ describe("field continuity", () => {
 
 describe("macro sites", () => {
 	it("is a pure function of the macro cell", () => {
-		const a = macroSite(SEED, 4, -7);
-		const b = macroSite(SEED, 4, -7);
+		const a = macroSite(worldSeed(SEED), 4, -7);
+		const b = macroSite(worldSeed(SEED), 4, -7);
 		expect(a).toEqual(b);
 	});
 
 	it("places its site inside its own macro cell", () => {
 		for (let my = -3; my <= 3; my++) {
 			for (let mx = -3; mx <= 3; mx++) {
-				const site = macroSite(SEED, mx, my);
+				const site = macroSite(worldSeed(SEED), mx, my);
 				expect(site.site.x).toBeGreaterThanOrEqual(mx * MACRO);
 				expect(site.site.x).toBeLessThan((mx + 1) * MACRO);
 				expect(site.site.y).toBeGreaterThanOrEqual(my * MACRO);

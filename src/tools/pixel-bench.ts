@@ -12,6 +12,7 @@ import { deflateSync } from "node:zlib";
 import { generateChunk } from "../core/gen/pipeline.js";
 import { hashString } from "../core/rand/hash.js";
 import { CHUNK } from "../core/world/coords.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { composeScene } from "../ui/render/compose.js";
 import { lightFor } from "../ui/render/lighting.js";
 import { rasterScene, tileFit } from "../ui/render/raster.js";
@@ -31,7 +32,7 @@ const passes = Number(arg("passes", "20"));
 const DEFLATE_LEVEL = Number(arg("level", "1"));
 
 const seed = hashString("bench");
-const { chunk } = generateChunk({ seed }, { cx: 0, cy: 0 });
+const { chunk } = generateChunk({ world: worldSeed(seed) }, { cx: 0, cy: 0 });
 const source = createWorldTileSource({
 	seed,
 	chunkAt: (qx, qy) => (qx === 0 && qy === 0 ? chunk : undefined),

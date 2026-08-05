@@ -4,6 +4,7 @@ import { hashString } from "../../core/rand/hash.js";
 import { createInitialState, type GameState, type Quest } from "../../core/rules/state.js";
 import { CHUNK, chunkKey } from "../../core/world/coords.js";
 import { isSettlement, macroSite } from "../../core/world/macro.js";
+import { worldSeed } from "../../core/world/recipe.js";
 import { checkGlyph } from "./glyph-safety.js";
 import { minimapCells, minimapGlyphs } from "./minimap-data.js";
 
@@ -14,7 +15,7 @@ const WORLD = { id: "t", name: "T", seed: SEED, createdAt: "2026-01-01T00:00:00.
 function findSettlement(): { cx: number; cy: number; siteId: number } {
 	for (let cx = -6; cx <= 6; cx++) {
 		for (let cy = -6; cy <= 6; cy++) {
-			const site = macroSite(SEED, cx, cy);
+			const site = macroSite(worldSeed(SEED), cx, cy);
 			if (isSettlement(site.kind)) return { cx, cy, siteId: site.id };
 		}
 	}

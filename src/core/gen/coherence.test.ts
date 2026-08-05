@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { worldSeed } from "../../core/world/recipe.js";
 import { hashString } from "../rand/hash.js";
 import { CHUNK } from "../world/coords.js";
 import { generateChunk } from "./pipeline.js";
@@ -29,7 +30,7 @@ const CHUNKS = [
 
 /** Fraction of horizontally adjacent tile pairs that are different terrain. */
 function disagreement(seed: number, cx: number, cy: number): number {
-	const { chunk } = generateChunk({ seed }, { cx, cy });
+	const { chunk } = generateChunk({ world: worldSeed(seed) }, { cx, cy });
 	let differing = 0;
 	let pairs = 0;
 	for (let y = 0; y < CHUNK; y++) {
@@ -66,14 +67,14 @@ describe("terrain coherence", () => {
 		const seed = hashString("default");
 		const kinds = new Set<number>();
 		for (const [cx, cy] of CHUNKS) {
-			const { chunk } = generateChunk({ seed }, { cx, cy });
+			const { chunk } = generateChunk({ world: worldSeed(seed) }, { cx, cy });
 			for (const id of chunk.terrain) kinds.add(id);
 		}
 		expect(kinds.size).toBeGreaterThan(8);
 	}, 30_000);
 
 	it("records elevation so the renderer can shade by slope without resampling", () => {
-		const { chunk } = generateChunk({ seed: hashString("vale") }, { cx: 0, cy: 0 });
+		const { chunk } = generateChunk({ world: worldSeed(hashString("vale")) }, { cx: 0, cy: 0 });
 		const heights = new Set(chunk.elevation);
 		expect(heights.size).toBeGreaterThan(4);
 		// Quantised into a Uint8Array, so this is total by construction; the check

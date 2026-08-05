@@ -18,6 +18,7 @@ import type { GameState } from "../../core/rules/state.js";
 import { biomeAt } from "../../core/world/context.js";
 import { CHUNK, chunkKey, toChunk } from "../../core/world/coords.js";
 import { isSettlement, macroSite } from "../../core/world/macro.js";
+import { worldSeed } from "../../core/world/recipe.js";
 import type { RGB } from "./color.js";
 import { type Swatch, swatch } from "./swatch.js";
 
@@ -172,12 +173,13 @@ function cellAt(
 	// matters less than that something is waiting there.
 	if (errands.has(key)) return cellFor(marks.errand);
 
-	const site = macroSite(state.world.seed, cx, cy);
+	const world = worldSeed(state.world.seed, state.world.recipe);
+	const site = macroSite(world, cx, cy);
 	if (isSettlement(site.kind)) return cellFor(site.kind === "town" ? marks.town : marks.village);
 
 	// Biome is recomputed rather than stored: it is a pure function of the seed
 	// and the position, so remembering it would only be a way to get it wrong
 	// after a schema change.
-	const biome = biomeAt(state.world.seed, cx * CHUNK + CHUNK / 2, cy * CHUNK + CHUNK / 2);
+	const biome = biomeAt(world, cx * CHUNK + CHUNK / 2, cy * CHUNK + CHUNK / 2);
 	return cellFor(THEME.biomes[biome] ?? THEME.unknownBiome);
 }

@@ -14,58 +14,19 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { deflateSync } from "node:zlib";
+import { resolveTileTheme } from "../content/tiles.js";
 import { generateChunk } from "../core/gen/pipeline.js";
 import { hashString } from "../core/rand/hash.js";
 import { createInitialState } from "../core/rules/state.js";
 import { CHUNK, type ChunkCoord, chunkKey } from "../core/world/coords.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { composeScene } from "../ui/render/compose.js";
 import { minimapCells } from "../ui/render/minimap-data.js";
 import { paintMinimap } from "../ui/render/overlay.js";
+import { encodePng } from "../ui/render/png.js";
 import { rasterScene } from "../ui/render/raster.js";
 import { TILE_PX } from "../ui/render/sprite.js";
 import { createWorldTileSource } from "../ui/render/world-source.js";
-
-function crc32(buf: Buffer): number {
-	let c = ~0;
-	for (const byte of buf) {
-		c ^= byte;
-		for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
-	}
-	return ~c >>> 0;
-}
-
-function chunkPart(type: string, data: Buffer): Buffer {
-	const len = Buffer.alloc(4);
-	len.writeUInt32BE(data.length);
-	const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
-	const crc = Buffer.alloc(4);
-	crc.writeUInt32BE(crc32(body));
-	return Buffer.concat([len, body, crc]);
-}
-
-/** Minimal truecolour PNG. `rgb` is width*height*3, row-major. */
-function encodePng(width: number, height: number, rgb: Buffer): Buffer {
-	const stride = width * 3;
-	// One filter byte per scanline; filter 0 (None) keeps this simple and the
-	// images compress fine anyway because tile art repeats.
-	const raw = Buffer.alloc((stride + 1) * height);
-	for (let y = 0; y < height; y++) {
-		raw[y * (stride + 1)] = 0;
-		rgb.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
-	}
-	const ihdr = Buffer.alloc(13);
-	ihdr.writeUInt32BE(width, 0);
-	ihdr.writeUInt32BE(height, 4);
-	ihdr[8] = 8; // bit depth
-	ihdr[9] = 2; // colour type: truecolour
-	return Buffer.concat([
-		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-		chunkPart("IHDR", ihdr),
-		chunkPart("IDAT", deflateSync(raw, { level: 9 })),
-		chunkPart("IEND", Buffer.alloc(0)),
-	]);
-}
 
 function parseArgs(argv: readonly string[]) {
 	const args = new Map<string, string>();
@@ -100,17 +61,18 @@ function main() {
 	const out = args.get("out") ?? "tiles.png";
 	const flat = args.has("flat");
 
-	const { chunk } = generateChunk({ seed }, cc);
+	const { chunk } = generateChunk({ world: worldSeed(seed) }, cc);
 	const source = createWorldTileSource({
 		seed,
 		chunkAt: (qx, qy) => (qx === cc.cx && qy === cc.cy ? chunk : undefined),
 	});
 	const camera = { x: cc.cx * CHUNK, y: cc.cy * CHUNK, width: tilesW, height: tilesH };
-	const scene = composeScene(source, camera, { shadows: !flat, relief: !flat });
+	const theme = resolveTileTheme(args.get("tiles"));
+	const scene = composeScene(source, camera, { theme, shadows: !flat, relief: !flat });
 
 	// Exactly the buffer the kitty path transmits, so what this writes to a PNG
 	// is what the terminal is asked to draw — not a second implementation of it.
-	const frame = rasterScene(scene, { tilePx: tile });
+	const frame = rasterScene(scene, { tilePx: tile, sprites: theme.sprites });
 
 	// `--minimap` paints the overlay the game paints, from a state that has walked
 	// the chunks around the camera. Without it there is no way to look at the

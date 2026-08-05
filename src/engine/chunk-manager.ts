@@ -6,9 +6,10 @@ import { type Chunk, setTerrain } from "../core/tiles/chunk.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import { CHUNK, type ChunkCoord, type ChunkKey, chunkKey } from "../core/world/coords.js";
 import type { MacroSite } from "../core/world/macro.js";
+import type { WorldSeed } from "../core/world/recipe.js";
 
 export interface ChunkManagerOptions {
-	readonly seed: number;
+	readonly world: WorldSeed;
 	/** Chunks kept resident. 49 covers a 7x7 ring around the player. */
 	readonly capacity?: number;
 	readonly onGenerated?: (key: ChunkKey, summary: TerrainSummary) => void;
@@ -16,6 +17,8 @@ export interface ChunkManagerOptions {
 	readonly specFor?: (site: MacroSite) => SettlementSpec | undefined;
 	/** The edge of a bounded world. Absent means infinite. */
 	readonly bounds?: WorldBounds;
+	/** Gates the scenario stamps across the world. Positions only — see `GenContext`. */
+	readonly barriers?: readonly { readonly x: number; readonly y: number }[];
 }
 
 interface Entry {
@@ -43,12 +46,32 @@ export class ChunkManager {
 		this.capacity = options.capacity ?? 49;
 	}
 
-	/** Point the manager at the current delta map. Called after every save load. */
+	/**
+	 * Point the manager at a wholesale-replaced delta map. Called after a save load.
+	 *
+	 * Drops every resident chunk, because a replaced map may have *removed* a delta
+	 * and there is no way to un-apply one to a chunk already stamped with it.
+	 */
 	setDeltas(deltas: Readonly<Record<ChunkKey, ChunkDelta>>): void {
 		if (this.deltas === deltas) return;
 		this.deltas = deltas;
 		// Deltas changed, so any resident chunk may now be stale.
 		this.entries.clear();
+	}
+
+	/**
+	 * Point the manager at a delta map that has only grown.
+	 *
+	 * Patches the resident chunks in place instead of dropping them, which is the
+	 * difference between a gate opening and the whole viewport blanking for a frame
+	 * while sixteen chunks regenerate. Safe because `applyDelta` writes an explicit
+	 * terrain id and flag set — re-applying a delta a chunk already carries is a
+	 * no-op — and because play only ever *adds* deltas.
+	 */
+	applyAddedDeltas(deltas: Readonly<Record<ChunkKey, ChunkDelta>>): void {
+		if (this.deltas === deltas) return;
+		this.deltas = deltas;
+		for (const [key, entry] of this.entries) this.applyDelta(entry.chunk, deltas[key]);
 	}
 
 	get(cx: number, cy: number): Chunk | undefined {
@@ -71,9 +94,10 @@ export class ChunkManager {
 		const cc: ChunkCoord = { cx, cy };
 		const generated = generateChunk(
 			{
-				seed: this.options.seed,
+				world: this.options.world,
 				...(this.options.specFor ? { specFor: this.options.specFor } : {}),
 				...(this.options.bounds ? { bounds: this.options.bounds } : {}),
+				...(this.options.barriers?.length ? { barriers: this.options.barriers } : {}),
 			},
 			cc,
 		);

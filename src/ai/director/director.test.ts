@@ -3,6 +3,7 @@ import { generateSettlement } from "../../core/gen/features/settlement.js";
 import { hashString } from "../../core/rand/hash.js";
 import { siteContext } from "../../core/world/context.js";
 import { isSettlement, type MacroSite, macroSite } from "../../core/world/macro.js";
+import { worldSeed } from "../../core/world/recipe.js";
 import type { SiteSpec } from "../../core/world/spec.js";
 import { npcId } from "../../core/world/spec.js";
 import { Director } from "./director.js";
@@ -16,7 +17,7 @@ function findSite(seed: number, kinds?: readonly MacroSite["kind"][]): MacroSite
 	for (let radius = 0; radius < 16; radius++) {
 		for (let my = -radius; my <= radius; my++) {
 			for (let mx = -radius; mx <= radius; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(worldSeed(seed), mx, my);
 				if (!isSettlement(site.kind)) continue;
 				if (kinds && !kinds.includes(site.kind)) continue;
 				return site;
@@ -30,7 +31,7 @@ function stubDirector(overrides: Partial<ConstructorParameters<typeof Director>[
 	const learned: { spec: SiteSpec; source: string }[] = [];
 	const changed: MacroSite[] = [];
 	const director = new Director({
-		seed: SEED,
+		world: worldSeed(SEED),
 		disabled: true,
 		onLore: () => undefined,
 		onRegion: () => undefined,
@@ -44,7 +45,7 @@ function stubDirector(overrides: Partial<ConstructorParameters<typeof Director>[
 describe("deterministic fallbacks", () => {
 	it("names every settlement without a model", () => {
 		const site = findSite(SEED);
-		const spec = fallbackSite(SEED, site, siteContext(SEED, site));
+		const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
 		expect(spec.name).toMatch(/\S/);
 		expect(spec.shortName).toMatch(/\S/);
 		expect(spec.settlement.structures.length).toBeGreaterThan(0);
@@ -52,8 +53,8 @@ describe("deterministic fallbacks", () => {
 
 	it("produces the same spec twice", () => {
 		const site = findSite(SEED);
-		const a = fallbackSite(SEED, site, siteContext(SEED, site));
-		const b = fallbackSite(SEED, site, siteContext(SEED, site));
+		const a = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+		const b = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
 		expect(a).toEqual(b);
 	});
 
@@ -63,9 +64,9 @@ describe("deterministic fallbacks", () => {
 		// built from the same list.
 		for (let mx = -4; mx <= 4; mx++) {
 			for (let my = -4; my <= 4; my++) {
-				const site = macroSite(SEED, mx, my);
+				const site = macroSite(worldSeed(SEED), mx, my);
 				if (site.kind === "none") continue;
-				const spec = fallbackSite(SEED, site, siteContext(SEED, site));
+				const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
 				for (const structure of spec.settlement.structures) {
 					expect(STRUCTURE_KINDS).toContain(structure.kind);
 					expect(structure.importance).toBeGreaterThanOrEqual(1);
@@ -81,8 +82,8 @@ describe("deterministic fallbacks", () => {
 		// room for buildings must actually get them: a spec the generator quietly
 		// discards is the failure mode worth catching.
 		const site = findSite(SEED, ["town", "village"]);
-		const spec = fallbackSite(SEED, site, siteContext(SEED, site));
-		const patch = generateSettlement(SEED, site, spec.settlement);
+		const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+		const patch = generateSettlement(worldSeed(SEED), site, spec.settlement);
 		expect(patch.buildings.length).toBeGreaterThan(0);
 		for (const building of patch.buildings) {
 			expect(patch.bounds.x).toBeLessThanOrEqual(building.rect.x);
@@ -91,7 +92,7 @@ describe("deterministic fallbacks", () => {
 
 	it("gives every fallback NPC a single-letter glyph and a placement", () => {
 		const site = findSite(SEED);
-		const spec = fallbackSite(SEED, site, siteContext(SEED, site));
+		const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
 		expect(spec.npcs.length).toBeGreaterThan(0);
 		for (const npc of spec.npcs) {
 			expect(npc.glyph).toMatch(/^[A-Z]$/);

@@ -4,6 +4,8 @@
  * This is the iteration loop for terrain: no UI, no network, no tokens. Run it
  * against a few seeds and look at the output before touching the generator.
  */
+
+import { resolveTileTheme } from "../content/tiles.js";
 import { generateChunk } from "../core/gen/pipeline.js";
 import { hashString } from "../core/rand/hash.js";
 import { chunkToAscii } from "../core/tiles/chunk.js";
@@ -14,6 +16,7 @@ import { type ColorDepth, detectColorDepth } from "../ui/render/color.js";
 import { composeScene } from "../ui/render/compose.js";
 import { expandScene, TILE_WIDTH } from "../ui/render/scale.js";
 import { createWorldTileSource } from "../ui/render/world-source.js";
+import { worldFromArgs } from "./recipe-arg.js";
 
 /**
  * Accepts both `--key=value` and `--key value`.
@@ -67,7 +70,9 @@ function main() {
 	const xscale = Math.max(1, Math.trunc(Number(args.get("xscale") ?? TILE_WIDTH)) || 1);
 
 	const started = Date.now();
-	const { chunk, summary, buildings } = generateChunk({ seed }, cc);
+	const world = worldFromArgs(seed, args.get("recipe"));
+	const theme = resolveTileTheme(args.get("tiles"));
+	const { chunk, summary, buildings } = generateChunk({ world }, cc);
 	const elapsed = Date.now() - started;
 
 	if (ascii) {
@@ -87,6 +92,7 @@ function main() {
 		};
 		// Matches what the game draws, so this stays a faithful preview.
 		const scene = composeScene(source, camera, {
+			theme,
 			shadows: !args.has("flat"),
 			relief: !args.has("flat"),
 		});
@@ -100,7 +106,7 @@ function main() {
 		.map(([name, n]) => `${name} ${Math.round((n / (CHUNK * CHUNK)) * 100)}%`)
 		.join(", ");
 
-	const sites = sitesAround(seed, cc.cx, cc.cy)
+	const sites = sitesAround(world, cc.cx, cc.cy)
 		.filter((s) => Math.abs(s.mx - cc.cx) <= 1 && Math.abs(s.my - cc.cy) <= 1)
 		.map((s) => `${s.kind}(${s.importance}) r${s.radius} @${s.site.x},${s.site.y}`)
 		.join("; ");

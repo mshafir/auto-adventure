@@ -1,15 +1,13 @@
-import { findPath } from "../../geom/astar.js";
 import { bspSplit } from "../../geom/bsp.js";
-import { labelComponents } from "../../geom/floodfill.js";
 import { rasterizePolyline } from "../../geom/line.js";
-import { type Rect, rectIntersection, rectIntersects, type Vec2 } from "../../geom/vec.js";
+import { type Rect, rectIntersects, type Vec2 } from "../../geom/vec.js";
 import { hash2 } from "../../rand/hash.js";
 import { type Rng, rngFor } from "../../rand/rng.js";
+import type { Lock } from "../../rules/lock.js";
 import { D } from "../../tiles/decor.js";
-import { TFlag } from "../../tiles/flags.js";
 import { T } from "../../tiles/terrain.js";
-import { elevationAt, SEA_LEVEL, slopeAt } from "../../world/fields.js";
 import type { MacroSite } from "../../world/macro.js";
+import type { WorldSeed } from "../../world/recipe.js";
 import { roadsAround } from "../../world/roads.js";
 import { buildStructure, minimumPlot } from "./building.js";
 import {
@@ -21,6 +19,18 @@ import {
 	patchWrite,
 	type StructureKind,
 } from "./patch.js";
+import { featureBounds, generateFeature, registerFeature } from "./registry.js";
+import {
+	type Allowed,
+	buildableWithin,
+	carveConnections,
+	carveStreet,
+	flattestNear,
+	reachableFrom,
+	rectFullyAllowed,
+	stampDisc,
+	stampRing,
+} from "./terraform.js";
 
 export interface StructureSpec {
 	readonly kind: StructureKind;
@@ -29,6 +39,8 @@ export interface StructureSpec {
 	readonly importance: number;
 	readonly name?: string;
 	readonly signText?: string;
+	/** What has to be true to get inside. Absent means the door simply opens. */
+	readonly lock?: Lock;
 }
 
 export interface SettlementSpec {
@@ -36,8 +48,6 @@ export interface SettlementSpec {
 	readonly walled: boolean;
 	readonly structures: readonly StructureSpec[];
 }
-
-const patchCache = new Map<string, FeaturePatch>();
 
 /** Weighted filler used when a spec has fewer structures than there are plots. */
 const FILLER: readonly (readonly [StructureKind, number])[] = [
@@ -49,52 +59,38 @@ const FILLER: readonly (readonly [StructureKind, number])[] = [
 ];
 
 /**
- * A settlement, generated once in its own coordinate frame.
+ * The settlement at a site.
  *
- * Cached by site id and never regenerated per chunk. This is the single most
- * important structural decision in the generator: a town is an *object* that
- * chunks are windows onto, not a thing that lives inside a chunk. A town
- * straddling four chunks is generated once and clipped four ways, so there is
- * nothing for the four chunks to disagree about.
+ * A thin call through the registry, which owns the cache. Kept as its own name
+ * because "build a settlement here" is a different question from "build whatever
+ * belongs here", and the callers that ask this one — the validator, placement
+ * resolution, the survey tool — have already established that a settlement is what
+ * is there.
  */
 export function generateSettlement(
-	seed: number,
+	world: WorldSeed,
 	site: MacroSite,
 	spec: SettlementSpec,
 ): FeaturePatch {
-	const key = `${seed}:${site.id}`;
-	const cached = patchCache.get(key);
-	if (cached) return cached;
-
-	const built = buildSettlement(seed, site, spec);
-	patchCache.set(key, built);
-	return built;
-}
-
-export function clearSettlementCache(): void {
-	patchCache.clear();
-}
-
-/**
- * Forget one settlement so it is rebuilt from a new spec.
- *
- * The only reason this exists is the director: a town built from the fallback
- * roster has to be regenerated once its authored roster arrives. Callers are
- * responsible for invalidating the chunks that had already stamped the old
- * patch, which is why {@link settlementBounds} is exported.
- */
-export function invalidateSettlement(seed: number, siteId: number): void {
-	patchCache.delete(`${seed}:${siteId}`);
+	const patch = generateFeature(world, site, spec);
+	if (patch) return patch;
+	// A site kind no builder claims. Building one anyway, uncached, is better than
+	// throwing at a caller who only wanted to look at some anchors.
+	return buildSettlement(world, site, spec);
 }
 
 /**
  * A site's patch bounds, computable without generating it.
  *
- * Having this separate is what lets a chunk reject the settlements it does not
- * overlap before paying to build them — otherwise every chunk generates every
- * town in its halo and throws almost all of them away.
+ * @deprecated Prefer {@link featureBounds}; kept because a settlement's bounds are
+ * asked for by name in several places that predate the registry.
  */
-export function settlementBounds(site: MacroSite): Rect {
+export function settlementBounds(site: MacroSite, world: WorldSeed): Rect {
+	return featureBounds(site, world);
+}
+
+/** The bounds a settlement patch occupies, independent of the registry. */
+function settlementRect(site: MacroSite): Rect {
 	const radius = site.radius;
 	return {
 		x: site.site.x - radius - 2,
@@ -104,10 +100,17 @@ export function settlementBounds(site: MacroSite): Rect {
 	};
 }
 
-function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): FeaturePatch {
-	const rng = rngFor(seed, "settlement", site.mx, site.my);
+registerFeature({
+	id: "settlement",
+	accepts: ["hamlet", "village", "town", "fort", "camp", "ruins", "landmark"],
+	bounds: (site) => settlementRect(site),
+	build: (world, site, spec) => buildSettlement(world, site, spec),
+});
+
+function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec): FeaturePatch {
+	const rng = rngFor(world.seed, "settlement", site.mx, site.my);
 	const radius = site.radius;
-	const bounds = settlementBounds(site);
+	const bounds = settlementRect(site);
 
 	const { patch, buildings, anchors } = createPatch(site.id, bounds);
 
@@ -136,8 +139,7 @@ function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): F
 	};
 
 	// A settlement never sits in the sea, and never on ground too steep to build.
-	const buildable = (x: number, y: number): boolean =>
-		inFootprint(x, y) && elevationAt(seed, x, y) >= SEA_LEVEL + 0.02;
+	const buildable: Allowed = buildableWithin(world, inFootprint);
 
 	// --- ground --------------------------------------------------------------
 	for (let y = bounds.y; y < bounds.y + bounds.h; y++) {
@@ -148,7 +150,7 @@ function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): F
 	}
 
 	// --- town square ---------------------------------------------------------
-	const square = flattestNear(seed, site.site, 5);
+	const square = flattestNear(world, site.site, 5);
 	const squareRadius = site.kind === "town" ? 4 : 3;
 	stampDisc(patch, square, squareRadius, T.cobbleRoad, buildable);
 	anchors.push({ id: "square", kind: "square", x: square.x, y: square.y });
@@ -184,7 +186,7 @@ function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): F
 	// --- main streets --------------------------------------------------------
 	// Every road that reaches the footprint is continued inward to the square,
 	// so the approach the player walks in on is the street they arrive by.
-	for (const road of roadsAround(seed, site.mx, site.my)) {
+	for (const road of roadsAround(world, site.mx, site.my)) {
 		const entry = firstPointInside(rasterizePolyline(road.points), buildable);
 		if (!entry) continue;
 		carveStreet(patch, entry, square, buildable, T.cobbleRoad);
@@ -244,7 +246,7 @@ function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): F
 				plot.w >= 5 &&
 				plot.h >= 5 &&
 				!rectIntersects(plot, plaza) &&
-				rectFullyBuildable(plot, buildable),
+				rectFullyAllowed(plot, buildable),
 		)
 		.sort((a, b) => b.w * b.h - a.w * a.h);
 
@@ -277,7 +279,9 @@ function buildSettlement(seed: number, site: MacroSite, spec: SettlementSpec): F
 			streetTarget,
 			interiorId,
 			rng,
-			assigned ? { name: assigned.name, signText: assigned.signText } : undefined,
+			assigned
+				? { name: assigned.name, signText: assigned.signText, lock: assigned.lock }
+				: undefined,
 		);
 		buildings.push(result.placement);
 		anchors.push(...result.anchors);
@@ -346,28 +350,17 @@ function pruneUnreachable(
 	square: Vec2,
 	buildings: BuildingPlacement[],
 	anchors: Anchor[],
-	buildable: (x: number, y: number) => boolean,
+	buildable: Allowed,
 	rng: Rng,
 ): void {
 	for (let round = 0; round < MAX_PRUNE_ROUNDS; round++) {
-		const labels = labelComponents(
-			patch.bounds,
-			(x, y) => {
-				const i = patchIndex(patch, x, y);
-				return i >= 0 && ((patch.flags[i] ?? 0) & TFlag.Passable) !== 0;
-			},
-			true,
-		);
-		const labelAt = (x: number, y: number) =>
-			labels.labels[(y - patch.bounds.y) * patch.bounds.w + (x - patch.bounds.x)] ?? 0;
-
-		const squareLabel = labelAt(square.x, square.y);
-		if (squareLabel === 0) return;
+		const reached = reachableFrom(patch, square, anchors);
+		if (!reached) return;
 
 		const doomed = new Set<number>();
 		for (const anchor of anchors) {
 			if (anchor.kind !== "doorstep" || anchor.building === undefined) continue;
-			if (labelAt(anchor.x, anchor.y) !== squareLabel) doomed.add(anchor.building);
+			if (!reached.has(anchor)) doomed.add(anchor.building);
 		}
 		if (doomed.size === 0) return;
 
@@ -394,7 +387,7 @@ function pruneUnreachable(
 function demolish(
 	patch: FeaturePatch,
 	building: BuildingPlacement,
-	buildable: (x: number, y: number) => boolean,
+	buildable: Allowed,
 	rng: Rng,
 ): void {
 	const { rect } = building;
@@ -430,134 +423,11 @@ function fitRect(plot: Rect, size: "small" | "medium" | "large", rng: Rng): Rect
 	};
 }
 
-function rectFullyBuildable(rect: Rect, buildable: (x: number, y: number) => boolean): boolean {
-	for (let y = rect.y; y < rect.y + rect.h; y++) {
-		for (let x = rect.x; x < rect.x + rect.w; x++) {
-			if (!buildable(x, y)) return false;
-		}
-	}
-	return true;
-}
-
-function flattestNear(seed: number, centre: Vec2, reach: number): Vec2 {
-	let best = centre;
-	let bestSlope = Number.POSITIVE_INFINITY;
-	for (let dy = -reach; dy <= reach; dy++) {
-		for (let dx = -reach; dx <= reach; dx++) {
-			const x = centre.x + dx;
-			const y = centre.y + dy;
-			if (elevationAt(seed, x, y) < SEA_LEVEL + 0.02) continue;
-			const slope = slopeAt(seed, x, y);
-			if (slope < bestSlope) {
-				bestSlope = slope;
-				best = { x, y };
-			}
-		}
-	}
-	return best;
-}
-
-function stampDisc(
-	patch: FeaturePatch,
-	centre: Vec2,
-	radius: number,
-	terrain: number,
-	allowed: (x: number, y: number) => boolean,
-): void {
-	const r2 = radius * radius;
-	for (let dy = -radius; dy <= radius; dy++) {
-		for (let dx = -radius; dx <= radius; dx++) {
-			if (dx * dx + dy * dy > r2) continue;
-			const x = centre.x + dx;
-			const y = centre.y + dy;
-			if (allowed(x, y)) patchWrite(patch, x, y, terrain);
-		}
-	}
-}
-
-function stampRing(
-	centre: Vec2,
-	radiusAt: (angle: number) => number,
-	allowed: (x: number, y: number) => boolean,
-	write: (x: number, y: number) => void,
-): void {
-	// Step finely enough that consecutive samples land on adjacent tiles;
-	// a coarser sweep leaves a dotted line rather than a wall.
-	const maxRadius = radiusAt(0);
-	const steps = Math.max(256, Math.round(maxRadius * 16));
-
-	let prevX = Number.NaN;
-	let prevY = Number.NaN;
-
-	// One sample past the end closes the ring back onto its first tile. Writes are
-	// idempotent, so revisiting that tile costs nothing.
-	for (let i = 0; i <= steps; i++) {
-		const angle = (i / steps) * Math.PI * 2;
-		// Sit just inside the outline so the wall is on buildable ground.
-		const r = radiusAt(angle) - 1;
-		const x = Math.round(centre.x + Math.cos(angle) * r);
-		const y = Math.round(centre.y + Math.sin(angle) * r);
-
-		// Adjacent is not the same as orthogonally adjacent. On its 45-degree arcs
-		// the ring steps diagonally, and two tiles touching only at a corner have no
-		// orthogonal neighbour, so a four-neighbour autotiler renders each run as a
-		// stub capped at both ends: the wall came out as `╺━━╸ ╺╸ ┏╸ ╺┛ ■`, a dotted
-		// diagonal that reads as a gap wherever there should be a corner. Adding the
-		// tile that turns the diagonal into a step makes the ring 4-connected, so the
-		// same autotiler produces a proper corner instead.
-		// NaN on the first iteration compares false, which skips this.
-		// Adjacent is not the same as orthogonally adjacent. On its 45-degree arcs
-		// the ring steps diagonally, and two tiles touching only at a corner have no
-		// orthogonal neighbour, so a four-neighbour autotiler renders each run as a
-		// stub capped at both ends: the wall came out as `╺━━╸ ╺╸ ┏╸ ╺┛ ■`, a dotted
-		// diagonal that reads as a gap wherever there should be a corner. Adding the
-		// tile that turns the diagonal into a step makes the ring 4-connected, so the
-		// same autotiler produces a proper corner instead.
-		// NaN on the first iteration compares false, which skips this.
-		if (Math.abs(x - prevX) === 1 && Math.abs(y - prevY) === 1) {
-			// Prefer the corner nearer the centre: `allowed` is the buildable
-			// footprint, so the inner tile is the one more likely to be inside it.
-			const inner = { x: prevX, y };
-			const outer = { x, y: prevY };
-			const dInner = (inner.x - centre.x) ** 2 + (inner.y - centre.y) ** 2;
-			const dOuter = (outer.x - centre.x) ** 2 + (outer.y - centre.y) ** 2;
-			const [first, second] = dInner <= dOuter ? [inner, outer] : [outer, inner];
-			if (allowed(first.x, first.y)) write(first.x, first.y);
-			else if (allowed(second.x, second.y)) write(second.x, second.y);
-		}
-
-		if (allowed(x, y)) write(x, y);
-		prevX = x;
-		prevY = y;
-	}
-}
-
 function firstPointInside(
 	points: readonly Vec2[],
 	inside: (x: number, y: number) => boolean,
 ): Vec2 | undefined {
 	return points.find((p) => inside(p.x, p.y));
-}
-
-function carveStreet(
-	patch: FeaturePatch,
-	from: Vec2,
-	to: Vec2,
-	allowed: (x: number, y: number) => boolean,
-	terrain: number,
-): void {
-	const bounds = expandedBounds(patch.bounds);
-	const path = findPath(from, to, {
-		bounds,
-		cost: (x, y) => (allowed(x, y) ? 1 : Number.POSITIVE_INFINITY),
-		diagonal: false,
-	});
-	if (!path) return;
-	for (const p of path) patchWrite(patch, p.x, p.y, terrain);
-}
-
-function expandedBounds(bounds: Rect): Rect {
-	return bounds;
 }
 
 /** Nearest already-written road tile to a rectangle, for door orientation. */
@@ -582,84 +452,6 @@ function nearestStreet(patch: FeaturePatch, rect: Rect): Vec2 | undefined {
 		}
 	}
 	return best;
-}
-
-/**
- * Connect the square to every anchor.
- *
- * Building walls cost `Infinity`, so a route into a shop must use the door. If
- * an anchor is genuinely unreachable the path simply is not carved — which is
- * caught by the connectivity test rather than papered over at runtime. This
- * replaces the old design's wall-breaking hack, where the player pressing SPACE
- * at an unreachable objective would overwrite the stone wall in front of them.
- */
-function carveConnections(
-	patch: FeaturePatch,
-	square: Vec2,
-	anchors: readonly Anchor[],
-	buildable: (x: number, y: number) => boolean,
-): void {
-	const cost = (x: number, y: number): number => {
-		const i = patchIndex(patch, x, y);
-		if (i < 0) return Number.POSITIVE_INFINITY;
-		const flags = patch.flags[i] ?? 0;
-		if (flags & TFlag.Wall && !(flags & TFlag.Door)) return Number.POSITIVE_INFINITY;
-		if (flags & TFlag.Door) return 2;
-		if (flags & TFlag.Passable) return 1;
-		// Unwritten ground inside the footprint may be carved; outside it may not.
-		return buildable(x, y) ? 3 : Number.POSITIVE_INFINITY;
-	};
-
-	for (const anchor of anchors) {
-		if (anchor.kind === "square") continue;
-		// An anchor that is itself impassable can never be routed to, and a failed
-		// A* explores the entire patch before saying so. Buildings emit `counter`,
-		// `hearth` and `backroom` anchors inside their own footprint, which became
-		// exactly this case when the footprint stopped being a floor and started
-		// being a roof — and doubled the time to generate a settlement chunk.
-		const index = patchIndex(patch, anchor.x, anchor.y);
-		if (index < 0 || !((patch.flags[index] ?? 0) & TFlag.Passable)) continue;
-		const path = findPath(
-			{ x: square.x, y: square.y },
-			{ x: anchor.x, y: anchor.y },
-			{
-				bounds: patch.bounds,
-				cost,
-				diagonal: false,
-			},
-		);
-		if (!path) continue;
-		for (const p of path) {
-			const i = patchIndex(patch, p.x, p.y);
-			if (i < 0) continue;
-			const flags = patch.flags[i] ?? 0;
-			// Never overwrite a door, a wall, or an existing road with plain path.
-			if (flags & (TFlag.Wall | TFlag.Door)) continue;
-			if (flags & TFlag.Interior) continue;
-			const terrain = patch.terrain[i] ?? T.void;
-			if (terrain === T.cobbleRoad || terrain === T.dirtRoad) continue;
-			patchWrite(patch, p.x, p.y, T.path);
-		}
-	}
-}
-
-/** Every settlement patch whose bounds overlap a rectangle. */
-export function settlementsOverlapping(
-	seed: number,
-	sites: readonly MacroSite[],
-	specFor: (site: MacroSite) => SettlementSpec,
-	area: Rect,
-): FeaturePatch[] {
-	const patches: FeaturePatch[] = [];
-	for (const site of sites) {
-		// Reject on the site's declared bounds first; generating a settlement in
-		// order to discover it is somewhere else costs tens of milliseconds.
-		if (!rectIntersection(settlementBounds(site), area)) continue;
-		patches.push(generateSettlement(seed, site, specFor(site)));
-	}
-	// Deterministic priority: larger id wins where two settlements overlap.
-	patches.sort((a, b) => a.id - b.id);
-	return patches;
 }
 
 export type { Anchor, BuildingPlacement };

@@ -108,7 +108,7 @@ const ASCII_BY_KEY: Readonly<Record<string, string>> = {
 	gravel: ":",
 	marsh: "%",
 	reeds: "|",
-	farmland: "=",
+	farmland: "F",
 	snow: "*",
 	dirtRoad: "+",
 	cobbleRoad: "#",
@@ -137,6 +137,13 @@ const ASCII_BY_KEY: Readonly<Record<string, string>> = {
 	rug: "r",
 	stairsDown: ">",
 	stairsUp: "<",
+	gateClosed: "G",
+	gateOpen: "g",
+	pier: "=",
+	deck: "b",
+	caveMouth: "C",
+	caveFloor: "'",
+	caveWall: "W",
 };
 
 export function terrainToAscii(id: TerrainId): string {

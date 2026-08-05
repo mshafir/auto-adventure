@@ -1,23 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { fallbackSite } from "../ai/director/fallback.js";
 import { hashString } from "../core/rand/hash.js";
+import { type Condition, evaluate } from "../core/rules/condition.js";
 import { createInitialState } from "../core/rules/state.js";
 import { siteContext } from "../core/world/context.js";
 import { CHUNK } from "../core/world/coords.js";
 import { type MacroSite, macroSite, sitesAround } from "../core/world/macro.js";
-import type { SiteSpec } from "../core/world/spec.js";
+import { type WorldSeed, worldSeed } from "../core/world/recipe.js";
+import { type NpcSpec, npcId, type SiteSpec } from "../core/world/spec.js";
 import { ChunkManager } from "./chunk-manager.js";
 import { GameEngine } from "./engine.js";
 import { NpcDirectory } from "./npc-directory.js";
 import { createWorldView } from "./world-view.js";
 
 const SEED = hashString("npc-test");
+const WORLD = worldSeed(SEED);
 
-function findTown(seed: number): MacroSite {
+function findTown(world: WorldSeed): MacroSite {
 	for (let radius = 0; radius < 16; radius++) {
 		for (let my = -radius; my <= radius; my++) {
 			for (let mx = -radius; mx <= radius; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(world, mx, my);
 				if (site.kind === "town" || site.kind === "village") return site;
 			}
 		}
@@ -25,10 +28,10 @@ function findTown(seed: number): MacroSite {
 	throw new Error("no town found");
 }
 
-function populated(seed: number, site: MacroSite) {
-	const spec: SiteSpec = fallbackSite(seed, site, siteContext(seed, site));
+function populated(world: WorldSeed, site: MacroSite) {
+	const spec: SiteSpec = fallbackSite(world.seed, site, siteContext(world, site));
 	const chunks = new ChunkManager({
-		seed,
+		world,
 		specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
 	});
 	// Build the whole settlement, which may straddle several chunks.
@@ -42,8 +45,8 @@ function populated(seed: number, site: MacroSite) {
 
 describe("npc placement", () => {
 	it("puts everyone in the spec somewhere in the town", () => {
-		const site = findTown(SEED);
-		const { npcs, spec } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { npcs, spec } = populated(WORLD, site);
 		expect(spec.npcs.length).toBeGreaterThan(0);
 		expect(npcs.all().length).toBe(spec.npcs.length);
 	});
@@ -52,8 +55,8 @@ describe("npc placement", () => {
 		// An NPC inside a wall cannot be talked to and cannot be seen; this is the
 		// whole reason placement binds to generator-emitted anchors rather than to
 		// a position the model was allowed to invent.
-		const site = findTown(SEED);
-		const { chunks, npcs } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { chunks, npcs } = populated(WORLD, site);
 		const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
 		for (const npc of npcs.all()) {
 			expect(view.isPassable(npc.x, npc.y), `${npc.name} stands in a wall`).toBe(true);
@@ -61,26 +64,26 @@ describe("npc placement", () => {
 	});
 
 	it("never stacks two people on one tile", () => {
-		const site = findTown(SEED);
-		const { npcs } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { npcs } = populated(WORLD, site);
 		const spots = new Set(npcs.all().map((npc) => `${npc.x},${npc.y}`));
 		expect(spots.size).toBe(npcs.all().length);
 	});
 
 	it("gives stable ids across a rebuild", () => {
-		const site = findTown(SEED);
-		const before = populated(SEED, site)
+		const site = findTown(WORLD);
+		const before = populated(WORLD, site)
 			.npcs.all()
 			.map((npc) => npc.id);
-		const after = populated(SEED, site)
+		const after = populated(WORLD, site)
 			.npcs.all()
 			.map((npc) => npc.id);
 		expect(after).toEqual(before);
 	});
 
 	it("finds an NPC by position and forgets them with their site", () => {
-		const site = findTown(SEED);
-		const { npcs } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { npcs } = populated(WORLD, site);
 		const someone = npcs.all()[0];
 		expect(someone).toBeDefined();
 		if (!someone) return;
@@ -102,10 +105,10 @@ describe("a town placed before its ground exists", () => {
 	 * `populate` skipped any site it had already seen. Nothing reported it: you walked
 	 * into the town the story hangs on and there was simply no one there.
 	 */
-	function unbuilt(seed: number, site: MacroSite) {
-		const spec: SiteSpec = fallbackSite(seed, site, siteContext(seed, site));
+	function unbuilt(world: WorldSeed, site: MacroSite) {
+		const spec: SiteSpec = fallbackSite(world.seed, site, siteContext(world, site));
 		const chunks = new ChunkManager({
-			seed,
+			world,
 			specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
 		});
 		const npcs = new NpcDirectory(chunks, (id) => (id === site.id ? spec : undefined));
@@ -113,15 +116,15 @@ describe("a town placed before its ground exists", () => {
 	}
 
 	it("places nobody while the ground is missing", () => {
-		const site = findTown(SEED);
-		const { npcs } = unbuilt(SEED, site);
+		const site = findTown(WORLD);
+		const { npcs } = unbuilt(WORLD, site);
 		npcs.populate([site]);
 		expect(npcs.atSite(site.id)).toEqual([]);
 	});
 
 	it("fills the town in once its chunks are built", () => {
-		const site = findTown(SEED);
-		const { chunks, npcs, spec } = unbuilt(SEED, site);
+		const site = findTown(WORLD);
+		const { chunks, npcs, spec } = unbuilt(WORLD, site);
 		npcs.populate([site]);
 
 		chunks.prefetch({ cx: site.mx, cy: site.my }, Math.ceil(site.radius / CHUNK) + 1);
@@ -133,8 +136,8 @@ describe("a town placed before its ground exists", () => {
 		// The other half of the same problem: re-deriving on every chunk change would
 		// move people who are already standing where they belong, because a placement
 		// made from a partly evicted footprint sees fewer anchors than the real one.
-		const site = findTown(SEED);
-		const { chunks, npcs } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { chunks, npcs } = populated(WORLD, site);
 		const before = npcs.all().map((npc) => `${npc.id}@${npc.x},${npc.y}`);
 		expect(before.length).toBeGreaterThan(0);
 
@@ -151,8 +154,8 @@ describe("a town placed before its ground exists", () => {
 
 describe("bumping into people", () => {
 	it("opens a conversation instead of walking through them", () => {
-		const site = findTown(SEED);
-		const spec = fallbackSite(SEED, site, siteContext(SEED, site));
+		const site = findTown(WORLD);
+		const spec = fallbackSite(SEED, site, siteContext(WORLD, site));
 		const state = createInitialState(
 			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
 			site.site,
@@ -189,8 +192,8 @@ describe("schedules", () => {
 		// the bug got in: a station left absent does not put somebody indoors, it
 		// removes them from the world. Everyone is still somewhere at two in the
 		// morning — just not where they stand at noon.
-		const site = findTown(SEED);
-		const { npcs } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { npcs } = populated(WORLD, site);
 
 		npcs.setHour(11);
 		const byDay = npcs.all().length;
@@ -217,8 +220,8 @@ describe("schedules", () => {
 
 	it("still resolves an NPC by id while they are indoors", () => {
 		// A conversation must survive the hour ticking over mid-sentence.
-		const site = findTown(SEED);
-		const { npcs } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { npcs } = populated(WORLD, site);
 		npcs.setHour(11);
 		const someone = npcs.all()[0];
 		expect(someone).toBeDefined();
@@ -229,8 +232,8 @@ describe("schedules", () => {
 	});
 
 	it("bumps its revision when the day moves on, so the map repaints", () => {
-		const site = findTown(SEED);
-		const { npcs } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { npcs } = populated(WORLD, site);
 		npcs.setHour(11);
 		const before = npcs.revision;
 		npcs.setHour(21);
@@ -244,13 +247,14 @@ describe("schedules", () => {
 
 describe("towns whose halos overlap", () => {
 	/** Every settlement in a block, each with its own fallback spec. */
-	function populatedRegion(seed: number, cc: { cx: number; cy: number }) {
-		const sites = sitesAround(seed, cc.cx, cc.cy);
+	function populatedRegion(world: WorldSeed, cc: { cx: number; cy: number }) {
+		const sites = sitesAround(world, cc.cx, cc.cy);
 		const specs = new Map<number, SiteSpec>();
-		for (const site of sites) specs.set(site.id, fallbackSite(seed, site, siteContext(seed, site)));
+		for (const site of sites)
+			specs.set(site.id, fallbackSite(world.seed, site, siteContext(world, site)));
 
 		const chunks = new ChunkManager({
-			seed,
+			world,
 			capacity: 64,
 			specFor: (s) => specs.get(s.id)?.settlement,
 		});
@@ -265,7 +269,7 @@ describe("towns whose halos overlap", () => {
 		// The search for a site's anchors runs in whole-chunk steps, so it reaches
 		// past a small town into its neighbours. Without a bounds filter a
 		// village's blacksmith takes up station on another village's doorstep.
-		const { sites, npcs } = populatedRegion(SEED, { cx: 0, cy: 0 });
+		const { sites, npcs } = populatedRegion(WORLD, { cx: 0, cy: 0 });
 		const byId = new Map(sites.map((site) => [site.id, site]));
 
 		for (const npc of npcs.all()) {
@@ -281,7 +285,7 @@ describe("towns whose halos overlap", () => {
 	});
 
 	it("never puts two people on the same tile across sites", () => {
-		const { npcs } = populatedRegion(SEED, { cx: 0, cy: 0 });
+		const { npcs } = populatedRegion(WORLD, { cx: 0, cy: 0 });
 		const spots = npcs.all().map((npc) => `${npc.x},${npc.y}`);
 		expect(new Set(spots).size).toBe(spots.length);
 	});
@@ -300,8 +304,8 @@ describe("a town is never empty", () => {
 	 * progressed for a third of the clock, with nothing to suggest waiting.
 	 */
 	it("has somebody findable at every hour of the day", () => {
-		const site = findTown(SEED);
-		const { npcs } = populated(SEED, site);
+		const site = findTown(WORLD);
+		const { npcs } = populated(WORLD, site);
 		const roster = npcs.atSite(site.id).length;
 		expect(roster).toBeGreaterThan(0);
 
@@ -320,8 +324,8 @@ describe("a town is never empty", () => {
 		// stall or well and a small town may have none — in which case there is
 		// genuinely nowhere else for its two residents to be.
 		const moves = ["hollowmoor", "vale", "default", "harrow", "moss", "ember"].filter((name) => {
-			const seed = hashString(name);
-			const { npcs } = populated(seed, findTown(seed));
+			const world = worldSeed(hashString(name));
+			const { npcs } = populated(world, findTown(world));
 			const seen = new Set<string>();
 			for (let hour = 0; hour < 24; hour++) {
 				npcs.setHour(hour);
@@ -371,10 +375,10 @@ describe("standing outside a building", () => {
 		return open.length === 1 ? open[0] : undefined;
 	}
 
-	function village(seed: number) {
-		const site = findTown(seed);
-		const { chunks, npcs } = populated(seed, site);
-		const view = createWorldView({ seed, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+	function village(world: WorldSeed) {
+		const site = findTown(world);
+		const { chunks, npcs } = populated(world, site);
+		const view = createWorldView({ seed: world.seed, chunkAt: (cx, cy) => chunks.get(cx, cy) });
 		const reach = Math.ceil(site.radius / CHUNK) + 1;
 		const buildings = [];
 		for (let dy = -reach; dy <= reach; dy++) {
@@ -387,7 +391,7 @@ describe("standing outside a building", () => {
 
 	it("never stands in the only doorway a building has", () => {
 		for (const seed of [23, 65, hashString("npc-test"), hashString("vale")]) {
-			const { npcs, view, buildings } = village(seed);
+			const { npcs, view, buildings } = village(worldSeed(seed));
 			expect(buildings.length, `seed ${seed} has no buildings`).toBeGreaterThan(0);
 
 			for (let hour = 0; hour < 24; hour += 2) {
@@ -408,7 +412,7 @@ describe("standing outside a building", () => {
 	it("still puts people where their building is", () => {
 		// The cheap way to satisfy the above is to move everybody to the square, at
 		// which point a village is a crowd standing in a field.
-		const { npcs, buildings } = village(23);
+		const { npcs, buildings } = village(worldSeed(23));
 		npcs.setHour(11);
 		const near = npcs
 			.all()
@@ -418,3 +422,97 @@ describe("standing outside a building", () => {
 		expect(near.length, "nobody stands near any building").toBeGreaterThan(0);
 	}, 30_000);
 });
+
+describe("people the story has not brought on yet", () => {
+	/** The same town, with one resident gated behind a flag. */
+	function gated(condition: Condition) {
+		const site = findTown(WORLD);
+		const spec: SiteSpec = fallbackSite(SEED, site, siteContext(WORLD, site));
+		const hidden = spec.npcs[0] as NpcSpec;
+		const withGate: SiteSpec = {
+			...spec,
+			npcs: spec.npcs.map((npc, i) => (i === 0 ? { ...npc, requires: condition } : npc)),
+		};
+
+		const chunks = new ChunkManager({
+			world: WORLD,
+			specFor: (s) => (s.id === site.id ? withGate.settlement : undefined),
+		});
+		chunks.prefetch({ cx: site.mx, cy: site.my }, Math.ceil(site.radius / CHUNK) + 1);
+		const npcs = new NpcDirectory(chunks, (id) => (id === site.id ? withGate : undefined));
+		npcs.populate([site]);
+		return { npcs, site, hidden, id: npcId(site.id, hidden.slot), total: spec.npcs.length };
+	}
+
+	it("shows everybody when nothing has been gated", () => {
+		// The default has to be "present", because every procedural and live world
+		// leaves `requires` absent for everyone.
+		const { npcs, total } = gated({ flag: "courier:arrived" });
+		expect(npcs.all().length).toBe(total);
+	});
+
+	it("leaves out somebody whose condition is unmet", () => {
+		const { npcs, total, id } = gated({ flag: "courier:arrived" });
+		npcs.setGate((npc) => evaluate(npc.requires, blank()));
+		expect(npcs.all().length).toBe(total - 1);
+		expect(npcs.all().some((npc) => npc.id === id)).toBe(false);
+	});
+
+	it("cannot be walked into or talked to while absent", () => {
+		// The failure this exists to prevent: somebody invisible who still answers
+		// when you press SPACE at the tile they would have been standing on.
+		const { npcs, hidden, id, site } = gated({ flag: "courier:arrived" });
+		const station = npcs.all().find((npc) => npc.id === id);
+		expect(station, `slot ${hidden.slot} of site ${site.id} was not placed`).toBeDefined();
+		const { x, y } = station as { x: number; y: number };
+
+		npcs.setGate((npc) => evaluate(npc.requires, blank()));
+		expect(npcs.at(x, y)).toBeUndefined();
+		expect(npcs.byNpcId(id)).toBeUndefined();
+		// And they are not offered to the dialogue layer as somebody who is here.
+		expect(npcs.atSite(site.id).some((npc) => npc.id === id)).toBe(false);
+	});
+
+	it("brings them on the moment the condition flips", () => {
+		const { npcs, total, id } = gated({ flag: "courier:arrived" });
+		npcs.setGate((npc) => evaluate(npc.requires, blank()));
+		const before = npcs.revision;
+
+		npcs.setGate((npc) => evaluate(npc.requires, blank({ "courier:arrived": true })));
+		expect(npcs.all().length).toBe(total);
+		expect(npcs.byNpcId(id)).toBeDefined();
+		// The render layer memoises on the revision, so it has to move or the frame
+		// keeps the old entity index and they stay invisible.
+		expect(npcs.revision).toBeGreaterThan(before);
+	});
+
+	it("does not churn the revision when the answer has not changed", () => {
+		// Re-asked after every command that touches flags, inventory or quests, which
+		// is often; a bump per ask would rebuild the entity index on every step.
+		const { npcs } = gated({ flag: "courier:arrived" });
+		npcs.setGate((npc) => evaluate(npc.requires, blank()));
+		const settled = npcs.revision;
+		npcs.recheckGate();
+		npcs.recheckGate();
+		expect(npcs.revision).toBe(settled);
+	});
+
+	it("keeps their station reserved while they are away", () => {
+		// Skipped at index time rather than at placement time, so nobody else is
+		// shuffled onto the doorstep a returning character belongs on.
+		const { npcs, id } = gated({ flag: "courier:arrived" });
+		const before = npcs.all().find((npc) => npc.id === id);
+		npcs.setGate((npc) => evaluate(npc.requires, blank()));
+		npcs.setGate((npc) => evaluate(npc.requires, blank({ "courier:arrived": true })));
+		const after = npcs.all().find((npc) => npc.id === id);
+		expect({ x: after?.x, y: after?.y }).toEqual({ x: before?.x, y: before?.y });
+	});
+});
+
+function blank(flags: Record<string, string | number | boolean> = {}) {
+	const state = createInitialState(
+		{ id: "t", name: "t", seed: SEED, createdAt: "" },
+		{ x: 0, y: 0 },
+	);
+	return { ...state, flags };
+}

@@ -120,3 +120,44 @@ describe("TopBar", () => {
 		expect(row).not.toContain("grassland");
 	});
 });
+
+describe("a world with no clock", () => {
+	function frozen(width: number, props: Partial<Parameters<typeof TopBar>[0]> = {}): string[] {
+		const base = createInitialState({ ...WORLD, time: { enabled: false } }, { x: 165, y: 35 });
+		const { lastFrame, unmount } = renderInk(<TopBar state={base} width={width} {...props} />, {
+			columns: width,
+			rows: 24,
+		});
+		const out = (lastFrame() ?? "").split("\n").map((line) => stripAnsi(line));
+		unmount();
+		return out;
+	}
+
+	it("shows no time and no day", () => {
+		// Not "08:00, day 1" forever, which is worse than nothing: a clock that never
+		// moves reads as the game having hung.
+		const [row] = frozen(120, { placeName: "Ash Crest" });
+		expect(row).not.toMatch(/\d\d:\d\d/);
+		expect(row).not.toMatch(/day \d/);
+		expect(row).toContain("Ash Crest");
+	});
+
+	it("still fills its width exactly", () => {
+		// The separators are counted from what is drawn rather than assumed, so dropping
+		// two pieces must not leave the row four columns short — one column of
+		// disagreement tears the map.
+		for (const width of [40, 60, 80, 100, 120, 163]) {
+			const [row] = frozen(width, {
+				placeName: "Ash Crest",
+				summary: SUMMARY,
+				weather: WEATHER,
+			});
+			expect(stringWidth(row ?? ""), `${width} columns`).toBe(width);
+		}
+	});
+
+	it("keeps the position, which is the piece that is always true", () => {
+		const [row] = frozen(120, { placeName: "Ash Crest" });
+		expect(row).toContain("165, 35");
+	});
+});

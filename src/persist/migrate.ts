@@ -1,6 +1,6 @@
 import { isOverrideEmpty, type PackOverride } from "../core/content/pack.js";
 import { PackOverrideSchema } from "../core/content/schema.js";
-import { type GameState, SAVE_VERSION, START_TICK, timeFromTick } from "../core/rules/state.js";
+import { type GameState, SAVE_VERSION, startTick, timeFromTick } from "../core/rules/state.js";
 import { normalizeBrief, type ScenarioBrief } from "../core/world/brief.js";
 import { logger } from "../utils/log.js";
 
@@ -107,8 +107,10 @@ function validate(value: Record<string, unknown>): GameState | undefined {
 		...(content ? { content } : {}),
 		// Day, hour and minute are all derived from the tick, so recomputing them is
 		// both a backfill for saves written before a field existed and a repair for
-		// any that disagree with their own tick.
-		time: timeFromTick(state.time?.tick ?? START_TICK),
+		// any that disagree with their own tick. Derived against the world's own clock
+		// settings, so a save from a world with no time of day does not come back with
+		// one — which is exactly what happened when the tick alone decided.
+		time: timeFromTick(state.time?.tick ?? startTick(world?.time as never), world?.time as never),
 		discovered: Array.isArray(value.discovered) ? (value.discovered as string[]) : [],
 		journal: Array.isArray(value.journal) ? state.journal : [],
 		flags: (value.flags as GameState["flags"]) ?? {},

@@ -9,6 +9,7 @@ import type { ScenarioArc } from "../core/rules/arc.js";
 import { createInitialState } from "../core/rules/state.js";
 import { siteContext } from "../core/world/context.js";
 import { type MacroSite, macroSite } from "../core/world/macro.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { GameEngine } from "../engine/engine.js";
 import App from "./app.js";
 import { mapLegend } from "./panels/legend.js";
@@ -22,7 +23,7 @@ function findTown(seed: number): MacroSite {
 	for (let radius = 0; radius < 16; radius++) {
 		for (let my = -radius; my <= radius; my++) {
 			for (let mx = -radius; mx <= radius; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(worldSeed(seed), mx, my);
 				if (site.kind === "town" || site.kind === "village") return site;
 			}
 		}
@@ -33,7 +34,7 @@ function findTown(seed: number): MacroSite {
 /** An engine standing next to the first person in the nearest town. */
 function engineBesideSomeone(arc?: ScenarioArc) {
 	const site = findTown(SEED);
-	const spec = fallbackSite(SEED, site, siteContext(SEED, site));
+	const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
 	const base = createInitialState(
 		{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
 		site.site,
@@ -133,7 +134,7 @@ describe("the game screen", () => {
 		const { engine, target, site, spec } = engineBesideSomeone();
 		bindEngine(engine);
 		const dialogue = createDialogueService({
-			seed: SEED,
+			world: worldSeed(SEED),
 			lore: () => fallbackLore(),
 			regionSpec: () => undefined,
 			siteSpec: (id) => (id === site.id ? spec : undefined),

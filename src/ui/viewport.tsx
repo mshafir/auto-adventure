@@ -159,7 +159,10 @@ function KittyViewport({
 		// killed the terminal. Past the cap the tiles are *drawn* smaller and the
 		// terminal scales the image back into the same cells.
 		const tilePx = renderTilePixels(camera.width, camera.height);
-		const frame = rasterScene(composeScene(source, camera, options), { tilePx });
+		const frame = rasterScene(composeScene(source, camera, options), {
+			tilePx,
+			...(options?.theme ? { sprites: options.theme.sprites } : {}),
+		});
 		// Into the pixels, before the image goes out. A chunk gets one cell of the
 		// terminal, doubled across, which is the same room the glyph path gives it —
 		// so the minimap covers the same patch of screen in either renderer, and

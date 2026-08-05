@@ -1,3 +1,4 @@
+import { asCondition, type Condition, evaluate } from "../../core/rules/condition.js";
 import type { NpcRecord } from "../../core/rules/npc.js";
 import type { GameState } from "../../core/rules/state.js";
 import type { ActionResponse, DialogueTurnResponse } from "./schema.js";
@@ -22,15 +23,22 @@ export interface DialogueChoice {
 	readonly text: string;
 	/** Where answering leads. Null ends the conversation. */
 	readonly goto: string | null;
-	/** Flags that must be set for this reply to be offered at all. */
-	readonly requires?: readonly string[];
+	/**
+	 * What must be true for this reply to be offered at all.
+	 *
+	 * A list of flag names means "all of these are set", which is what this field
+	 * has always meant and how most authored trees are written. A {@link Condition}
+	 * says anything else — that the player is carrying the ledger, that the smith
+	 * has warmed to them, that it is after dark.
+	 */
+	readonly requires?: readonly string[] | Condition;
 }
 
 export interface DialogueNode {
 	readonly id: string;
 	readonly speech: string;
-	/** Flags required for this node to be eligible as an opening. */
-	readonly requires?: readonly string[];
+	/** What must be true for this node to be eligible as an opening. */
+	readonly requires?: readonly string[] | Condition;
 	readonly choices: readonly DialogueChoice[];
 	readonly actions?: readonly ActionResponse[];
 }
@@ -49,8 +57,8 @@ export interface DialogueTree {
 	readonly nodes: Readonly<Record<string, DialogueNode>>;
 }
 
-function satisfied(state: GameState, requires: readonly string[] | undefined): boolean {
-	return (requires ?? []).every((flag) => Boolean(state.flags[flag]));
+function satisfied(state: GameState, requires: readonly string[] | Condition | undefined): boolean {
+	return evaluate(asCondition(requires), state);
 }
 
 /** The first listed node that exists and whose flags are set. */

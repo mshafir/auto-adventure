@@ -12,6 +12,7 @@
 import { generateChunk } from "../core/gen/pipeline.js";
 import { hashString } from "../core/rand/hash.js";
 import { CHUNK } from "../core/world/coords.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { encodeScene } from "../ui/render/ansi.js";
 import { composeScene } from "../ui/render/compose.js";
 import { placeholderRows, transmitFrame } from "../ui/render/kitty.js";
@@ -32,7 +33,7 @@ for (const [cx, cy] of [
 	[2, 0],
 	[0, 0],
 ] as const) {
-	const { chunk } = generateChunk({ seed }, { cx, cy });
+	const { chunk } = generateChunk({ world: worldSeed(seed) }, { cx, cy });
 	const source = createWorldTileSource({
 		seed,
 		chunkAt: (qx, qy) => (qx === cx && qy === cy ? chunk : undefined),

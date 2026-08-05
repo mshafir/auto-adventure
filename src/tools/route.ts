@@ -30,11 +30,13 @@ import { D, decorDef } from "../core/tiles/decor.js";
 import { TFlag } from "../core/tiles/flags.js";
 import { CHUNK, toChunk } from "../core/world/coords.js";
 import { sitesAround } from "../core/world/macro.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { GameEngine } from "../engine/engine.js";
 import { findSpawn } from "../engine/spawn.js";
 
 const seed = resolveSeed(process.argv[2]);
-const spawn = findSpawn(seed);
+const world = worldSeed(seed);
+const spawn = findSpawn(world);
 const cc = toChunk(spawn.x, spawn.y);
 
 /**
@@ -46,7 +48,7 @@ const cc = toChunk(spawn.x, spawn.y);
  */
 const host: { engine?: GameEngine } = {};
 const director = new Director({
-	seed,
+	world,
 	regions: {},
 	sites: {},
 	sources: {},
@@ -74,7 +76,7 @@ engine.getChunks().prefetch(cc, 2);
 engine.populateNpcs(cc);
 
 const here = director.siteSpec(
-	sitesAround(seed, cc.cx, cc.cy, 1).find((s) => specHas(s.id))?.id ?? -1,
+	sitesAround(world, cc.cx, cc.cy, 1).find((s) => specHas(s.id))?.id ?? -1,
 );
 function specHas(id: number) {
 	return director.siteSpec(id) !== undefined;

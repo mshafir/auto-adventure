@@ -1,0 +1,86 @@
+{
+	"name": "inkwell",
+	"tilePx": 16,
+	"palette": {
+		"moss": "#6f7f4a",
+		"mossDark": "#2e3a22",
+		"leaf": "#5f7a3f",
+		"leafDark": "#26331c",
+		"oak": "#7d6a3a",
+		"oakDark": "#2f2a16",
+		"pine": "#3f6a4a",
+		"pineDark": "#1a2f22",
+		"deep": "#3a5f7a",
+		"abyss": "#101e2c",
+		"shallow": "#4a7a94",
+		"foam": "#b8d8e4",
+		"sand": "#d8c9a0",
+		"sandDark": "#a08e63",
+		"dirt": "#7a6a52",
+		"dirtDark": "#4e4234",
+		"stone": "#c4bfb4",
+		"stoneDark": "#37342f",
+		"cobble": "#a8a296",
+		"cobbleDark": "#605b52",
+		"timber": "#9a7a4e",
+		"timberDark": "#43301b",
+		"tile": "#7a4436",
+		"tileDark": "#4c2b20",
+		"brass": "#e0b055",
+		"bone": "#f0ead8"
+	},
+	"glyphs": {
+		"terrain": {
+			"grass": { "ch": ["░", "'", ".", "░"], "fg": "moss", "bg": "mossDark" },
+			"cobbleRoad": { "ch": [" ", "▒", " ", " "], "fg": "cobble", "bg": "cobbleDark" },
+			"stoneWall": {
+				"ch": ["▓"],
+				"fg": "stone",
+				"bg": "stoneDark",
+				"bold": true,
+				"autotile": "heavyWall"
+			}
+		},
+		"decor": {
+			"chest": { "ch": "▣", "fg": "brass", "bold": true }
+		}
+	},
+	"sprites": {
+		"terrain": {
+			"grass": {
+				"mask": [
+					"................",
+					"................",
+					"..#........#....",
+					"..#....#...#....",
+					".......#........",
+					"................",
+					"........#.......",
+					"....#...#....#..",
+					"....#........#..",
+					"................",
+					"..........#.....",
+					"..#.......#.....",
+					"..#.............",
+					"................",
+					"................",
+					"................"
+				]
+			},
+			"conifer": {
+				"shape": {
+					"any": [
+						{ "cone": [0.5, 0.02, 0.62, 0.34] },
+						{ "cone": [0.5, 0.28, 0.88, 0.44] },
+						{ "box": [0.45, 0.86, 0.55, 1.0] }
+					]
+				}
+			},
+			"roof": { "atlas": [0, 0] },
+			"cobbleRoad": { "atlas": [1, 0] }
+		},
+		"decor": {
+			"chest": { "atlas": [2, 0] }
+		}
+	}
+}

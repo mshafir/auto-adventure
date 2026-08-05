@@ -10,8 +10,16 @@ import {
 } from "./autotile.js";
 import type { RGB } from "./color.js";
 import { assertSafeGlyphs } from "./glyph-safety.js";
-import { PAL } from "./palette.js";
+import { DEFAULT_PALETTE, type Palette, paletteColor } from "./palette.js";
 
+/**
+ * How a tile is drawn in glyph mode, once its colours are resolved.
+ *
+ * Two shapes exist for everything below: a *spec*, which names its colours by palette
+ * key, and a *source*, which carries the resolved RGB. Authoring in keys is what makes
+ * a tile pack able to change the whole map's colour by supplying eleven numbers rather
+ * than restating sixty glyphs — and it is why `PAL` is no longer read here directly.
+ */
 export interface GlyphSpec {
 	/** Exactly one terminal column wide. Enforced by `assertSafeGlyphs`. */
 	readonly ch: string;
@@ -28,108 +36,179 @@ export type GlyphSource =
 	| { readonly kind: "variants"; readonly glyphs: readonly GlyphSpec[] }
 	| { readonly kind: "autotile"; readonly set: AutotileSet; readonly base: Omit<GlyphSpec, "ch"> };
 
+/** The same, with colours as palette keys. What the tables below are written in. */
+export interface GlyphDraft {
+	readonly ch: string | readonly string[];
+	readonly fg: string;
+	readonly bg?: string;
+	readonly bold?: boolean;
+	readonly dim?: boolean;
+	/** Named autotile set, when the tile connects to its neighbours. */
+	readonly autotile?: AutotileSet;
+}
+
 function stat(
 	ch: string,
-	fg: RGB,
-	bg?: RGB,
+	fg: string,
+	bg?: string,
 	extra?: { bold?: boolean; dim?: boolean },
-): GlyphSource {
-	return { kind: "static", glyph: { ch, fg, ...(bg ? { bg } : {}), ...extra } };
+): GlyphDraft {
+	return { ch, fg, ...(bg ? { bg } : {}), ...extra };
 }
 
-function vary(chars: readonly string[], fg: RGB, bg: RGB): GlyphSource {
-	return { kind: "variants", glyphs: chars.map((ch) => ({ ch, fg, bg })) };
+function vary(chars: readonly string[], fg: string, bg: string): GlyphDraft {
+	return { ch: chars, fg, bg };
 }
 
-function auto(set: AutotileSet, fg: RGB, bg: RGB, extra?: { bold?: boolean }): GlyphSource {
-	return { kind: "autotile", set, base: { fg, bg, ...extra } };
+function auto(set: AutotileSet, fg: string, bg: string, extra?: { bold?: boolean }): GlyphDraft {
+	return { ch: set.table, fg, bg, autotile: set, ...extra };
 }
 
-const TERRAIN_GLYPHS: Readonly<Record<string, GlyphSource>> = {
-	void: stat(" ", PAL.ash),
+/** Turn a draft into something the compositor can read, against a palette. */
+export function resolveGlyph(draft: GlyphDraft, palette: Palette): GlyphSource {
+	const fg = paletteColor(palette, draft.fg);
+	const bg = draft.bg === undefined ? undefined : paletteColor(palette, draft.bg);
+	const extra = {
+		...(draft.bold ? { bold: true } : {}),
+		...(draft.dim ? { dim: true } : {}),
+	};
+	if (draft.autotile) {
+		return { kind: "autotile", set: draft.autotile, base: { fg, ...(bg ? { bg } : {}), ...extra } };
+	}
+	if (Array.isArray(draft.ch)) {
+		return {
+			kind: "variants",
+			glyphs: draft.ch.map((ch) => ({ ch, fg, ...(bg ? { bg } : {}), ...extra })),
+		};
+	}
+	return { kind: "static", glyph: { ch: draft.ch as string, fg, ...(bg ? { bg } : {}), ...extra } };
+}
 
-	deepWater: auto(WATER_EDGE, PAL.deep, PAL.abyss),
-	water: auto(WATER_EDGE, PAL.foam, PAL.shallow),
-	ice: vary(["░", "▒"], PAL.ice, PAL.iceDark),
+export const TERRAIN_GLYPH_DRAFTS: Readonly<Record<string, GlyphDraft>> = {
+	void: stat(" ", "ash"),
 
-	sand: vary(["░", "·", "░", "."], PAL.sand, PAL.sandDark),
-	grass: vary(["░", ",", "'", ".", "░", "░"], PAL.moss, PAL.mossDark),
-	tallGrass: vary(["▒", "▓"], PAL.leaf, PAL.leafDark),
-	forestFloor: vary([".", ",", "·", "'"], PAL.leafDark, PAL.loam),
-	dirt: vary([" ", "·", " ", "."], PAL.dirtDark, PAL.dirt),
-	gravel: vary(["░", ":", "░", "."], PAL.gravel, PAL.gravelDark),
-	marsh: vary(["~", "░", ",", "~"], PAL.reedDark, PAL.mud),
-	reeds: vary(["|", "!", "|"], PAL.reed, PAL.reedDark),
-	farmland: vary(["=", "-", "="], PAL.dirtDark, PAL.dirt),
-	snow: vary(["░", " ", "░", "."], PAL.snow, PAL.snowShadow),
+	deepWater: auto(WATER_EDGE, "deep", "abyss"),
+	water: auto(WATER_EDGE, "foam", "shallow"),
+	ice: vary(["░", "▒"], "ice", "iceDark"),
+
+	sand: vary(["░", "·", "░", "."], "sand", "sandDark"),
+	grass: vary(["░", ",", "'", ".", "░", "░"], "moss", "mossDark"),
+	tallGrass: vary(["▒", "▓"], "leaf", "leafDark"),
+	forestFloor: vary([".", ",", "·", "'"], "leafDark", "loam"),
+	dirt: vary([" ", "·", " ", "."], "dirtDark", "dirt"),
+	gravel: vary(["░", ":", "░", "."], "gravel", "gravelDark"),
+	marsh: vary(["~", "░", ",", "~"], "reedDark", "mud"),
+	reeds: vary(["|", "!", "|"], "reed", "reedDark"),
+	farmland: vary(["=", "-", "="], "dirtDark", "dirt"),
+	snow: vary(["░", " ", "░", "."], "snow", "snowShadow"),
 
 	// Roads read as a background band. Keeping them nearly untextured is what
 	// lets the eye follow a route across a busy map: any repeated glyph dense
 	// enough to see is also dense enough to be confused with tall grass.
-	dirtRoad: vary([" ", " ", " ", "·", " ", " "], PAL.dirtDark, PAL.dirt),
-	cobbleRoad: vary([" ", "░", " ", " ", " ", "░"], PAL.cobble, PAL.cobbleDark),
-	path: vary([" ", " ", "·", " ", " ", " "], PAL.sandDark, PAL.dirtDark),
-	bridge: auto(DOUBLE_SPAN, PAL.plank, PAL.shallow),
+	dirtRoad: vary([" ", " ", " ", "·", " ", " "], "dirtDark", "dirt"),
+	cobbleRoad: vary([" ", "░", " ", " ", " ", "░"], "cobble", "cobbleDark"),
+	path: vary([" ", " ", "·", " ", " ", " "], "sandDark", "dirtDark"),
+	bridge: auto(DOUBLE_SPAN, "plank", "shallow"),
 
-	conifer: stat("▲", PAL.pine, PAL.pineDark, { bold: true }),
-	broadleaf: auto(MASS_EDGE, PAL.oak, PAL.oakDark),
-	deadTree: stat("†", PAL.gravel, PAL.loam),
-	bush: stat("▒", PAL.leaf, PAL.leafDark),
-	flowers: stat("*", PAL.bloom[1] as RGB, PAL.mossDark, { bold: true }),
-	crops: vary(["≡", "="], PAL.wheat, PAL.wheatDark),
-	stump: stat("o", PAL.timberDark, PAL.loam),
+	conifer: stat("▲", "pine", "pineDark", { bold: true }),
+	broadleaf: auto(MASS_EDGE, "oak", "oakDark"),
+	deadTree: stat("†", "gravel", "loam"),
+	bush: stat("▒", "leaf", "leafDark"),
+	flowers: stat("*", "bloom1", "mossDark", { bold: true }),
+	crops: vary(["≡", "="], "wheat", "wheatDark"),
+	stump: stat("o", "timberDark", "loam"),
 
-	rock: stat("●", PAL.slate, PAL.slateDark),
-	cliff: auto(MASS_EDGE, PAL.slate, PAL.slateDark),
-	mountain: stat("▲", PAL.stone, PAL.slateDark, { bold: true }),
-	rubble: vary(["░", ":", "░"], PAL.slate, PAL.stoneDark),
+	rock: stat("●", "slate", "slateDark"),
+	cliff: auto(MASS_EDGE, "slate", "slateDark"),
+	mountain: stat("▲", "stone", "slateDark", { bold: true }),
+	rubble: vary(["░", ":", "░"], "slate", "stoneDark"),
 
-	stoneWall: auto(HEAVY_WALL, PAL.stone, PAL.stoneDark, { bold: true }),
-	woodWall: auto(HEAVY_WALL, PAL.timber, PAL.timberDark, { bold: true }),
-	fence: auto(LIGHT_FENCE, PAL.timber, PAL.mossDark),
-	roof: vary(["▒", "▓"], PAL.tile, PAL.tileDark),
-	window: stat("▤", PAL.glass, PAL.timberDark, { bold: true }),
-	doorClosed: stat("+", PAL.brass, PAL.timberDark, { bold: true }),
-	doorOpen: stat("/", PAL.brass, PAL.soot, { bold: true }),
-	floorWood: vary(["─", " ", "─", " "], PAL.plankDark, PAL.plank),
-	floorStone: vary(["░", " ", "░"], PAL.cobbleDark, PAL.cobble),
-	rug: stat("▒", PAL.blood, PAL.timberDark),
-	stairsDown: stat(">", PAL.bone, PAL.ash, { bold: true }),
-	stairsUp: stat("<", PAL.bone, PAL.ash, { bold: true }),
+	stoneWall: auto(HEAVY_WALL, "stone", "stoneDark", { bold: true }),
+	woodWall: auto(HEAVY_WALL, "timber", "timberDark", { bold: true }),
+	fence: auto(LIGHT_FENCE, "timber", "mossDark"),
+	roof: vary(["▒", "▓"], "tile", "tileDark"),
+	window: stat("▤", "glass", "timberDark", { bold: true }),
+	doorClosed: stat("+", "brass", "timberDark", { bold: true }),
+	doorOpen: stat("/", "brass", "soot", { bold: true }),
+	// Bars across the way, and the arch they hang in. Both glyphs already carry a
+	// sprite of the right shape — `╫` is a horizontal rail over two uprights, which
+	// is a portcullis, and `∩` is an archway — so the pixel renderer needs nothing
+	// added for these to read correctly.
+	gateClosed: stat("╫", "brass", "stoneDark", { bold: true }),
+	gateOpen: stat("∩", "stone", "soot"),
+	floorWood: vary(["─", " ", "─", " "], "plankDark", "plank"),
+	floorStone: vary(["░", " ", "░"], "cobbleDark", "cobble"),
+	rug: stat("▒", "blood", "timberDark"),
+	stairsDown: stat(">", "bone", "ash", { bold: true }),
+	stairsUp: stat("<", "bone", "ash", { bold: true }),
+	// Planks over water: the boards read across the run, and the dark water shows
+	// between them, which is what tells a pier from a road at a glance.
+	pier: vary(["═", "─"], "plank", "shallow"),
+	deck: vary(["─", " "], "plankDark", "plank"),
+	caveMouth: stat("∩", "stoneDark", "soot", { bold: true }),
+	caveFloor: vary(["░", " ", "·"], "gravelDark", "ash"),
+	caveWall: auto(HEAVY_WALL, "slateDark", "soot", { bold: true }),
 };
 
-const DECOR_GLYPHS: Readonly<Record<string, GlyphSource>> = {
-	none: stat(" ", PAL.ash),
-	sign: stat("╤", PAL.lamplight, undefined, { bold: true }),
-	signpost: stat("╪", PAL.timber, undefined, { bold: true }),
-	well: stat("▢", PAL.stone, undefined, { bold: true }),
-	stall: stat("∩", PAL.blood, undefined, { bold: true }),
-	bench: stat("▬", PAL.timber),
-	barrel: stat("◍", PAL.timberDark),
-	crate: stat("▨", PAL.timber),
-	chest: stat("▣", PAL.brass, undefined, { bold: true }),
-	table: stat("▤", PAL.timber),
-	chair: stat("⊓", PAL.timberDark),
-	bed: stat("▭", PAL.bone),
-	hearth: stat("▩", PAL.blood, undefined, { bold: true }),
-	anvil: stat("▟", PAL.slate, undefined, { bold: true }),
-	counter: stat("▬", PAL.plank, undefined, { bold: true }),
-	shelf: stat("≣", PAL.timberDark),
-	statue: stat("§", PAL.stone, undefined, { bold: true }),
-	grave: stat("†", PAL.stone),
-	shrine: stat("╫", PAL.lamplight, undefined, { bold: true }),
-	campfire: stat("※", PAL.bloom[0] as RGB, undefined, { bold: true }),
-	lamp: stat("¡", PAL.lamplight, undefined, { bold: true }),
-	item: stat("·", PAL.bone, undefined, { bold: true }),
+export const DECOR_GLYPH_DRAFTS: Readonly<Record<string, GlyphDraft>> = {
+	none: stat(" ", "ash"),
+	sign: stat("╤", "lamplight", undefined, { bold: true }),
+	signpost: stat("╪", "timber", undefined, { bold: true }),
+	well: stat("▢", "stone", undefined, { bold: true }),
+	stall: stat("∩", "blood", undefined, { bold: true }),
+	bench: stat("▬", "timber"),
+	barrel: stat("◍", "timberDark"),
+	crate: stat("▨", "timber"),
+	chest: stat("▣", "brass", undefined, { bold: true }),
+	table: stat("▤", "timber"),
+	chair: stat("⊓", "timberDark"),
+	bed: stat("▭", "bone"),
+	hearth: stat("▩", "blood", undefined, { bold: true }),
+	anvil: stat("▟", "slate", undefined, { bold: true }),
+	counter: stat("▬", "plank", undefined, { bold: true }),
+	shelf: stat("≣", "timberDark"),
+	statue: stat("§", "stone", undefined, { bold: true }),
+	grave: stat("†", "stone"),
+	shrine: stat("╫", "lamplight", undefined, { bold: true }),
+	campfire: stat("※", "bloom0", undefined, { bold: true }),
+	lamp: stat("¡", "lamplight", undefined, { bold: true }),
+	item: stat("·", "bone", undefined, { bold: true }),
+	boat: stat("◄", "timber", undefined, { bold: true }),
+	mooring: stat("¡", "timberDark"),
+	banner: stat("▮", "blood", undefined, { bold: true }),
 };
 
-/** Dense arrays indexed by id, so the render loop never does a string lookup. */
-export const TERRAIN_GLYPH: readonly GlyphSource[] = TERRAIN.map(
-	(def) => TERRAIN_GLYPHS[def.key] ?? stat("?", PAL.blood),
+const MISSING: GlyphDraft = stat("?", "blood");
+
+/**
+ * Dense arrays indexed by id, so the render loop never does a string lookup.
+ *
+ * Built per theme rather than once at module load. A pack supplies drafts for the keys
+ * it wants to change and inherits the rest, which is the same merge rule content packs
+ * use: maps merge by key, lists replace.
+ */
+export function buildGlyphTable(
+	kind: "terrain" | "decor",
+	overrides: Readonly<Record<string, GlyphDraft>> | undefined,
+	palette: Palette,
+): readonly GlyphSource[] {
+	const defaults = kind === "terrain" ? TERRAIN_GLYPH_DRAFTS : DECOR_GLYPH_DRAFTS;
+	const defs = kind === "terrain" ? TERRAIN : DECOR;
+	return defs.map((def) =>
+		resolveGlyph(overrides?.[def.key] ?? defaults[def.key] ?? MISSING, palette),
+	);
+}
+
+export const TERRAIN_GLYPH: readonly GlyphSource[] = buildGlyphTable(
+	"terrain",
+	undefined,
+	DEFAULT_PALETTE,
 );
 
-export const DECOR_GLYPH: readonly GlyphSource[] = DECOR.map(
-	(def) => DECOR_GLYPHS[def.key] ?? stat("?", PAL.blood),
+export const DECOR_GLYPH: readonly GlyphSource[] = buildGlyphTable(
+	"decor",
+	undefined,
+	DEFAULT_PALETTE,
 );
 
 /**
@@ -158,10 +237,13 @@ export function decorGlyphSource(id: DecorId): GlyphSource {
 	return DECOR_GLYPH[id] ?? (DECOR_GLYPH[D.none] as GlyphSource);
 }
 
-/** Every glyph this module can emit, for validation and for tests. */
-export function allRegisteredGlyphs(): string[] {
+/** Every glyph a set of tables can emit, for validation and for tests. */
+export function allRegisteredGlyphs(
+	tables: readonly (readonly GlyphSource[])[] = [TERRAIN_GLYPH, DECOR_GLYPH],
+	player: string = PLAYER_GLYPH,
+): string[] {
 	const out: string[] = [];
-	for (const source of [...TERRAIN_GLYPH, ...DECOR_GLYPH]) {
+	for (const source of tables.flat()) {
 		switch (source.kind) {
 			case "static":
 				out.push(source.glyph.ch);
@@ -174,7 +256,7 @@ export function allRegisteredGlyphs(): string[] {
 				break;
 		}
 	}
-	out.push(PLAYER_GLYPH);
+	out.push(player);
 	return out;
 }
 

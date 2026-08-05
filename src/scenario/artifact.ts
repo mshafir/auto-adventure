@@ -1,8 +1,13 @@
 import type { DialogueTree } from "../ai/dialogue/tree.js";
 import type { PackOverride } from "../core/content/pack.js";
 import type { ScenarioArc } from "../core/rules/arc.js";
+import type { TimeOptions } from "../core/rules/clock.js";
+import type { Barrier } from "../core/rules/lock.js";
+import type { Placement } from "../core/rules/placement.js";
+import type { Trigger } from "../core/rules/trigger.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import type { ScenarioBrief } from "../core/world/brief.js";
+import { type WorldRecipe, type WorldSeed, worldSeed } from "../core/world/recipe.js";
 import type { RegionSpec, SiteSpec, WorldLore } from "../core/world/spec.js";
 
 /**
@@ -57,6 +62,15 @@ export interface ScenarioArtifact {
 	 * and only this is the original shape and still loads.
 	 */
 	readonly content?: PackOverride;
+	/**
+	 * The tile pack this scenario is meant to be seen in, by name.
+	 *
+	 * A reference, like `pack` above, and for the same reason — except that this one
+	 * genuinely is a runtime dependency: the art lives in `.packs/tiles/<name>/` and is
+	 * far too large to inline. A missing pack falls back to the built-in look, so the
+	 * scenario still plays; it just looks like every other one.
+	 */
+	readonly tiles?: string;
 
 	/**
 	 * The seed this content was authored against. Authoritative.
@@ -68,6 +82,16 @@ export interface ScenarioArtifact {
 	 * same way a save's own seed already wins over the configured one.
 	 */
 	readonly seed: number;
+	/**
+	 * How the world is generated, beyond the seed.
+	 *
+	 * The other half of "authoritative" above. Site ids depend on the seed alone, but
+	 * where those sites *are* — and what biome, how thick the trees, whether there is a
+	 * town in that cell at all — depends on this too, so an artifact carrying specs and
+	 * placements without the recipe they were written against is as broken as one
+	 * carrying the wrong seed. Absent means the built-in defaults.
+	 */
+	readonly recipe?: WorldRecipe;
 	readonly spawn: { readonly x: number; readonly y: number };
 	readonly bounds: WorldBounds;
 
@@ -80,6 +104,26 @@ export interface ScenarioArtifact {
 	 */
 	readonly arc?: ScenarioArc;
 	/**
+	 * What this world reacts to.
+	 *
+	 * Optional, and a scenario with none is the shape every artifact had before this
+	 * existed. Persisted into the save alongside the arc, because a world that stops
+	 * reacting to the player fails silently — see `GameState.triggers`.
+	 */
+	readonly triggers?: readonly Trigger[];
+	/** Gates across the world, and what opens them. */
+	readonly barriers?: readonly Barrier[];
+	/** Particular things in particular places. */
+	readonly placements?: readonly Placement[];
+	/**
+	 * Whether this world has a clock, and what it drives.
+	 *
+	 * Absent means the ordinary day/night cycle, which is every scenario written so
+	 * far. A single-afternoon mystery or a dungeon crawl says `{ enabled: false }` and
+	 * stops having a time of day, lamplight and schedules along with it.
+	 */
+	readonly time?: TimeOptions;
+	/**
 	 * Authored conversations, keyed by `npcId(siteId, slot)`.
 	 *
 	 * Not persisted into the save, unlike the arc. These are static content that
@@ -89,6 +133,17 @@ export interface ScenarioArtifact {
 	readonly trees?: Readonly<Record<string, DialogueTree>>;
 
 	readonly authoredWith: ArtifactProvenance;
+}
+
+/**
+ * The world this artifact was authored against.
+ *
+ * One call rather than `worldSeed(a.seed, a.recipe)` spelled out at each of the
+ * dozen places that need it, because forgetting the second argument is a silent
+ * bug: the world still generates, just not the one the content describes.
+ */
+export function artifactWorld(artifact: ScenarioArtifact): WorldSeed {
+	return worldSeed(artifact.seed, artifact.recipe);
 }
 
 /** Every site id the artifact claims to have authored. */

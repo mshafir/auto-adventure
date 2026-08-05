@@ -9,13 +9,14 @@ import { shopStock, tradeKind } from "../core/rules/shop.js";
 import { createInitialState } from "../core/rules/state.js";
 import { siteContext } from "../core/world/context.js";
 import { type MacroSite, macroSite } from "../core/world/macro.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { GameEngine } from "./engine.js";
 
 function findTown(seed: number): MacroSite {
 	for (let r = 0; r < 20; r++) {
 		for (let my = -r; my <= r; my++) {
 			for (let mx = -r; mx <= r; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(worldSeed(seed), mx, my);
 				if (site.kind === "town") return site;
 			}
 		}
@@ -27,7 +28,7 @@ function findTown(seed: number): MacroSite {
 function townEngine(name: string) {
 	const seed = hashString(name);
 	const site = findTown(seed);
-	const spec = fallbackSite(seed, site, siteContext(seed, site));
+	const spec = fallbackSite(seed, site, siteContext(worldSeed(seed), site));
 	const engine = new GameEngine(
 		createInitialState(
 			{ id: "t", name: "t", seed, createdAt: "2026-01-01T00:00:00.000Z" },

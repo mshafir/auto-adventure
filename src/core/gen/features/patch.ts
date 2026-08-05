@@ -1,4 +1,5 @@
 import type { Rect, Vec2 } from "../../geom/vec.js";
+import type { Lock } from "../../rules/lock.js";
 import type { DecorId } from "../../tiles/decor.js";
 import { T, type TerrainId, terrainDef } from "../../tiles/terrain.js";
 
@@ -38,7 +39,9 @@ export type StructureKind =
 	| "stable"
 	| "apothecary"
 	| "ruin"
-	| "shrine";
+	| "shrine"
+	/** The mouth of a cave. A "building" only in that you walk into it through a door. */
+	| "cave";
 
 export interface BuildingPlacement {
 	readonly index: number;
@@ -51,6 +54,14 @@ export interface BuildingPlacement {
 	readonly interiorId: number;
 	readonly name?: string;
 	readonly signText?: string;
+	/**
+	 * What has to be true to get inside, if anything.
+	 *
+	 * Travels with the building rather than with its door tile, which is what makes
+	 * it free to persist: the patch is regenerated from the spec, so a locked door in
+	 * an evicted chunk comes back locked without anything having been written down.
+	 */
+	readonly lock?: Lock;
 }
 
 /**

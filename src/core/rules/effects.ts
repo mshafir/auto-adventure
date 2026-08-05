@@ -29,6 +29,8 @@ export type DomainEffect =
 			readonly objectives: readonly QuestObjective[];
 			/** Where it was given, so it can be marked on the map. */
 			readonly siteId?: number;
+			/** The errand this is a step of, for the quest pane's nesting. */
+			readonly parentId?: string;
 	  }
 	| { readonly t: "AdvanceQuest"; readonly id: string; readonly note: string }
 	| { readonly t: "CompleteQuest"; readonly id: string }
@@ -68,6 +70,16 @@ export type DomainEffect =
 			readonly foldedTurns: number;
 	  }
 	| { readonly t: "RecordJournal"; readonly entry: Omit<JournalEntry, "tick"> }
+	/**
+	 * Let a gate stand open, for good.
+	 *
+	 * The one effect that changes the *world* rather than the player's situation, and
+	 * it does it through the delta map — which already exists for precisely this, and
+	 * is already the reason a heavily-explored world stays a few hundred kilobytes.
+	 * The flag is what a condition can read; the delta is what the renderer and the
+	 * passability check see. Both go down together so the two cannot disagree.
+	 */
+	| { readonly t: "OpenBarrier"; readonly id: string }
 	| { readonly t: "Teleport"; readonly x: number; readonly y: number }
 	| { readonly t: "Damage"; readonly amount: number }
 	| { readonly t: "Heal"; readonly amount: number }

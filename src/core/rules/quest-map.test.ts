@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { worldSeed } from "../../core/world/recipe.js";
 import { hashString } from "../rand/hash.js";
 import { CHUNK, chunkKey } from "../world/coords.js";
 import { isSettlement, macroSite } from "../world/macro.js";
@@ -12,7 +13,7 @@ const WORLD = { id: "t", name: "T", seed: SEED, createdAt: "2026-01-01T00:00:00.
 function findSettlement(): { cx: number; cy: number; siteId: number } {
 	for (let cx = -6; cx <= 6; cx++) {
 		for (let cy = -6; cy <= 6; cy++) {
-			const site = macroSite(SEED, cx, cy);
+			const site = macroSite(worldSeed(SEED), cx, cy);
 			if (isSettlement(site.kind)) return { cx, cy, siteId: site.id };
 		}
 	}

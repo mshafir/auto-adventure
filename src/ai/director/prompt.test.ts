@@ -3,6 +3,7 @@ import { hashString } from "../../core/rand/hash.js";
 import type { ScenarioBrief } from "../../core/world/brief.js";
 import { regionContext, siteContext } from "../../core/world/context.js";
 import { isSettlement, type MacroSite, macroSite } from "../../core/world/macro.js";
+import { worldSeed } from "../../core/world/recipe.js";
 import { fallbackLore, fallbackRegion } from "./fallback.js";
 import { lorePrompt, regionPrompt, sitePrompt } from "./prompt.js";
 
@@ -12,7 +13,7 @@ function findSite(seed: number): MacroSite {
 	for (let radius = 0; radius < 16; radius++) {
 		for (let my = -radius; my <= radius; my++) {
 			for (let mx = -radius; mx <= radius; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(worldSeed(seed), mx, my);
 				if (isSettlement(site.kind)) return site;
 			}
 		}
@@ -22,8 +23,8 @@ function findSite(seed: number): MacroSite {
 
 const LORE = fallbackLore();
 const SITE = findSite(SEED);
-const SITE_CONTEXT = siteContext(SEED, SITE);
-const REGION_CONTEXT = regionContext(SEED, SITE.regionId, SITE.site);
+const SITE_CONTEXT = siteContext(worldSeed(SEED), SITE);
+const REGION_CONTEXT = regionContext(worldSeed(SEED), SITE.regionId, SITE.site);
 const REGION = fallbackRegion(SEED, REGION_CONTEXT);
 
 const BRIEF: ScenarioBrief = {

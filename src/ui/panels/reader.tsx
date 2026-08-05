@@ -1,8 +1,8 @@
 import { Text } from "ink";
 import { arcOutline } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
-import { describeObjective, questNeeding } from "../../core/rules/quests.js";
-import { activeQuests, type GameState, type Quest } from "../../core/rules/state.js";
+import { describeObjective, questNeeding, questRows } from "../../core/rules/quests.js";
+import type { GameState, Quest } from "../../core/rules/state.js";
 import { toChunk } from "../../core/world/coords.js";
 import { type HudState, PANEL_TABS, type PanelTab } from "../hud-state.js";
 import { tileMode } from "../viewport.js";
@@ -146,7 +146,10 @@ function QuestReader({
 	width: number;
 	rows: number;
 }) {
-	const open = activeQuests(state);
+	// Arranged rather than listed: a job and its steps read as one thing, which is what
+	// keeps a branching story from looking like an unsorted to-do list.
+	const rows_ = questRows(state);
+	const open = rows_.map((row) => row.quest);
 	const outline = arcOutline(state.arc, state);
 	const cursor = Math.min(hud.cursor, Math.max(0, open.length - 1));
 	const selected = open[cursor];
@@ -213,12 +216,16 @@ function QuestReader({
 					rows={listRows}
 					focus={hud.inList}
 					render={(index) => {
-						const quest = open[index];
-						if (!quest) return null;
+						const row = rows_[index];
+						if (!row) return null;
+						const quest = row.quest;
 						const done = quest.objectives.filter((objective) => objective.done).length;
 						return (
 							<>
-								<Text color="cyan">{quest.name}</Text>
+								{/* A step is indented under its job. Two spaces and a mark: enough to
+								    read as subordinate in eleven columns, cheap enough to cost no row. */}
+								{row.depth > 0 && <Text color="gray">{"  └ "}</Text>}
+								<Text color={row.depth > 0 ? "blue" : "cyan"}>{quest.name}</Text>
 								{quest.objectives.length > 0 && (
 									<Text color="gray">{`  ${done}/${quest.objectives.length}`}</Text>
 								)}

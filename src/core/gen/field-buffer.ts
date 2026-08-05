@@ -1,5 +1,6 @@
 import { CHUNK, type ChunkCoord } from "../world/coords.js";
 import { elevationAt, moistureAt, roughnessAt, temperatureAt } from "../world/fields.js";
+import type { WorldSeed } from "../world/recipe.js";
 
 /** One tile of margin, so slope and autotile-adjacent logic can look outward. */
 export const FIELD_MARGIN = 1;
@@ -31,7 +32,7 @@ function index(localX: number, localY: number): number {
 	return (localY + FIELD_MARGIN) * FIELD_SIZE + (localX + FIELD_MARGIN);
 }
 
-export function sampleFieldBuffer(seed: number, cc: ChunkCoord): FieldBuffer {
+export function sampleFieldBuffer(world: WorldSeed, cc: ChunkCoord): FieldBuffer {
 	const originX = cc.cx * CHUNK;
 	const originY = cc.cy * CHUNK;
 	const size = FIELD_SIZE * FIELD_SIZE;
@@ -46,12 +47,12 @@ export function sampleFieldBuffer(seed: number, cc: ChunkCoord): FieldBuffer {
 		for (let x = -FIELD_MARGIN; x < CHUNK + FIELD_MARGIN; x++) {
 			const wx = originX + x;
 			const i = index(x, y);
-			elevation[i] = elevationAt(seed, wx, wy);
-			moisture[i] = moistureAt(seed, wx, wy);
+			elevation[i] = elevationAt(world, wx, wy);
+			moisture[i] = moistureAt(world, wx, wy);
 			// Temperature depends on elevation; pass the value we already have
 			// rather than letting it recompute the whole warped stack.
-			temperature[i] = temperatureFromElevation(seed, wx, wy, elevation[i] as number);
-			roughness[i] = roughnessAt(seed, wx, wy);
+			temperature[i] = temperatureFromElevation(world, wx, wy, elevation[i] as number);
+			roughness[i] = roughnessAt(world, wx, wy);
 		}
 	}
 
@@ -59,8 +60,13 @@ export function sampleFieldBuffer(seed: number, cc: ChunkCoord): FieldBuffer {
 }
 
 /** Mirrors `temperatureAt`, reusing an elevation the caller already sampled. */
-function temperatureFromElevation(seed: number, x: number, y: number, elevation: number): number {
-	return temperatureAt(seed, x, y, elevation);
+function temperatureFromElevation(
+	world: WorldSeed,
+	x: number,
+	y: number,
+	elevation: number,
+): number {
+	return temperatureAt(world, x, y, elevation);
 }
 
 export function fieldAt(buffer: Float32Array, localX: number, localY: number): number {

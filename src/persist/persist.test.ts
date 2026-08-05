@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hashString } from "../core/rand/hash.js";
 import { createInitialState, type GameState, SAVE_VERSION } from "../core/rules/state.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { createEffectRunner } from "../engine/effect-runner.js";
 import { GameEngine } from "../engine/engine.js";
 import { findSpawn } from "../engine/spawn.js";
@@ -27,7 +28,7 @@ afterEach(() => {
 function newState(id = "test"): GameState {
 	return createInitialState(
 		{ id, name: id, seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
-		findSpawn(SEED),
+		findSpawn(worldSeed(SEED)),
 	);
 }
 

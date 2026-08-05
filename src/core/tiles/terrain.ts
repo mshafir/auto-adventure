@@ -124,6 +124,27 @@ const DEFS = [
 	},
 	{ key: "doorClosed", name: "door", flags: DOOR | WALL | S, describe: "A closed door." },
 	{ key: "doorOpen", name: "open door", flags: P | DOOR, describe: "An open doorway." },
+	/**
+	 * A gate across a way through, as opposed to a door into a building.
+	 *
+	 * The distinction is not cosmetic. A door is a *transition* — refusing it leaves
+	 * the world untouched, because the player simply does not change which grid they
+	 * are standing on. A gate is a tile on the route itself, so opening one has to
+	 * change the map and stay changed, which is why this is the pair that gets a
+	 * delta written for it and a door is not.
+	 */
+	{
+		key: "gateClosed",
+		name: "barred gate",
+		flags: DOOR | WALL | S,
+		describe: "A heavy gate, barred from the far side.",
+	},
+	{
+		key: "gateOpen",
+		name: "open gate",
+		flags: P | DOOR,
+		describe: "The gate stands open.",
+	},
 	{ key: "floorWood", name: "floorboards", flags: P | IN, describe: "Scuffed floorboards." },
 	{ key: "floorStone", name: "flagstones", flags: P | IN, describe: "Worn flagstones." },
 	{ key: "rug", name: "rug", flags: P | IN, describe: "A threadbare rug." },
@@ -134,6 +155,45 @@ const DEFS = [
 		describe: "Steps leading down into the dark.",
 	},
 	{ key: "stairsUp", name: "stairs up", flags: P, describe: "Steps leading up." },
+
+	// --- the waterfront ------------------------------------------------------
+	{
+		key: "pier",
+		name: "pier",
+		flags: P,
+		// Not flagged Water: it is a walkable surface that happens to be over water,
+		// and anything reading the flag wants to know whether you would get wet.
+		describe: "Planks over open water, tarred at the joints.",
+	},
+	{
+		key: "deck",
+		name: "deck",
+		flags: P,
+		describe: "A boat's deck, shifting slightly underfoot.",
+	},
+
+	// --- underground ---------------------------------------------------------
+	/**
+	 * The way into a cave, which is a door in every sense the engine cares about.
+	 *
+	 * Flagged exactly like `doorClosed` rather than being its own kind of thing: the
+	 * reducer's whole notion of going indoors is "the tile ahead is a door belonging to
+	 * a building", and a cave that used a different mechanism would need every one of
+	 * those paths written twice.
+	 */
+	{
+		key: "caveMouth",
+		name: "cave mouth",
+		flags: DOOR | WALL | S,
+		describe: "A dark opening in the rock, taller than a man.",
+	},
+	{ key: "caveFloor", name: "cave floor", flags: P | IN, describe: "Damp, uneven rock." },
+	{
+		key: "caveWall",
+		name: "rock",
+		flags: WALL | S,
+		describe: "Solid rock, cold to the touch.",
+	},
 ] as const satisfies readonly Omit<TerrainDef, "id">[];
 
 export const TERRAIN: readonly TerrainDef[] = DEFS.map((def, id) => ({ ...def, id }));

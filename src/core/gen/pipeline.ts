@@ -7,8 +7,9 @@ import { T, type TerrainId } from "../tiles/terrain.js";
 import { type BiomeId, biomeDef, classifyBiome } from "../world/biome.js";
 import { boundaryTerrain, isBoundary, type WorldBounds } from "../world/bounds.js";
 import { CHUNK, type ChunkCoord, localIndex } from "../world/coords.js";
-import { elevationBand, SEA_LEVEL } from "../world/fields.js";
+import { elevationBand } from "../world/fields.js";
 import { isSettlement, type MacroSite, sitesAround } from "../world/macro.js";
+import { type WorldSeed, zoneScatter } from "../world/recipe.js";
 import { type River, riversAround } from "../world/rivers.js";
 import { type Road, roadsAround } from "../world/roads.js";
 import {
@@ -19,10 +20,13 @@ import {
 	MASK_MINOR,
 	maskAt,
 } from "./feature-mask.js";
+// Imported for its side effect as well as its exports: the builders register
+// themselves when their modules evaluate. See `features/builders.ts`.
+import { featuresOverlapping } from "./features/builders.js";
 import { fallbackSettlementSpec } from "./features/fallback-spec.js";
 import type { Anchor, BuildingPlacement, FeaturePatch } from "./features/patch.js";
 import { patchIndex } from "./features/patch.js";
-import { type SettlementSpec, settlementsOverlapping } from "./features/settlement.js";
+import type { SettlementSpec } from "./features/settlement.js";
 import { fieldAt, sampleFieldBuffer, slopeFromBuffer } from "./field-buffer.js";
 
 /**
@@ -67,7 +71,13 @@ function groundPatchAt(seed: number, wx: number, wy: number): number {
 }
 
 export interface GenContext {
-	readonly seed: number;
+	/**
+	 * The seed and the scenario's generation recipe, together.
+	 *
+	 * One value rather than a bare seed because terrain is no longer a function of the
+	 * seed alone. See {@link WorldSeed}.
+	 */
+	readonly world: WorldSeed;
 	/** Precomputed halo features, when the caller already gathered them. */
 	readonly roads?: readonly Road[];
 	readonly rivers?: readonly River[];
@@ -86,6 +96,17 @@ export interface GenContext {
 	 * no stage reads another chunk and the seam contract is unaffected.
 	 */
 	readonly bounds?: WorldBounds;
+	/**
+	 * Gates the scenario puts across the world, as tiles to stamp.
+	 *
+	 * Only the positions, never the conditions: a barred gate is `gateClosed` here
+	 * *always*, and the one that the player has opened is flipped to `gateOpen` by the
+	 * delta that opening it wrote. That split is what keeps this layer pure — the
+	 * generator never learns what the player has done, and a chunk regenerated after
+	 * eviction is still stamped with a gate rather than quietly forgetting there was
+	 * one, because the delta is state and this is not.
+	 */
+	readonly barriers?: readonly { readonly x: number; readonly y: number }[];
 }
 
 /**
@@ -127,17 +148,18 @@ export interface GeneratedChunk {
  * byte-identical results.
  */
 export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
-	const { seed } = ctx;
+	const { world } = ctx;
+	const seed = world.seed;
 	const chunk = createChunk(cc);
 	const originX = cc.cx * CHUNK;
 	const originY = cc.cy * CHUNK;
 
 	// S1 -- fields, sampled once into typed arrays.
-	const fields = sampleFieldBuffer(seed, cc);
+	const fields = sampleFieldBuffer(world, cc);
 
 	// S2/S4/S5 -- halo features, rasterised once into local masks.
-	const roads = ctx.roads ?? roadsAround(seed, cc.cx, cc.cy);
-	const rivers = ctx.rivers ?? riversAround(seed, cc.cx, cc.cy);
+	const roads = ctx.roads ?? roadsAround(world, cc.cx, cc.cy);
+	const rivers = ctx.rivers ?? riversAround(world, cc.cx, cc.cy);
 	const masks = buildFeatureMasks(cc, roads, rivers);
 
 	// S7 -- one scatter lattice for the whole chunk. Biome decides whether a
@@ -162,8 +184,8 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 			const roughness = fieldAt(fields.roughness, lx, ly);
 
 			// S3 -- biome. Continuous inputs mean continuous borders, for free.
-			const biome = classifyBiome(elevation, temperature, moisture);
-			const def = biomeDef(biome);
+			const biome = classifyBiome(elevation, temperature, moisture, world.rules);
+			const def = biomeDef(biome, world.rules);
 			biomeCounts[biome] = (biomeCounts[biome] ?? 0) + 1;
 			if (elevation < minElevation) minElevation = elevation;
 			if (elevation > maxElevation) maxElevation = elevation;
@@ -179,7 +201,7 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 				riverPresent = true;
 				if (riverMask === MASK_CHANNEL) {
 					terrain = T.water;
-				} else if (riverMask === MASK_BANK && elevation >= SEA_LEVEL) {
+				} else if (riverMask === MASK_BANK && elevation >= world.rules.climate.seaLevel) {
 					// Coherent too, so a bank reads as stretches of shingle and
 					// stretches of sand rather than a speckle of both.
 					terrain = groundPatch < BANK_GRAVEL_BELOW ? T.gravel : T.sand;
@@ -187,7 +209,7 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 			}
 
 			// S8 -- relief. Runs before roads so a road cut into a slope wins.
-			const band = elevationBand(elevation);
+			const band = elevationBand(elevation, world.rules);
 			if (band === "alpine" && terrain === def.ground && roughness > 0.55) {
 				terrain = T.mountain;
 			} else if (
@@ -200,7 +222,7 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 			}
 
 			// S5 -- roads, and bridges where they meet a channel.
-			if (elevation >= SEA_LEVEL) {
+			if (elevation >= world.rules.climate.seaLevel) {
 				const roadMask = maskAt(masks.roads, lx, ly);
 				if (roadMask === MASK_MAJOR) {
 					terrain = riverMask === MASK_CHANNEL ? T.bridge : T.cobbleRoad;
@@ -210,9 +232,15 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 			}
 
 			// Scatter, applied only over untouched ground so it never buries a road.
+			//
+			// A zone's multiplier lands here rather than on the biome definition,
+			// because it varies with position and a biome definition does not. The
+			// lattice is untouched, so thickening a wood adds trees between the ones
+			// already there instead of shifting every one of them sideways.
 			if (def.scatterDensity > 0 && terrain === def.ground) {
+				const density = def.scatterDensity * zoneScatter(world.rules, wx, wy);
 				const roll = scatter[i] as number;
-				if (roll >= 0 && roll < def.scatterDensity) {
+				if (roll >= 0 && roll < density) {
 					terrain = pickScatter(def.scatter, valueAt(seed, PICK_STREAM, wx, wy)) ?? terrain;
 				}
 			}
@@ -223,9 +251,9 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 
 	// S6 -- settlements. Each is generated once in its own frame and clipped in
 	// here, so a town straddling several chunks is one town seen several ways.
-	const sites = sitesAround(seed, cc.cx, cc.cy).filter((site) => site.kind !== "none");
-	const patches = settlementsOverlapping(
-		seed,
+	const sites = sitesAround(world, cc.cx, cc.cy).filter((site) => site.kind !== "none");
+	const patches = featuresOverlapping(
+		world,
 		sites,
 		(site) => ctx.specFor?.(site) ?? fallbackSettlementSpec(seed, site),
 		{ x: originX, y: originY, w: CHUNK, h: CHUNK },
@@ -242,6 +270,12 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 	// whatever a patch tried to write at its edge, and before the tally, so the
 	// summary describes what the chunk actually is.
 	if (ctx.bounds) stampBoundary(chunk, ctx.bounds, seed, originX, originY);
+
+	// S10 -- authored gates. Last of the stamping passes, because a gate stands
+	// *across* whatever was there: a road through a gatehouse, a gap in a wall. A
+	// settlement or a road that ran over the tile has already been written, so
+	// stamping earlier would let either bury the gate.
+	if (ctx.barriers) stampBarriers(chunk, ctx.barriers, originX, originY);
 
 	// Tally after stamping, so the counts describe what the chunk actually is.
 	let waterTiles = 0;
@@ -306,6 +340,30 @@ function stampBoundary(
 			// to grow out of the cliff that replaced the ground under it.
 			chunk.decor[localIndex(lx, ly)] = 0;
 		}
+	}
+}
+
+/**
+ * Stamp the gates that fall inside this chunk.
+ *
+ * Barriers are a short, world-constant list — a scenario has a handful, not
+ * thousands — so a linear scan per chunk is cheaper than any index would be, and it
+ * keeps the whole feature to one loop with no lookup structure to keep in step.
+ */
+function stampBarriers(
+	chunk: Chunk,
+	barriers: readonly { readonly x: number; readonly y: number }[],
+	originX: number,
+	originY: number,
+): void {
+	for (const barrier of barriers) {
+		const lx = barrier.x - originX;
+		const ly = barrier.y - originY;
+		if (lx < 0 || ly < 0 || lx >= CHUNK || ly >= CHUNK) continue;
+		setTerrain(chunk, lx, ly, T.gateClosed);
+		// A tree or a signpost left standing here would appear to grow through the
+		// gate, the same reason the boundary pass clears decor.
+		chunk.decor[localIndex(lx, ly)] = 0;
 	}
 }
 

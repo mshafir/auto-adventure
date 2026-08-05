@@ -77,6 +77,8 @@ export const CONFIG = {
 	 * met while keeping their memories.
 	 */
 	contentPack: process.env.CONTENT_PACK,
+	/** A directory under `.packs/tiles/`, or a path to one. Chooses how the map looks. */
+	tilePack: process.env.TILE_PACK,
 	saveDebounceMs: envNumber("SAVE_DEBOUNCE_MS", 2000),
 	prefetchRadius: envNumber("PREFETCH_RADIUS", 2),
 } as const;

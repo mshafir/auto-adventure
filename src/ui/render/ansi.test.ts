@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { generateChunk } from "../../core/gen/pipeline.js";
 import { hashString } from "../../core/rand/hash.js";
 import { CHUNK } from "../../core/world/coords.js";
+import { worldSeed } from "../../core/world/recipe.js";
 import { encodeRow, encodeScene } from "./ansi.js";
 import type { ColorDepth, RGB } from "./color.js";
 import { detectColorDepth, rgb, toAnsi16, toAnsi256 } from "./color.js";
@@ -84,7 +85,7 @@ describe("encodeRow", () => {
 
 describe("column alignment", () => {
 	const seed = hashString("render-alignment");
-	const { chunk } = generateChunk({ seed }, { cx: 0, cy: 0 });
+	const { chunk } = generateChunk({ world: worldSeed(seed) }, { cx: 0, cy: 0 });
 	const source = createWorldTileSource({
 		seed,
 		chunkAt: (cx, cy) => (cx === 0 && cy === 0 ? chunk : undefined),

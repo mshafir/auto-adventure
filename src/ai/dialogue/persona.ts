@@ -1,3 +1,4 @@
+import { clockRuns } from "../../core/rules/clock.js";
 import { dispositionLabel, type NpcRecord } from "../../core/rules/npc.js";
 import { buyPrice, type StockItem, sellPrice } from "../../core/rules/shop.js";
 import { activeQuests, type GameState, itemCount } from "../../core/rules/state.js";
@@ -222,11 +223,13 @@ export function dialoguePrompt(input: PersonaInput, playerSaid: string | undefin
 	}
 
 	lines.push("", playerState(state));
-	if (input.weather) {
-		lines.push(
-			`It is ${timeOfDay(state.time.hour)}. ${input.weather.description} Mention it only if it matters.`,
-		);
-	}
+	// The two halves are independent, because the switches that turn them off are. A
+	// world with the hour frozen must not be told it is "morning" — an NPC repeating
+	// that all game is worse than one who never mentions the time — while a world with
+	// weather and no clock still has a sky worth remarking on.
+	const hour = clockRuns(state.world.time) ? `It is ${timeOfDay(state.time.hour)}. ` : "";
+	const sky = input.weather ? `${input.weather.description} ` : "";
+	if (hour || sky) lines.push(`${hour}${sky}Mention it only if it matters.`);
 
 	lines.push(
 		"",

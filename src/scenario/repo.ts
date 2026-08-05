@@ -3,12 +3,15 @@ import { join } from "node:path";
 import { danglingTargets } from "../ai/dialogue/tree.js";
 import { resolveOverride } from "../content/load.js";
 import { mergeOverride } from "../core/content/pack.js";
+import { asCondition, evaluate, flagsRead } from "../core/rules/condition.js";
+import { createInitialState, type GameState } from "../core/rules/state.js";
 import { MACRO, macroSite } from "../core/world/macro.js";
 import { npcId } from "../core/world/spec.js";
 import { scenarioRoot } from "../paths.js";
 import { writeFileAtomic } from "../persist/save-repo.js";
 import { logger } from "../utils/log.js";
-import type { ScenarioArtifact } from "./artifact.js";
+import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
+import { flagsWritten, unsatisfiableFlags } from "./flag-sources.js";
 import { ScenarioArtifactSchema } from "./schema.js";
 
 export { scenarioRoot };
@@ -141,7 +144,7 @@ export function verifyArtifact(artifact: ScenarioArtifact): string[] {
 	const maxMy = Math.floor(artifact.bounds.maxY / MACRO) + 1;
 	for (let my = minMy; my <= maxMy; my++) {
 		for (let mx = minMx; mx <= maxMx; mx++) {
-			const site = macroSite(artifact.seed, mx, my);
+			const site = macroSite(artifactWorld(artifact), mx, my);
 			if (site.kind !== "none") real.add(site.id);
 		}
 	}
@@ -225,12 +228,16 @@ function arcProblems(artifact: ScenarioArtifact): string[] {
 	const problems: string[] = [];
 
 	const ids = new Set<string>();
-	const flags = new Set<string>();
 	for (const beat of arc.beats) {
 		if (ids.has(beat.id)) problems.push(`beat ${beat.id} is defined twice`);
 		ids.add(beat.id);
-		flags.add(beat.setsFlag);
 	}
+
+	// Beats are no longer the only thing that sets a flag — a trigger, a written
+	// conversation and a card all do — so the list of writers is assembled across the
+	// whole artifact rather than from the arc alone. A beat gated on a flag only a
+	// trigger sets is perfectly good content, and reporting it would refuse it.
+	const written = flagsWritten(artifact);
 
 	for (const beat of arc.beats) {
 		const site = artifact.sites[String(beat.siteId)];
@@ -243,19 +250,41 @@ function arcProblems(artifact: ScenarioArtifact): string[] {
 				`beat ${beat.id} is anchored to slot ${beat.npcSlot}, who is not in ${site.name}`,
 			);
 
-		// A requirement no beat ever sets can never be satisfied, so the beat is
+		// A requirement nothing can ever provide can never be satisfied, so the beat is
 		// unreachable and so is everything gated behind it.
-		for (const flag of beat.requires) {
-			if (!flags.has(flag)) problems.push(`beat ${beat.id} waits on "${flag}", which nothing sets`);
+		for (const flag of unsatisfiableFlags(beat.requires, written)) {
+			problems.push(`beat ${beat.id} waits on "${flag}", which nothing sets`);
 		}
-		if (beat.requires.includes(beat.setsFlag))
+		if (flagsRead(asCondition(beat.requires)).has(beat.setsFlag))
 			problems.push(`beat ${beat.id} waits on its own flag`);
 	}
 
 	// The first beat has to be openable with nothing done yet, or the story has no
-	// way in at all.
-	if (arc.beats.length > 0 && !arc.beats.some((beat) => beat.requires.length === 0))
+	// way in at all. Asked by evaluating against a pristine world rather than by
+	// looking for an empty requirement, because a condition can be satisfiable from
+	// the start without being empty — `{ not: { flag: "x" } }` is true immediately,
+	// and a check that only counted empty lists would refuse a perfectly playable arc.
+	const opening = pristineState(artifact);
+	if (
+		arc.beats.length > 0 &&
+		!arc.beats.some((beat) => evaluate(asCondition(beat.requires), opening))
+	)
 		problems.push("no beat can open first; every one waits on another");
 
 	return problems;
+}
+
+/**
+ * A world in which nothing has happened yet.
+ *
+ * Only used to ask whether a beat could open at the very start, so it needs nothing
+ * from the artifact but its shape. Built through `createInitialState` rather than
+ * by hand so that whatever a new world starts with — the twelve gold, the hour of
+ * the morning — is what the question is asked against.
+ */
+function pristineState(artifact: ScenarioArtifact): GameState {
+	return createInitialState(
+		{ id: artifact.id, name: artifact.title, seed: artifact.seed, createdAt: "" },
+		artifact.spawn,
+	);
 }

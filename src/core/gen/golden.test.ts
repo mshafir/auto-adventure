@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { worldSeed } from "../../core/world/recipe.js";
 import { hashString } from "../rand/hash.js";
 import { chunkToAscii } from "../tiles/chunk.js";
 import { TFlag } from "../tiles/flags.js";
@@ -27,7 +28,10 @@ describe("chunk goldens", () => {
 		"%s matches its golden",
 		async (name, testCase) => {
 			const seed = hashString(testCase.seed);
-			const { chunk } = generateChunk({ seed }, { cx: testCase.cx, cy: testCase.cy });
+			const { chunk } = generateChunk(
+				{ world: worldSeed(seed) },
+				{ cx: testCase.cx, cy: testCase.cy },
+			);
 			await expect(chunkToAscii(chunk)).toMatchFileSnapshot(`../../../test/goldens/${name}.txt`);
 		},
 	);
@@ -40,7 +44,7 @@ describe("generated chunk sanity", () => {
 		for (const seed of seeds) {
 			for (let cy = -2; cy <= 2; cy++) {
 				for (let cx = -2; cx <= 2; cx++) {
-					const { chunk, summary } = generateChunk({ seed }, { cx, cy });
+					const { chunk, summary } = generateChunk({ world: worldSeed(seed) }, { cx, cy });
 					let passable = 0;
 					for (const flags of chunk.flags) {
 						if (flags & TFlag.Passable) passable++;
@@ -56,14 +60,14 @@ describe("generated chunk sanity", () => {
 	});
 
 	it("never leaves a tile unwritten", () => {
-		const { chunk } = generateChunk({ seed: seeds[0] as number }, { cx: 0, cy: 0 });
+		const { chunk } = generateChunk({ world: worldSeed(seeds[0] as number) }, { cx: 0, cy: 0 });
 		expect(chunk.terrain).toHaveLength(CHUNK * CHUNK);
 		// Terrain id 0 is `void`, which generation should never emit.
 		expect([...chunk.terrain].every((id) => id !== 0)).toBe(true);
 	});
 
 	it("keeps flags consistent with the terrain registry", () => {
-		const { chunk } = generateChunk({ seed: seeds[1] as number }, { cx: 3, cy: -1 });
+		const { chunk } = generateChunk({ world: worldSeed(seeds[1] as number) }, { cx: 3, cy: -1 });
 		for (let i = 0; i < chunk.terrain.length; i++) {
 			const water = ((chunk.flags[i] ?? 0) & TFlag.Water) !== 0;
 			const passable = ((chunk.flags[i] ?? 0) & TFlag.Passable) !== 0;
@@ -76,7 +80,10 @@ describe("generated chunk sanity", () => {
 	});
 
 	it("reports a terrain summary consistent with the tiles it produced", () => {
-		const { chunk, summary } = generateChunk({ seed: seeds[2] as number }, { cx: -1, cy: 4 });
+		const { chunk, summary } = generateChunk(
+			{ world: worldSeed(seeds[2] as number) },
+			{ cx: -1, cy: 4 },
+		);
 		const total = CHUNK * CHUNK;
 		let passable = 0;
 		for (const flags of chunk.flags) if (flags & TFlag.Passable) passable++;

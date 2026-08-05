@@ -1,10 +1,12 @@
 import { MODELS } from "../../config.js";
 import { beatEffects, beatOpenedBy } from "../../core/rules/arc.js";
+import { weatherRuns } from "../../core/rules/clock.js";
 import type { DomainEffect } from "../../core/rules/effects.js";
 import { type NpcRecord, needsSummary, SUMMARY_BATCH } from "../../core/rules/npc.js";
 import { type StockItem, shopStock, tradeKind } from "../../core/rules/shop.js";
 import type { GameState } from "../../core/rules/state.js";
 import type { Surroundings } from "../../core/rules/surroundings.js";
+import type { WorldSeed } from "../../core/world/recipe.js";
 import type { RegionSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 import { weatherAt } from "../../core/world/weather.js";
 import type { GameEngine } from "../../engine/engine.js";
@@ -19,7 +21,7 @@ import { isSilentEnd, scriptedTurn } from "./scripted.js";
 import type { DialogueTree } from "./tree.js";
 
 export interface DialogueDeps {
-	readonly seed: number;
+	readonly world: WorldSeed;
 	readonly lore: () => WorldLore;
 	readonly regionSpec: (regionId: number) => RegionSpec | undefined;
 	readonly siteSpec: (siteId: number) => SiteSpec | undefined;
@@ -93,7 +95,7 @@ export function createDialogueService(deps: DialogueDeps) {
 		if (!record) return;
 
 		const site = deps.siteSpec(placed.siteId);
-		const stock = stockFor(deps.seed, placed);
+		const stock = stockFor(deps.world.seed, placed);
 		// Assembled once and passed to both the prompt and the action boundary, so
 		// what the NPC is allowed to promise and what the engine will accept are the
 		// same list rather than two views that can disagree.
@@ -175,7 +177,11 @@ export function createDialogueService(deps: DialogueDeps) {
 			state,
 			...(stock?.length ? { stock } : {}),
 			surroundings,
-			weather: weatherAt(deps.seed, state.time.tick, placed.x, placed.y),
+			// Omitted entirely for a world with no sky, so the persona has nothing to
+			// remark on rather than a description of weather that is not happening.
+			...(weatherRuns(state.world.time)
+				? { weather: weatherAt(deps.world, state.time.tick, placed.x, placed.y) }
+				: {}),
 		};
 
 		const response = await structured({

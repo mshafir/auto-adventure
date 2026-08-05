@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { worldSeed } from "../../../core/world/recipe.js";
 import { labelComponents } from "../../geom/floodfill.js";
 import type { Rect } from "../../geom/vec.js";
 import { hashString } from "../../rand/hash.js";
@@ -13,10 +14,11 @@ import { generateChunk } from "../pipeline.js";
 import { fallbackSettlementSpec } from "./fallback-spec.js";
 import { clearInteriorCache, getInterior } from "./interior.js";
 import { type FeaturePatch, patchIndex } from "./patch.js";
-import { clearSettlementCache, generateSettlement } from "./settlement.js";
+import { clearFeatureCache } from "./registry.js";
+import { generateSettlement } from "./settlement.js";
 
 beforeEach(() => {
-	clearSettlementCache();
+	clearFeatureCache();
 	clearRoadCache();
 	clearRiverCache();
 	clearInteriorCache();
@@ -28,7 +30,7 @@ function sampleSites(seedName: string, radius = 4): { seed: number; sites: Macro
 	const sites: MacroSite[] = [];
 	for (let my = -radius; my <= radius; my++) {
 		for (let mx = -radius; mx <= radius; mx++) {
-			const site = macroSite(seed, mx, my);
+			const site = macroSite(worldSeed(seed), mx, my);
 			if (isSettlement(site.kind)) sites.push(site);
 		}
 	}
@@ -48,9 +50,9 @@ describe("settlement generation", () => {
 		expect(site).toBeDefined();
 		if (!site) return;
 
-		const a = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
-		clearSettlementCache();
-		const b = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+		const a = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
+		clearFeatureCache();
+		const b = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 		expect([...a.terrain]).toEqual([...b.terrain]);
 		expect(a.buildings.length).toBe(b.buildings.length);
 	});
@@ -63,15 +65,15 @@ describe("settlement generation", () => {
 		if (!site) return;
 
 		const reference = [
-			...generateSettlement(seed, site, fallbackSettlementSpec(seed, site)).terrain,
+			...generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site)).terrain,
 		];
 		for (let attempt = 0; attempt < 6; attempt++) {
-			clearSettlementCache();
+			clearFeatureCache();
 			// Generate unrelated settlements first, in a shuffled order.
 			for (const other of makeRng(attempt).shuffled(sites)) {
-				generateSettlement(seed, other, fallbackSettlementSpec(seed, other));
+				generateSettlement(worldSeed(seed), other, fallbackSettlementSpec(seed, other));
 			}
-			const again = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+			const again = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 			expect([...again.terrain]).toEqual(reference);
 		}
 	});
@@ -80,7 +82,7 @@ describe("settlement generation", () => {
 		for (const name of ["alpha", "harrow", "vale"]) {
 			const { seed, sites } = sampleSites(name, 3);
 			for (const site of sites.slice(0, 6)) {
-				const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+				const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 				for (const building of patch.buildings) {
 					const { rect, door } = building;
 					const onEdge =
@@ -103,7 +105,7 @@ describe("settlement generation", () => {
 		for (const name of ["moss", "ember"]) {
 			const { seed, sites } = sampleSites(name, 3);
 			for (const site of sites.slice(0, 6)) {
-				const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+				const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 				for (const building of patch.buildings) {
 					for (let y = building.rect.y; y < building.rect.y + building.rect.h; y++) {
 						for (let x = building.rect.x; x < building.rect.x + building.rect.w; x++) {
@@ -120,7 +122,7 @@ describe("settlement generation", () => {
 	it("does not overlap buildings with one another", () => {
 		const { seed, sites } = sampleSites("overlap", 4);
 		for (const site of sites.slice(0, 8)) {
-			const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+			const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 			const claimed = new Set<string>();
 			for (const building of patch.buildings) {
 				for (let y = building.rect.y; y < building.rect.y + building.rect.h; y++) {
@@ -142,7 +144,7 @@ describe("carve containment", () => {
 		// it could reach beyond the patch it would become chunk-order dependent.
 		const { seed, sites } = sampleSites("carve", 3);
 		for (const site of sites.slice(0, 8)) {
-			const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+			const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 			expect(patch.terrain).toHaveLength(patch.bounds.w * patch.bounds.h);
 			// Anything the carve wrote is inside by construction of patchWrite;
 			// assert the bounds actually contain the site's whole footprint.
@@ -159,7 +161,7 @@ describe("carve containment", () => {
 		// exists stays a wall and the only way in is the door.
 		const { seed, sites } = sampleSites("walls", 3);
 		for (const site of sites.slice(0, 8)) {
-			const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+			const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 			for (const building of patch.buildings) {
 				const { rect, door } = building;
 				let openings = 0;
@@ -190,7 +192,7 @@ describe("settlement connectivity", () => {
 		for (const name of ["alpha", "harrow", "vale", "moss"]) {
 			const { seed, sites } = sampleSites(name, 3);
 			for (const site of sites.slice(0, 5)) {
-				const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+				const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 				if (patch.buildings.length === 0) continue;
 
 				const square = patch.anchors.find((a) => a.kind === "square");
@@ -223,7 +225,7 @@ describe("settlement connectivity", () => {
 		let checked = 0;
 		for (const site of sites.slice(0, 6)) {
 			const cc = { cx: site.mx, cy: site.my };
-			const { chunk, summary } = generateChunk({ seed }, cc);
+			const { chunk, summary } = generateChunk({ world: worldSeed(seed) }, cc);
 			if (summary.buildingCount === 0) continue;
 			let passable = 0;
 			for (const flags of chunk.flags) if (flags & TFlag.Passable) passable++;
@@ -238,7 +240,10 @@ describe("settlement connectivity", () => {
 		const { seed, sites } = sampleSites("doors", 3);
 		let found = 0;
 		for (const site of sites.slice(0, 8)) {
-			const { chunk, buildings } = generateChunk({ seed }, { cx: site.mx, cy: site.my });
+			const { chunk, buildings } = generateChunk(
+				{ world: worldSeed(seed) },
+				{ cx: site.mx, cy: site.my },
+			);
 			for (const building of buildings) {
 				const lx = building.door.x - site.mx * CHUNK;
 				const ly = building.door.y - site.my * CHUNK;
@@ -308,7 +313,7 @@ describe("fallback spec", () => {
 		const sizes = new Map<string, number>();
 		for (let my = -6; my <= 6; my++) {
 			for (let mx = -6; mx <= 6; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(worldSeed(seed), mx, my);
 				if (!isSettlement(site.kind)) continue;
 				const spec = fallbackSettlementSpec(seed, site);
 				sizes.set(site.kind, Math.max(sizes.get(site.kind) ?? 0, spec.structures.length));
@@ -349,7 +354,7 @@ describe("perimeter wall continuity", () => {
 				if (!spec.walled) continue;
 				checkedTowns++;
 
-				const patch = generateSettlement(seed, site, spec);
+				const patch = generateSettlement(worldSeed(seed), site, spec);
 				const terrainAt = (x: number, y: number) => {
 					const i = patchIndex(patch, x, y);
 					return i < 0 ? T.void : (patch.terrain[i] ?? T.void);
@@ -399,7 +404,7 @@ describe("walled settlements", () => {
 				const spec = fallbackSettlementSpec(seed, site);
 				if (!spec.walled) continue;
 
-				const patch = generateSettlement(seed, site, spec);
+				const patch = generateSettlement(worldSeed(seed), site, spec);
 				const square = patch.anchors.find((a) => a.kind === "square");
 				expect(square, `${site.kind} at ${site.mx},${site.my} has no square`).toBeDefined();
 				if (!square) continue;
@@ -452,7 +457,7 @@ describe("the town square", () => {
 		for (const name of ["alpha", "harrow", "vale", "moss", "hollowmoor"]) {
 			const { seed, sites } = sampleSites(name, 3);
 			for (const site of sites.slice(0, 8)) {
-				const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+				const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 				const square = patch.anchors.find((a) => a.kind === "square");
 				if (!square) continue;
 
@@ -475,7 +480,7 @@ describe("the town square", () => {
 		for (const name of ["alpha", "harrow", "vale", "moss"]) {
 			const { seed, sites } = sampleSites(name, 3);
 			for (const site of sites.slice(0, 8)) {
-				const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+				const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 				const square = patch.anchors.find((a) => a.kind === "square");
 				if (!square) continue;
 				expect(
@@ -495,7 +500,7 @@ describe("buildings seen from outside", () => {
 		const { seed, sites } = sampleSites("roofs", 3);
 		let checked = 0;
 		for (const site of sites.slice(0, 8)) {
-			const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+			const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 			for (const building of patch.buildings) {
 				if (building.kind === "ruin") continue;
 				const { rect } = building;
@@ -517,7 +522,7 @@ describe("buildings seen from outside", () => {
 		// footprint as well as the wall ring.
 		const { seed, sites } = sampleSites("roofs", 3);
 		for (const site of sites.slice(0, 8)) {
-			const patch = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+			const patch = generateSettlement(worldSeed(seed), site, fallbackSettlementSpec(seed, site));
 			for (const building of patch.buildings) {
 				if (building.kind === "ruin") continue;
 				const { rect } = building;

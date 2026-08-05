@@ -1,5 +1,6 @@
 import { chunkKey, parseChunkKey } from "../world/coords.js";
 import { macroSite } from "../world/macro.js";
+import { worldSeed } from "../world/recipe.js";
 import { activeQuests, type GameState } from "./state.js";
 
 /**
@@ -23,7 +24,23 @@ export interface QuestMark {
 }
 
 export function questMarks(state: GameState): readonly QuestMark[] {
-	const open = activeQuests(state).filter((quest) => quest.siteId !== undefined);
+	/*
+	 * Errands with steps still outstanding are not marked.
+	 *
+	 * A parent whose children are open is not somewhere to walk to — the children are,
+	 * and they are marked. Marking it too would put a bearing on the map pointing at
+	 * whoever handed the job out, which is the one place the player has no reason to go
+	 * back to yet, and would do it at the same time as the bearings that are actually
+	 * useful.
+	 */
+	const blocked = new Set(
+		activeQuests(state)
+			.map((quest) => quest.parentId)
+			.filter((id): id is string => id !== undefined),
+	);
+	const open = activeQuests(state).filter(
+		(quest) => quest.siteId !== undefined && !blocked.has(quest.id),
+	);
 	if (open.length === 0) return [];
 
 	// Site id to chunk, built by walking the chunks the player has actually seen.
@@ -33,7 +50,7 @@ export function questMarks(state: GameState): readonly QuestMark[] {
 	const located = new Map<number, { cx: number; cy: number }>();
 	for (const key of state.discovered) {
 		const { cx, cy } = parseChunkKey(key);
-		const site = macroSite(state.world.seed, cx, cy);
+		const site = macroSite(worldSeed(state.world.seed, state.world.recipe), cx, cy);
 		if (!located.has(site.id)) located.set(site.id, { cx, cy });
 	}
 

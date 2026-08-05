@@ -50,6 +50,16 @@ const SKY: Readonly<Record<Weather["sky"], { tint: RGB; strength: number }>> = {
 /** Indoors the sky is irrelevant; lamplight is not. */
 const INTERIOR: Light = { tint: [255, 214, 150], strength: 0.24, label: "lamplit" };
 
+/**
+ * Daylight, untouched, for a world that has turned lighting off.
+ *
+ * Strength zero rather than a white tint, so the compositor's tint pass short-circuits
+ * entirely and every cell keeps the exact colour the palette gave it. The label is
+ * empty because there is nothing true to say about the hour in such a world, and the
+ * top bar drops a piece with nothing in it rather than showing a blank field.
+ */
+export const NEUTRAL_LIGHT: Light = { tint: [255, 255, 255], strength: 0, label: "" };
+
 export function lightFor(hour: number, weather?: Weather, inside = false): Light {
 	if (inside) return INTERIOR;
 

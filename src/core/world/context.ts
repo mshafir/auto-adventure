@@ -1,6 +1,7 @@
 import { type BiomeId, biomeDef, classifyBiome } from "./biome.js";
-import { elevationAt, elevationBand, moistureAt, SEA_LEVEL, temperatureAt } from "./fields.js";
+import { elevationAt, elevationBand, moistureAt, temperatureAt } from "./fields.js";
 import { isSettlement, MACRO, type MacroSite, macroSite, REGION } from "./macro.js";
+import type { WorldSeed } from "./recipe.js";
 import { riversAround } from "./rivers.js";
 import { roadsAround } from "./roads.js";
 
@@ -41,13 +42,24 @@ export interface RegionContext {
 	readonly settlementKinds: readonly string[];
 }
 
-export function biomeAt(seed: number, x: number, y: number): BiomeId {
-	const elevation = elevationAt(seed, x, y);
-	return classifyBiome(elevation, temperatureAt(seed, x, y, elevation), moistureAt(seed, x, y));
+export function biomeAt(world: WorldSeed, x: number, y: number): BiomeId {
+	const elevation = elevationAt(world, x, y);
+	return classifyBiome(
+		elevation,
+		temperatureAt(world, x, y, elevation),
+		moistureAt(world, x, y),
+		world.rules,
+	);
 }
 
 /** Rough building capacity of a site, mirroring what the plot pass can fit. */
 export function buildingBudget(site: MacroSite): number {
+	// A cave has nothing above ground; a castle's ward and a dock's row of sheds are
+	// smaller than a town of the same radius, because most of the footprint is wall
+	// and water respectively.
+	if (site.kind === "cave") return 0;
+	if (site.kind === "castle") return Math.max(3, Math.min(10, Math.round(site.radius / 3)));
+	if (site.kind === "docks") return Math.max(2, Math.min(6, Math.round(site.radius / 4)));
 	if (!isSettlement(site.kind)) return site.kind === "ruins" ? 3 : 1;
 	const area = site.radius * site.radius * 1.9;
 	return Math.max(2, Math.min(14, Math.round(area / 110)));
@@ -59,15 +71,15 @@ function bearingOf(dx: number, dy: number): string {
 	return `${vertical}${horizontal}` || "here";
 }
 
-export function siteContext(seed: number, site: MacroSite): SiteContext {
+export function siteContext(world: WorldSeed, site: MacroSite): SiteContext {
 	const { x, y } = site.site;
-	const elevation = elevationAt(seed, x, y);
-	const biome = biomeAt(seed, x, y);
+	const elevation = elevationAt(world, x, y);
+	const biome = biomeAt(world, x, y);
 
-	const roads = roadsAround(seed, site.mx, site.my).filter(
+	const roads = roadsAround(world, site.mx, site.my).filter(
 		(road) => road.from.id === site.id || road.to.id === site.id,
 	);
-	const rivers = riversAround(seed, site.mx, site.my);
+	const rivers = riversAround(world, site.mx, site.my);
 	const nearRiver = rivers.some((river) =>
 		river.points.some((p) => Math.abs(p.x - x) < site.radius && Math.abs(p.y - y) < site.radius),
 	);
@@ -76,7 +88,7 @@ export function siteContext(seed: number, site: MacroSite): SiteContext {
 	for (let dy = -2; dy <= 2; dy++) {
 		for (let dx = -2; dx <= 2; dx++) {
 			if (dx === 0 && dy === 0) continue;
-			const other = macroSite(seed, site.mx + dx, site.my + dy);
+			const other = macroSite(world, site.mx + dx, site.my + dy);
 			if (other.kind === "none") continue;
 			neighbours.push({ kind: other.kind, bearing: bearingOf(dx, dy) });
 		}
@@ -89,18 +101,18 @@ export function siteContext(seed: number, site: MacroSite): SiteContext {
 		x,
 		y,
 		biome,
-		biomeName: biomeDef(biome).name,
-		terrain: elevationBand(elevation),
+		biomeName: biomeDef(biome, world.rules).name,
+		terrain: elevationBand(elevation, world.rules),
 		roadCount: roads.length,
 		nearRiver,
-		coastal: elevation < SEA_LEVEL + 0.06,
+		coastal: elevation < world.rules.climate.seaLevel + 0.06,
 		buildingBudget: buildingBudget(site),
 		neighbours: neighbours.slice(0, 4),
 	};
 }
 
 /** The region a position belongs to, sampled on a coarse lattice. */
-export function regionContext(seed: number, regionId: number, at: { x: number; y: number }) {
+export function regionContext(world: WorldSeed, regionId: number, at: { x: number; y: number }) {
 	// Sample the region's own cell rather than an arbitrary radius, so two
 	// positions in the same region always produce the same context.
 	const rx = Math.floor(at.x / REGION) * REGION;
@@ -111,9 +123,9 @@ export function regionContext(seed: number, regionId: number, at: { x: number; y
 	const step = MACRO;
 	for (let y = ry; y < ry + REGION; y += step) {
 		for (let x = rx; x < rx + REGION; x += step) {
-			const biome = biomeAt(seed, x + step / 2, y + step / 2);
+			const biome = biomeAt(world, x + step / 2, y + step / 2);
 			counts.set(biome, (counts.get(biome) ?? 0) + 1);
-			const site = macroSite(seed, Math.floor(x / MACRO), Math.floor(y / MACRO));
+			const site = macroSite(world, Math.floor(x / MACRO), Math.floor(y / MACRO));
 			if (site.kind !== "none") kinds.add(site.kind);
 		}
 	}
@@ -124,8 +136,8 @@ export function regionContext(seed: number, regionId: number, at: { x: number; y
 	const context: RegionContext = {
 		regionId,
 		biome: dominant,
-		biomeName: biomeDef(dominant).name,
-		biomes: ordered.slice(0, 4).map(([id]) => biomeDef(id).name),
+		biomeName: biomeDef(dominant, world.rules).name,
+		biomes: ordered.slice(0, 4).map(([id]) => biomeDef(id, world.rules).name),
 		settlementKinds: [...kinds].sort(),
 	};
 	return context;

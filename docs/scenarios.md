@@ -134,6 +134,12 @@ interface ScenarioArtifact {
   // Added, optional, in phases 5 and 6 — a v1 reader ignores what it does not know.
   readonly arc?: ScenarioArc;
   readonly trees?: Record<string, DialogueTree>;
+  // Added, optional, in the gameplay pass. Same rule: everything is optional, so an
+  // artifact written before any of it existed still loads and still plays.
+  readonly triggers?: Trigger[];          // condition -> effects
+  readonly barriers?: Barrier[];          // gates across the world
+  readonly placements?: Placement[];      // particular things in particular places
+  readonly time?: TimeOptions;            // whether this world has a clock at all
 
   readonly authoredWith: {
     readonly models: Record<string, string>;
@@ -154,6 +160,457 @@ Dialogue trees key off `npcId(siteId, slot)`. Both halves are deterministic —
 the site id from the macro hash, the slot from the array index `resolveSite`
 assigns — so tree keys are computable at authoring time with no runtime
 cooperation at all.
+
+## Conditions
+
+Everything gateable in a scenario is gated by one shape, and it is a predicate over
+state the game already records:
+
+```ts
+type Condition =
+  | { all: Condition[] } | { any: Condition[] } | { not: Condition }
+  | { flag: string; equals?: string | number | boolean }
+  | { item: string; atLeast?: number }
+  | { quest: string; is: "open" | "done" | "absent" }
+  | { talked: string }                          // an npcId spoken to at all
+  | { visited: string }                         // a place name stood in
+  | { reputation: string; atLeast?: number; atMost?: number }
+  | { disposition: string; atLeast?: number; atMost?: number }
+  | { hour: { from: number; to: number } }      // wraps across midnight
+```
+
+No leaf asks about anything that was not already durable. `visited` reads the flag
+`recordArrival` writes on every first arrival; `talked` reads the NPC's own
+`totalTurns`; `item` calls the same `itemCount` that decides a `have` objective. So
+there is nothing new to keep in step, and a condition cannot ask a question the save
+cannot answer after a reload.
+
+Anywhere a `requires` field appears — a beat, a dialogue node, a dialogue choice — a
+plain list of flag names still works and still means "all of these are set". That
+spelling is better for the commonest case and every artifact already on disk uses it;
+`asCondition` lowers it.
+
+**A condition on a flag nothing sets is the failure mode to watch for.** At runtime
+it is simply false forever, which is indistinguishable from content the player has
+not reached yet: no error, no symptom, and a story that dead-ends four hours in.
+`validateArtifact` refuses those, and `flagsWritten` is deliberately generous about
+what counts as a writer — beats, triggers, written dialogue, cards, barriers, and the
+engine's own `visited:` / `card:` / `looted:` / `trigger:` / `arc:branch:` prefixes.
+
+## Triggers
+
+The piece that makes the rest compose:
+
+```json
+{ "id": "saw-the-bastion",
+  "when": { "visited": "Stonewait" },
+  "effects": [{ "t": "SetFlag", "key": "saw:stonewait", "value": true }] }
+```
+
+Checked after every command, in the same settled position as the arc's own ending
+check, and interleaved with quest verification and arrival recording — because each
+can be what the next was waiting for. Arriving somewhere sets the flag a trigger
+watches; a trigger granting the ledger ticks a `have` objective; an errand closing is
+what another trigger was waiting for. All three resolve within the one command.
+
+Deliberately not an event bus. A trigger is a condition over *state*, so an author
+never has to know which command caused a thing to become true, and a trigger cannot
+be missed for having been registered after the event — the same reasoning that makes
+`verifyQuests` re-check objectives rather than trust a model to announce progress.
+
+`once` defaults to true. A repeating trigger whose effects do not change its own
+condition would otherwise fire forever, so the pass is bounded at
+`MAX_TRIGGER_PASSES` rather than run to a fixed point.
+
+Effects are a deliberate subset of `DomainEffect` — everything an author would want
+to cause, and none of the engine's own dialogue bookkeeping, so a file cannot
+fabricate a relationship the player never had.
+
+## Locked doors, and gates
+
+Two different things, because a barred shop and a barred road behave differently.
+
+A **lock** sits on a structure in a site's roster and refuses the transition into its
+interior. Nothing is written down: the door was already drawn closed, the player
+simply does not go through, and a regenerated chunk is locked again for free because
+the lock travels with the spec.
+
+```json
+{ "kind": "tower", "size": "medium", "importance": 5, "name": "The Warden's Hall",
+  "lock": { "opensWhen": { "flag": "arc:the-second-weight" },
+            "lockedText": "The Warden's Hall is shut. Cull carries the key on him." } }
+```
+
+A **barrier** is a gate on tiles in the open world. It has to change the map and stay
+changed, so it is the one authored thing that writes a `ChunkDelta` — which is
+already what deltas are for. The generator stamps `gateClosed` at every barrier tile
+unconditionally; opening one writes `gateOpen` into the delta and records
+`barrier:<id>`. The generator therefore never learns what the player has done.
+
+```json
+{ "id": "stonewait-gate",
+  "tiles": [{ "x": -104, "y": -93 }, { "x": -103, "y": -93 },
+            { "x": -102, "y": -93 }, { "x": -101, "y": -93 }],
+  "opensWhen": { "flag": "arc:the-short-tally" },
+  "lockedText": "A barred gate where the road narrows between the crags.",
+  "opensText": "The bar lifts, and the gate swings inward." }
+```
+
+**`tiles` is a list because a road is rarely one tile wide.** A gate on the middle
+tile of a three-wide cobbled road is not a gate: the player steps onto the verge and
+back on. One flag covers the whole span, so the whole span lifts together.
+
+The validator does the part a look at the map cannot: with every gate in the scenario
+shut, it asks whether one side of the span can still reach the other, four-connected
+because the player is. A detour of a handful of tiles is an error — the span does not
+cross the way through. A long one is a warning with the number in it, because a gate
+in a pass with a two-hundred-tile detour round it is a real gate and only the author
+can say whether that is the point.
+
+Gates want choke points, and a world may not have many. Searching for one is worth
+doing before writing the gate rather than after.
+
+## Special items in specific places
+
+The generator already fills every crate and hedgerow, but only with *typical* items.
+A placement is how a scenario says "the ledger is in the chest in the mill", which is
+the sentence most stories are built out of.
+
+```json
+{ "id": "the-lead-standard",
+  "at": { "kind": "site", "siteId": 2528282773, "structure": "tower" },
+  "item": { "name": "Lead Standard", "description": "Crown-stamped, and half an ounce light." },
+  "requires": { "flag": "arc:the-second-weight" },
+  "emptyText": "The straw where the standard sat is still pressed flat." }
+```
+
+Three spellings of `at`, in descending order of how much the author has to know: an
+exact `world` tile, an `interior` position, or a `site` and a structure kind. The last
+is the only one writable from the story alone, and it is resolved against the real
+generated settlement when the world opens — so an unresolvable one is a finding
+rather than an item that is quietly nowhere.
+
+Implemented inside the existing search gesture rather than beside it: the placement
+index is consulted *before* `containerContents` and `forageAt`, keyed with the same
+`lootKey`. So an authored item inherits the whole path — taking-once persistence, the
+empty message, and `have` objective resolution — without needing its own verb. It also
+means `obtainableItems` has to know about placements, or the validator would refuse a
+fetch quest for the very item the scenario placed to be fetched.
+
+`requires` is what makes "the body is in the millrace, *after* the flood" expressible:
+searched beforehand, the tile falls through to whatever is really there.
+
+**An item is not findable just because it is obtainable.** This one cost a real
+playthrough: the shipped scenario gated its third act on carrying the Lead Standard,
+the standard was sitting in a locked tower the player had every right to open, and
+nothing in the game ever said the standard existed. Every other check passed — the
+flag was written, the placement resolved, the item was obtainable — and the errand log
+went empty with nowhere to go.
+
+So `checkFindability` refuses a condition on `{ item: X }` unless *something* points
+the player at X: an errand that asks for it by name, a conversation that hands it over,
+or the name appearing in prose the player will actually read. The third is a substring
+match, which is loose — but the failure being caught is "the name appears nowhere at
+all", and for that a loose test is the right one.
+
+## Conditional people
+
+`NpcSpec.requires` keeps somebody out of the world entirely until the story brings
+them on — not standing elsewhere, but absent: not drawable, not walk-into-able, not
+resolvable by id, and not offered to the dialogue layer as somebody who is here.
+
+Their station is still reserved while they are away, because the gate is applied when
+the roster is *indexed* rather than when it is placed. A courier who arrives in
+chapter two must not find their doorstep taken by whoever was shuffled into it.
+
+## Branching, sub-errands and side errands
+
+Four additions to the arc, all small on purpose.
+
+**Sub-errands.** A new objective kind, `quest`, whose target is another errand's id,
+satisfied when that errand completes. `verifyQuests` re-checks it after every command
+like everything else, so a parent closes the moment its last child does — with no
+model, trigger or beat having to notice. `Quest.parentId` is display only: it is what
+lets the errand pane show one job with three parts rather than three unrelated jobs.
+
+**Side errands.** `ScenarioBeat.optional` keeps a beat out of `remaining` and out of
+whether the arc is `finished`, so a story can end with side quests still open.
+
+**Forks.** Beats sharing a `branch` group are mutually exclusive. Opening one records
+`arc:branch:<group> = <beatId>` and bars its siblings for good — permanently, and
+without a warning, because a fork the player can back out of is a menu.
+
+`arcOutline` excludes the arm not taken from the main-line count. Without that,
+`remaining` would sit above zero forever: the barred arm can never open, so the story
+would read as unfinished after it had finished.
+
+The validator's job here is precise. A fork is fine; what breaks is a *downstream*
+beat gated on a flag only one arm sets. Take the other arm and that beat can never
+open. That is an error, per arm, by name.
+
+**Forked outcomes.** `arc.endings` is an ordered list; the first whose `when` holds
+wins, and an entry with no `when` is the catch-all. Ordered rather than scored,
+because an author writing "the grim one if the mill burned, otherwise the quiet one"
+has already said which comes first. Each ending's card id is its own, so the read-once
+flag is per outcome.
+
+**Beats that open on their own.** `opensOn` lets a beat arrive without anybody
+speaking — walking into the burnt mill, or finding the ledger. Evaluated in the same
+settled pass as triggers, so it lands in the command that made it true rather than on
+the next step. The NPC anchor stays required, because that is what the validator
+checks against and what a later conversation about the beat hangs off.
+
+## Editing a scenario somebody is playing
+
+`arc`, `triggers`, `barriers` and `placements` are all re-read from the artifact when a
+world is resumed, not only when one is created. Without that, fixing a scenario
+somebody is halfway through means telling them to delete their save.
+
+Progress is unaffected: which beats have opened lives in the flags, what has been taken
+in `looted:`, which gates are open in `barrier:`. None of that is in the arc.
+
+The honest limit is quests. An errand the old arc already handed out keeps the
+objectives it was created with, because a quest is state and rewriting one under a
+player would un-finish work they had done. So an edit reaches beats not yet opened, and
+an errand already in the log stays as it was — which is worth knowing when the fix *is*
+a changed objective.
+
+## Turning the clock off
+
+Not every game wants a time of day. A single-afternoon mystery or a dungeon crawl gets
+a clock the player has to work around, and a village that empties at 22:00 is an
+obstacle rather than atmosphere.
+
+```json
+"time": { "enabled": false }
+```
+
+Four switches, because they come apart in practice:
+
+| field | off means |
+| --- | --- |
+| `enabled` | the hour never advances; it sits at `startHour` |
+| `lighting` | no day/night tint (interiors keep their lamplight) |
+| `schedules` | everybody stays at their work station |
+| `weather` | no rain, fog or snow |
+
+`lighting` and `schedules` default to whatever `enabled` is; `weather` defaults on
+even with the clock frozen, because weather is sampled along the *tick* and the tick
+keeps counting.
+
+**The tick always keeps counting.** It is an action counter, not a clock — the journal
+orders entries on it and the weather samples along it — so stopping it would break two
+things that have nothing to do with the time of day. What a frozen clock does is stop
+deriving an hour from it.
+
+The top bar drops the clock and the day entirely rather than showing `08:00, day 1`
+forever, which reads as the game having hung.
+
+## The recipe: choosing the world instead of rolling for it
+
+A scenario used to be able to say one thing about its world: the seed. That is not
+control, it is a lottery ticket — you re-roll until something usable comes up and then
+write the story around whatever you got. A **recipe** is the other half. It lifts the
+constants the generator used to hold as module literals into data an author writes
+down, so you can say *there is a town here*, *the sea is higher*, *the woods are thick
+around Harrowmere*.
+
+```json
+"recipe": {
+  "climate": { "seaLevel": 0.5, "moistureBias": 0.1 },
+  "biomes": { "forest": { "scatterDensity": 0.8 } },
+  "sites": { "weights": { "town": 0.5, "hamlet": 8 } },
+  "places": [{ "at": { "x": 320, "y": -64 }, "kind": "town", "importance": 5 }],
+  "zones": [
+    { "id": "deepwood", "at": { "x": 320, "y": -64 }, "radius": 140, "moisture": 0.25, "scatter": 2.5 }
+  ]
+}
+```
+
+Every field is optional and every default reproduces the constant it replaced exactly,
+so a scenario with no recipe generates the identical world it always did.
+
+**Look before you write.** Both authoring tools take the recipe, so you can see what it
+produces before committing a word of story to it:
+
+```
+npm run preview -- --seed thornwick --at 5,-2 --recipe my-recipe.json
+npm run survey  -- --seed thornwick --duration short --recipe my-recipe.json
+```
+
+The file can be a bare recipe or a whole draft with a `recipe` in it — whichever you
+happen to have open.
+
+### climate
+
+Moves the shape of the world before anything is built on it: `seaLevel`, `shoreLevel`,
+`uplandLevel`, `alpineLevel` (which must ascend), `elevationBias` and `elevationScale`,
+`moistureBias`/`moistureScale`, `temperatureBias`/`temperatureScale`, `latitudeBand`,
+`roughnessScale`.
+
+These move coastlines, so they move where towns can stand and where roads can run.
+Raising the sea is how you get an archipelago; widening `elevationScale` is how you get
+one continent instead of a scatter of islands.
+
+### biomes
+
+Per-biome overrides on the built-in table — `ground`, `groundAlt`, `scatterDensity`,
+`scatter`, `habitable`, `name`. Partial: `{ "forest": { "scatterDensity": 0.8 } }`
+thickens woodland and inherits everything else about a forest. Terrain is written by
+key (`"sand"`, `"conifer"`), not by number.
+
+### sites
+
+`weights` is the **percentage of habitable macro cells** carrying each kind, and
+`wildWeights` the same for ground too steep or too wild to live on. Percentages rather
+than relative weights, because the interesting number is how much of the map is empty.
+The defaults total 18%, and the schema refuses more than 80% — past that a map is not
+more densely settled, it is one continuous suburb.
+
+Also here: `radius` per kind (`{ base, perImportance }`), `maxImportance`,
+`civilizationFloor` and `maxSlope`.
+
+### places
+
+A site put somewhere specific:
+
+```json
+{ "at": { "x": 320, "y": -64 }, "kind": "town", "importance": 5, "radius": 26 }
+```
+
+A place **replaces** whatever its macro cell would have rolled rather than sitting
+beside it, and it keeps the id that cell would have had. That last part is the whole
+reason it is keyed by cell: a `SiteSpec` names its site by id, so a roster written for
+an authored town keys exactly as one written for a rolled town, and moving the town in
+the recipe does not orphan everything written about it.
+
+Two places in one macro cell (64 tiles) is an error — the second silently replaces the
+first — and so is a place outside the boundary.
+
+### zones
+
+The "thick forest near this town" mechanism:
+
+```json
+{ "at": { "x": 320, "y": -64 }, "radius": 140, "moisture": 0.25, "scatter": 2.5 }
+```
+
+`moisture` and `temperature` are added to the fields; `scatter` multiplies the biome's
+scatter density. All three are weighted by a smoothstep falloff, so the influence is
+full at the centre and exactly zero at the rim, with no step anywhere in between.
+Overlapping zones compound. `falloff` above 1 concentrates the effect near the centre.
+
+That smoothness is not a nicety. Terrain is a pure function of position, and the reason
+chunk seams cannot exist is that no stage has any notion of a chunk. A rectangle of
+override would put a hard edge somewhere, and one chunk in the world would eventually
+be generated with the edge running through it. A sum of smooth radial fields has no
+edge to catch on.
+
+**Zones cannot move elevation, and this is deliberate.** Elevation decides where the
+sea is, where towns may stand and where roads may run. A local bump would drag a
+coastline under a settlement that had already been placed against the unbumped field.
+Moisture and temperature only reach biome classification and the weather, which is
+where "make this stretch wetter" belongs.
+
+### What a recipe is not allowed to do
+
+The one hard limit: no feature may reach further than a chunk looks for one. Every
+chunk consults `HALO` macro cells around itself, which is 128 tiles; a place with a
+bigger radius would exist in the chunks near it and not in the chunks beyond. The
+validator refuses it, because it is the single thing here that breaks the property the
+whole generator rests on.
+
+### The kinds of place a recipe can ask for
+
+Beyond the settlements the generator always had — `hamlet`, `village`, `town`, `fort`,
+`camp`, `ruins`, `landmark` — there are three built by their own generators:
+
+| kind | what it is | what it needs |
+| --- | --- | --- |
+| `castle` | a curtain wall with one gap, corner towers, a keep and a ward | a square of level ground |
+| `docks` | a quay, piers out over the water, boats, sheds behind | a shoreline with room to moor |
+| `cave` | a mouth in a rock face, and levels underneath | a hillside |
+
+**Each of them declines rather than compromising.** A castle that cannot find a square
+of ground large enough builds nothing; a dock inland builds nothing; a cave on flat
+ground builds nothing. An empty patch leaves the wilderness exactly as it was, which
+is much better than a curtain wall with the low ground bitten out of it — that is a
+castle you can walk into from three sides, and a scenario that barred its gate has
+barred nothing.
+
+They are weighted at zero by default, so they only appear where a recipe asks for
+them — by weight, for a world of castles, or by `places`, for one in particular.
+
+**A castle's gate is a choke point the scenario can bar.** The generator emits it as a
+`gate` anchor and leaves it open, because a barred gate needs a condition to open it
+and something to say when it will not, and inventing either is not the generator's
+business. Put a `barrier` across the three tiles and the courtyard becomes genuinely
+unreachable — that is a property the castle generator guarantees and the settlement
+generator cannot.
+
+### Adding a new kind of place
+
+One file and one call:
+
+```ts
+registerFeature({
+  id: "monastery",
+  accepts: ["monastery"],
+  bounds: (site) => ({ x: …, y: …, w: …, h: … }),
+  build: (world, site, spec) => …,
+});
+```
+
+Then add the module to `core/gen/features/builders.ts`. That list is the only place
+that names the builders, and it exists because a builder registers itself when its
+module is evaluated — so a module nobody imports is a site kind that silently
+generates nothing. That is not hypothetical; it is what happened to every town in the
+world the first time settlements went behind the registry.
+
+`bounds` must actually contain what `build` writes. It is consulted to reject a site
+cheaply, before building, so a patch that spilled outside would be clipped away in the
+chunks that rejected it and drawn in the ones that did not.
+
+## Buildings with more than one room
+
+An interior is a **complex**: a list of levels, generated as a whole and cached as a
+whole. An inn has a guest storey, a mill has a loft, a tower has three rooms stacked,
+and a cave has three levels of passages under it.
+
+Stairs are the reason the whole complex is generated at once. The tile you go up from
+and the tile you come down onto are the same coordinate, and the only way to guarantee
+that from two independent generators is to have them agree — which is another way of
+saying they are one generator.
+
+A portal carries both what it looks like and where it goes:
+
+```ts
+{ kind: "up", to: 1, x: 1, y: 1 }
+```
+
+Both, because neither can be derived from the other: level 1 of a tower is *above*
+level 0 and level 1 of a cave is *below* it.
+
+Some consequences worth knowing when authoring:
+
+- **The way out is on level 0 only.** A player three levels down cannot walk out of a
+  wall.
+- **Residents live on the ground floor.** Upstairs is a different grid that happens to
+  share coordinates, and the same household standing in the same spots on every storey
+  reads as a haunting.
+- **A container upstairs is a different container.** The loot key includes the level
+  above the ground floor, so emptying a chest on level 0 does not empty the one
+  directly above it. Level 0 keeps the key it always had, so old saves still know what
+  they looted.
+- **Placements resolve on the ground floor.** `at: { siteId, structure, anchor }` finds
+  the anchor on level 0. Putting something on an upper storey means naming the tile.
+
+### It travels with the save
+
+`recipe` sits on `WorldMeta` beside the seed and the bounds, for the same reason those
+do: terrain is a pure function of `(seed, recipe, position)`, so a save that lost its
+recipe would come back as a *different world* with the player standing in the middle of
+it — a town displaced fifty tiles, a coastline where a road was.
 
 ## The boundary
 
@@ -452,6 +909,111 @@ would answer about whatever town sits near the world origin. That promotion is
 why a conversation with somebody's cooper works without the dialogue layer
 knowing residents exist — and why a resident can tell you the town's hook.
 
+## Tile packs: what the world looks like
+
+A **content pack** decides what a world is *called*. A **tile pack** decides what it
+*looks like*, down to the pixel. They are deliberately separate: a content pack is
+flavour-only by contract and cannot affect mechanism, and a tile pack cannot affect
+anything at all — it is the last layer, after every decision about the world has been
+made.
+
+```
+.packs/tiles/<name>/tiles.json    the manifest
+.packs/tiles/<name>/atlas.png     full-colour tiles, one grid cell each
+```
+
+A directory rather than one file, and the art as a PNG rather than base64 inside JSON,
+because a full-colour atlas is a quarter of a megabyte of pixels and JSON is a bad
+container for that. It is also the format art arrives in, so a pack opens in an image
+editor.
+
+Choose one with `TILE_PACK=inkwell`, or by naming it in a scenario:
+
+```json
+"tiles": "inkwell"
+```
+
+Either way the name is written into the save, so a world that looked one way when it
+was made looks that way when it is reopened — whatever `TILE_PACK` happens to say
+today. A missing pack falls back to the built-in look and the world plays identically.
+
+### What a pack may say
+
+Everything is optional and everything merges by key, the same rule content packs use.
+
+**`palette`** — any colour by name. Eleven lines recolours the entire game, because
+every glyph and every sprite draws in palette colours rather than in literals.
+
+```json
+"palette": { "moss": "#6f7f4a", "mossDark": "#2e3a22" }
+```
+
+**`glyphs.terrain` / `glyphs.decor`** — per key, the character and its colours:
+
+```json
+"grass": { "ch": ["░", "'", "."], "fg": "moss", "bg": "mossDark" },
+"stoneWall": { "ch": ["▓"], "fg": "stone", "bg": "stoneDark", "autotile": "heavyWall" }
+```
+
+`ch` may be one character or a list, in which case the tile's stable per-position
+variant picks between them. `autotile` names one of the built-in connection sets.
+
+A pack must be able to say something here even if it ships an atlas, because **glyph
+mode is the floor**: it is what runs when the terminal cannot do graphics. A pack that
+supplies no glyphs simply inherits the built-in ones.
+
+**`sprites.terrain` / `sprites.decor` / `sprites.glyph`** — how a tile is drawn in
+pixel mode, in one of four forms:
+
+| form | what it is | keeps lighting? |
+| --- | --- | --- |
+| `{ "shape": … }` | geometry over `box`, `disc`, `ring`, `cone`, `wave`, `any`, `all`, `not` | yes |
+| `{ "density": 0.25 }` | a shade between the tile's two colours | yes |
+| `{ "mask": ["#.", ".#"] }` | an N×N ink mask, `#` for ink | yes |
+| `{ "atlas": [col, row] }` | a full-colour cell of `atlas.png` | yes, see below |
+
+Reach for `shape` first: it stays resolution-independent, so a conifer is crisp at
+eight pixels and at forty-eight and the tile size stays a number rather than a redraw.
+A `mask` is pixel-level and still two-colour. An `atlas` cell is full colour.
+
+Sprites are keyed by **terrain and decor key, not by glyph**, because the glyph
+vocabulary is lossy in exactly the way a tile pack exists to fix: `▒` is a roof *and* a
+bush, and a pack that wants to draw them differently cannot say so through the
+character.
+
+### Full colour and lighting
+
+A two-colour sprite gets everything atmospheric for free: day/night tint, field of
+view, contact shadows and slope relief are already folded into the cell's two colours,
+and any shape drawn in them inherits the lot.
+
+A full-colour tile carries its own colour and cannot. So the compositor records what it
+multiplied the cell by (`Cell.mul`) and the rasteriser multiplies the atlas pixels by
+the same thing. Without that a bitmap tile would blaze at noon brightness in the middle
+of the night. Alpha composites over the cell background, which is what lets a decor
+tile be a chest with the road showing round it.
+
+That cost is only paid when a pack actually has bitmaps — the theme says whether it
+does, and the compositor asks.
+
+### What a pack cannot do
+
+**Ship a glyph that would tear the row.** `assertSafeGlyphs` runs on the resolved
+theme, not merely on the built-in tables, so a double-width character is refused with
+the pack's name in the message. That is the one failure mode that would break the
+*display* rather than merely look wrong, and it would read as a terminal bug.
+
+Everything else degrades: a missing palette name draws in loud magenta, an atlas cell
+that is not there falls back to the built-in sprite, and an unparseable manifest logs
+and leaves the game looking ordinary. The player asked to play, not to debug JSON.
+
+There is a worked example in `.packs/tiles/inkwell/`, with all four sprite forms in it.
+Look at it with:
+
+```
+npm run pixel-shot -- --seed alpha --at -1,-1 --tiles inkwell
+```
+
 ## Content packs
 
 Everything a world is *called* used to be a `const` table in the module that read
@@ -561,6 +1123,43 @@ way a live call can. `requires` variants and a revisit node cover the cases wort
 covering; a player who does something genuinely strange gets a stiff
 conversation. That is the price of the mode, and it is why `live` remains the
 default.
+
+## What the authoring pipeline can now write
+
+`npm run author` learns most of the surface above, in two places.
+
+**Before the survey**, it asks a model what kind of country the brief wants — five
+coarse settings (`sea`, `climate`, `wet`, `settled`, `woods`) and a sentence saying
+why — and `shape.ts` turns those into a recipe. The model never sees a `WorldRecipe`,
+and that is deliberate: a model handed `seaLevel` and asked for a drowned archipelago
+writes `0.9`, which is not an archipelago but an empty ocean with the player standing
+on the one remaining rock. The numbers in that table were arrived at by generating
+worlds and looking at them. An explicit `recipe` in the draft always wins — somebody
+who wrote one has seen the map.
+
+**In the arc pass**, a beat may now carry four more things:
+
+| field | what it does |
+| --- | --- |
+| `optional` | a side errand; the story can finish with it open |
+| `partOf` | makes this beat a step of an earlier one |
+| `branch` | two beats with the same group are mutually exclusive |
+| `find` | something hidden in a named kind of building at that settlement |
+
+`find` becomes **two** things at once — a `Placement` the engine resolves against real
+geometry, and a `have` objective on the beat. Both or neither: a placement alone is an
+item nobody was told about, and an objective alone is an item that is nowhere. That is
+the dead end the findability check exists to catch, and the pipeline is now incapable
+of writing it.
+
+The lowering enforces what the schema cannot. A side errand never becomes the thing the
+next beat waits on; two arms of a fork never gate each other; a step that names a
+parent it cannot have is demoted rather than dropped; and a parent gets a `quest`
+objective per step, so it closes the moment its last step does.
+
+What the model is still not trusted with: `places` and `zones` (they need coordinates,
+and a coordinate is exactly what a model invents confidently and wrongly), barriers
+(they need a choke point that has been looked at), and the recipe itself.
 
 ## Authoring
 

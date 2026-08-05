@@ -16,6 +16,8 @@ import type { ScenarioArc, ScenarioBeat } from "../core/rules/arc.js";
 import type { QuestObjective } from "../core/rules/state.js";
 import { resolveName } from "../core/rules/surroundings.js";
 import { normalizeBrief } from "../core/world/brief.js";
+import { worldSeed } from "../core/world/recipe.js";
+import { WorldRecipeSchema } from "../core/world/recipe-schema.js";
 import type { RegionSpec, SiteSpec } from "../core/world/spec.js";
 import { npcId } from "../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "./artifact.js";
@@ -150,6 +152,15 @@ export const ScenarioDraftSchema = z.object({
 		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case letters, digits and dashes only"),
 	/** A word or a number. Defaults to the id, so a scenario reproduces itself. */
 	seed: z.union([z.string(), z.number()]).optional(),
+	/**
+	 * How the world generates, beyond the seed.
+	 *
+	 * The difference between choosing a world and describing one. Without this a draft
+	 * can only re-roll the seed until something usable comes up; with it the author says
+	 * where the towns are, how wet the map is and where the woods are thick, and the
+	 * survey below runs against that world rather than the default one.
+	 */
+	recipe: WorldRecipeSchema.optional(),
 	brief: ScenarioBriefSchema,
 	title: z.string().min(1).max(80),
 	blurb: z.string().max(400),
@@ -227,7 +238,8 @@ export function assembleArtifact(
 ): ScenarioArtifact {
 	const brief = normalizeBrief(draft.brief) ?? {};
 	const seed = resolveDraftSeed(draft);
-	const survey = surveyWorld(seed, brief.duration);
+	const world = worldSeed(seed, draft.recipe);
+	const survey = surveyWorld(world, brief.duration);
 	// The filler is named from the scenario's own pack, or half the world reads in a
 	// different register from the half the author wrote. The named pack goes under the
 	// draft's own tables, so a scenario borrowing a pack can still change one line of it.
@@ -311,6 +323,7 @@ export function assembleArtifact(
 		...(draft.pack ? { pack: draft.pack } : {}),
 		...(draft.content && !isOverrideEmpty(draft.content) ? { content: draft.content } : {}),
 		seed,
+		...(draft.recipe ? { recipe: draft.recipe } : {}),
 		spawn: survey.spawn,
 		bounds: survey.bounds,
 		lore: draft.lore,
@@ -445,9 +458,13 @@ function lowerTrees(
 		for (const option of draft.entryAfter ?? []) {
 			const node = nodes[option.node];
 			if (!node) continue;
-			const already = node.requires ?? [];
-			if (already.includes(option.flag)) continue;
-			nodes[option.node] = { ...node, requires: [...already, option.flag] };
+			// A draft only ever produces the flag-list spelling, so this stays a list.
+			// A node already carrying a full condition is left alone rather than being
+			// silently widened into an `all` — a draft cannot have written one.
+			const already = Array.isArray(node.requires) ? node.requires : undefined;
+			if (already === undefined && node.requires !== undefined) continue;
+			if (already?.includes(option.flag)) continue;
+			nodes[option.node] = { ...node, requires: [...(already ?? []), option.flag] };
 		}
 
 		// Gated openings first, so the most specific one that qualifies is used.

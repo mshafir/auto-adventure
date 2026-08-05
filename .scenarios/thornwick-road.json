@@ -11,6 +11,37 @@
 		"duration": "short"
 	},
 	"pack": "thornwick",
+	"recipe": {
+		"places": [
+			{
+				"at": {
+					"x": -96,
+					"y": -160
+				},
+				"kind": "castle",
+				"importance": 4
+			},
+			{
+				"at": {
+					"x": -96,
+					"y": -32
+				},
+				"kind": "cave"
+			}
+		],
+		"zones": [
+			{
+				"id": "the-harrow-wood",
+				"at": {
+					"x": -32,
+					"y": -168
+				},
+				"radius": 150,
+				"moisture": 0.14,
+				"scatter": 1.8
+			}
+		]
+	},
 	"seed": 4245522410,
 	"spawn": {
 		"x": 32,
@@ -615,21 +646,16 @@
 				"walled": true,
 				"structures": [
 					{
-						"kind": "barracks",
-						"size": "large",
-						"importance": 5,
-						"name": "The Warden's Hall"
-					},
-					{
 						"kind": "tower",
 						"size": "medium",
-						"importance": 4
-					},
-					{
-						"kind": "stable",
-						"size": "medium",
-						"importance": 3,
-						"name": "The Second Weight"
+						"importance": 5,
+						"name": "The Warden's Hall",
+						"lock": {
+							"opensWhen": {
+								"flag": "arc:the-second-weight"
+							},
+							"lockedText": "The Warden's Hall is shut, and the crown standard is shut in with it. Cull carries the key on him, and does not lend it."
+						}
 					},
 					{
 						"kind": "house",
@@ -776,6 +802,23 @@
 						"The Crown Yard receives more cord than the road can carry.",
 						"Somebody has been signing the difference off in a hand she recognises."
 					]
+				},
+				{
+					"slot": 2,
+					"name": "Auditor Vance",
+					"role": "auditor",
+					"glyph": "V",
+					"appearance": "Travelling coat still on, a satchel she does not put down.",
+					"persona": "Patient, unhurried, entirely uninterested in being liked.",
+					"disposition": 0,
+					"placement": "stall",
+					"knows": [
+						"The assize sends somebody when a crown standard is reported light, and not before.",
+						"A weight in the hand is evidence. A story about a weight is not."
+					],
+					"requires": {
+						"flag": "arc:the-honest-weight"
+					}
 				}
 			],
 			"hooks": ["The Crown Yard takes in more timber than the road could possibly deliver."]
@@ -919,6 +962,88 @@
 				}
 			],
 			"hooks": []
+		},
+		"2951464643": {
+			"siteId": 2951464643,
+			"name": "Tallyward",
+			"shortName": "Tallyward",
+			"description": "The crown's own keep on this road: one curtain wall, one gate, and a yard that has not held a garrison in thirty years. The assize rolls are kept in the tower because there is nowhere drier.",
+			"settlement": {
+				"name": "Tallyward",
+				"walled": true,
+				"structures": [
+					{
+						"kind": "barracks",
+						"size": "large",
+						"importance": 5,
+						"name": "The Long Room"
+					},
+					{
+						"kind": "warehouse",
+						"size": "large",
+						"importance": 4,
+						"name": "The Roll Store"
+					},
+					{
+						"kind": "stable",
+						"size": "medium",
+						"importance": 3
+					},
+					{
+						"kind": "smithy",
+						"size": "medium",
+						"importance": 3
+					}
+				]
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Serjeant Aumbry",
+					"role": "serjeant",
+					"glyph": "A",
+					"appearance": "Grey, square, wearing a coat that fitted a larger man.",
+					"persona": "Bored into precision. Answers what he is asked and not a word past it.",
+					"disposition": 0,
+					"placement": "gate",
+					"knows": [
+						"Every weight-badge on this road is signed out of this keep and signed back into it.",
+						"The old adit south of Stonewait was a crown lead mine before the assize moved."
+					]
+				},
+				{
+					"slot": 1,
+					"name": "Roll-keeper Sibb",
+					"role": "clerk",
+					"glyph": "S",
+					"appearance": "Ink to the second knuckle, spectacles pushed up and forgotten.",
+					"persona": "Delighted by anybody who asks about the rolls, which nobody does.",
+					"disposition": 10,
+					"placement": "doorstep",
+					"structureName": "The Roll Store",
+					"knows": [
+						"The lead for the crown standards was cut at the old adit, and the adit was shut when the seam went bad.",
+						"A weight signed out and never returned is a matter for the assize, in theory."
+					]
+				}
+			],
+			"hooks": [
+				"Nobody has audited this keep since the assize moved to Harrowmere.",
+				"The old adit is a half-morning south, and the ladders are said to still be sound."
+			]
+		},
+		"439642358": {
+			"siteId": 439642358,
+			"name": "the Old Adit",
+			"shortName": "the Adit",
+			"description": "A mouth in the hillside with a lip of spoil under it, shut when the lead seam went bad. Three levels of it, and the ladders are still there.",
+			"settlement": {
+				"name": "the Old Adit",
+				"walled": false,
+				"structures": []
+			},
+			"npcs": [],
+			"hooks": ["The lead in every crown standard on this road came out of here."]
 		}
 	},
 	"arc": {
@@ -955,17 +1080,22 @@
 				"setsFlag": "arc:the-second-weight",
 				"quest": {
 					"id": "the-second-weight",
-					"name": "Ask Ott Pell about the true weight",
-					"description": "Cull signs two tallies and only one is honest. Ott Pell keeps the honest one, and does not keep it here. He is on the bench inside the walls.",
+					"name": "The two tallies of Stonewait",
+					"description": "Ott Pell keeps the weights and Cull keeps the key. The crown's own weight has never left the station: it is a lead disc in the Warden's Hall, and Cull has just unbarred the door for you. Look in the Hall before you go on.",
 					"objectives": [
 						{
 							"kind": "talk",
 							"target": "Ott Pell",
 							"done": false
+						},
+						{
+							"kind": "have",
+							"target": "Lead Standard",
+							"done": false
 						}
 					]
 				},
-				"journal": "Warden Cull confirms it: the badge was signed out in autumn and never signed back in. Two tallies leave Stonewait, and only one of them is true."
+				"journal": "Two tallies leave Stonewait: the crown's and the true one. The crown standard itself is in the Warden's Hall, and Cull has unbarred it."
 			},
 			{
 				"id": "the-honest-weight",
@@ -977,7 +1107,7 @@
 				"quest": {
 					"id": "the-honest-weight",
 					"name": "Follow the ledger to Harrowmere",
-					"description": "Ott sold his true count to Factor Odell, in Harrowmere, where the timber stops being timber and starts being money. The road runs on east. Go and read it.",
+					"description": "Ott sold his true count to Factor Odell, in Harrowmere, where the timber stops being timber and starts being money. The road runs on east. Go and read it. Take the lead standard with you; it is the only part of this nobody can argue with.",
 					"objectives": [
 						{
 							"kind": "reach",
@@ -996,6 +1126,141 @@
 				"requires": ["arc:the-honest-weight"],
 				"setsFlag": "arc:the-crown-yard",
 				"journal": "Factor Odell bought a full ledger from a warden in autumn, at four parts in five, and was asked to forget her. He remembers the hand it was written in. So do you."
+			},
+			{
+				"id": "the-old-adit",
+				"order": 4,
+				"siteId": 2951464643,
+				"npcSlot": 1,
+				"requires": ["arc:the-second-weight"],
+				"setsFlag": "arc:the-old-adit",
+				"optional": true,
+				"quest": {
+					"id": "the-old-adit",
+					"name": "Where the lead came from",
+					"description": "Sibb keeps the rolls at Tallyward and has never seen the mine they describe. The old adit is south of Stonewait, in the hillside above the road. Go and look at it; she would like to know it is still there.",
+					"objectives": [
+						{
+							"kind": "reach",
+							"target": "the Old Adit",
+							"done": false
+						}
+					]
+				},
+				"journal": "Sibb at Tallyward says the crown's lead was cut at an adit south of Stonewait. It has been shut since the seam went bad. She has never been."
+			},
+			{
+				"id": "the-carters-favour",
+				"order": 5,
+				"siteId": 2150566345,
+				"npcSlot": 1,
+				"requires": ["arc:the-short-tally"],
+				"setsFlag": "arc:the-carters-favour",
+				"optional": true,
+				"quest": {
+					"id": "the-carters-favour",
+					"name": "The short cord out of Kilnwait",
+					"description": "Bevan Halloway's carters have been paid to the short tally on every load out of Kilnwait since spring, and none of them can read the book that does it. Somebody who can should go and look at the camp.",
+					"objectives": [
+						{
+							"kind": "reach",
+							"target": "Kilnwait",
+							"done": false
+						}
+					]
+				},
+				"journal": "The carters out of Kilnwait have been paid short for a year, and not one of them can read the ledger that says so."
+			},
+			{
+				"id": "the-weight-in-hand",
+				"order": 6,
+				"siteId": 3139050156,
+				"npcSlot": 1,
+				"requires": ["arc:the-crown-yard"],
+				"setsFlag": "arc:the-weight-in-hand",
+				"opensOn": {
+					"item": "Lead Standard"
+				},
+				"quest": {
+					"id": "the-weight-in-hand",
+					"name": "Weigh it against the crown's own",
+					"description": "Meret Sallow has run the beam at the Crown Yard for six years against that same standard. She will know the moment she sees it what it means.",
+					"objectives": [
+						{
+							"kind": "talk",
+							"target": "Meret Sallow",
+							"done": false
+						}
+					],
+					"parentId": "the-crown-yard"
+				},
+				"journal": "Meret has weighed against a light standard for six years. Saying so costs her the beam and costs the yard nothing, which is why she never has."
+			},
+			{
+				"id": "report-the-fraud",
+				"order": 7,
+				"siteId": 3139050156,
+				"npcSlot": 2,
+				"requires": ["arc:the-weight-in-hand"],
+				"setsFlag": "arc:reported",
+				"branch": "the-tally",
+				"quest": {
+					"id": "report-the-fraud",
+					"name": "Hand the standard to the auditor",
+					"description": "Vance will take the weight as evidence and the assize will sit at Harrowmere. It ends the yard, the station and the warden together — and it puts your sister's hand in the roll that does it.",
+					"objectives": [
+						{
+							"kind": "have",
+							"target": "Lead Standard",
+							"done": false
+						}
+					]
+				},
+				"card": {
+					"id": "the-open-roll",
+					"title": "The Open Roll",
+					"subtitle": "Vance takes the disc without looking at you",
+					"sections": [
+						{
+							"heading": "The weight",
+							"body": "She sets it on her own beam, which she carries, and watches it settle. Half an ounce. She writes the number down before she says anything, and what she says is that the assize will sit here within the month."
+						}
+					]
+				},
+				"journal": "Vance has the standard. She will not have it quietly."
+			},
+			{
+				"id": "bury-the-tally",
+				"order": 8,
+				"siteId": 3139050156,
+				"npcSlot": 0,
+				"requires": ["arc:the-weight-in-hand"],
+				"setsFlag": "arc:buried",
+				"branch": "the-tally",
+				"quest": {
+					"id": "bury-the-tally",
+					"name": "Sell the standard to Odell",
+					"description": "Odell will buy the disc for the price of a year and melt it, and the road goes on exactly as it is. Nobody is named. Nobody is paid back either.",
+					"objectives": [
+						{
+							"kind": "have",
+							"target": "Lead Standard",
+							"done": false
+						}
+					]
+				},
+				"card": {
+					"id": "the-drawer",
+					"title": "The Drawer",
+					"subtitle": "Odell's back room, and a drawer that does not lock",
+					"sections": [
+						{
+							"heading": "The offer",
+							"body": "He does not weigh it. He turns it over once, reads the assize mark, and names a figure that is a year of anything you have ever earned. Then he puts it in a drawer that does not lock, because it does not need to."
+						}
+					]
+				},
+				"journal": "Odell paid a year's money for a lump of crown lead, which tells you what it was worth to him and what it would have been worth to everybody else."
 			}
 		],
 		"ending": {
@@ -1015,7 +1280,64 @@
 					"body": "You know where she went and why she stopped writing, and you are holding the reason in both hands. Nobody is waiting on you. The road out of Harrowmere runs west, back the way you came, and the levy will be counted again next month whatever you do about it."
 				}
 			]
-		}
+		},
+		"endings": [
+			{
+				"id": "the-open-roll",
+				"when": {
+					"flag": "arc:reported"
+				},
+				"title": "Half an ounce",
+				"subtitle": "the assize sits at Harrowmere, and everybody comes",
+				"sections": [
+					{
+						"heading": "The finding",
+						"body": "The disc weighs what it weighs, and nothing anybody says survives it. Cull is suspended, the yard's beam is impounded, and the back room at Odell's is read out loud by a clerk who does not care whose hand it is in."
+					},
+					{
+						"heading": "The hand",
+						"body": "Her name is in it eleven times, and Vance reads all eleven. Nobody in the room looks at you, which is its own kind of looking. The road will be weighed honestly from the spring, and she will not be there to see it."
+					}
+				]
+			},
+			{
+				"id": "the-quiet-pound",
+				"when": {
+					"flag": "arc:buried"
+				},
+				"title": "A quiet pound",
+				"subtitle": "Odell's back room, and the road unchanged",
+				"sections": [
+					{
+						"heading": "The sale",
+						"body": "The lead goes into the fire and comes out as nothing in particular. Odell counts the money without hurrying, because there is no hurry: the road will carry the same timber tomorrow at the same short weight."
+					},
+					{
+						"heading": "The hand",
+						"body": "Her name stays where it is, in a book nobody will now have cause to read. You told yourself that was the point. It is even true."
+					}
+				]
+			},
+			{
+				"id": "the-hand-you-know",
+				"title": "The hand you know",
+				"subtitle": "read in the back room of Odell's, by one lamp",
+				"sections": [
+					{
+						"heading": "The ledger",
+						"body": "It is not the crown's book and it was never meant to be. Two columns to a page: what the road carried, and what the yard received. The second is always the larger, and the difference is always about a cord, and it has been about a cord every month since the levy doubled."
+					},
+					{
+						"heading": "The hand",
+						"body": "Small, hard, and slanted to the left, the way she wrote everything from the time she was nine. She kept the true count for three winters, sold it to a man who buys paper and does not ask, and asked him to forget her. She did not stop writing. She stopped writing to you."
+					},
+					{
+						"heading": "And now",
+						"body": "You know where she went and why she stopped writing, and you are holding the reason in both hands. Nobody is waiting on you. The road out of Harrowmere runs west, back the way you came, and the levy will be counted again next month whatever you do about it."
+					}
+				]
+			}
+		]
 	},
 	"trees": {
 		"npc:2150566345:0": {
@@ -1282,5 +1604,95 @@
 		},
 		"calls": 0,
 		"at": "2026-08-04T22:58:31.531Z"
-	}
+	},
+	"barriers": [
+		{
+			"id": "stonewait-gate",
+			"tiles": [
+				{
+					"x": -104,
+					"y": -93
+				},
+				{
+					"x": -103,
+					"y": -93
+				},
+				{
+					"x": -102,
+					"y": -93
+				},
+				{
+					"x": -101,
+					"y": -93
+				}
+			],
+			"opensWhen": {
+				"flag": "arc:the-short-tally"
+			},
+			"lockedText": "A crown gate across the cut, barred on the far side. The station above it does not open for travellers, and there is a notice on the bar saying so.",
+			"opensText": "The bar lifts. Whoever set it has been told to expect you."
+		}
+	],
+	"placements": [
+		{
+			"id": "the-lead-standard",
+			"at": {
+				"kind": "site",
+				"siteId": 2528282773,
+				"structure": "tower"
+			},
+			"item": {
+				"name": "Lead Standard",
+				"description": "The crown's own weight for this station: a lead disc the size of a palm, stamped with the assize mark. Filed half an ounce light, and not recently."
+			},
+			"requires": {
+				"flag": "arc:the-second-weight"
+			},
+			"showDecor": true
+		}
+	],
+	"triggers": [
+		{
+			"id": "the-standard-in-hand",
+			"when": {
+				"item": "Lead Standard"
+			},
+			"effects": [
+				{
+					"t": "SetFlag",
+					"key": "tally:proven",
+					"value": true
+				},
+				{
+					"t": "RecordJournal",
+					"entry": {
+						"kind": "event",
+						"text": "The crown standard is half an ounce light, and it was filed, not worn. Whatever is said after this, it is the thing that says it."
+					}
+				}
+			]
+		},
+		{
+			"id": "the-auditor-waits",
+			"when": {
+				"all": [
+					{
+						"flag": "tally:proven"
+					},
+					{
+						"visited": "Harrowmere"
+					}
+				]
+			},
+			"effects": [
+				{
+					"t": "RecordJournal",
+					"entry": {
+						"kind": "rumor",
+						"text": "There is an auditor at the market stall who was not there yesterday. She is waiting for somebody and does not mind being seen waiting."
+					}
+				}
+			]
+		}
+	]
 }

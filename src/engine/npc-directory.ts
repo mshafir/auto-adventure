@@ -55,6 +55,17 @@ export class NpcDirectory {
 	private readonly provisional = new Set<number>();
 	private bucket: TimeOfDay = "morning";
 	/**
+	 * Whether a person's own conditions are currently met.
+	 *
+	 * A predicate rather than the state itself, so this class stays ignorant of
+	 * `GameState` — it already derives everything from specs and anchors, and giving
+	 * it the whole state would invite it to start reading other things. Defaults to
+	 * "everybody is here", which is every procedural and live world: gating is an
+	 * authored-cast feature, and a directory nobody has gated behaves exactly as it
+	 * did before this existed.
+	 */
+	private gate: (npc: NpcSpec) => boolean = () => true;
+	/**
 	 * Bumped whenever placements change.
 	 *
 	 * The directory is mutable and derived from specs that arrive asynchronously,
@@ -97,6 +108,42 @@ export class NpcDirectory {
 		this.bucket = bucket;
 		this.revision++;
 		this.reindex();
+	}
+
+	/**
+	 * Tell the directory how to decide whether a gated person is present.
+	 *
+	 * Called after every command that could have changed the answer, which is most of
+	 * them — so the cheap path matters: `reindex` re-derives the visible set, and the
+	 * revision is bumped only if that set actually differs. Without that check the
+	 * render layer, which memoises on `revision`, would rebuild the entity index on
+	 * every single step.
+	 */
+	setGate(gate: (npc: NpcSpec) => boolean): void {
+		this.gate = gate;
+		this.recheckGate();
+	}
+
+	/**
+	 * Ask the gate again, because the state it reads has changed.
+	 *
+	 * Separate from `setGate` so the caller does not have to hand over the predicate
+	 * again on every keypress. The revision is bumped only if the visible set actually
+	 * differs — the render layer memoises on it, so bumping unconditionally would
+	 * rebuild the entity index on every single step for a world with no gated people
+	 * in it at all.
+	 */
+	recheckGate(): void {
+		const before = [...this.byId.keys()];
+		this.reindex();
+		if (this.byId.size !== before.length || before.some((id) => !this.byId.has(id))) {
+			this.revision++;
+		}
+	}
+
+	/** Whether this person's conditions are met right now. */
+	private present(npc: PlacedNpc): boolean {
+		return this.gate(npc.spec);
 	}
 
 	/**
@@ -161,7 +208,11 @@ export class NpcDirectory {
 		if (known) return known;
 		for (const list of this.roster.values()) {
 			const found = list.find((npc) => npc.id === id);
-			if (found) return found;
+			// Gated here as well as in `reindex`. This fallback exists so a conversation
+			// survives the clock moving somebody out of the index, and without the check
+			// it would also resolve somebody the story has not brought on at all —
+			// which is how a hidden NPC stays talkable.
+			if (found && this.present(found)) return found;
 		}
 		return undefined;
 	}
@@ -177,6 +228,11 @@ export class NpcDirectory {
 		this.byId.clear();
 		for (const list of this.roster.values()) {
 			for (const npc of list) {
+				// Somebody the story has not brought on yet. Skipped here rather than at
+				// `place` time so their station stays reserved: a courier who appears in
+				// chapter two must not find their doorstep taken by whoever was shuffled
+				// into it while they were absent.
+				if (!this.present(npc)) continue;
 				// Every bucket should be filled; skipping is a guard, not a schedule.
 				// When `night` and `dawn` were left absent for most roles, this quietly
 				// emptied every town between 23:00 and 07:00.
@@ -265,9 +321,18 @@ export class NpcDirectory {
 		return found;
 	}
 
-	/** Everyone belonging to a site, whether or not they are outdoors right now. */
+	/**
+	 * Everyone belonging to a site, whether or not they are outdoors right now.
+	 *
+	 * Gated people are left out, because this is what grounds a conversation: the
+	 * dialogue layer is told who is here so an NPC can name them, and naming somebody
+	 * the story has not brought on is exactly the invented-detail failure that
+	 * `surroundingsFor` exists to prevent.
+	 */
 	atSite(siteId: number): readonly PlacedNpc[] {
-		return this.roster.get(siteId) ?? [];
+		const roster = this.roster.get(siteId);
+		if (!roster) return [];
+		return roster.filter((npc) => this.present(npc));
 	}
 
 	/** The buildings a site actually has, for grounding what an NPC may promise. */

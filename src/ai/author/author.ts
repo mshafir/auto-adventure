@@ -1,7 +1,9 @@
 import { MODELS } from "../../config.js";
-import type { ScenarioArc, ScenarioBeat } from "../../core/rules/arc.js";
+import type { ArcEnding, ScenarioArc, ScenarioBeat } from "../../core/rules/arc.js";
+import type { Placement } from "../../core/rules/placement.js";
 import type { QuestObjective } from "../../core/rules/state.js";
 import type { ScenarioBrief } from "../../core/world/brief.js";
+import { type WorldRecipe, worldSeed } from "../../core/world/recipe.js";
 import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 import { npcId } from "../../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "../../scenario/artifact.js";
@@ -19,8 +21,16 @@ import {
 	sitePrompt,
 } from "../director/prompt.js";
 import { RegionSpecSchema, SiteSpecSchema, WorldLoreSchema } from "../director/schemas.js";
-import { ARC_SYSTEM, arcPrompt, TREE_SYSTEM, treePrompt } from "./prompts.js";
-import { ArcSchema, TreeSchema } from "./schemas.js";
+import {
+	ARC_SYSTEM,
+	arcPrompt,
+	SHAPE_SYSTEM,
+	shapePrompt,
+	TREE_SYSTEM,
+	treePrompt,
+} from "./prompts.js";
+import { type ArcResponse, ArcSchema, TreeSchema, WorldShapeSchema } from "./schemas.js";
+import { recipeFor } from "./shape.js";
 
 /**
  * Author a whole world, offline.
@@ -40,10 +50,14 @@ export interface AuthorOptions {
 	readonly id: string;
 	readonly brief: ScenarioBrief;
 	readonly seed: number;
+	/** How the world generates, beyond the seed. */
+	readonly recipe?: WorldRecipe;
 	/** Model calls in flight at once. */
 	readonly concurrency?: number;
 	/** Skip the per-NPC dialogue pass, which is most of the cost. */
 	readonly skipTrees?: boolean;
+	/** Skip asking a model what kind of country this is; use the default world. */
+	readonly skipShape?: boolean;
 	readonly onProgress?: (message: string) => void;
 }
 
@@ -78,8 +92,30 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
 	let calls = 0;
 
-	// --- pass 0: survey, free ------------------------------------------------
-	const survey = surveyWorld(options.seed, options.brief.duration);
+	// --- pass 0: what kind of country --------------------------------------
+	// Before the survey, because the survey runs *against* a world and the world has to
+	// exist first. An explicit recipe from the caller wins: somebody who wrote one down
+	// has looked at the map, and a model has not.
+	let recipe = options.recipe;
+	if (!recipe && !options.skipShape) {
+		const shape = await structured({
+			kind: "bible",
+			model: MODELS.bible,
+			schema: WorldShapeSchema,
+			system: SHAPE_SYSTEM,
+			prompt: shapePrompt(options.brief),
+			temperature: 0.8,
+		});
+		if (shape) {
+			calls++;
+			recipe = recipeFor(shape);
+			say(`world: ${shape.sea} sea, ${shape.climate}, ${shape.wet}, ${shape.settled}ly settled`);
+		}
+	}
+
+	// --- pass 1: survey, free ------------------------------------------------
+	const world = worldSeed(options.seed, recipe);
+	const survey = surveyWorld(world, options.brief.duration);
 	const settlements = storySites(survey);
 	say(
 		`surveyed ${survey.sites.length} sites (${settlements.length} settlements) in a ${
@@ -186,14 +222,16 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		.filter((pair): pair is { entry: typeof pair.entry; spec: SiteSpec } => Boolean(pair.spec))
 		.filter((pair) => pair.spec.npcs.length > 0);
 
-	const arc = await plotArc({
+	const plotted = await plotArc({
 		brief: options.brief,
 		lore,
 		beats: Math.min(planFor(options.brief.duration).beats, storyable.length),
 		sites: storyable,
 	});
+	const arc = plotted?.arc;
 	if (arc) calls++;
 	say(arc ? `plotted ${arc.beats.length} beats` : "no story could be plotted");
+	if (plotted?.placements.length) say(`hid ${plotted.placements.length} things to find`);
 
 	// --- pass 5: dialogue ----------------------------------------------------
 	const trees: Record<string, DialogueTree> = {};
@@ -233,12 +271,14 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		blurb: arc?.premise ?? lore.premise,
 		brief: options.brief,
 		seed: options.seed,
+		...(recipe ? { recipe } : {}),
 		spawn: survey.spawn,
 		bounds: survey.bounds,
 		lore,
 		regions,
 		sites,
 		...(arc ? { arc } : {}),
+		...(plotted?.placements.length ? { placements: plotted.placements } : {}),
 		...(Object.keys(trees).length > 0 ? { trees } : {}),
 		authoredWith: {
 			models: { bible: MODELS.bible, director: MODELS.director, dialogue: MODELS.dialogue },
@@ -261,7 +301,7 @@ async function plotArc(input: {
 	readonly lore: WorldLore;
 	readonly beats: number;
 	readonly sites: readonly { readonly entry: { site: { id: number } }; readonly spec: SiteSpec }[];
-}): Promise<ScenarioArc | undefined> {
+}): Promise<{ arc: ScenarioArc; placements: Placement[] } | undefined> {
 	if (input.sites.length === 0 || input.beats === 0) return undefined;
 
 	const response = await structured({
@@ -279,11 +319,32 @@ async function plotArc(input: {
 		temperature: 0.9,
 	});
 	if (!response) return undefined;
+	return lowerArc(response, input.sites);
+}
 
+/**
+ * Turn the model's answer into beats, placements and endings.
+ *
+ * Separated from the call so it can be tested without one. Everything interesting the
+ * authoring pass does to a story happens here — the sequencing, the sub-errands, the
+ * hidden items — and none of it is worth trusting on the strength of having read it.
+ */
+export function lowerArc(
+	response: ArcResponse,
+	sites: readonly { readonly entry: { site: { id: number } }; readonly spec: SiteSpec }[],
+): { arc: ScenarioArc; placements: Placement[] } | undefined {
 	const seen = new Set<string>();
-	const beats: ScenarioBeat[] = [];
+	// Mutable while it is being assembled: a parent's objectives are not knowable until
+	// its steps have been read, and a `ScenarioBeat` is readonly by the time it ships.
+	const beats: (Omit<ScenarioBeat, "quest"> & { quest?: ScenarioBeat["quest"] })[] = [];
+	const placements: Placement[] = [];
+	// The beat before this one *on the main line*. A side errand must not become the
+	// thing the next beat waits on, or the story stops until the player finds it —
+	// which is the precise opposite of what "optional" means.
+	let previousMain: string | undefined;
+
 	for (const raw of response.beats) {
-		const chosen = input.sites[raw.siteIndex];
+		const chosen = sites[raw.siteIndex];
 		if (!chosen) continue;
 		const npc = chosen.spec.npcs[raw.npcIndex];
 		if (!npc) continue;
@@ -303,31 +364,93 @@ async function plotArc(input: {
 				]
 			: [];
 
+		// Something hidden becomes two things at once: a placement the engine resolves
+		// against real geometry, and an objective to be carrying it. Both, because a
+		// placement alone is an item nobody was asked for, and an objective alone is an
+		// item that is nowhere — which is the dead end this whole pass exists to avoid.
+		if (raw.find) {
+			placements.push({
+				id: `find:${raw.id}`,
+				at: { kind: "site", siteId: chosen.entry.site.id, structure: raw.find.where },
+				item: { name: raw.find.item, description: raw.find.description },
+				showDecor: true,
+			});
+			objectives.push({ kind: "have", target: raw.find.item, done: false });
+		}
+
+		// A step is only a step if its parent is a beat already written and is not itself.
+		const parent =
+			raw.partOf && seen.has(raw.partOf) && raw.partOf !== raw.id ? raw.partOf : undefined;
+
 		beats.push({
 			id: raw.id,
 			order,
 			siteId: chosen.entry.site.id,
 			npcSlot: npc.slot,
-			// Each beat waits on the one before, which is what makes the story a
-			// sequence rather than a set of things lying about in the world.
-			requires: order === 0 ? [] : [`arc:${beats[order - 1]?.id}`],
+			// Each main beat waits on the one before, which is what makes the story a
+			// sequence rather than a set of things lying about in the world. A step of an
+			// earlier errand waits on *that*, and a side errand waits on nothing at all.
+			requires: parent ? [`arc:${parent}`] : previousMain ? [`arc:${previousMain}`] : [],
 			setsFlag: flag,
-			...(raw.quest
+			...(raw.optional ? { optional: true } : {}),
+			...(raw.branch ? { branch: raw.branch } : {}),
+			...(raw.quest || raw.find
 				? {
 						quest: {
 							id: raw.id,
-							name: raw.quest.name,
-							description: raw.quest.description,
+							name: raw.quest?.name ?? `The ${raw.find?.item}`,
+							description: raw.quest?.description ?? raw.find?.description ?? "",
 							objectives,
+							...(parent ? { parentId: parent } : {}),
 						},
 					}
 				: {}),
 			...(raw.journal ? { journal: raw.journal } : {}),
 		});
+
+		// A branch arm does not advance the main line either: the next beat must wait on
+		// whatever came *before* the fork, or one arm becomes a prerequisite of the other.
+		if (!raw.optional && !parent && !raw.branch) previousMain = raw.id;
 	}
 
 	if (beats.length === 0) return undefined;
-	return { title: response.title, premise: response.premise, beats };
+
+	// A parent cannot close until its steps do. Added afterwards rather than as the
+	// steps are read, because a parent is written before the things that belong to it.
+	for (const beat of beats) {
+		const steps = beats.filter((other) => other.quest?.parentId === beat.id);
+		if (steps.length === 0 || !beat.quest) continue;
+		beat.quest = {
+			...beat.quest,
+			objectives: [
+				...beat.quest.objectives,
+				...steps.map((step) => ({ kind: "quest" as const, target: step.id, done: false })),
+			],
+		};
+	}
+
+	const ids = new Set(beats.map((beat) => beat.id));
+	const endings: ArcEnding[] = response.endings
+		.filter((ending) => ids.has(ending.beat))
+		.map((ending) => ({
+			id: `end:${ending.beat}`,
+			// Keyed on the arm's own flag rather than on the branch group: `pickEnding`
+			// takes the first match in author order, so an ending is simply "this is the
+			// arm that was taken".
+			when: { flag: `arc:${ending.beat}` },
+			title: ending.title,
+			sections: [{ heading: ending.heading, body: ending.body }],
+		}));
+
+	return {
+		arc: {
+			title: response.title,
+			premise: response.premise,
+			beats,
+			...(endings.length > 0 ? { endings } : {}),
+		},
+		placements,
+	};
 }
 
 async function writeTree(input: {

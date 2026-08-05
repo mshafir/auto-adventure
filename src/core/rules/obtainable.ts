@@ -8,11 +8,12 @@ import { shopStock, tradeKind } from "./shop.js";
 /**
  * Item names a `have` objective could legitimately name.
  *
- * Four sources, and all four have to be here or an errand gets refused that the
+ * Five sources, and all five have to be here or an errand gets refused that the
  * player could actually have satisfied: what is on sale, what the buildings here
- * actually hold, what the land around gives up, and what the player already
- * carries. This is why "fetch me timber" is a legal errand in a milling town and an
- * illegal one in a fishing village, without anything holding a catalogue of its own.
+ * actually hold, what the land around gives up, what the scenario placed by hand, and
+ * what the player already carries. This is why "fetch me timber" is a legal errand in
+ * a milling town and an illegal one in a fishing village, without anything holding a
+ * catalogue of its own.
  *
  * Extracted from the engine so the offline validator can ask the identical
  * question. That matters more than the duplication it saves: while the two had
@@ -60,6 +61,19 @@ export interface ObtainableInput {
 	 */
 	readonly emptied?: (interiorId: number, x: number, y: number) => boolean;
 	readonly carried?: readonly string[];
+	/**
+	 * Items the scenario put somewhere by hand.
+	 *
+	 * Fifth source, and the one the other four cannot express: a placement is the
+	 * whole point of naming a specific thing in a specific place, so an errand for it
+	 * is the most likely errand a story writes. Without this the validator would
+	 * refuse a fetch quest for the very item the scenario placed to be fetched.
+	 *
+	 * Not scoped to this site, deliberately. A placement is somewhere definite in a
+	 * finite world and being sent across it is normal, which is the same reasoning
+	 * `validate.ts` already applies to items authored conversations hand over.
+	 */
+	readonly placed?: readonly string[];
 }
 
 export function obtainableItems(input: ObtainableInput): string[] {
@@ -101,6 +115,7 @@ export function obtainableItems(input: ObtainableInput): string[] {
 	}
 
 	if (input.ground) for (const name of groundYields(input.ground)) names.add(name);
+	for (const placed of input.placed ?? []) names.add(placed);
 	for (const carried of input.carried ?? []) names.add(carried);
 
 	return [...names];

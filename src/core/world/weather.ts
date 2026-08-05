@@ -1,5 +1,6 @@
 import { fbm2 } from "../rand/noise.js";
 import { moistureAt, temperatureAt } from "./fields.js";
+import type { WorldSeed } from "./recipe.js";
 
 /**
  * Sky and season, as a pure function of time and place.
@@ -22,15 +23,16 @@ export interface Weather {
 /** How many ticks a weather front takes to cross. */
 const FRONT_PERIOD = 900;
 
-export function weatherAt(seed: number, tick: number, x: number, y: number): Weather {
+export function weatherAt(world: WorldSeed, tick: number, x: number, y: number): Weather {
 	// Sampling position on a coarse grid and time on its own axis means the
 	// weather is regional rather than per-tile, and changes as you travel.
 	const t = tick / FRONT_PERIOD;
 	// fbm2 returns roughly [-1, 1]; shift it into [0, 1] so it composes with the
 	// moisture field, which is already unit-range.
-	const front = fbm2(seed ^ 0x57ea, x / 900 + t, y / 900 - t * 0.6, { octaves: 3 }) * 0.5 + 0.5;
-	const moisture = moistureAt(seed, x, y);
-	const temperature = temperatureAt(seed, x, y);
+	const front =
+		fbm2(world.seed ^ 0x57ea, x / 900 + t, y / 900 - t * 0.6, { octaves: 3 }) * 0.5 + 0.5;
+	const moisture = moistureAt(world, x, y);
+	const temperature = temperatureAt(world, x, y);
 
 	// Wet country gets wet weather; the front decides how much.
 	const wetness = front * 0.6 + moisture * 0.4;

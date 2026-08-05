@@ -3,8 +3,9 @@ import type { Vec2 } from "../geom/vec.js";
 import { hash32 } from "../rand/hash.js";
 import { valueFor } from "../rand/rng.js";
 import { HALO } from "./coords.js";
-import { elevationAt, SEA_LEVEL, UPLAND_LEVEL } from "./fields.js";
+import { elevationAt } from "./fields.js";
 import { MACRO } from "./macro.js";
+import { type WorldSeed, worldKey } from "./recipe.js";
 
 export interface River {
 	readonly id: number;
@@ -18,9 +19,9 @@ const riverCache = new Map<string, River | undefined>();
 /** How far a river may run before we stop tracing. Bounds the work per source. */
 const MAX_RIVER_STEPS = 60;
 
-function macroElevation(seed: number, mx: number, my: number): number {
+function macroElevation(world: WorldSeed, mx: number, my: number): number {
 	// Sample at the macro cell centre so the descent graph is well defined.
-	return elevationAt(seed, mx * MACRO + MACRO / 2, my * MACRO + MACRO / 2);
+	return elevationAt(world, mx * MACRO + MACRO / 2, my * MACRO + MACRO / 2);
 }
 
 /**
@@ -31,20 +32,20 @@ function macroElevation(seed: number, mx: number, my: number): number {
  * instead of a per-chunk decision. Every chunk the river passes through
  * rasterises a clipped portion of the *same* polyline, so the banks line up.
  */
-export function riverFrom(seed: number, mx: number, my: number): River | undefined {
-	const key = `${seed}:${mx}:${my}`;
+export function riverFrom(world: WorldSeed, mx: number, my: number): River | undefined {
+	const key = `${worldKey(world)}:${mx}:${my}`;
 	if (riverCache.has(key)) return riverCache.get(key);
 
-	const result = traceRiver(seed, mx, my);
+	const result = traceRiver(world, mx, my);
 	riverCache.set(key, result);
 	return result;
 }
 
-function traceRiver(seed: number, mx: number, my: number): River | undefined {
-	const sourceElevation = macroElevation(seed, mx, my);
-	if (sourceElevation < UPLAND_LEVEL) return undefined;
+function traceRiver(world: WorldSeed, mx: number, my: number): River | undefined {
+	const sourceElevation = macroElevation(world, mx, my);
+	if (sourceElevation < world.rules.climate.uplandLevel) return undefined;
 	// Only some highland cells are springs, or the map becomes all water.
-	if (valueFor(seed, "river:source", mx, my) > 0.35) return undefined;
+	if (valueFor(world.seed, "river:source", mx, my) > 0.35) return undefined;
 
 	const points: Vec2[] = [];
 	const visited = new Set<string>();
@@ -59,15 +60,15 @@ function traceRiver(seed: number, mx: number, my: number): River | undefined {
 
 		// Wander the exit point within the cell so rivers are not straight lines
 		// between cell centres, but do it as a pure function of the cell.
-		const jx = valueFor(seed, "river:jx", cx, cy);
-		const jy = valueFor(seed, "river:jy", cx, cy);
+		const jx = valueFor(world.seed, "river:jx", cx, cy);
+		const jy = valueFor(world.seed, "river:jy", cx, cy);
 		points.push({
 			x: Math.round(cx * MACRO + MACRO * (0.3 + jx * 0.4)),
 			y: Math.round(cy * MACRO + MACRO * (0.3 + jy * 0.4)),
 		});
 
-		const here = macroElevation(seed, cx, cy);
-		if (here < SEA_LEVEL) break;
+		const here = macroElevation(world, cx, cy);
+		if (here < world.rules.climate.seaLevel) break;
 
 		let bestX = cx;
 		let bestY = cy;
@@ -83,7 +84,7 @@ function traceRiver(seed: number, mx: number, my: number): River | undefined {
 			[-1, 1],
 			[-1, -1],
 		] as const) {
-			const e = macroElevation(seed, cx + dx, cy + dy);
+			const e = macroElevation(world, cx + dx, cy + dy);
 			if (e < bestElevation) {
 				bestElevation = e;
 				bestX = cx + dx;
@@ -100,17 +101,17 @@ function traceRiver(seed: number, mx: number, my: number): River | undefined {
 	}
 
 	if (points.length < 3) return undefined;
-	return { id: hash32(seed, 0x21be0, mx, my), points, flow };
+	return { id: hash32(world.seed, 0x21be0, mx, my), points, flow };
 }
 
 /** Rivers that could touch a chunk, sourced anywhere in its halo. */
-export function riversAround(seed: number, cx: number, cy: number, halo = HALO): River[] {
+export function riversAround(world: WorldSeed, cx: number, cy: number, halo = HALO): River[] {
 	const rivers: River[] = [];
 	// Rivers run far, so look further afield than the settlement halo.
 	const reach = halo + 6;
 	for (let my = cy - reach; my <= cy + reach; my++) {
 		for (let mx = cx - reach; mx <= cx + reach; mx++) {
-			const river = riverFrom(seed, mx, my);
+			const river = riverFrom(world, mx, my);
 			if (river) rivers.push(river);
 		}
 	}

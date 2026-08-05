@@ -3,6 +3,7 @@
  *
  * ```
  * npm run survey -- --seed drowned-archipelago --duration short
+ * npm run survey -- --recipe .scenarios/thornwick-recipe.json
  * ```
  *
  * Costs nothing and calls no model: the generator is pure, so every settlement, its
@@ -14,9 +15,12 @@
 import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
 import { resolveSeed } from "../config.js";
 import { fallbackSettlementSpec } from "../core/gen/features/fallback-spec.js";
-import { generateSettlement, invalidateSettlement } from "../core/gen/features/settlement.js";
+import { invalidateFeature } from "../core/gen/features/registry.js";
+import { generateSettlement } from "../core/gen/features/settlement.js";
 import { isDuration } from "../core/world/brief.js";
+import type { WorldSeed } from "../core/world/recipe.js";
 import { planFor, surveyWorld } from "../scenario/survey.js";
+import { worldFromArgs } from "./recipe-arg.js";
 
 function parseArgs(argv: readonly string[]): Map<string, string> {
 	const args = new Map<string, string>();
@@ -46,13 +50,13 @@ function parseArgs(argv: readonly string[]): Map<string, string> {
  * here because placing somebody at an anchor the settlement never builds leaves a
  * named character standing nowhere, and that is invisible until validation.
  */
-function likelyAnchors(seed: number, site: Parameters<typeof generateSettlement>[1]): string[] {
-	invalidateSettlement(seed, site.id);
-	const built = generateSettlement(seed, site, fallbackSettlementSpec(seed, site));
+function likelyAnchors(world: WorldSeed, site: Parameters<typeof generateSettlement>[1]): string[] {
+	invalidateFeature(world, site.id);
+	const built = generateSettlement(world, site, fallbackSettlementSpec(world.seed, site));
 	const kinds = [...new Set(built.anchors.map((anchor) => anchor.kind))].sort();
 	// Leave no cached patch behind: the next thing to generate this site should be
 	// measuring the authored roster, not this probe.
-	invalidateSettlement(seed, site.id);
+	invalidateFeature(world, site.id);
 	return kinds.filter((kind) => (PLACEMENTS as readonly string[]).includes(kind));
 }
 
@@ -65,7 +69,8 @@ function main() {
 	}
 	const seedArg = args.get("seed") ?? "auto-adventure";
 	const seed = resolveSeed(seedArg);
-	const survey = surveyWorld(seed, duration);
+	const world = worldFromArgs(seed, args.get("recipe"));
+	const survey = surveyWorld(world, duration);
 	const plan = planFor(duration);
 
 	const output = {
@@ -100,7 +105,7 @@ function main() {
 			/** Author at most this many structures; the rest will not fit. */
 			buildingBudget: entry.context.buildingBudget,
 			neighbours: entry.context.neighbours,
-			...(entry.settlement ? { likelyAnchors: likelyAnchors(seed, entry.site) } : {}),
+			...(entry.settlement ? { likelyAnchors: likelyAnchors(world, entry.site) } : {}),
 		})),
 	};
 

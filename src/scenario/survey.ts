@@ -4,6 +4,7 @@ import type { RegionContext } from "../core/world/context.js";
 import { biomeAt, regionContext, type SiteContext, siteContext } from "../core/world/context.js";
 import { CHUNK } from "../core/world/coords.js";
 import { isSettlement, MACRO, type MacroSite, macroSite } from "../core/world/macro.js";
+import type { WorldSeed } from "../core/world/recipe.js";
 import { findSpawn } from "../engine/spawn.js";
 
 /**
@@ -50,7 +51,14 @@ export interface SurveyedSite {
 }
 
 export interface Survey {
-	readonly seed: number;
+	/**
+	 * The world this survey describes — seed and recipe both.
+	 *
+	 * A survey is what an artifact is assembled from, so it has to carry the whole of
+	 * what produced it. Carrying only the seed would let a scenario be written against
+	 * a world with a thick forest and then be played in one without.
+	 */
+	readonly world: WorldSeed;
 	readonly spawn: { readonly x: number; readonly y: number };
 	readonly bounds: WorldBounds;
 	readonly sites: readonly SurveyedSite[];
@@ -110,7 +118,7 @@ function rectAround(
  * report the clipped town rather than the tool silently producing one.
  */
 export function solveBounds(
-	seed: number,
+	world: WorldSeed,
 	centre: { readonly x: number; readonly y: number },
 	radiusTiles: number,
 	style: BoundaryStyle,
@@ -123,7 +131,7 @@ export function solveBounds(
 
 	for (const offset of candidates()) {
 		const bounds = rectAround(centre, radiusTiles + offset, style);
-		const nearby = sitesWithin(seed, bounds, MACRO);
+		const nearby = sitesWithin(world, bounds, MACRO);
 		if (!nearby.some((site) => straddles(bounds, site))) {
 			return { bounds, adjustment: offset };
 		}
@@ -132,7 +140,7 @@ export function solveBounds(
 }
 
 /** Every site whose cell falls in or near a rectangle. */
-export function sitesWithin(seed: number, bounds: WorldBounds, margin = 0): MacroSite[] {
+export function sitesWithin(world: WorldSeed, bounds: WorldBounds, margin = 0): MacroSite[] {
 	const minMx = Math.floor((bounds.minX - margin) / MACRO);
 	const maxMx = Math.floor((bounds.maxX + margin) / MACRO);
 	const minMy = Math.floor((bounds.minY - margin) / MACRO);
@@ -141,7 +149,7 @@ export function sitesWithin(seed: number, bounds: WorldBounds, margin = 0): Macr
 	const sites: MacroSite[] = [];
 	for (let my = minMy; my <= maxMy; my++) {
 		for (let mx = minMx; mx <= maxMx; mx++) {
-			const site = macroSite(seed, mx, my);
+			const site = macroSite(world, mx, my);
 			if (site.kind !== "none") sites.push(site);
 		}
 	}
@@ -158,7 +166,7 @@ export function sitesWithin(seed: number, bounds: WorldBounds, margin = 0): Macr
  * several biomes.
  */
 export function styleForEdge(
-	seed: number,
+	world: WorldSeed,
 	centre: { readonly x: number; readonly y: number },
 	radiusTiles: number,
 ): BoundaryStyle {
@@ -168,7 +176,7 @@ export function styleForEdge(
 		const radians = (angle / 16) * Math.PI * 2;
 		const x = Math.round(centre.x + Math.cos(radians) * radiusTiles);
 		const y = Math.round(centre.y + Math.sin(radians) * radiusTiles);
-		const biome = biomeAt(seed, x, y);
+		const biome = biomeAt(world, x, y);
 		samples++;
 		if (biome === "ocean" || biome === "beach" || biome === "marsh") wet++;
 	}
@@ -178,21 +186,21 @@ export function styleForEdge(
 	return "cliffs";
 }
 
-export function surveyWorld(seed: number, duration: Duration | undefined): Survey {
+export function surveyWorld(world: WorldSeed, duration: Duration | undefined): Survey {
 	const plan = planFor(duration);
 	const radiusTiles = plan.radiusChunks * CHUNK;
 
 	// Spawn first, unbounded: the bounds are drawn around wherever the world offers
 	// a reasonable start, not the other way round.
-	const spawn = findSpawn(seed);
-	const style = styleForEdge(seed, spawn, radiusTiles);
-	const { bounds, adjustment } = solveBounds(seed, spawn, radiusTiles, style);
+	const spawn = findSpawn(world);
+	const style = styleForEdge(world, spawn, radiusTiles);
+	const { bounds, adjustment } = solveBounds(world, spawn, radiusTiles, style);
 
-	const sites = sitesWithin(seed, bounds)
+	const sites = sitesWithin(world, bounds)
 		.filter((site) => isWellInside(bounds, site.site.x, site.site.y))
 		.map((site) => ({
 			site,
-			context: siteContext(seed, site),
+			context: siteContext(world, site),
 			distanceFromSpawn: Math.round(Math.hypot(site.site.x - spawn.x, site.site.y - spawn.y)),
 			settlement: isSettlement(site.kind),
 		}))
@@ -201,10 +209,10 @@ export function surveyWorld(seed: number, duration: Duration | undefined): Surve
 	const regionIds = [...new Set(sites.map((entry) => entry.site.regionId))];
 	const regions = regionIds.map((id) => {
 		const at = sites.find((entry) => entry.site.regionId === id)?.site.site ?? spawn;
-		return regionContext(seed, id, at);
+		return regionContext(world, id, at);
 	});
 
-	return { seed, spawn, bounds, sites, regions, boundaryAdjustment: adjustment };
+	return { world, spawn, bounds, sites, regions, boundaryAdjustment: adjustment };
 }
 
 /** The settlements a story can actually be hung on. */

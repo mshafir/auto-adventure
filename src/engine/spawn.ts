@@ -3,6 +3,7 @@ import { TFlag } from "../core/tiles/flags.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import { CHUNK, type ChunkCoord } from "../core/world/coords.js";
 import { isSettlement, sitesAround } from "../core/world/macro.js";
+import type { WorldSeed } from "../core/world/recipe.js";
 
 /**
  * Choose where a new game begins.
@@ -13,7 +14,7 @@ import { isSettlement, sitesAround } from "../core/world/macro.js";
  * so a new player has something to walk toward.
  */
 export function findSpawn(
-	seed: number,
+	world: WorldSeed,
 	maxRadius = 12,
 	bounds?: WorldBounds,
 ): { x: number; y: number } {
@@ -21,17 +22,17 @@ export function findSpawn(
 		for (const cc of ring(radius)) {
 			// Prefer chunks whose halo contains a settlement, so the opening view
 			// has a road or a village in it rather than empty moor.
-			const settled = sitesAround(seed, cc.cx, cc.cy, 1).some((s) => isSettlement(s.kind));
+			const settled = sitesAround(world, cc.cx, cc.cy, 1).some((s) => isSettlement(s.kind));
 			if (radius > 0 && !settled) continue;
 
-			const spot = standableIn(seed, cc, bounds);
+			const spot = standableIn(world, cc, bounds);
 			if (spot) return spot;
 		}
 	}
 
 	// Every candidate was unusable, which should be impossible; fall back to the
 	// origin chunk and accept whatever is there rather than looping forever.
-	return standableIn(seed, { cx: 0, cy: 0 }, bounds) ?? { x: 0, y: 0 };
+	return standableIn(world, { cx: 0, cy: 0 }, bounds) ?? { x: 0, y: 0 };
 }
 
 function* ring(radius: number): Generator<ChunkCoord> {
@@ -48,14 +49,14 @@ function* ring(radius: number): Generator<ChunkCoord> {
 }
 
 function standableIn(
-	seed: number,
+	world: WorldSeed,
 	cc: ChunkCoord,
 	bounds?: WorldBounds,
 ): { x: number; y: number } | undefined {
 	// Generated *with* the bounds, so the boundary band has already replaced the
 	// ground it covers. Testing passability against an unbounded chunk could spawn
 	// the player inside a cliff face.
-	const { chunk } = generateChunk({ seed, ...(bounds ? { bounds } : {}) }, cc);
+	const { chunk } = generateChunk({ world, ...(bounds ? { bounds } : {}) }, cc);
 	const centre = CHUNK / 2;
 
 	let best: { x: number; y: number; distance: number } | undefined;

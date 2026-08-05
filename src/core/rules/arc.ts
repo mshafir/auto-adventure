@@ -1,5 +1,6 @@
 import { npcId as makeNpcId } from "../world/spec.js";
 import type { CardSection } from "./card.js";
+import { asCondition, type Condition, evaluate } from "./condition.js";
 import type { DomainEffect } from "./effects.js";
 import { endingCard } from "./ending.js";
 import type { GameState, QuestObjective } from "./state.js";
@@ -28,15 +29,64 @@ export interface ScenarioBeat {
 	readonly siteId: number;
 	/** Which person in that site opens it. */
 	readonly npcSlot: number;
-	/** Flags that must already be set. An empty list means "from the start". */
-	readonly requires: readonly string[];
+	/**
+	 * Open without anybody having to say anything, once this is true.
+	 *
+	 * A conversation is the right way for most beats to arrive — somebody tells you
+	 * something — but not all of them: walking into the burnt mill, or finding the
+	 * ledger, is the story moving on its own. The NPC anchor stays required even here,
+	 * because it is what the validator checks a beat against and what a later
+	 * conversation about the beat hangs off.
+	 *
+	 * Evaluated in the reducer's trigger pass, so it lands in the same command that
+	 * made it true rather than on the player's next step.
+	 */
+	readonly opensOn?: Condition;
+	/**
+	 * What must already be true. An empty list means "from the start".
+	 *
+	 * A list of flag names is the shorthand for "all of these are set" and is how
+	 * every arc has been written so far. A {@link Condition} lets a beat wait on
+	 * something the story never wrote a flag for — an item in hand, a quest closed,
+	 * a person warmed up.
+	 */
+	readonly requires: readonly string[] | Condition;
 	/** Set when the beat opens. Later beats gate on it, and it marks it done. */
 	readonly setsFlag: string;
+	/**
+	 * A fork this beat is one arm of.
+	 *
+	 * Beats sharing a group are mutually exclusive: opening one records the choice and
+	 * bars its siblings for good. That is what makes a decision a decision — without
+	 * it a player could walk the story twice and take both paths, which is worse than
+	 * having no fork at all, because it reads as the choice not having mattered.
+	 *
+	 * The bar is deliberately permanent and deliberately not a warning. A fork the
+	 * player can back out of is a menu.
+	 */
+	readonly branch?: string;
+	/**
+	 * A side errand rather than a step of the main story.
+	 *
+	 * Excluded from `remaining` and from whether the arc is `finished`, so a story can
+	 * end with side quests still open — which is the whole point of one being optional.
+	 * It still opens, journals and hands out its errand exactly like any other beat.
+	 */
+	readonly optional?: boolean;
 	readonly quest?: {
 		readonly id: string;
 		readonly name: string;
 		readonly description: string;
 		readonly objectives: readonly QuestObjective[];
+		/**
+		 * The errand this one is a step of.
+		 *
+		 * Display only — the gating is a `quest` objective on the parent, which is real
+		 * state — but it is what lets the quest pane show one job with three parts rather
+		 * than three unrelated jobs, which is the difference between a branching story and
+		 * an unsorted to-do list.
+		 */
+		readonly parentId?: string;
 	};
 	/** Written to the journal when the beat opens. */
 	readonly journal?: string;
@@ -71,6 +121,28 @@ export interface ScenarioArc {
 		readonly subtitle?: string;
 		readonly sections: readonly CardSection[];
 	};
+	/**
+	 * Endings to choose between, by what the player actually did.
+	 *
+	 * First match wins, in author order, falling back to {@link ending} and then to the
+	 * assembled one. This is what makes a fork worth taking: a branch the player chose
+	 * changes how the story is *told back to them*, not merely which errands they ran.
+	 *
+	 * Ordered rather than scored, because an author writing "the grim one if the mill
+	 * burned, otherwise the quiet one" is expressing precedence, and a scoring rule
+	 * would need them to invent numbers to say it.
+	 */
+	readonly endings?: readonly ArcEnding[];
+}
+
+export interface ArcEnding {
+	/** Stable id; becomes the card's id, so it is read exactly once. */
+	readonly id: string;
+	/** Absent means "always", which is how a final fallback is written. */
+	readonly when?: Condition;
+	readonly title: string;
+	readonly subtitle?: string;
+	readonly sections: readonly CardSection[];
 }
 
 /** The flag recording that the story has been told, so it is said exactly once. */
@@ -101,8 +173,37 @@ export function beatIsOpen(state: GameState, beat: ScenarioBeat): boolean {
 	return Boolean(state.flags[beat.setsFlag]);
 }
 
+/**
+ * The flag recording which arm of a fork was taken.
+ *
+ * A flag rather than a set of per-beat flags, because the question asked of it is
+ * "which way did this go" and one value answers that — which is also what lets a
+ * dialogue node or an ending condition read the decision with `{ flag, equals }`
+ * instead of having to enumerate the arms not taken.
+ *
+ * Under `arc:` so `isEngineFlag` treats it as engine-written: nothing an author
+ * writes sets it, so the unreachable-flag check must not report it.
+ */
+export function branchKey(group: string): string {
+	return `arc:branch:${group}`;
+}
+
+/** Which arm of a fork was taken, if the fork has been reached. */
+export function branchTaken(state: GameState, group: string): string | undefined {
+	const value = state.flags[branchKey(group)];
+	return typeof value === "string" ? value : undefined;
+}
+
 function requirementsMet(state: GameState, beat: ScenarioBeat): boolean {
-	return beat.requires.every((flag) => Boolean(state.flags[flag]));
+	// A fork already decided bars every arm but the one taken. Checked before the
+	// beat's own requirement, because the requirement is usually satisfiable on both
+	// arms — that is what makes them alternatives — so it is this check and only this
+	// check that stops the player walking the story twice and taking both paths.
+	if (beat.branch !== undefined) {
+		const taken = branchTaken(state, beat.branch);
+		if (taken !== undefined && taken !== beat.id) return false;
+	}
+	return evaluate(asCondition(beat.requires), state);
 }
 
 /**
@@ -136,6 +237,33 @@ export function beatOpenedBy(
 }
 
 /**
+ * Beats that have become true on their own, without anybody speaking.
+ *
+ * Checked after every command in the same settled position as triggers, and for the
+ * same reason: the state a beat waits on can be reached by walking, by picking
+ * something up or by another beat closing, and there is no command whose handler could
+ * reasonably know about all three.
+ *
+ * All of them, not just the first — unlike `beatOpenedBy`, which deliberately opens at
+ * most one per conversation so a single "hello" cannot dump three quests in the log.
+ * There is no such risk here: an author writing two beats that both become true on the
+ * same act meant both, and the ordering is `orderedBeats`', which is total.
+ */
+export function beatsOpenedByState(
+	arc: ScenarioArc | undefined,
+	state: GameState,
+): readonly ScenarioBeat[] {
+	if (!arc) return [];
+	return orderedBeats(arc).filter(
+		(beat) =>
+			beat.opensOn !== undefined &&
+			!beatIsOpen(state, beat) &&
+			requirementsMet(state, beat) &&
+			evaluate(beat.opensOn, state),
+	);
+}
+
+/**
  * Lower a beat into effects.
  *
  * The flag is set last. Everything else is idempotent on its own, but the flag is
@@ -151,6 +279,8 @@ export function beatEffects(beat: ScenarioBeat): DomainEffect[] {
 			name: beat.quest.name,
 			description: beat.quest.description,
 			objectives: beat.quest.objectives,
+			siteId: beat.siteId,
+			...(beat.quest.parentId ? { parentId: beat.quest.parentId } : {}),
 		});
 	}
 	if (beat.journal) {
@@ -163,6 +293,12 @@ export function beatEffects(beat: ScenarioBeat): DomainEffect[] {
 	// the game behind the card — the errand is in the log by the time they look.
 	if (beat.card) {
 		effects.push({ t: "ShowCard", card: { ...beat.card, id: beatCardId(beat) } });
+	}
+	// Before the beat's own flag, so a fork half-applied after a partial save is
+	// already closed to its siblings when the retry comes round — the reverse order
+	// would leave a window in which both arms were open.
+	if (beat.branch !== undefined) {
+		effects.push({ t: "SetFlag", key: branchKey(beat.branch), value: beat.id });
 	}
 	effects.push({ t: "SetFlag", key: beat.setsFlag, value: true });
 	return effects;
@@ -203,6 +339,8 @@ export interface ArcStep {
 	 * sat open in the list underneath it.
 	 */
 	readonly complete: boolean;
+	/** A side errand. Shown, but not counted toward the story being told. */
+	readonly optional?: boolean;
 }
 
 export interface ArcOutline {
@@ -249,18 +387,39 @@ export function arcOutline(arc: ScenarioArc | undefined, state: GameState): ArcO
 	const steps = opened.map((beat) => ({
 		label: beatLabel(beat),
 		complete: !beat.quest || finished.has(beat.quest.id),
+		...(beat.optional ? { optional: true as const } : {}),
 	}));
+
+	/**
+	 * The beats the main story is actually made of, for this playthrough.
+	 *
+	 * Two exclusions, and both are the difference between "3/3, and am I done?" and an
+	 * answer. Optional beats are side errands and were never part of the count. Arms of
+	 * a fork the player did not take can never open — `requirementsMet` bars them
+	 * permanently — so counting them would leave the story one step short of finished
+	 * forever, which is the same silent dead-end this whole outline exists to prevent.
+	 */
+	const mainLine = beats.filter((beat) => !beat.optional && !isBarredBranch(state, beat));
+	const mainOpened = mainLine.filter((beat) => beatIsOpen(state, beat));
+	const mainSteps = steps.filter((_, index) => !opened[index]?.optional);
 
 	return {
 		title: arc.title,
 		premise: arc.premise,
-		finished: opened.length === beats.length && steps.every((step) => step.complete),
+		finished: mainOpened.length === mainLine.length && mainSteps.every((step) => step.complete),
 		steps,
-		remaining: beats.length - opened.length,
+		remaining: mainLine.length - mainOpened.length,
 		clues: state.journal
 			.filter((entry) => entry.source !== undefined && sources.has(entry.source))
 			.map((entry) => entry.text),
 	};
+}
+
+/** Whether this beat is an arm of a fork that went the other way. */
+function isBarredBranch(state: GameState, beat: ScenarioBeat): boolean {
+	if (beat.branch === undefined) return false;
+	const taken = branchTaken(state, beat.branch);
+	return taken !== undefined && taken !== beat.id;
 }
 
 /**
@@ -294,7 +453,7 @@ export function arcEndEffects(
 				source: ARC_DONE_FLAG,
 			},
 		},
-		{ t: "ShowCard", card: endingCard(arc, outline) },
+		{ t: "ShowCard", card: endingCard(arc, outline, state) },
 		{ t: "SetFlag", key: ARC_DONE_FLAG, value: true },
 	];
 }

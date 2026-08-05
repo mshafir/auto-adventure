@@ -54,7 +54,29 @@ export type Sprite =
 	 * texture comes from the drawn specks instead. That is the balance
 	 * `glyphs.ts` already strikes, where grass is half `░` and half a mark.
 	 */
-	| { readonly kind: "density"; readonly level: number };
+	| { readonly kind: "density"; readonly level: number }
+	/**
+	 * An N×N ink mask, sampled nearest.
+	 *
+	 * Literally pixel-level, and still two-colour — so lighting, field of view, tint,
+	 * relief and contact shadows keep working untouched, because all of those live in
+	 * the cell's two colours. This is the form for a pack that wants to draw its own
+	 * tiles without giving up any of the atmosphere.
+	 *
+	 * Not resolution-independent the way a shape is: a 4×4 mask blown up to 16 pixels
+	 * is a blocky 4×4. Author at the size you mean.
+	 */
+	| { readonly kind: "mask"; readonly size: number; readonly bits: Uint8Array }
+	/**
+	 * A full-colour tile, straight from a pack's atlas.
+	 *
+	 * The one sprite kind that carries its own colour, which means it cannot inherit
+	 * `cell.fg`/`cell.bg` — so everything atmospheric has to reach it another way. It
+	 * does: the compositor records what it multiplied the colours by (`Cell.mul`), and
+	 * the rasteriser multiplies these pixels by the same thing. Alpha falls through to
+	 * the cell background, which is what lets a decor tile sit over terrain.
+	 */
+	| { readonly kind: "bitmap"; readonly size: number; readonly rgba: Uint8Array };
 
 function shape(fn: Shape): Sprite {
 	return { kind: "shape", shape: fn };
@@ -334,6 +356,9 @@ const AUTHORED: Readonly<Record<string, Sprite>> = {
 		),
 	),
 	"¡": shape(any(box(0.44, 0.12, 0.56, 0.2), box(0.44, 0.32, 0.56, 0.88))),
+	// A hull under sail, pointing the way it is moored.
+	"◄": shape((u, v) => u > 0.12 && Math.abs(v - 0.5) < (u - 0.12) * 0.62),
+	"▮": shape(box(0.3, 0.08, 0.7, 0.92)),
 	"+": shape(any(box(0.42, 0.12, 0.58, 0.92), box(0.16, 0.4, 0.84, 0.56))),
 	"/": shape((u, v) => Math.abs(u - (1 - v)) < 0.13),
 	">": shape((u, v) => Math.abs(u - (0.3 + (0.5 - Math.abs(v - 0.5)))) < 0.14),
@@ -407,6 +432,14 @@ const BY_TERRAIN: Readonly<Record<string, Sprite>> = {
 	gravel: shape(any(disc(0.3, 0.4, 0.07), disc(0.68, 0.62, 0.06))),
 	flowers: shape(any(disc(0.34, 0.38, 0.11), disc(0.66, 0.64, 0.09))),
 	ice: shape((u, v) => Math.abs(u * 0.6 + v - 0.7) < 0.05),
+	// Boards across the run, with a gap the dark water shows through. The same
+	// reasoning as the bridge: the gap is what distinguishes a walkway over water
+	// from a solid surface.
+	pier: shape(any(box(0, 0.16, 1, 0.34), box(0, 0.62, 1, 0.8))),
+	deck: shape(any(box(0, 0.24, 1, 0.32), box(0, 0.66, 1, 0.74))),
+	// An arch of rock with darkness under it.
+	caveMouth: shape(both(disc(0.5, 0.9, 0.44), (_u, v) => v > 0.2)),
+	caveFloor: shape(any(disc(0.28, 0.36, 0.06), disc(0.72, 0.7, 0.05))),
 };
 
 const BY_DECOR: Readonly<Record<string, Sprite>> = {
@@ -422,6 +455,15 @@ const BY_DECOR: Readonly<Record<string, Sprite>> = {
 	well: shape(
 		any(ring(0.5, 0.62, 0.34, 0.1), box(0.14, 0.16, 0.86, 0.26), box(0.46, 0.16, 0.54, 0.5)),
 	),
+	// A hull seen from above, with a mast up the middle.
+	boat: shape(
+		any(
+			both(disc(0.5, 0.5, 0.46), (u, v) => Math.abs(u - 0.5) < 0.36 - Math.abs(v - 0.5) * 0.3),
+			box(0.46, 0.14, 0.54, 0.86),
+		),
+	),
+	mooring: shape(any(box(0.42, 0.24, 0.58, 0.92), box(0.32, 0.2, 0.68, 0.3))),
+	banner: shape(any(box(0.16, 0.06, 0.24, 0.96), box(0.24, 0.12, 0.78, 0.58))),
 };
 
 /**
@@ -431,8 +473,23 @@ const BY_DECOR: Readonly<Record<string, Sprite>> = {
  */
 const FALLBACK: Sprite = shape(ring(0.5, 0.5, 0.3, 0.1));
 
-export function spriteFor(ch: string): Sprite {
-	return AUTHORED[ch] ?? BOX.get(ch) ?? FALLBACK;
+export function spriteFor(ch: string, theme?: SpriteTheme): Sprite {
+	return theme?.byGlyph?.[ch] ?? AUTHORED[ch] ?? BOX.get(ch) ?? FALLBACK;
+}
+
+/**
+ * A pack's sprite overrides, by the key of the thing being drawn.
+ *
+ * Keyed by terrain and decor *key* rather than by glyph, because the glyph vocabulary
+ * is lossy in exactly the way a tile pack exists to fix: `▒` is a roof and a bush, and
+ * a pack that wants to draw them differently cannot say so through the character.
+ * `byGlyph` remains for the cases that are genuinely about the character — a pack that
+ * redraws box-drawing corners, say.
+ */
+export interface SpriteTheme {
+	readonly byTerrain?: Readonly<Record<string, Sprite>>;
+	readonly byDecor?: Readonly<Record<string, Sprite>>;
+	readonly byGlyph?: Readonly<Record<string, Sprite>>;
 }
 
 export function hasSprite(ch: string): boolean {
@@ -449,6 +506,10 @@ export interface TilePaint {
 	readonly shape: Shape;
 	readonly fg: RGB;
 	readonly bg: RGB;
+	/** Set instead of `shape` when the tile carries its own colour. */
+	readonly bitmap?: { readonly size: number; readonly rgba: Uint8Array };
+	/** What the compositor multiplied this cell's colours by. Only bitmaps need it. */
+	readonly mul?: readonly [number, number, number];
 }
 
 /**
@@ -459,28 +520,63 @@ export interface TilePaint {
  * and following it means a signpost on a road draws the signpost — whereas
  * keying off the glyph alone would draw whichever of the two won the character.
  */
-export function paintFor(cell: PaintInput): TilePaint {
+export function paintFor(cell: PaintInput, theme?: SpriteTheme): TilePaint {
 	const { fg, bg } = cell;
 	if (cell.entity) {
 		return { shape: cell.facing ? FIGURE_FACING[cell.facing] : FIGURE, fg, bg };
 	}
 
-	const byDecor = cell.decor !== undefined ? BY_DECOR[decorDef(cell.decor).key] : undefined;
-	const byTerrain =
-		byDecor === undefined && cell.terrain !== undefined
-			? BY_TERRAIN[terrainDef(cell.terrain).key]
-			: undefined;
-	// A decor override only applies where decor is actually present; `none` is
-	// id 0 and must not shadow the terrain under it.
+	const decorKey = cell.decor !== undefined ? decorDef(cell.decor).key : undefined;
+	const terrainKey = cell.terrain !== undefined ? terrainDef(cell.terrain).key : undefined;
+	// A pack's override wins over the built-in one for the same key, and a decor
+	// override only applies where decor is actually present: `none` is id 0 and must
+	// not shadow the terrain under it.
+	const byDecor = decorKey ? (theme?.byDecor?.[decorKey] ?? BY_DECOR[decorKey]) : undefined;
+	const byTerrain = terrainKey
+		? (theme?.byTerrain?.[terrainKey] ?? BY_TERRAIN[terrainKey])
+		: undefined;
 	const chosen =
 		(cell.decor ? byDecor : undefined) ??
 		(cell.decor ? undefined : byTerrain) ??
-		spriteFor(cell.ch);
+		spriteFor(cell.ch, theme);
 
-	if (chosen.kind === "density") {
-		return { shape: NOTHING, fg, bg: mix(bg, fg, chosen.level) };
+	switch (chosen.kind) {
+		case "density":
+			return { shape: NOTHING, fg, bg: mix(bg, fg, chosen.level) };
+		case "mask":
+			return { shape: maskShape(chosen), fg, bg };
+		case "bitmap":
+			return {
+				shape: NOTHING,
+				fg,
+				bg,
+				bitmap: { size: chosen.size, rgba: chosen.rgba },
+				...(cell.mul ? { mul: cell.mul } : {}),
+			};
+		default:
+			return { shape: chosen.shape, fg, bg };
 	}
-	return { shape: chosen.shape, fg, bg };
+}
+
+/**
+ * A mask as a shape, memoised on the mask itself.
+ *
+ * The rasteriser caches tiles by shape *identity*, so building a fresh closure per
+ * call would defeat that cache entirely and redraw every tile of every frame.
+ */
+const maskShapes = new WeakMap<Uint8Array, Shape>();
+
+function maskShape(sprite: { readonly size: number; readonly bits: Uint8Array }): Shape {
+	const found = maskShapes.get(sprite.bits);
+	if (found) return found;
+	const { size, bits } = sprite;
+	const fn: Shape = (u, v) => {
+		const x = Math.min(size - 1, Math.max(0, Math.floor(u * size)));
+		const y = Math.min(size - 1, Math.max(0, Math.floor(v * size)));
+		return bits[y * size + x] !== 0;
+	};
+	maskShapes.set(sprite.bits, fn);
+	return fn;
 }
 
 /** What {@link paintFor} needs. A `Cell` satisfies it; tests can pass less. */
@@ -493,6 +589,8 @@ export interface PaintInput {
 	readonly facing?: Facing;
 	readonly terrain?: number;
 	readonly decor?: number;
+	/** What the compositor multiplied this cell by. Only full-colour tiles read it. */
+	readonly mul?: readonly [number, number, number];
 }
 
 /**

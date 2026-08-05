@@ -1,5 +1,6 @@
 import type { Rect, Vec2 } from "../../geom/vec.js";
 import type { Rng } from "../../rand/rng.js";
+import type { Lock } from "../../rules/lock.js";
 import { D } from "../../tiles/decor.js";
 import { TFlag } from "../../tiles/flags.js";
 import { T, type TerrainId } from "../../tiles/terrain.js";
@@ -88,7 +89,7 @@ export function buildStructure(
 	streetTarget: Vec2,
 	interiorId: number,
 	rng: Rng,
-	details?: { readonly name?: string; readonly signText?: string },
+	details?: { readonly name?: string; readonly signText?: string; readonly lock?: Lock },
 ): BuildResult {
 	const { wall, cover } = materialsFor(kind);
 	const anchors: Anchor[] = [];
@@ -183,6 +184,7 @@ export function buildStructure(
 		...(signAt ? { signAt } : {}),
 		...(details?.name ? { name: details.name } : {}),
 		...(details?.signText ? { signText: details.signText } : {}),
+		...(details?.lock ? { lock: details.lock } : {}),
 	};
 
 	return { placement, anchors };

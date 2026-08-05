@@ -2,6 +2,8 @@ import { z } from "zod";
 import { ActionSchema } from "../ai/dialogue/schema.js";
 import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
 import { PackOverrideSchema } from "../core/content/schema.js";
+import { ConditionSchema, RequiresSchema } from "../core/rules/condition-schema.js";
+import { WorldRecipeSchema } from "../core/world/recipe-schema.js";
 import { ARTIFACT_VERSION } from "./artifact.js";
 
 /**
@@ -20,6 +22,33 @@ import { ARTIFACT_VERSION } from "./artifact.js";
  */
 
 const BoundaryStyleSchema = z.enum(["ocean", "cliffs", "mountains"]);
+
+/**
+ * A full screen of prose.
+ *
+ * Bounded generously but bounded: this is the one place in the game allowed to be
+ * long, and the renderer elides what will not fit rather than growing the frame, so
+ * a card nobody bounded would simply lose its ending.
+ */
+export const CardBodySchema = z.object({
+	title: z.string().min(1).max(120),
+	subtitle: z.string().max(160).optional(),
+	sections: z
+		.array(
+			z.object({
+				heading: z.string().min(1).max(40),
+				body: z.string().min(1).max(900),
+			}),
+		)
+		.min(1)
+		.max(4),
+});
+
+/** A lock on a door, or on a gate. The same shape serves both. */
+const LockSchema = z.object({
+	opensWhen: ConditionSchema,
+	lockedText: z.string().min(1).max(200),
+});
 
 export const WorldBoundsSchema = z.object({
 	minX: z.number().int(),
@@ -66,6 +95,8 @@ const StoredStructureSchema = z.object({
 	importance: z.number().int().min(1).max(5),
 	name: z.string().optional(),
 	signText: z.string().optional(),
+	/** What has to be true to get inside. Absent means the door simply opens. */
+	lock: LockSchema.optional(),
 });
 
 export const StoredSettlementSpecSchema = z.object({
@@ -85,6 +116,8 @@ export const StoredNpcSpecSchema = z.object({
 	placement: z.enum(PLACEMENTS),
 	structureName: z.string().optional(),
 	knows: z.array(z.string()),
+	/** What has to be true for this person to be in the world at all. */
+	requires: ConditionSchema.optional(),
 });
 
 export const StoredSiteSpecSchema = z.object({
@@ -98,31 +131,149 @@ export const StoredSiteSpecSchema = z.object({
 });
 
 const ObjectiveSchema = z.object({
-	kind: z.enum(["reach", "talk", "have", "flag"]),
+	kind: z.enum(["reach", "talk", "have", "flag", "quest"]),
 	target: z.string().min(1),
 	quantity: z.number().int().min(1).optional(),
 	done: z.boolean(),
 });
 
-/**
- * A full screen of prose.
- *
- * Bounded generously but bounded: this is the one place in the game allowed to be
- * long, and the renderer elides what will not fit rather than growing the frame, so
- * a card nobody bounded would simply lose its ending.
- */
-export const CardBodySchema = z.object({
-	title: z.string().min(1).max(120),
-	subtitle: z.string().max(160).optional(),
-	sections: z
-		.array(
-			z.object({
-				heading: z.string().min(1).max(40),
-				body: z.string().min(1).max(900),
-			}),
-		)
+export const BarrierSchema = z.object({
+	id: z.string().min(1).max(64),
+	/** Every tile the gate stands on. A road is rarely one tile wide. */
+	tiles: z
+		.array(z.object({ x: z.number().int(), y: z.number().int() }))
 		.min(1)
-		.max(4),
+		.max(16),
+	opensWhen: ConditionSchema,
+	lockedText: z.string().min(1).max(200),
+	opensText: z.string().min(1).max(200).optional(),
+});
+
+/**
+ * The effects a scenario file is allowed to ask for.
+ *
+ * A deliberate subset of `DomainEffect`, not all of it. The ones left out are the
+ * engine's own bookkeeping — `MeetNpc`, `RecordTurn`, `SetNpcNode`, `FoldNpcMemory`,
+ * `EndDialogue` — which describe what the dialogue layer has just done rather than
+ * something an author would ever want to cause. Letting a file write those would let it
+ * fabricate a relationship the player never had, or close a conversation nobody opened.
+ *
+ * A closed union rather than the flat nullable shape `ActionSchema` uses, because that
+ * shape exists to work around structured-output support for unions in model providers,
+ * and a file on disk has no such constraint. An author gets to write the effect it
+ * actually is.
+ */
+export const AuthoredEffectSchema = z.discriminatedUnion("t", [
+	z.object({
+		t: z.literal("SetFlag"),
+		key: z.string().min(1).max(120),
+		value: z.union([z.string().max(120), z.number(), z.boolean()]),
+	}),
+	z.object({
+		t: z.literal("GrantItem"),
+		name: z.string().min(1).max(60),
+		description: z.string().min(1).max(200),
+		quantity: z.number().int().min(1).max(99),
+	}),
+	z.object({
+		t: z.literal("TakeItem"),
+		name: z.string().min(1).max(60),
+		quantity: z.number().int().min(1).max(99),
+	}),
+	z.object({ t: z.literal("AdjustGold"), amount: z.number().int().min(-9999).max(9999) }),
+	z.object({
+		t: z.literal("CreateQuest"),
+		id: z.string().min(1).max(64),
+		name: z.string().min(1).max(80),
+		description: z.string().max(400),
+		objectives: z.array(ObjectiveSchema).max(6),
+		siteId: z.number().int().optional(),
+		parentId: z.string().min(1).max(64).optional(),
+	}),
+	z.object({
+		t: z.literal("AdvanceQuest"),
+		id: z.string().min(1).max(64),
+		note: z.string().min(1).max(240),
+	}),
+	z.object({ t: z.literal("CompleteQuest"), id: z.string().min(1).max(64) }),
+	z.object({ t: z.literal("AbandonQuest"), id: z.string().min(1).max(64) }),
+	z.object({
+		t: z.literal("ShowCard"),
+		card: CardBodySchema.extend({ id: z.string().min(1).max(64) }),
+	}),
+	z.object({
+		t: z.literal("RecordJournal"),
+		entry: z.object({
+			kind: z.enum(["lore", "place", "rumor", "event"]),
+			text: z.string().min(1).max(400),
+			source: z.string().min(1).max(64).optional(),
+		}),
+	}),
+	z.object({
+		t: z.literal("AdjustReputation"),
+		faction: z.string().min(1).max(60),
+		delta: z.number().int().min(-100).max(100),
+	}),
+	z.object({
+		t: z.literal("AdjustDisposition"),
+		npcId: z.string().min(1).max(64),
+		delta: z.number().int().min(-100).max(100),
+	}),
+	z.object({ t: z.literal("Heal"), amount: z.number().int().min(1).max(999) }),
+	z.object({ t: z.literal("Damage"), amount: z.number().int().min(1).max(999) }),
+	z.object({ t: z.literal("Teleport"), x: z.number().int(), y: z.number().int() }),
+	z.object({ t: z.literal("OpenBarrier"), id: z.string().min(1).max(64) }),
+]);
+
+export const TriggerSchema = z.object({
+	id: z.string().min(1).max(64),
+	when: ConditionSchema,
+	once: z.boolean().optional(),
+	effects: z.array(AuthoredEffectSchema).min(1).max(8),
+});
+
+const PlacementSiteSchema = z.union([
+	z.object({ kind: z.literal("world"), x: z.number().int(), y: z.number().int() }),
+	z.object({
+		kind: z.literal("interior"),
+		interiorId: z.number().int(),
+		x: z.number().int().min(0),
+		y: z.number().int().min(0),
+	}),
+	z.object({
+		kind: z.literal("site"),
+		siteId: z.number().int(),
+		structure: z.enum(STRUCTURE_KINDS).optional(),
+		anchor: z.enum(PLACEMENTS).optional(),
+	}),
+]);
+
+export const PlacementSchema = z.object({
+	id: z.string().min(1).max(64),
+	at: PlacementSiteSchema,
+	item: z.object({
+		name: z.string().min(1).max(60),
+		description: z.string().min(1).max(200),
+		quantity: z.number().int().min(1).max(99).optional(),
+	}),
+	requires: ConditionSchema.optional(),
+	showDecor: z.boolean().optional(),
+	emptyText: z.string().min(1).max(200).optional(),
+});
+
+/**
+ * The clock, as an author writes it.
+ *
+ * Every field optional, because the world that says anything at all here is the
+ * unusual one and it usually says one thing: `{ "enabled": false }`.
+ */
+export const TimeOptionsSchema = z.object({
+	enabled: z.boolean().optional(),
+	startHour: z.number().int().min(0).max(23).optional(),
+	ticksPerHour: z.number().int().min(1).max(600).optional(),
+	lighting: z.boolean().optional(),
+	schedules: z.boolean().optional(),
+	weather: z.boolean().optional(),
 });
 
 export const ScenarioBeatSchema = z.object({
@@ -130,14 +281,21 @@ export const ScenarioBeatSchema = z.object({
 	order: z.number().int().min(0),
 	siteId: z.number().int(),
 	npcSlot: z.number().int().min(0),
-	requires: z.array(z.string().min(1)),
+	requires: RequiresSchema,
 	setsFlag: z.string().min(1),
+	/** Opens on its own once this is true, rather than on a conversation. */
+	opensOn: ConditionSchema.optional(),
+	/** A fork this beat is one arm of. Siblings are barred once one is taken. */
+	branch: z.string().min(1).max(64).optional(),
+	/** A side errand: shown, but not counted toward the story being told. */
+	optional: z.boolean().optional(),
 	quest: z
 		.object({
 			id: z.string().min(1).max(64),
 			name: z.string().min(1),
 			description: z.string(),
 			objectives: z.array(ObjectiveSchema),
+			parentId: z.string().min(1).max(64).optional(),
 		})
 		.optional(),
 	journal: z.string().optional(),
@@ -149,18 +307,30 @@ export const ScenarioArcSchema = z.object({
 	premise: z.string().max(600),
 	beats: z.array(ScenarioBeatSchema),
 	ending: CardBodySchema.optional(),
+	/**
+	 * Outcomes to choose between, first match in author order.
+	 *
+	 * An entry with no `when` always matches, which is how the last one becomes the
+	 * catch-all — and why the list is ordered rather than scored.
+	 */
+	endings: z
+		.array(
+			CardBodySchema.extend({ id: z.string().min(1).max(64), when: ConditionSchema.optional() }),
+		)
+		.max(8)
+		.optional(),
 });
 
 const DialogueChoiceSchema = z.object({
 	text: z.string().min(1).max(120),
 	goto: z.string().max(64).nullable(),
-	requires: z.array(z.string().min(1)).optional(),
+	requires: RequiresSchema.optional(),
 });
 
 export const DialogueNodeSchema = z.object({
 	id: z.string().min(1).max(64),
 	speech: z.string().max(600),
-	requires: z.array(z.string().min(1)).optional(),
+	requires: RequiresSchema.optional(),
 	choices: z.array(DialogueChoiceSchema).max(6),
 	actions: z.array(ActionSchema).max(3).optional(),
 });
@@ -194,13 +364,27 @@ export const ScenarioArtifactSchema = z.object({
 		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case letters, digits and dashes only")
 		.optional(),
 	content: PackOverrideSchema.optional(),
+	// A tile pack directory under `.packs/tiles/`, constrained like the other names
+	// because it becomes a path.
+	tiles: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case letters, digits and dashes only")
+		.optional(),
 	seed: z.number().int(),
+	recipe: WorldRecipeSchema.optional(),
 	spawn: z.object({ x: z.number().int(), y: z.number().int() }),
 	bounds: WorldBoundsSchema,
 	lore: StoredWorldLoreSchema,
 	regions: z.record(z.string(), StoredRegionSpecSchema),
 	sites: z.record(z.string(), StoredSiteSpecSchema),
 	arc: ScenarioArcSchema.optional(),
+	triggers: z.array(TriggerSchema).max(64).optional(),
+	barriers: z.array(BarrierSchema).max(32).optional(),
+	placements: z.array(PlacementSchema).max(64).optional(),
+	/** Whether this world has a clock. Absent means the ordinary day/night cycle. */
+	time: TimeOptionsSchema.optional(),
 	trees: z.record(z.string(), DialogueTreeSchema).optional(),
 	authoredWith: z.object({
 		models: z.record(z.string(), z.string()),

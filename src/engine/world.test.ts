@@ -6,6 +6,7 @@ import { createInitialState } from "../core/rules/state.js";
 import { TFlag } from "../core/tiles/flags.js";
 import { T } from "../core/tiles/terrain.js";
 import { CHUNK, chunkKey } from "../core/world/coords.js";
+import { type WorldSeed, worldSeed } from "../core/world/recipe.js";
 import { ChunkManager } from "./chunk-manager.js";
 import { GameEngine } from "./engine.js";
 import { findSpawn } from "./spawn.js";
@@ -13,15 +14,15 @@ import { createWorldView } from "./world-view.js";
 
 const SEED = hashString("world-test");
 
-function managerWithBlock(seed: number, radius: number) {
-	const chunks = new ChunkManager({ seed, capacity: (radius * 2 + 1) ** 2 + 4 });
+function managerWithBlock(world: WorldSeed, radius: number) {
+	const chunks = new ChunkManager({ world, capacity: (radius * 2 + 1) ** 2 + 4 });
 	chunks.prefetch({ cx: 0, cy: 0 }, radius);
 	return chunks;
 }
 
 describe("stitched world view", () => {
 	it("reads across a chunk boundary as one continuous surface", () => {
-		const chunks = managerWithBlock(SEED, 1);
+		const chunks = managerWithBlock(worldSeed(SEED), 1);
 		const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
 
 		// The tile at x = CHUNK-1 lives in chunk 0 and the tile at x = CHUNK in
@@ -33,7 +34,7 @@ describe("stitched world view", () => {
 	});
 
 	it("handles negative world coordinates", () => {
-		const chunks = managerWithBlock(SEED, 1);
+		const chunks = managerWithBlock(worldSeed(SEED), 1);
 		const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
 		expect(view.terrainAt(-1, -1)).not.toBe(T.void);
 		expect(view.terrainAt(-CHUNK, -CHUNK)).not.toBe(T.void);
@@ -60,7 +61,7 @@ describe("cross-chunk walkability", () => {
 		// must reach across every chunk boundary in the block. A seam, a wall of
 		// void at an edge, or a mis-stitched view would split this into pieces.
 		const radius = 2;
-		const chunks = managerWithBlock(SEED, radius);
+		const chunks = managerWithBlock(worldSeed(SEED), radius);
 		const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
 
 		const size = (radius * 2 + 1) * CHUNK;
@@ -99,7 +100,7 @@ describe("cross-chunk walkability", () => {
 	it("holds for several independent seeds", () => {
 		for (const name of ["moss", "ember", "vale"]) {
 			const seed = hashString(name);
-			const chunks = managerWithBlock(seed, 1);
+			const chunks = managerWithBlock(worldSeed(seed), 1);
 			const view = createWorldView({ seed, chunkAt: (cx, cy) => chunks.get(cx, cy) });
 			const size = 3 * CHUNK;
 			const result = labelComponents(
@@ -119,7 +120,7 @@ describe("chunk manager", () => {
 		// Eviction is only safe because generation is reproducible; if a chunk
 		// came back different after being evicted, the world would change behind
 		// the player's back.
-		const chunks = new ChunkManager({ seed: SEED, capacity: 4 });
+		const chunks = new ChunkManager({ world: worldSeed(SEED), capacity: 4 });
 		const before = [...chunks.ensure(0, 0).terrain];
 		for (let i = 1; i <= 12; i++) chunks.ensure(i, i);
 		expect(chunks.has(0, 0)).toBe(false);
@@ -127,13 +128,13 @@ describe("chunk manager", () => {
 	});
 
 	it("respects its capacity", () => {
-		const chunks = new ChunkManager({ seed: SEED, capacity: 6 });
+		const chunks = new ChunkManager({ world: worldSeed(SEED), capacity: 6 });
 		for (let i = 0; i < 30; i++) chunks.ensure(i, 0);
 		expect(chunks.residentCount).toBeLessThanOrEqual(6);
 	});
 
 	it("applies a stored delta over the generated terrain", () => {
-		const chunks = new ChunkManager({ seed: SEED });
+		const chunks = new ChunkManager({ world: worldSeed(SEED) });
 		const original = chunks.ensure(0, 0).terrain[0];
 		chunks.setDeltas({ [chunkKey(0, 0)]: { tiles: [0, T.doorOpen, 0] } });
 		expect(chunks.ensure(0, 0).terrain[0]).toBe(T.doorOpen);
@@ -141,7 +142,7 @@ describe("chunk manager", () => {
 	});
 
 	it("reports a summary for a resident chunk", () => {
-		const chunks = new ChunkManager({ seed: SEED });
+		const chunks = new ChunkManager({ world: worldSeed(SEED) });
 		chunks.ensure(2, -3);
 		expect(chunks.summaryFor(2, -3)?.dominantBiome).toBeTruthy();
 		expect(chunks.summaryFor(9, 9)).toBeUndefined();
@@ -152,8 +153,8 @@ describe("spawn", () => {
 	it("places the player on passable ground", () => {
 		for (const name of ["alpha", "harrow", "vale", "moss"]) {
 			const seed = hashString(name);
-			const spawn = findSpawn(seed);
-			const chunks = new ChunkManager({ seed });
+			const spawn = findSpawn(worldSeed(seed));
+			const chunks = new ChunkManager({ world: worldSeed(seed) });
 			const view = createWorldView({ seed, chunkAt: (cx, cy) => chunks.get(cx, cy) });
 			chunks.ensure(Math.floor(spawn.x / CHUNK), Math.floor(spawn.y / CHUNK));
 			expect(view.isPassable(spawn.x, spawn.y), `seed ${name} spawned in a wall`).toBe(true);
@@ -163,7 +164,7 @@ describe("spawn", () => {
 
 describe("engine", () => {
 	it("dispatches synchronously and notifies subscribers", () => {
-		const spawn = findSpawn(SEED);
+		const spawn = findSpawn(worldSeed(SEED));
 		const state = createInitialState(
 			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
 			spawn,
@@ -181,7 +182,7 @@ describe("engine", () => {
 	it("does not notify when a command changes nothing", () => {
 		const state = createInitialState(
 			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
-			findSpawn(SEED),
+			findSpawn(worldSeed(SEED)),
 		);
 		const engine = new GameEngine(state, { runEffect: () => undefined });
 		let notifications = 0;
@@ -193,7 +194,7 @@ describe("engine", () => {
 	it("lets an effect dispatch without reordering the queue", () => {
 		const state = createInitialState(
 			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
-			findSpawn(SEED),
+			findSpawn(worldSeed(SEED)),
 		);
 		const seen: string[] = [];
 		const engine = new GameEngine(state, {
@@ -211,7 +212,7 @@ describe("engine", () => {
 describe("entering buildings", () => {
 	function engineAtTown(seedName: string) {
 		const seed = hashString(seedName);
-		const chunks = new ChunkManager({ seed });
+		const chunks = new ChunkManager({ world: worldSeed(seed) });
 		// Find a settlement chunk and the first building in it.
 		for (let my = -4; my <= 4; my++) {
 			for (let mx = -4; mx <= 4; mx++) {
@@ -299,7 +300,7 @@ describe("people indoors", () => {
 	/** Walk in through a real door, the way the player does. */
 	function enter(seedName: string) {
 		const seed = hashString(seedName);
-		const chunks = new ChunkManager({ seed });
+		const chunks = new ChunkManager({ world: worldSeed(seed) });
 		for (let my = -4; my <= 4; my++) {
 			for (let mx = -4; mx <= 4; mx++) {
 				chunks.ensure(mx, my);

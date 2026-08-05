@@ -1,15 +1,19 @@
 import { Box, useApp, useStdout } from "ink";
 import { useEffect, useMemo, useReducer, useState } from "react";
+import { CONFIG } from "../config.js";
+import { resolveTileTheme } from "../content/tiles.js";
 import { computeFov, lightAt } from "../core/geom/fov.js";
+import { lightingRuns, weatherRuns } from "../core/rules/clock.js";
 import { facingDelta } from "../core/rules/effects.js";
 import { forageKey, isForageable } from "../core/rules/forage.js";
 import { isContainer, lootKey } from "../core/rules/loot.js";
 import { questNeeding } from "../core/rules/quests.js";
 import { activeQuests } from "../core/rules/state.js";
-import { decorDef } from "../core/tiles/decor.js";
+import { D, type DecorId, decorDef } from "../core/tiles/decor.js";
 import { TFlag } from "../core/tiles/flags.js";
 import { terrainDef } from "../core/tiles/terrain.js";
 import { toChunk } from "../core/world/coords.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { weatherAt } from "../core/world/weather.js";
 import type { GameEngine } from "../engine/engine.js";
 import type { WorldView } from "../engine/world-view.js";
@@ -23,7 +27,7 @@ import { Reader } from "./panels/reader.js";
 import { TOP_BAR_ROWS, TopBar } from "./panels/top-bar.js";
 import { PLAYER_GLYPH } from "./render/glyphs.js";
 import { MAX_PLACEHOLDER_INDEX } from "./render/kitty.js";
-import { lightFor } from "./render/lighting.js";
+import { lightFor, NEUTRAL_LIGHT } from "./render/lighting.js";
 import { minimapCells } from "./render/minimap-data.js";
 import { cellPixels, renderTilePixels, tilePixels } from "./render/mode.js";
 import { minimapExtent } from "./render/overlay.js";
@@ -143,27 +147,46 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	// never changes and its revision counter is the only signal that its answers
 	// did.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: npcs.revision is a mutable-source key
-	const source = useMemo(
-		() =>
-			tileSourceFrom(view, {
-				entityAt: (x, y) => {
-					if (x === player.x && y === player.y) {
-						// The facing rides on the player rather than being painted on the
-						// tile in front. Only the pixel renderer can use it — a sprite has
-						// room for a wedge, a character does not — and it is what stops the
-						// marker punching a hole through the signpost about to be read.
-						return { ch: PLAYER_GLYPH, fg: PAL.player, bold: true, facing: player.facing };
-					}
-					// `personAt` rather than the outdoor directory: indoors the coordinates
-					// are interior-local and the people are the building's own residents.
-					const npc = engine.personAt(x, y);
-					// A letter per role is the classic roguelike answer and the only one
-					// with no glyph-width risk at all.
-					return npc ? { ch: npc.glyph, fg: dispositionColor(npc.spec.disposition) } : undefined;
-				},
-			}),
-		[view, engine, npcs, npcs.revision, player.x, player.y, player.facing, player.inside],
-	);
+	const source = useMemo(() => {
+		// Authored items lying in the open, drawn as `something lies here`. Built into
+		// a position lookup rather than asked per tile, because `markedPlacements`
+		// filters by condition and by whether the thing has been taken, and doing that
+		// once per visible tile would be thousands of evaluations a frame.
+		const marks = new Map<string, DecorId>();
+		for (const entry of engine.markedPlacements()) marks.set(`${entry.x},${entry.y}`, D.item);
+
+		return tileSourceFrom(view, {
+			decorAt: (x, y) => marks.get(`${x},${y}`),
+			entityAt: (x, y) => {
+				if (x === player.x && y === player.y) {
+					// The facing rides on the player rather than being painted on the
+					// tile in front. Only the pixel renderer can use it — a sprite has
+					// room for a wedge, a character does not — and it is what stops the
+					// marker punching a hole through the signpost about to be read.
+					return { ch: PLAYER_GLYPH, fg: PAL.player, bold: true, facing: player.facing };
+				}
+				// `personAt` rather than the outdoor directory: indoors the coordinates
+				// are interior-local and the people are the building's own residents.
+				const npc = engine.personAt(x, y);
+				// A letter per role is the classic roguelike answer and the only one
+				// with no glyph-width risk at all.
+				return npc ? { ch: npc.glyph, fg: dispositionColor(npc.spec.disposition) } : undefined;
+			},
+		});
+	}, [
+		view,
+		engine,
+		npcs,
+		npcs.revision,
+		player.x,
+		player.y,
+		player.facing,
+		player.inside,
+		// Which authored items are on show depends on both: a placement can be gated
+		// on the story, and one that has been taken stops being drawn.
+		state.flags,
+		state.inventory,
+	]);
 
 	// Stay one row short of the window. Ink updates incrementally only while the
 	// rendered output is *shorter* than the terminal; at exactly the terminal
@@ -235,16 +258,33 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	const facedNpc = engine.personAt(facedX, facedY);
 
 	const inside = player.inside !== undefined;
+	// Both switches are the world's, and both are off for a game that wants no clock and
+	// no sky. Weather is asked separately from lighting because they come apart: a world
+	// with the hour frozen can still have rain, since weather is sampled along the tick
+	// and the tick keeps counting.
+	const hasWeather = weatherRuns(state.world.time);
+	const hasLighting = lightingRuns(state.world.time);
 	const weather = useMemo(
-		() => (inside ? undefined : weatherAt(state.world.seed, state.time.tick, player.x, player.y)),
-		[inside, state.world.seed, state.time.tick, player.x, player.y],
+		() =>
+			inside || !hasWeather
+				? undefined
+				: weatherAt(
+						worldSeed(state.world.seed, state.world.recipe),
+						state.time.tick,
+						player.x,
+						player.y,
+					),
+		[inside, hasWeather, state.world.seed, state.world.recipe, state.time.tick, player.x, player.y],
 	);
 	// `lightFor` builds a fresh tint array, so memoising on its scalar inputs is
 	// what stops the compositor rerunning on every render that changes nothing
 	// about the lighting — including every turn on the spot.
 	const light = useMemo(
-		() => lightFor(state.time.hour, weather, inside),
-		[state.time.hour, weather, inside],
+		() =>
+			// Interiors keep their lamplight even with the day/night cycle off: that is
+			// ambience for a room with no windows, not a time of day.
+			hasLighting || inside ? lightFor(state.time.hour, weather, inside) : NEUTRAL_LIGHT,
+		[hasLighting, state.time.hour, weather, inside],
 	);
 
 	// Field of view only indoors. Hiding the landscape behind a torch radius
@@ -275,15 +315,23 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		[state, miniW, miniH],
 	);
 
+	// Resolved once per world rather than per frame: reading a pack means a file read
+	// and a PNG decode, and the name cannot change while a world is open.
+	const theme = useMemo(
+		() => resolveTileTheme(state.world.tiles ?? CONFIG.tilePack),
+		[state.world.tiles],
+	);
+
 	const composeOptions = useMemo(
 		() => ({
+			theme,
 			tint: light.tint,
 			tintStrength: light.strength,
 			shadows: true,
 			relief: RELIEF_ENABLED,
 			...(fov ? { lightAt: (x: number, y: number) => lightAt(fov, x, y) } : {}),
 		}),
-		[light.tint, light.strength, fov],
+		[theme, light.tint, light.strength, fov],
 	);
 
 	const keyMode: KeyBarMode = state.card

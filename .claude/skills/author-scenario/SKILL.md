@@ -109,6 +109,35 @@ Tell the user what the world looks like — how many settlements, how far apart,
 kind of country — before you write a story into it. If it is a poor fit for their
 premise (all desert for a seafaring tale), say so and offer a different seed.
 
+### Or change the world instead of re-rolling it
+
+Rolling seeds until one fits is the old way and usually the wrong one. A draft can
+carry a `recipe`, and both tools take it:
+
+```bash
+npm run survey  -- --seed <seed> --duration <duration> --recipe my-draft.json
+npm run preview -- --seed <seed> --at <cx>,<cy> --recipe my-draft.json
+```
+
+What is worth reaching for, in rough order of how often it helps:
+
+- `places` — *there is a town here*, at a coordinate you choose, with the importance
+  you choose. The site keeps the id its macro cell would have had, so everything you
+  write about it keys normally.
+- `zones` — *the woods are thick around Harrowmere*. A smooth radial bump to moisture,
+  temperature or scatter density. This is what makes a map stop reading as uniform.
+- `sites.weights` — how much of the map is empty, per kind of place, in percent.
+- `climate` — sea level and the rest, when the premise needs an archipelago or a
+  plateau rather than the default rolling country.
+- `biomes` — per-biome overrides on ground, scatter and density.
+
+Three kinds of place are weighted at zero by default and only appear if you ask:
+`castle`, `docks` and `cave`. Each declines rather than compromising — a dock inland,
+a cave on flat ground and a castle with nowhere level to stand all build *nothing* —
+so put them where the survey says the ground suits them, and check with `preview`.
+
+Full reference in `docs/scenarios.md` under "The recipe".
+
 ## 3. Write the draft
 
 Write one JSON file. The format is in `src/scenario/draft.ts`, and there is a worked
@@ -182,6 +211,76 @@ at. So:
 - **Beat ids become labels.** `the-short-tally` shows as "The short tally" when a beat
   carries no quest, so name beats as if somebody will read them — because they will.
 
+## 4. Gating, forks and gates — hand-written, for now
+
+The draft format covers the story spine: places, people, beats, conversations. The
+newer vocabulary — conditions, triggers, locked doors, gates, placed items,
+sub-errands, forks, forked endings, turning the clock off — lives in the **artifact**
+and is not yet derived from a draft. So the workflow is:
+
+1. Write and assemble the draft as above, until it installs clean.
+2. Edit `.scenarios/<id>.json` directly to add the parts below.
+3. Re-validate. The offline pass checks all of it, and errors still mean broken.
+
+`docs/scenarios.md` has the full reference with worked JSON for each; the sections are
+*Conditions*, *Triggers*, *Locked doors, and gates*, *Special items in specific
+places*, *Conditional people*, *Branching, sub-errands and side errands*, and
+*Turning the clock off*. `.scenarios/thornwick-road.json` uses every one of them and
+is the example to copy from.
+
+Four things are worth knowing before you start, because they are the mistakes that
+cost the most time:
+
+- **A gate needs a choke point.** `barriers[].tiles` must span the whole way through,
+  and the validator will tell you how far round the player can walk. On open ground
+  there is no way to make a gate work; find a pass first. Most worlds have very few.
+- **A condition on a flag nothing sets is silent at runtime.** The validator refuses
+  those, so trust it — but write the setter before the reader and you will not hit it.
+- **A fork's danger is downstream.** Any beat gated on a flag that only one arm sets
+  becomes unreachable on the other arm. Gate downstream beats on the beat *before*
+  the fork, and use the fork's flags only in `arc.endings` and in dialogue.
+- **A `site` placement is resolved against what got built**, not against the roster
+  you asked for. A structure that lost its plot cannot hold anything, so check the
+  assembly warnings for *"X, which was not built"* before placing an item in X.
+- **Say out loud that a gated item exists.** If anything is gated on carrying it, some
+  errand must ask for it by name or some line the player reads must mention it.
+  Obtainable is not findable, and an item the story never names is a dead end with no
+  symptom. The validator refuses this, and it is the mistake that has actually shipped.
+
+Re-validate with the same command; it reads the installed file:
+
+```bash
+npm run assemble -- --draft drafts/<id>.json --check
+```
+
+If you edited the artifact only, run the scenario's own test instead — the shipped
+one has `src/scenario/thornwick-live.test.ts` as a model for driving a scenario
+through the real engine, and a new scenario is worth the same treatment.
+
+## What the tool writes for you
+
+`npm run author` now picks the *kind of country* from the brief before it surveys, and
+can write side errands, sub-errands, one fork with an ending per arm, and hidden items.
+A hidden item always arrives as a placement **and** an objective together, so it cannot
+be an item nobody was told about.
+
+You still write `places`, `zones` and barriers by hand. All three need a coordinate you
+have looked at, and looking is the part that cannot be delegated.
+
+## Places worth putting a story in
+
+Two of the new region kinds change what a scene can be, and both are worth knowing
+about before you write:
+
+- **A castle has exactly one way in.** The generator emits the gate as an anchor and
+  leaves it open. Put a `barrier` across those three tiles and the courtyard is
+  genuinely sealed — which is the one place in the world where "you cannot go in until
+  X" is a fact about the map rather than a promise. `checkGateBlocks` will confirm it.
+- **A cave goes down three levels**, and a tower goes up three. Upper storeys and lower
+  levels are where a scenario puts what should take effort to reach. Note the limits:
+  residents live on the ground floor only, and a `site` placement resolves on the
+  ground floor — to put something upstairs, name the tile.
+
 ## Writing well
 
 Match the house style the rest of the game is written in: concrete, specific,
@@ -196,7 +295,12 @@ Never mention game mechanics, tiles, seeds, or that any of it is generated.
   Keep speech to one or two sentences; this is a terminal panel.
 - **Beats** should each be one thing learned or asked for. A beat that is only a
   revelation is good pacing — not every one needs a quest.
-- **The last beat should close the story**, not open another door.
+- **The last beat should close the story**, not open another door — or *fork*, and
+  then let `arc.endings` close it two different ways. A fork is worth the work only if
+  the two outcomes say something different about what the player did; two endings that
+  differ in tone and not in consequence read as the choice not having mattered.
+- **A side errand should be skippable and worth not skipping.** `optional: true` keeps
+  it out of the main line, so it can be genuinely optional rather than padding.
 - **Quest objectives must be satisfiable**, and this is checked against the engine's
   own rules rather than a guess. `have` passes if a `giveItem` action hands the item
   over, or a trader here stocks it, or a container in one of the buildings holds it,

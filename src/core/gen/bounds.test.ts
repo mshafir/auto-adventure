@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { worldSeed } from "../../core/world/recipe.js";
 import { hashString } from "../rand/hash.js";
 import { TFlag } from "../tiles/flags.js";
 import { terrainDef } from "../tiles/terrain.js";
@@ -27,7 +28,7 @@ const BOUNDS: WorldBounds = {
 };
 
 function chunkOf(cc: ChunkCoord, bounds?: WorldBounds) {
-	return generateChunk({ seed: SEED, ...(bounds ? { bounds } : {}) }, cc);
+	return generateChunk({ world: worldSeed(SEED), ...(bounds ? { bounds } : {}) }, cc);
 }
 
 describe("isBoundary", () => {

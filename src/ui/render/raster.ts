@@ -14,7 +14,7 @@
  */
 import type { RGB } from "./color.js";
 import type { Cell } from "./compose.js";
-import { paintFor, type Shape, TILE_PX, type TilePaint } from "./sprite.js";
+import { paintFor, type Shape, type SpriteTheme, TILE_PX, type TilePaint } from "./sprite.js";
 
 export interface Frame {
 	readonly rgb: Buffer;
@@ -27,6 +27,8 @@ export interface Frame {
 export interface RasterOptions {
 	/** Pixels per tile edge. Defaults to {@link TILE_PX}. */
 	readonly tilePx?: number;
+	/** A tile pack's sprite overrides, if this world has one. */
+	readonly sprites?: SpriteTheme;
 }
 
 /**
@@ -60,7 +62,7 @@ export function rasterScene(
 		const tiles = rows[ty] as readonly Cell[];
 		const top = ty * size;
 		for (let tx = 0; tx < tilesW; tx++) {
-			const tile = tileBitmap(paintFor(tiles[tx] as Cell), size);
+			const tile = tileBitmap(paintFor(tiles[tx] as Cell, options.sprites), size);
 			let at = (top * width + tx * size) * 3;
 			// Row at a time. `set` on a subarray is a memcpy, where the loop this
 			// replaced evaluated a shape closure once per pixel.
@@ -110,10 +112,21 @@ function shapeKey(shape: Shape): number {
 
 function tileBitmap(paint: TilePaint, size: number): Buffer {
 	const { fg, bg } = paint;
-	const key = `${shapeKey(paint.shape)}:${size}:${fg[0]},${fg[1]},${fg[2]}:${bg[0]},${bg[1]},${bg[2]}`;
+	const key = paint.bitmap
+		? `a${atlasKey(paint.bitmap.rgba)}:${size}:${mulKey(paint.mul)}:${bg[0]},${bg[1]},${bg[2]}`
+		: `${shapeKey(paint.shape)}:${size}:${fg[0]},${fg[1]},${fg[2]}:${bg[0]},${bg[1]},${bg[2]}`;
 	const found = bitmaps.get(key);
 	if (found) return found;
 
+	const tile = paint.bitmap ? blitAtlas(paint, size) : drawShape(paint, size);
+
+	if (bitmaps.size >= BITMAP_LIMIT) bitmaps.clear();
+	bitmaps.set(key, tile);
+	return tile;
+}
+
+function drawShape(paint: TilePaint, size: number): Buffer {
+	const { fg, bg } = paint;
 	const tile = Buffer.allocUnsafe(size * size * 3);
 	let at = 0;
 	for (let py = 0; py < size; py++) {
@@ -125,10 +138,73 @@ function tileBitmap(paint: TilePaint, size: number): Buffer {
 			tile[at++] = c[2] as number;
 		}
 	}
-
-	if (bitmaps.size >= BITMAP_LIMIT) bitmaps.clear();
-	bitmaps.set(key, tile);
 	return tile;
+}
+
+/**
+ * Draw a full-colour tile from a pack's atlas.
+ *
+ * Two things that a shape sprite gets for free have to be done by hand here, because
+ * an atlas tile carries its own colour rather than inheriting the cell's two:
+ *
+ * - **Lighting.** `cell.mul` is everything the compositor multiplied the cell's
+ *   colours by — day/night tint, field of view, contact shadows, slope relief — and
+ *   the same factors are applied to these pixels. Without it a bitmap tile would
+ *   blaze at noon brightness in the middle of the night.
+ * - **Alpha.** Composited over the cell background, which is what lets a decor tile
+ *   be a chest with the road showing round it rather than a chest on a black square.
+ *
+ * Nearest-sampled when the atlas was drawn at a different size from the one being
+ * rendered. Scaling art is the pack author's problem to avoid; guessing at it with a
+ * filter would blur pixel art, which is worse than the blocks.
+ */
+function blitAtlas(paint: TilePaint, size: number): Buffer {
+	const source = paint.bitmap as NonNullable<TilePaint["bitmap"]>;
+	const [mr, mg, mb] = paint.mul ?? [1, 1, 1];
+	const bg = paint.bg;
+	const tile = Buffer.allocUnsafe(size * size * 3);
+
+	let at = 0;
+	for (let py = 0; py < size; py++) {
+		const sy = source.size === size ? py : Math.min(source.size - 1, (py * source.size) / size) | 0;
+		for (let px = 0; px < size; px++) {
+			const sx =
+				source.size === size ? px : Math.min(source.size - 1, (px * source.size) / size) | 0;
+			const from = (sy * source.size + sx) * 4;
+			const alpha = (source.rgba[from + 3] as number) / 255;
+			for (let c = 0; c < 3; c++) {
+				const lit = (source.rgba[from + c] as number) * (c === 0 ? mr : c === 1 ? mg : mb);
+				const over = lit * alpha + (bg[c] as number) * (1 - alpha);
+				tile[at++] = over < 0 ? 0 : over > 255 ? 255 : over | 0;
+			}
+		}
+	}
+	return tile;
+}
+
+/** Atlas tiles are shared objects, so identity keys them the way a shape is keyed. */
+const atlasIds = new WeakMap<Uint8Array, number>();
+let nextAtlasId = 0;
+
+function atlasKey(rgba: Uint8Array): number {
+	let id = atlasIds.get(rgba);
+	if (id === undefined) {
+		id = nextAtlasId++;
+		atlasIds.set(rgba, id);
+	}
+	return id;
+}
+
+/**
+ * The multiplier, quantised into the cache key.
+ *
+ * Lighting is continuous, so keying on the exact triple would give almost every tile
+ * its own entry and turn the cache into a memory leak with extra steps. Two hundred
+ * and fifty six steps is finer than the eight bits the output has anyway.
+ */
+function mulKey(mul: TilePaint["mul"]): string {
+	if (!mul) return "1";
+	return `${(mul[0] * 255) | 0},${(mul[1] * 255) | 0},${(mul[2] * 255) | 0}`;
 }
 
 /** Test seam, and what the tools call between measurements. */

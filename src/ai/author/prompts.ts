@@ -71,7 +71,52 @@ export function arcPrompt(input: {
 		"place with a name listed above, or a person named above.",
 		"",
 		"The last beat should end the story, not open another door.",
+		"",
+		"Four things you may use, none of them required. Use at most one fork, and use each",
+		"only where it makes the story better than a straight line would:",
+		"",
+		"  optional  A side errand. The story can finish with it still open, so this is where",
+		"            a piece of the world that is worth finding but not on the way belongs.",
+		"  partOf    Give a beat the id of an earlier one, and it becomes a step of it: the",
+		"            earlier errand cannot close until this one does. Two or three steps under",
+		"            one job reads far better than three unrelated jobs.",
+		"  branch    Two beats with the same branch name are alternatives. Taking one bars the",
+		"            other for good. Use it for a decision the player should not be able to",
+		"            take back — who to tell, which side to take — and write an ending for",
+		"            each arm.",
+		"  find      Something hidden. Name it, say which kind of building at that settlement",
+		"            it is in, and the player has to go and get it before the beat closes.",
+		"",
+		"If you use a branch, write one ending per arm: name the branch group and the beat, and",
+		"say what the world looks like afterwards. Otherwise write no endings at all.",
 	].join("\n");
+}
+
+export const SHAPE_SYSTEM =
+	"You choose what kind of country a story happens in. You are given a brief and nothing " +
+	"else. Answer with the five settings and one sentence saying why. Do not write prose, " +
+	"do not name places, and do not describe a plot.";
+
+/**
+ * Ask what kind of world the brief wants, before the world exists.
+ *
+ * The one authoring decision that has to be made *first*: the survey runs against a
+ * world, so the world has to be chosen before there is anything to survey. Deliberately
+ * five coarse settings rather than a recipe — a model handed `seaLevel` will write
+ * `0.9` and drown the map, and it has no coordinates to place anything against yet.
+ */
+export function shapePrompt(brief: ScenarioBrief): string {
+	const lines = briefLines(brief);
+	return [
+		lines.length > 0 ? "What the author asked for:" : "The author asked for nothing in particular.",
+		...lines,
+		"",
+		"Pick the country this belongs in. An archipelago tale needs water; a story about a",
+		"road through nowhere needs the map to be mostly empty. When the brief does not care,",
+		"say 'ordinary' — an ordinary world is a good world and there is no prize for exotica.",
+	]
+		.filter((line) => line !== "")
+		.join("\n");
 }
 
 export const TREE_SYSTEM =

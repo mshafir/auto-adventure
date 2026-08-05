@@ -1,6 +1,7 @@
 import { hashString } from "../../src/core/rand/hash.js";
 import { boundsAround } from "../../src/core/world/bounds.js";
 import { isSettlement, type MacroSite, macroSite } from "../../src/core/world/macro.js";
+import { worldSeed } from "../../src/core/world/recipe.js";
 import type { SiteSpec } from "../../src/core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "../../src/scenario/artifact.js";
 
@@ -20,7 +21,7 @@ export function findSettlement(seed: number): MacroSite {
 	for (let radius = 0; radius < 16; radius++) {
 		for (let my = -radius; my <= radius; my++) {
 			for (let mx = -radius; mx <= radius; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(worldSeed(seed), mx, my);
 				if (isSettlement(site.kind)) return site;
 			}
 		}

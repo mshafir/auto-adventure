@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { worldSeed } from "../../core/world/recipe.js";
 import { computeFov, lightAt } from "../geom/fov.js";
 import { hashString } from "../rand/hash.js";
 import { timeOfDay, weatherAt } from "../world/weather.js";
@@ -149,13 +150,15 @@ describe("prices", () => {
 
 describe("weather and time", () => {
 	it("is the same at the same tick and place", () => {
-		expect(weatherAt(SEED, 500, 10, 20)).toEqual(weatherAt(SEED, 500, 10, 20));
+		expect(weatherAt(worldSeed(SEED), 500, 10, 20)).toEqual(
+			weatherAt(worldSeed(SEED), 500, 10, 20),
+		);
 	});
 
 	it("changes over the course of a journey", () => {
 		const skies = new Set<string>();
 		for (let tick = 0; tick < 20_000; tick += 700) {
-			skies.add(weatherAt(SEED, tick, 0, 0).sky);
+			skies.add(weatherAt(worldSeed(SEED), tick, 0, 0).sky);
 		}
 		expect(skies.size).toBeGreaterThan(1);
 	});

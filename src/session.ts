@@ -9,11 +9,12 @@ import { orderedBeats } from "./core/rules/arc.js";
 import { cardSeen } from "./core/rules/card.js";
 import { type OpeningInput, openingCard } from "./core/rules/opening.js";
 import { bearingTo, compassWords } from "./core/rules/quest-map.js";
-import { createInitialState, type GameState } from "./core/rules/state.js";
+import { createInitialState, type GameState, timeFromTick } from "./core/rules/state.js";
 import { biomeDef } from "./core/world/biome.js";
 import type { ScenarioBrief } from "./core/world/brief.js";
 import { toChunk } from "./core/world/coords.js";
 import { regionIdAt, sitesAround } from "./core/world/macro.js";
+import { worldSeed } from "./core/world/recipe.js";
 import type { SpecSource } from "./core/world/spec.js";
 import { createEffectRunner } from "./engine/effect-runner.js";
 import { GameEngine } from "./engine/engine.js";
@@ -105,7 +106,20 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 		override && !loaded?.content && !isOverrideEmpty(override)
 			? { ...existing, content: override }
 			: existing;
-	const state = brief === settled.brief ? settled : { ...settled, brief };
+	const briefed = brief === settled.brief ? settled : { ...settled, brief };
+
+	// A resumed scenario takes its rules from the file again, so an edited artifact
+	// takes effect on the next session rather than only in a new world. Only for a
+	// loaded save — a new world already has them from `newScenarioWorld`, and applying
+	// them twice would be harmless but is worth not doing.
+	const state =
+		loaded && choice.scenario
+			? {
+					...briefed,
+					...scenarioRules(choice.scenario),
+					...scenarioClock(choice.scenario, briefed),
+				}
+			: briefed;
 
 	const live = usesLiveModel(choice.flavour);
 	if (!live) logger.info(`director disabled (${choice.flavour}); world names are procedural`);
@@ -118,8 +132,9 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 	// one-way at the type level — the director never sees the engine, only four
 	// callbacks.
 	const host: { engine?: GameEngine } = {};
+	const world = worldSeed(state.world.seed, state.world.recipe);
 	const director = new Director({
-		seed: state.world.seed,
+		world,
 		...(state.brief ? { brief: state.brief } : {}),
 		...(state.lore ? { lore: state.lore } : {}),
 		regions: state.regions,
@@ -141,7 +156,7 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 	// dialogue, which is a real conversation, not an error state.
 	const trees = choice.scenario?.trees;
 	const dialogue = createDialogueService({
-		seed: state.world.seed,
+		world,
 		lore: () => director.getLore(),
 		regionSpec: (regionId) => director.regionSpec(regionId),
 		siteSpec: (siteId) => director.siteSpec(siteId),
@@ -190,7 +205,9 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 						...(engine.placeNameAt(at.x, at.y)
 							? { placeName: engine.placeNameAt(at.x, at.y) as string }
 							: {}),
-						...(summary ? { landscape: biomeDef(summary.dominantBiome).name.toLowerCase() } : {}),
+						...(summary
+							? { landscape: biomeDef(summary.dominantBiome, world.rules).name.toLowerCase() }
+							: {}),
 						...(now.brief ? { brief: now.brief } : {}),
 						...(now.arc ? { arc: now.arc } : {}),
 						...(start ? { start } : {}),
@@ -250,9 +267,12 @@ function firstStop(state: GameState): OpeningInput["start"] {
 	// The site's position is not in the spec — `macroSite` is the only authority — so
 	// the footprint around the player is swept for the matching id.
 	const cc = toChunk(state.player.x, state.player.y);
-	const site = sitesAround(state.world.seed, cc.cx, cc.cy, SITE_SEARCH_HALO).find(
-		(candidate) => candidate.id === beat.siteId,
-	);
+	const site = sitesAround(
+		worldSeed(state.world.seed, state.world.recipe),
+		cc.cx,
+		cc.cy,
+		SITE_SEARCH_HALO,
+	).find((candidate) => candidate.id === beat.siteId);
 	const bearing = site
 		? bearingTo(state.player.x, state.player.y, site.site.x, site.site.y)
 		: undefined;
@@ -291,7 +311,7 @@ function newWorld(
 ): GameState {
 	if (choice.scenario) return newScenarioWorld(choice, choice.scenario, brief, content);
 
-	const spawn = findSpawn(choice.seed);
+	const spawn = findSpawn(worldSeed(choice.seed));
 	logger.info(
 		`new world "${choice.worldId}" seed ${choice.seed}, spawn ${spawn.x},${spawn.y}, ${choice.flavour}`,
 	);
@@ -301,6 +321,7 @@ function newWorld(
 			name: choice.worldId,
 			seed: choice.seed,
 			createdAt: new Date().toISOString(),
+			...(CONFIG.tilePack ? { tiles: CONFIG.tilePack } : {}),
 		},
 		spawn,
 		brief,
@@ -337,7 +358,12 @@ function newScenarioWorld(
 			seed: artifact.seed,
 			createdAt: new Date().toISOString(),
 			bounds: artifact.bounds,
+			...(artifact.recipe ? { recipe: artifact.recipe } : {}),
+			...((artifact.tiles ?? CONFIG.tilePack)
+				? { tiles: (artifact.tiles ?? CONFIG.tilePack) as string }
+				: {}),
 			scenarioId: artifact.id,
+			...(artifact.time ? { time: artifact.time } : {}),
 		},
 		artifact.spawn,
 		brief,
@@ -350,5 +376,55 @@ function newScenarioWorld(
 		sites: artifact.sites,
 		specSources,
 		...(artifact.arc ? { arc: artifact.arc } : {}),
+		...scenarioRules(artifact),
+	};
+}
+
+/**
+ * The authored rules a scenario brings with it.
+ *
+ * Applied both when a world is created and when one is resumed, which is the
+ * difference between these and the dialogue trees. Trees are read fresh from the file
+ * every session and a missing file merely means canned conversation. These are
+ * *persisted*, so a world whose artifact went missing keeps reacting — but a world
+ * whose artifact is still there and has been *edited* should pick up the edit rather
+ * than run forever on whatever was true the day the save was made.
+ *
+ * So the artifact wins where it exists, and the save is the floor where it does not.
+ * The player's progress is unaffected either way: what has fired, what has been opened
+ * and what has been taken all live in the flags, not here.
+ */
+/**
+ * The clock a resumed scenario should be running on.
+ *
+ * Separate from {@link scenarioRules} because it lives on `world` rather than beside the
+ * arc, and because it has a consequence the others do not: the hour is *derived* from
+ * the tick, so re-deriving it here is what stops a save made before the clock was
+ * turned off from resuming with an hour it should not have.
+ */
+function scenarioClock(artifact: ScenarioArtifact, state: GameState): Partial<GameState> {
+	const time = artifact.time;
+	if (!time) return {};
+	return {
+		world: { ...state.world, time },
+		time: timeFromTick(state.time.tick, time),
+	};
+}
+
+function scenarioRules(artifact: ScenarioArtifact): Partial<GameState> {
+	return {
+		// The arc too, and for the same reason the rest are here: without this an edit to
+		// the story only ever reached a *new* world, so fixing a scenario somebody was
+		// halfway through meant telling them to delete their save. Progress is unaffected
+		// — which beats have opened lives in the flags, not in the arc.
+		//
+		// The honest limit: a quest the old arc already handed out keeps the objectives it
+		// was created with, because a quest is state and rewriting one under a player
+		// would un-finish work they had done. So an edit reaches beats not yet opened, and
+		// an errand already in the log stays as it was.
+		...(artifact.arc ? { arc: artifact.arc } : {}),
+		...(artifact.triggers?.length ? { triggers: artifact.triggers } : {}),
+		...(artifact.barriers?.length ? { barriers: artifact.barriers } : {}),
+		...(artifact.placements?.length ? { placements: artifact.placements } : {}),
 	};
 }

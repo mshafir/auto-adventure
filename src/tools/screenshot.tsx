@@ -19,6 +19,7 @@ import { createInitialState } from "../core/rules/state.js";
 import { siteContext } from "../core/world/context.js";
 import { CHUNK, chunkKey } from "../core/world/coords.js";
 import { type MacroSite, macroSite } from "../core/world/macro.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { GameEngine } from "../engine/engine.js";
 import App from "../ui/app.js";
 import type { PanelTab } from "../ui/hud-state.js";
@@ -278,10 +279,11 @@ function toSvg(frame: string, title: string): string {
 const SEED = hashString("hollowmoor");
 
 function findTown(seed: number): MacroSite {
+	const world = worldSeed(seed);
 	for (let radius = 0; radius < 20; radius++) {
 		for (let my = -radius; my <= radius; my++) {
 			for (let mx = -radius; mx <= radius; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(world, mx, my);
 				if (site.kind === "town") return site;
 			}
 		}
@@ -342,7 +344,7 @@ function shotArc(siteId: number): ScenarioArc {
 
 function buildEngine(withArc = false) {
 	const site = findTown(SEED);
-	const spec = fallbackSite(SEED, site, siteContext(SEED, site));
+	const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
 	const base = createInitialState(
 		{ id: "shot", name: "shot", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
 		site.site,

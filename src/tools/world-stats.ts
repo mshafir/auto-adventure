@@ -15,9 +15,11 @@ import {
 	temperatureAt,
 } from "../core/world/fields.js";
 import { macroSite } from "../core/world/macro.js";
+import { worldSeed } from "../core/world/recipe.js";
 
 const seedArg = process.argv[2] ?? "alpha";
 const seed = /^-?\d+$/.test(seedArg) ? Number(seedArg) : hashString(seedArg);
+const world = worldSeed(seed);
 const span = Number(process.argv[3] ?? 1024);
 const step = 4;
 
@@ -30,16 +32,16 @@ let civSum = 0;
 
 for (let y = -span; y < span; y += step) {
 	for (let x = -span; x < span; x += step) {
-		const e = elevationAt(seed, x, y);
-		const t = temperatureAt(seed, x, y, e);
-		const m = moistureAt(seed, x, y);
-		const biome = classifyBiome(e, t, m);
+		const e = elevationAt(world, x, y);
+		const t = temperatureAt(world, x, y, e);
+		const m = moistureAt(world, x, y);
+		const biome = classifyBiome(e, t, m, world.rules);
 		biomes.set(biome, (biomes.get(biome) ?? 0) + 1);
-		const band = elevationBand(e);
+		const band = elevationBand(e, world.rules);
 		bands.set(band, (bands.get(band) ?? 0) + 1);
 		elevMin = Math.min(elevMin, e);
 		elevMax = Math.max(elevMax, e);
-		civSum += civilizationAt(seed, x, y);
+		civSum += civilizationAt(world, x, y);
 		samples++;
 	}
 }
@@ -63,7 +65,7 @@ const kinds = new Map<string, number>();
 const macroSpan = Math.floor(span / 64);
 for (let my = -macroSpan; my < macroSpan; my++) {
 	for (let mx = -macroSpan; mx < macroSpan; mx++) {
-		const kind = macroSite(seed, mx, my).kind;
+		const kind = macroSite(world, mx, my).kind;
 		kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
 	}
 }

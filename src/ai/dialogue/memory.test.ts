@@ -5,6 +5,7 @@ import { reduce } from "../../core/rules/reduce.js";
 import { createInitialState } from "../../core/rules/state.js";
 import { siteContext } from "../../core/world/context.js";
 import { type MacroSite, macroSite } from "../../core/world/macro.js";
+import { worldSeed } from "../../core/world/recipe.js";
 import { GameEngine } from "../../engine/engine.js";
 import { fallbackLore, fallbackSite } from "../director/fallback.js";
 import { createDialogueService } from "./dialogue.js";
@@ -17,7 +18,7 @@ function findTown(seed: number): MacroSite {
 	for (let radius = 0; radius < 16; radius++) {
 		for (let my = -radius; my <= radius; my++) {
 			for (let mx = -radius; mx <= radius; mx++) {
-				const site = macroSite(seed, mx, my);
+				const site = macroSite(worldSeed(seed), mx, my);
 				if (site.kind === "town" || site.kind === "village") return site;
 			}
 		}
@@ -150,7 +151,7 @@ describe("npc memory records", () => {
 describe("offline conversation", () => {
 	it("holds a real conversation and remembers it afterwards", async () => {
 		const site = findTown(SEED);
-		const spec = fallbackSite(SEED, site, siteContext(SEED, site));
+		const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
 		const engine = new GameEngine(
 			createInitialState(
 				{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
@@ -170,7 +171,7 @@ describe("offline conversation", () => {
 		if (!target) return;
 
 		const dialogue = createDialogueService({
-			seed: SEED,
+			world: worldSeed(SEED),
 			lore: () => fallbackLore(),
 			regionSpec: () => undefined,
 			siteSpec: (id) => (id === site.id ? spec : undefined),

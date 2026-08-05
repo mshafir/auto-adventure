@@ -1,5 +1,6 @@
 import type { AnchorKind } from "../gen/features/patch.js";
 import type { SettlementSpec } from "../gen/features/settlement.js";
+import type { Condition } from "../rules/condition.js";
 
 /**
  * Authored content: everything the engine does *not* decide.
@@ -53,6 +54,16 @@ export interface NpcSpec {
 	/** Name of the structure they belong to, matched loosely against buildings. */
 	readonly structureName?: string;
 	readonly knows: readonly string[];
+	/**
+	 * What has to be true for this person to be here at all.
+	 *
+	 * Absent means always, which is everybody in a procedural or live world — this
+	 * only exists for authored casts. Someone gated out is not standing somewhere
+	 * else: they are not in the world, cannot be walked into and cannot be talked to,
+	 * which is the difference between a courier who has not arrived yet and one who
+	 * has and is hiding.
+	 */
+	readonly requires?: Condition;
 }
 
 export interface SiteSpec {

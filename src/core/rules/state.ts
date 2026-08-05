@@ -2,10 +2,15 @@ import type { PackOverride } from "../content/pack.js";
 import type { WorldBounds } from "../world/bounds.js";
 import type { ScenarioBrief } from "../world/brief.js";
 import type { ChunkKey } from "../world/coords.js";
+import type { WorldRecipe } from "../world/recipe.js";
 import type { RegionSpec, SiteSpec, SpecSource, WorldLore } from "../world/spec.js";
 import type { ScenarioArc } from "./arc.js";
 import type { Card } from "./card.js";
+import { startTick, type TimeOptions, timeFromTick, type WorldTime } from "./clock.js";
+import type { Barrier } from "./lock.js";
 import type { NpcRecord } from "./npc.js";
+import type { Placement } from "./placement.js";
+import type { Trigger } from "./trigger.js";
 
 export const SAVE_VERSION = 3;
 
@@ -24,8 +29,37 @@ export interface WorldMeta {
 	 * came from is still on disk. Terrain is a pure function of the seed and this.
 	 */
 	readonly bounds?: WorldBounds;
+	/**
+	 * How this world was generated, beyond the seed.
+	 *
+	 * Beside the seed and the bounds because it is the same kind of fact: terrain is a
+	 * pure function of `(seed, recipe, position)`, so a save that lost the recipe would
+	 * come back as a *different world* with the player standing in the middle of it —
+	 * a town displaced by fifty tiles, a coastline where a road was. Absent means the
+	 * built-in defaults, which is every world the generator made before recipes existed.
+	 */
+	readonly recipe?: WorldRecipe;
+	/**
+	 * The tile pack this world is drawn with, by name.
+	 *
+	 * Persisted for the same reason the content pack's *resolved tables* are: a world
+	 * that looked one way when it was made should look that way when it is reopened,
+	 * whatever `TILE_PACK` happens to say today. Unlike terrain, nothing about this is
+	 * load-bearing — a missing pack falls back to the built-in look and the world plays
+	 * identically, which is why the name travels rather than the whole pack.
+	 */
+	readonly tiles?: string;
 	/** The scenario this world came from, if any. Re-attaches arc and dialogue. */
 	readonly scenarioId?: string;
+	/**
+	 * Whether this world has a clock, and what it drives.
+	 *
+	 * Here beside the seed and the bounds for the same reason those are: it is part of
+	 * what the world *is*. A world authored with no time of day has to stay that way on
+	 * reload whether or not the artifact it came from is still on disk — and the hour is
+	 * derived from the tick, so a save that lost this setting would start deriving one.
+	 */
+	readonly time?: TimeOptions;
 }
 
 /**
@@ -41,6 +75,13 @@ export interface InsidePlace {
 	readonly name?: string;
 	readonly returnX: number;
 	readonly returnY: number;
+	/**
+	 * Which storey, or how deep. Absent means the ground floor.
+	 *
+	 * Optional rather than defaulted to 0 so a save written before interiors had
+	 * levels loads as what it was: somebody standing on the ground floor.
+	 */
+	readonly level?: number;
 }
 
 export interface PlayerState {
@@ -52,37 +93,16 @@ export interface PlayerState {
 	readonly inside?: InsidePlace;
 }
 
-export interface WorldTime {
-	/** Advances one per player action. */
-	readonly tick: number;
-	readonly day: number;
-	/** 0..23. Drives lighting and NPC schedules. */
-	readonly hour: number;
-	/**
-	 * 0..59. Display only — nothing schedules on it.
-	 *
-	 * A tick is a minute, so an hour is sixty player actions. Showing only the hour
-	 * left the clock reading 08:00 for a solid minute of play, which looks stopped
-	 * rather than slow.
-	 */
-	readonly minute: number;
-}
-
-/** How many ticks make an hour. Day and hour are derived from `tick` alone. */
-export const TICKS_PER_HOUR = 60;
-
-/** A new world opens at eight in the morning, not at midnight. */
-export const START_TICK = 8 * TICKS_PER_HOUR;
-
-export function timeFromTick(tick: number): WorldTime {
-	const totalHours = Math.floor(tick / TICKS_PER_HOUR);
-	return {
-		tick,
-		day: 1 + Math.floor(totalHours / 24),
-		hour: totalHours % 24,
-		minute: tick % TICKS_PER_HOUR,
-	};
-}
+// Re-exported so the several dozen call sites that only ever wanted "what time is
+// it" keep importing it from here, while the clock's own rules live in one file.
+export {
+	START_TICK,
+	startTick,
+	TICKS_PER_HOUR,
+	type TimeOptions,
+	timeFromTick,
+	type WorldTime,
+} from "./clock.js";
 
 export interface InventoryItem {
 	readonly name: string;
@@ -90,7 +110,16 @@ export interface InventoryItem {
 	readonly quantity: number;
 }
 
-export type QuestObjectiveKind = "reach" | "talk" | "have" | "flag";
+/**
+ * What an objective is checked against.
+ *
+ * `quest` is the one that makes a story a graph rather than a line: an errand whose
+ * objective is another errand's completion. It needs no new machinery because
+ * `verifyQuests` already re-checks every objective against real state after every
+ * command, so a parent closes the moment its last child does — which is exactly the
+ * property that stopped quests depending on a model remembering to say so.
+ */
+export type QuestObjectiveKind = "reach" | "talk" | "have" | "flag" | "quest";
 
 export interface QuestObjective {
 	readonly kind: QuestObjectiveKind;
@@ -116,6 +145,15 @@ export interface Quest {
 	 * and on any the engine cannot place.
 	 */
 	readonly siteId?: number;
+	/**
+	 * The errand this one is a step of, if any.
+	 *
+	 * Display only. Nothing gates on it — the gating is a `quest` objective on the
+	 * parent, which is real state the engine checks — but the quest pane needs to know
+	 * that three open errands are one job with three parts rather than three jobs, or a
+	 * branching story reads as an unsorted to-do list.
+	 */
+	readonly parentId?: string;
 }
 
 export interface JournalEntry {
@@ -212,6 +250,31 @@ export interface GameState {
 	 * — so the arc travels with the save and the trees are re-read.
 	 */
 	readonly arc?: ScenarioArc;
+	/**
+	 * What this world reacts to, for a pre-generated scenario.
+	 *
+	 * Persisted for the same reason the arc is, and it is the same failure: a world
+	 * with no trees still holds real conversations because `cannedTurn` is a designed
+	 * floor, but a world whose triggers went missing stops reacting to anything the
+	 * player does, silently, with no way to notice. So they travel with the save.
+	 */
+	readonly triggers?: readonly Trigger[];
+	/**
+	 * Gates across the world, and what opens them.
+	 *
+	 * The definitions travel in the save; *which* have been opened is a flag, like
+	 * everything else the player has done. The tile change itself lives in `deltas`,
+	 * which is already the home for player-caused changes to a chunk.
+	 */
+	readonly barriers?: readonly Barrier[];
+	/**
+	 * Authored items, in the places the story puts them.
+	 *
+	 * Persisted rather than re-read, because a `have` objective may name one and an
+	 * objective whose item stopped existing is an errand that cannot be finished.
+	 * Whether each has been taken is the existing `looted:` flag.
+	 */
+	readonly placements?: readonly Placement[];
 	readonly regions: Readonly<Record<string, RegionSpec>>;
 	readonly sites: Readonly<Record<string, SiteSpec>>;
 	readonly specSources: Readonly<Record<string, SpecSource>>;
@@ -263,7 +326,7 @@ export function createInitialState(
 		...(brief ? { brief } : {}),
 		...(content ? { content } : {}),
 		player: { x: spawn.x, y: spawn.y, facing: "down", hp: 20, maxHp: 20 },
-		time: timeFromTick(START_TICK),
+		time: timeFromTick(startTick(world.time), world.time),
 		inventory: [{ name: "Gold", description: "A handful of coins.", quantity: 12 }],
 		quests: [],
 		flags: {},
@@ -276,6 +339,18 @@ export function createInitialState(
 		npcs: {},
 		reputation: {},
 	};
+}
+
+/**
+ * The flag recording that the player has stood in a place.
+ *
+ * One definition, because two would be a silent failure rather than a loud one:
+ * `recordArrival` writes this key and a `{ visited }` condition reads it, and a
+ * pair that disagreed about case or prefix would produce a gate that never opens
+ * with nothing on screen to say why.
+ */
+export function visitedKey(placeName: string): string {
+	return `visited:${placeName.toLowerCase()}`;
 }
 
 export function findItem(state: GameState, name: string): InventoryItem | undefined {

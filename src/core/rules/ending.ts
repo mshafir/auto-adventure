@@ -1,5 +1,7 @@
-import type { ArcOutline, ScenarioArc } from "./arc.js";
+import type { ArcEnding, ArcOutline, ScenarioArc } from "./arc.js";
 import { type Card, type CardSection, tidyCard } from "./card.js";
+import { evaluate } from "./condition.js";
+import type { GameState } from "./state.js";
 
 /**
  * The card a finished story closes on.
@@ -22,7 +24,33 @@ import { type Card, type CardSection, tidyCard } from "./card.js";
 /** The card's id, so it cannot be shown twice and cannot collide with a beat's. */
 export const ENDING_CARD_ID = "arc:end";
 
-export function endingCard(arc: ScenarioArc, outline: ArcOutline): Card {
+/**
+ * A forked ending's card id.
+ *
+ * Namespaced by the ending's own id rather than sharing {@link ENDING_CARD_ID}, so the
+ * "read once" flag is per outcome. Sharing it would be a real bug rather than a tidiness
+ * point: two playthroughs of the same save file cannot happen, but a story whose
+ * conditions shift — a reputation crossing back over a threshold before the card is
+ * dismissed — would otherwise find the ending already marked read and show nothing.
+ */
+export function forkedEndingCardId(id: string): string {
+	return `arc:end:${id}`;
+}
+
+export function endingCard(arc: ScenarioArc, outline: ArcOutline, state?: GameState): Card {
+	// A forked outcome first: it is the most specific thing an author can say about how
+	// the story ended, and the whole reason a branch is worth taking.
+	const forked = state ? pickEnding(arc, state) : undefined;
+	if (forked) {
+		return tidyCard({
+			id: forkedEndingCardId(forked.id),
+			title: forked.title,
+			...(forked.subtitle ? { subtitle: forked.subtitle } : {}),
+			sections: forked.sections,
+			footer: "SPACE to go on",
+		});
+	}
+
 	const authored = arc.ending;
 	if (authored) {
 		return tidyCard({
@@ -41,6 +69,19 @@ export function endingCard(arc: ScenarioArc, outline: ArcOutline): Card {
 		sections: defaultSections(arc, outline),
 		footer: "SPACE to go on",
 	});
+}
+
+/**
+ * Which of several outcomes this playthrough earned.
+ *
+ * First match in author order, because an author writing "the grim one if the mill
+ * burned, otherwise the quiet one" is expressing precedence — and a scoring rule would
+ * make them invent numbers to say something they have already said by ordering. An
+ * ending with no condition always matches, which is how the last entry becomes the
+ * catch-all.
+ */
+export function pickEnding(arc: ScenarioArc, state: GameState): ArcEnding | undefined {
+	return arc.endings?.find((ending) => evaluate(ending.when, state));
 }
 
 /**

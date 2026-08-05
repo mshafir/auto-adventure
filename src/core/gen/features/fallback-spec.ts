@@ -49,6 +49,23 @@ const ROSTER: Readonly<Record<SiteKind, readonly (readonly [StructureKind, numbe
 	],
 	ruins: [["ruin", 10]],
 	landmark: [["shrine", 1]],
+	castle: [
+		["barracks", 8],
+		["tower", 7],
+		["smithy", 3],
+		["stable", 3],
+		["warehouse", 3],
+		["temple", 2],
+	],
+	docks: [
+		["warehouse", 8],
+		["inn", 4],
+		["shop", 3],
+		["house", 6],
+	],
+	// A cave is a mouth and a volume behind it. Nothing is built on the surface, so
+	// the roster is empty and the feature's own generator does all the work.
+	cave: [],
 	none: [],
 };
 
@@ -90,12 +107,17 @@ function structureCount(site: MacroSite): number {
 			return 4 + Math.floor(site.importance / 2);
 		case "hamlet":
 			return 3 + Math.floor(site.importance / 2);
+		case "castle":
+			return 5 + site.importance;
+		case "docks":
+			return 4 + Math.floor(site.importance / 2);
 		case "camp":
 			return 2;
 		case "ruins":
 			return 3;
 		case "landmark":
 			return 1;
+		case "cave":
 		case "none":
 			return 0;
 	}

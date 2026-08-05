@@ -2,7 +2,8 @@ import type { Vec2 } from "../geom/vec.js";
 import { hash32 } from "../rand/hash.js";
 import { valueFor } from "../rand/rng.js";
 import { CHUNK, HALO } from "./coords.js";
-import { civilizationAt, elevationAt, SEA_LEVEL, slopeAt } from "./fields.js";
+import { civilizationAt, elevationAt, slopeAt } from "./fields.js";
+import { placeKey, type SettledKind, type WorldRules, type WorldSeed } from "./recipe.js";
 
 /** One macro cell per chunk. Sites are placed at macro-cell resolution. */
 export const MACRO = CHUNK;
@@ -15,7 +16,10 @@ export type SiteKind =
 	| "fort"
 	| "camp"
 	| "ruins"
-	| "landmark";
+	| "landmark"
+	| "cave"
+	| "castle"
+	| "docks";
 
 export interface MacroSite {
 	readonly id: number;
@@ -30,6 +34,8 @@ export interface MacroSite {
 	readonly radius: number;
 	/** Region this site belongs to; regions own naming and biome flavour. */
 	readonly regionId: number;
+	/** True when a scenario put this here rather than the roll finding it. */
+	readonly authored?: boolean;
 }
 
 /** Region cells are much larger than macro cells: a region spans many chunks. */
@@ -39,36 +45,48 @@ export function regionIdAt(seed: number, x: number, y: number): number {
 	return hash32(seed, 0x5e91, Math.floor(x / REGION), Math.floor(y / REGION));
 }
 
-function siteRadius(kind: SiteKind, importance: number): number {
-	switch (kind) {
-		case "town":
-			return 20 + importance * 3;
-		case "village":
-			return 14 + importance * 2;
-		case "fort":
-			return 13 + importance;
-		case "hamlet":
-			return 9 + importance;
-		case "ruins":
-			return 10 + importance;
-		case "camp":
-			return 6;
-		case "landmark":
-			return 4;
-		case "none":
-			return 0;
-	}
+function siteRadius(rules: WorldRules, kind: SiteKind, importance: number): number {
+	if (kind === "none") return 0;
+	const rule = rules.sites.radius[kind];
+	return rule.base + (rule.perImportance ?? 0) * importance;
 }
 
 /**
  * The site occupying a macro cell, if any.
  *
- * Pure in `(seed, mx, my)` and nothing else. Two chunks that both see this site
+ * Pure in `(world, mx, my)` and nothing else. Two chunks that both see this site
  * — because a large town straddles them — receive the identical object, which
  * is what lets the settlement be generated once and clipped into both.
+ *
+ * The id is hashed from the seed and the cell alone, deliberately excluding both
+ * the recipe and the kind. A `SiteSpec` names a site by id, so an authored place
+ * has to key the same way a rolled one does — otherwise moving a town in the recipe
+ * would silently orphan the roster written for it.
  */
-export function macroSite(seed: number, mx: number, my: number): MacroSite {
+export function macroSite(world: WorldSeed, mx: number, my: number): MacroSite {
+	const { seed, rules } = world;
 	const id = hash32(seed, 0x51e0, mx, my);
+	const regionOf = (at: Vec2) => regionIdAt(seed, at.x, at.y);
+
+	// An authored place overrides the cell outright. It keeps the cell's id and its
+	// region, so everything downstream — roads, specs, the halo — treats it as the
+	// site that cell has, not as a second thing sharing the cell with one.
+	const authored = rules.places.get(placeKey(mx, my));
+	if (authored) {
+		const importance = clampImportance(authored.importance ?? 3, rules);
+		const site: Vec2 = { x: Math.round(authored.at.x), y: Math.round(authored.at.y) };
+		return {
+			id,
+			mx,
+			my,
+			site,
+			kind: authored.kind,
+			importance,
+			radius: authored.radius ?? siteRadius(rules, authored.kind, importance),
+			regionId: regionOf(site),
+			authored: true,
+		};
+	}
 
 	// Jitter well inside the cell so neighbouring sites cannot end up adjacent.
 	const jx = valueFor(seed, "site:x", mx, my);
@@ -79,9 +97,11 @@ export function macroSite(seed: number, mx: number, my: number): MacroSite {
 		y: Math.round(my * MACRO + inset + jy * (MACRO - inset * 2)),
 	};
 
-	const kind = siteKindAt(seed, mx, my, site);
+	const kind = siteKindAt(world, mx, my, site);
 	const importance =
-		kind === "none" ? 0 : 1 + Math.floor(valueFor(seed, "site:importance", mx, my) * 5);
+		kind === "none"
+			? 0
+			: 1 + Math.floor(valueFor(seed, "site:importance", mx, my) * rules.sites.maxImportance);
 
 	return {
 		id,
@@ -90,46 +110,48 @@ export function macroSite(seed: number, mx: number, my: number): MacroSite {
 		site,
 		kind,
 		importance,
-		radius: siteRadius(kind, importance),
-		regionId: regionIdAt(seed, site.x, site.y),
+		radius: siteRadius(rules, kind, importance),
+		regionId: regionOf(site),
 	};
 }
 
-function siteKindAt(seed: number, mx: number, my: number, site: Vec2): SiteKind {
-	const elevation = elevationAt(seed, site.x, site.y);
-	if (elevation < SEA_LEVEL) return "none";
+function clampImportance(importance: number, rules: WorldRules): number {
+	return Math.max(1, Math.min(rules.sites.maxImportance, Math.round(importance)));
+}
+
+/**
+ * Which kind of site a cell rolls, from the recipe's ladder.
+ *
+ * The ladder is consumed from the top of the roll downward, so a kind's share of
+ * the map is its own weight and nothing else's. That is the same arithmetic the
+ * hand-written threshold chain did — `roll > 0.985` was a 1.5% share — which is why
+ * the default weights reproduce the old world exactly.
+ */
+function siteKindAt(world: WorldSeed, mx: number, my: number, site: Vec2): SiteKind {
+	const { seed, rules } = world;
+	if (elevationAt(world, site.x, site.y) < rules.climate.seaLevel) return "none";
 
 	const roll = valueFor(seed, "site:kind", mx, my);
-	const civilization = civilizationAt(seed, site.x, site.y);
-	const steep = slopeAt(seed, site.x, site.y) > 0.035;
+	const civilization = civilizationAt(world, site.x, site.y);
+	const steep = slopeAt(world, site.x, site.y) > rules.sites.maxSlope;
 
 	// Uninhabitable ground still gets ruins and landmarks — the world should not
 	// go blank just because nobody could live there.
-	if (civilization < 0.16 || steep) {
-		if (roll > 0.94) return "ruins";
-		if (roll > 0.88) return "landmark";
-		return "none";
-	}
+	const ladder =
+		civilization < rules.sites.civilizationFloor || steep ? rules.sites.wild : rules.sites.settled;
 
-	// Roughly one in five habitable cells carries something. Denser than this
-	// and settlement footprints start overlapping, which the clip-into-chunks
-	// model handles but which reads as sprawl rather than as distinct places.
-	if (roll > 0.985) return "town";
-	if (roll > 0.96) return "village";
-	if (roll > 0.945) return "fort";
-	if (roll > 0.9) return "hamlet";
-	if (roll > 0.87) return "camp";
-	if (roll > 0.845) return "ruins";
-	if (roll > 0.82) return "landmark";
+	for (const [kind, threshold] of ladder) {
+		if (roll > threshold) return kind;
+	}
 	return "none";
 }
 
 /** Every site within the halo of a chunk, in a deterministic order. */
-export function sitesAround(seed: number, cx: number, cy: number, halo = HALO): MacroSite[] {
+export function sitesAround(world: WorldSeed, cx: number, cy: number, halo = HALO): MacroSite[] {
 	const sites: MacroSite[] = [];
 	for (let my = cy - halo; my <= cy + halo; my++) {
 		for (let mx = cx - halo; mx <= cx + halo; mx++) {
-			const site = macroSite(seed, mx, my);
+			const site = macroSite(world, mx, my);
 			if (site.kind !== "none") sites.push(site);
 		}
 	}
@@ -148,11 +170,18 @@ export function isSettlement(kind: SiteKind): boolean {
  * The largest radius any feature can project beyond its own macro cell.
  * Asserted against the halo at startup: if a feature could reach further than
  * the halo consults, chunks would disagree about whether it exists.
+ *
+ * Authored places are measured too. A recipe that puts a radius-90 city somewhere
+ * would otherwise reach two cells further than the halo looks, and the chunks two
+ * cells away would generate open field where the city's outskirts are.
  */
-export function maxFeatureRadius(): number {
+export function maxFeatureRadius(rules: WorldRules): number {
 	let max = 0;
-	for (const kind of ["town", "village", "fort", "hamlet", "ruins", "camp", "landmark"] as const) {
-		max = Math.max(max, siteRadius(kind, 5));
+	for (const kind of Object.keys(rules.sites.radius) as SettledKind[]) {
+		max = Math.max(max, siteRadius(rules, kind, rules.sites.maxImportance));
+	}
+	for (const place of rules.places.values()) {
+		max = Math.max(max, place.radius ?? 0);
 	}
 	return max;
 }

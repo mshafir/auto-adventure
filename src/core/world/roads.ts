@@ -3,8 +3,9 @@ import { rasterizePolyline } from "../geom/line.js";
 import type { Vec2 } from "../geom/vec.js";
 import { hashPair } from "../rand/hash.js";
 import { streamId, valueAt } from "../rand/rng.js";
-import { elevationAt, roughnessAt, SEA_LEVEL, slopeAt } from "./fields.js";
+import { elevationAt, roughnessAt, slopeAt } from "./fields.js";
 import { type MacroSite, sitesAround } from "./macro.js";
+import { type WorldSeed, worldKey } from "./recipe.js";
 
 /**
  * Roads are routed in coarse space — one node per 4x4 tile block. Routing at
@@ -28,20 +29,20 @@ const roadCache = new Map<string, Road | undefined>();
 
 const WANDER_STREAM = streamId("road:wander");
 
-function coarseCost(seed: number, gx: number, gy: number): number {
+function coarseCost(world: WorldSeed, gx: number, gy: number): number {
 	const x = gx * ROAD_COARSE;
 	const y = gy * ROAD_COARSE;
-	const elevation = elevationAt(seed, x, y);
+	const elevation = elevationAt(world, x, y);
 	// Roads do not cross open water; rivers get bridges, seas do not.
-	if (elevation < SEA_LEVEL) return Number.POSITIVE_INFINITY;
+	if (elevation < world.rules.climate.seaLevel) return Number.POSITIVE_INFINITY;
 	// A small deterministic wander term. Without it A* over gentle terrain finds
 	// a perfect 45-degree staircase, which reads as machine-drawn; with it the
 	// route meanders the way a track worn by use does, at no extra search cost.
 	return (
 		1 +
-		slopeAt(seed, x, y) * 220 +
-		roughnessAt(seed, x, y) * 3 +
-		valueAt(seed, WANDER_STREAM, gx, gy) * 1.4
+		slopeAt(world, x, y) * 220 +
+		roughnessAt(world, x, y) * 3 +
+		valueAt(world.seed, WANDER_STREAM, gx, gy) * 1.4
 	);
 }
 
@@ -54,8 +55,8 @@ function coarseCost(seed: number, gx: number, gy: number): number {
  * adjacent chunks rasterise identical road tiles without ever exchanging any
  * information about their shared edge.
  */
-export function roadBetween(seed: number, a: MacroSite, b: MacroSite): Road | undefined {
-	const key = `${seed}:${Math.min(a.id, b.id)}:${Math.max(a.id, b.id)}`;
+export function roadBetween(world: WorldSeed, a: MacroSite, b: MacroSite): Road | undefined {
+	const key = `${worldKey(world)}:${Math.min(a.id, b.id)}:${Math.max(a.id, b.id)}`;
 	if (roadCache.has(key)) return roadCache.get(key);
 
 	// Order the endpoints canonically so the A* runs in a fixed direction; A*
@@ -82,7 +83,7 @@ export function roadBetween(seed: number, a: MacroSite, b: MacroSite): Road | un
 		{ x: ex, y: ey },
 		{
 			bounds,
-			cost: (gx, gy) => coarseCost(seed, gx, gy),
+			cost: (gx, gy) => coarseCost(world, gx, gy),
 			diagonal: true,
 			// Slightly greedy: roads should look purposeful, not optimal.
 			heuristicWeight: 1.15,
@@ -112,8 +113,8 @@ export function roadBetween(seed: number, a: MacroSite, b: MacroSite): Road | un
  * identical polyline, and a road only one chunk knows about cannot reach the
  * other (that is what the halo-sufficiency assertion guarantees).
  */
-export function roadsAround(seed: number, cx: number, cy: number): Road[] {
-	const sites = sitesAround(seed, cx, cy).filter((s) => s.kind !== "landmark");
+export function roadsAround(world: WorldSeed, cx: number, cy: number): Road[] {
+	const sites = sitesAround(world, cx, cy).filter((s) => s.kind !== "landmark");
 	if (sites.length < 2) return [];
 
 	const edges = euclideanMst(sites.map((s) => s.site));
@@ -122,7 +123,7 @@ export function roadsAround(seed: number, cx: number, cy: number): Road[] {
 		const a = sites[i];
 		const b = sites[j];
 		if (!a || !b) continue;
-		const road = roadBetween(seed, a, b);
+		const road = roadBetween(world, a, b);
 		if (road) roads.push(road);
 	}
 	roads.sort((p, q) => p.id - q.id);

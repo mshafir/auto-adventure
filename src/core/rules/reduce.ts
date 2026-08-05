@@ -1,8 +1,19 @@
-import { chunkKey, toChunk } from "../world/coords.js";
-import { arcEndEffects, arcOutline } from "./arc.js";
+import { T, terrainDef } from "../tiles/terrain.js";
+import {
+	chunkKey,
+	localIndex,
+	toChunk,
+	toChunkX,
+	toChunkY,
+	toLocalX,
+	toLocalY,
+} from "../world/coords.js";
+import { arcEndEffects, arcOutline, beatEffects, beatsOpenedByState } from "./arc.js";
 import { cardKey, cardSeen, tidyCard } from "./card.js";
 import type { Command } from "./commands.js";
+import { evaluate } from "./condition.js";
 import { type DomainEffect, type Effect, facingDelta, type Reduction } from "./effects.js";
+import { type Barrier, barrierKey, barrierOpen, type Lock } from "./lock.js";
 import type { LootItem } from "./loot.js";
 import { clampDisposition, createNpcRecord, MAX_FACTS, type NpcRecord } from "./npc.js";
 import { describeObjective, verifyQuests } from "./quests.js";
@@ -12,8 +23,10 @@ import {
 	type JournalEntry,
 	type Quest,
 	timeFromTick,
+	visitedKey,
 	type WorldTime,
 } from "./state.js";
+import { MAX_TRIGGER_PASSES, pendingTriggers } from "./trigger.js";
 
 /**
  * The world the reducer is allowed to ask about.
@@ -22,6 +35,16 @@ import {
  * same state and the same probe results always produce the same output, which
  * is what makes the whole rules layer testable without generating a world.
  */
+/**
+ * Where a portal tile leads.
+ *
+ * `exit` is the way back to the world; `level` is another storey of the same
+ * interior, with the tile to land on already worked out.
+ */
+export type PortalTarget =
+	| { readonly kind: "exit" }
+	| { readonly kind: "level"; readonly level: number; readonly x: number; readonly y: number };
+
 export interface WorldProbe {
 	isPassable(x: number, y: number): boolean;
 	isLoaded(x: number, y: number): boolean;
@@ -31,12 +54,33 @@ export interface WorldProbe {
 		x: number,
 		y: number,
 	):
-		| { readonly interiorId: number; readonly structure: string; readonly name?: string }
+		| {
+				readonly interiorId: number;
+				readonly structure: string;
+				readonly name?: string;
+				/** What has to be true to get in. Absent means it simply opens. */
+				readonly lock?: Lock;
+		  }
 		| undefined;
+	/**
+	 * A gate standing on this tile, whether or not it has been opened.
+	 *
+	 * Returns the barrier even once it is open, because the reducer decides that from
+	 * the flags — the probe's job is to say what is *there*, and the answer must not
+	 * depend on state the reducer already holds.
+	 */
+	barrierAt?(x: number, y: number): Barrier | undefined;
 	/** Where the player lands on entering an interior. */
 	interiorEntrance?(interiorId: number): { readonly x: number; readonly y: number } | undefined;
-	/** True when this interior tile is the way back out. */
-	isExit?(x: number, y: number): boolean;
+	/**
+	 * What lies on the other side of this tile, when the player is indoors.
+	 *
+	 * Covers the way out and the stairs with one question, because to the reducer they
+	 * are the same thing: a tile you walk onto that puts you somewhere else. The engine
+	 * resolves *where*, because that is geometry it owns and the reducer deliberately
+	 * does not know.
+	 */
+	portalAt?(x: number, y: number): PortalTarget | undefined;
 	describeAt?(x: number, y: number): string | undefined;
 	/** The settlement covering a position, used to resolve `reach` objectives. */
 	placeNameAt?(x: number, y: number): string | undefined;
@@ -75,49 +119,7 @@ export function reduce(state: GameState, command: Command, world: WorldProbe): R
 	// otherwise "You find 3 Timber." sits under the map for the rest of the game.
 	const result = step(withoutNotice(state), command, world);
 
-	// Indoors the player's coordinates are interior-local, and an interior starts
-	// at its own origin — so asking which settlement covers them is not merely
-	// useless but wrong: coordinates like (6, 7) can land inside a town near the
-	// world origin. The doorway the player came in by is where they actually are.
-	const inside = result.state.player.inside;
-	const placeName = inside
-		? world.placeNameAt?.(inside.returnX, inside.returnY)
-		: world.placeNameAt?.(result.state.player.x, result.state.player.y);
-
-	// Objectives are checked after every command rather than only when a model
-	// remembers to say so. This is what makes a quest something the world can
-	// resolve — walk into the right town, carry the right thing, and it closes.
-	const progress = verifyQuests(result.state, {
-		placeName,
-		insideName: result.state.player.inside?.name,
-		insideKind: result.state.player.inside?.structure,
-		talkedTo: result.state.dialogue?.npcName,
-	});
-
-	const arrival = recordArrival(progress.state, placeName);
-
-	const journal = [
-		...arrival.entries,
-		// Progress before outcome, so a log read newest-first still reads in order
-		// within the turn that produced both.
-		...progress.advanced.map((step) => ({
-			tick: progress.state.time.tick,
-			kind: "event" as const,
-			text: `${step.quest.name}: ${describeObjective(step.objective)} — done.`,
-			source: step.quest.id,
-		})),
-		...progress.completed.map((quest) => ({
-			tick: progress.state.time.tick,
-			kind: "event" as const,
-			text: `Completed: ${quest.name}.`,
-			source: quest.id,
-		})),
-	];
-
-	const logged =
-		journal.length > 0
-			? { ...arrival.state, journal: [...arrival.state.journal, ...journal] }
-			: arrival.state;
+	const settled = settle(result.state, world);
 
 	// Checked here rather than beside the beat that opened, because an arc can run out
 	// of story on any of three unrelated acts: the last beat opening, the last
@@ -128,21 +130,107 @@ export function reduce(state: GameState, command: Command, world: WorldProbe): R
 	// final beat changes nothing about quests or arrivals, so an early return would
 	// have skipped exactly the case this exists for.
 	const ended = applyEffects(
-		logged,
-		arcEndEffects(logged.arc, logged, arcOutline(logged.arc, logged)),
+		settled.state,
+		arcEndEffects(settled.state.arc, settled.state, arcOutline(settled.state.arc, settled.state)),
 	);
 
 	if (ended.state === result.state) return result;
 
-	const notable =
-		progress.completed.length > 0 ||
-		progress.advanced.length > 0 ||
-		arrival.entries.length > 0 ||
-		ended.state !== logged;
+	const notable = settled.notable || ended.state !== settled.state;
 	return {
 		state: ended.state,
 		effects: notable ? [...result.effects, { t: "Save", reason: "checkpoint" }] : result.effects,
 	};
+}
+
+/**
+ * Let the consequences of a command finish happening.
+ *
+ * Three things run here and they are interleaved rather than sequenced, because
+ * each can be what the next was waiting for: arriving somewhere sets the flag a
+ * trigger watches, a trigger granting the ledger ticks a `have` objective, and an
+ * errand closing is what another trigger was waiting for. Running them once each in
+ * a fixed order would resolve one link of that chain per keypress — a card that
+ * appears only after the player's *next* move reads as a bug, not as pacing.
+ *
+ * Bounded rather than run to a fixed point. A repeating trigger whose effects do not
+ * change its own condition would otherwise spin here forever, taking the game with
+ * it; {@link MAX_TRIGGER_PASSES} is past any chain worth writing.
+ */
+function settle(
+	initial: GameState,
+	world: WorldProbe,
+): { readonly state: GameState; readonly notable: boolean } {
+	let current = initial;
+	let notable = false;
+	const journal: JournalEntry[] = [];
+
+	for (let pass = 0; ; pass++) {
+		// Indoors the player's coordinates are interior-local, and an interior starts
+		// at its own origin — so asking which settlement covers them is not merely
+		// useless but wrong: coordinates like (6, 7) can land inside a town near the
+		// world origin. The doorway the player came in by is where they actually are.
+		const inside = current.player.inside;
+		const placeName = inside
+			? world.placeNameAt?.(inside.returnX, inside.returnY)
+			: world.placeNameAt?.(current.player.x, current.player.y);
+
+		const arrival = recordArrival(current, placeName);
+		current = arrival.state;
+		journal.push(...arrival.entries);
+
+		// Objectives are checked after every command rather than only when a model
+		// remembers to say so. This is what makes a quest something the world can
+		// resolve — walk into the right town, carry the right thing, and it closes.
+		const progress = verifyQuests(current, {
+			placeName,
+			insideName: current.player.inside?.name,
+			insideKind: current.player.inside?.structure,
+			talkedTo: current.dialogue?.npcName,
+		});
+		current = progress.state;
+
+		journal.push(
+			// Progress before outcome, so a log read newest-first still reads in order
+			// within the turn that produced both.
+			...progress.advanced.map((step) => ({
+				tick: current.time.tick,
+				kind: "event" as const,
+				text: `${step.quest.name}: ${describeObjective(step.objective)} — done.`,
+				source: step.quest.id,
+			})),
+			...progress.completed.map((quest) => ({
+				tick: current.time.tick,
+				kind: "event" as const,
+				text: `Completed: ${quest.name}.`,
+				source: quest.id,
+			})),
+		);
+
+		if (
+			arrival.entries.length > 0 ||
+			progress.completed.length > 0 ||
+			progress.advanced.length > 0
+		) {
+			notable = true;
+		}
+
+		// One pass beyond the limit, so the state the loop leaves behind has always had
+		// its quests and arrivals checked *after* the last trigger fired.
+		if (pass >= MAX_TRIGGER_PASSES) break;
+		// Beats that open on their own come first, so a trigger written to react to a
+		// beat opening sees it in this pass rather than the next.
+		const fired = applyEffects(current, [
+			...beatsOpenedByState(current.arc, current).flatMap(beatEffects),
+			...pendingTriggers(current.triggers, current),
+		]);
+		if (fired.state === current) break;
+		current = fired.state;
+		notable = true;
+	}
+
+	if (journal.length > 0) current = { ...current, journal: [...current.journal, ...journal] };
+	return { state: current, notable };
 }
 
 /**
@@ -158,7 +246,7 @@ function recordArrival(
 	placeName: string | undefined,
 ): { state: GameState; entries: readonly JournalEntry[] } {
 	if (!placeName) return { state, entries: [] };
-	const key = `visited:${placeName.toLowerCase()}`;
+	const key = visitedKey(placeName);
 	if (state.flags[key]) return { state, entries: [] };
 
 	return {
@@ -268,7 +356,7 @@ function step(state: GameState, command: Command, world: WorldProbe): Reduction 
 			};
 		}
 		case "Tick":
-			return { state: { ...state, time: advanceTime(state.time, command.amount) }, effects: [] };
+			return { state: { ...state, time: advanceTime(state, command.amount) }, effects: [] };
 		case "ChunkReady":
 			return { state: markDiscovered(state, command.key), effects: [] };
 		case "Error":
@@ -303,10 +391,40 @@ function move(
 	// movement rather than on an explicit action means a doorway behaves the way
 	// a doorway should: you walk through it.
 	if (state.player.inside) {
-		if (world.isExit?.(nx, ny)) return leaveInterior(state);
+		const portal = world.portalAt?.(nx, ny);
+		if (portal?.kind === "exit") return leaveInterior(state);
+		if (portal?.kind === "level") return changeLevel(state, portal);
 	} else {
+		// A gate before a door, because a gatehouse is both: the tile is a barrier on
+		// the route and there may be a building behind it, and being told the way is
+		// barred is more use than being silently refused entry to a guardroom.
+		const barrier = world.barrierAt?.(nx, ny);
+		if (barrier && !barrierOpen(state.flags, barrier.id)) {
+			if (!evaluate(barrier.opensWhen, state)) {
+				return { state: { ...state, notice: barrier.lockedText }, effects: [] };
+			}
+			// Opened, not walked through. The step costs the turn it takes to unbar the
+			// thing, and the player then walks in — which reads better than sliding
+			// through a gate in the same instant it gives way, and means the notice
+			// announcing it is on screen while the gate is still in front of them.
+			const opened = applyEffects(state, [{ t: "OpenBarrier", id: barrier.id }]);
+			return {
+				state: {
+					...opened.state,
+					...(barrier.opensText ? { notice: barrier.opensText } : {}),
+					time: advanceTime(state, 1),
+				},
+				effects: [...opened.effects, { t: "Save", reason: "checkpoint" }],
+			};
+		}
+
 		const door = world.doorAt?.(nx, ny);
-		if (door) return enterInterior(state, door, world);
+		if (door) {
+			if (door.lock && !evaluate(door.lock.opensWhen, state)) {
+				return { state: { ...state, notice: door.lock.lockedText }, effects: [] };
+			}
+			return enterInterior(state, door, world);
+		}
 	}
 
 	// Walking into someone is how you talk to them. Doing it on movement rather
@@ -329,7 +447,7 @@ function move(
 	const moved: GameState = {
 		...state,
 		player: { ...state.player, x: nx, y: ny },
-		time: advanceTime(state.time, 1),
+		time: advanceTime(state, 1),
 	};
 
 	if (state.player.inside) {
@@ -369,7 +487,36 @@ function enterInterior(
 					returnY: state.player.y,
 				},
 			},
-			time: advanceTime(state.time, 1),
+			time: advanceTime(state, 1),
+		},
+		effects: [{ t: "Save", reason: "checkpoint" }],
+	};
+}
+
+/**
+ * Move between storeys of the same interior.
+ *
+ * Not `leaveInterior` followed by `enterInterior`: the player never returns to the
+ * world, so `returnX`/`returnY` must survive untouched. Coming out of the top of a
+ * tower onto the doorstep of the building you went into is the whole of what this
+ * has to get right.
+ */
+function changeLevel(
+	state: GameState,
+	to: { readonly level: number; readonly x: number; readonly y: number },
+): Reduction {
+	const inside = state.player.inside;
+	if (!inside) return { state, effects: [] };
+	return {
+		state: {
+			...state,
+			player: {
+				...state.player,
+				x: to.x,
+				y: to.y,
+				inside: { ...inside, level: to.level },
+			},
+			time: advanceTime(state, 1),
 		},
 		effects: [{ t: "Save", reason: "checkpoint" }],
 	};
@@ -383,7 +530,7 @@ function leaveInterior(state: GameState): Reduction {
 		state: {
 			...state,
 			player: { ...player, x: inside.returnX, y: inside.returnY, facing: "down" },
-			time: advanceTime(state.time, 1),
+			time: advanceTime(state, 1),
 		},
 		effects: [{ t: "Save", reason: "checkpoint" }],
 	};
@@ -394,8 +541,17 @@ function markDiscovered(state: GameState, key: string): GameState {
 	return { ...state, discovered: [...state.discovered, key] };
 }
 
-function advanceTime(time: WorldTime, ticks: number): WorldTime {
-	return timeFromTick(time.tick + ticks);
+/**
+ * Move the action counter on, and re-derive the calendar from it.
+ *
+ * Takes the whole state rather than just its `time` because the calendar depends on the
+ * world's clock settings, which live on `world` — and a world with the clock frozen has
+ * to keep counting ticks while its hour stays put. Deriving from the tick every time,
+ * rather than incrementing the hour, is what makes that a matter of not doing the
+ * arithmetic instead of a second code path.
+ */
+function advanceTime(state: GameState, ticks: number): WorldTime {
+	return timeFromTick(state.time.tick + ticks, state.world.time);
 }
 
 // --- interaction ------------------------------------------------------------
@@ -663,6 +819,7 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 				progress: [],
 				completed: false,
 				...(effect.siteId === undefined ? {} : { siteId: effect.siteId }),
+				...(effect.parentId === undefined ? {} : { parentId: effect.parentId }),
 			};
 			return {
 				...state,
@@ -718,6 +875,8 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 				...state,
 				journal: [...state.journal, { ...effect.entry, tick: state.time.tick }],
 			};
+		case "OpenBarrier":
+			return openBarrier(state, effect.id);
 		case "Teleport":
 			return { ...state, player: { ...state.player, x: effect.x, y: effect.y } };
 		case "Damage":
@@ -786,6 +945,40 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 			};
 		}
 	}
+}
+
+/**
+ * Record a gate as open, in the two places that have to agree.
+ *
+ * The flag is what a condition reads; the delta is what the generator stamps back
+ * over the tile next time the chunk is built, and therefore what the renderer draws
+ * and what `isPassable` answers. Writing only the flag would leave a gate the player
+ * has opened still barred on screen after the chunk was evicted; writing only the
+ * delta would leave nothing for a later condition to ask about.
+ *
+ * Idempotent on the flag, so re-applying the effect — which a partially-saved turn
+ * can do — appends nothing to the delta a second time.
+ */
+function openBarrier(state: GameState, id: string): GameState {
+	if (state.flags[barrierKey(id)]) return state;
+	const barrier = state.barriers?.find((candidate) => candidate.id === id);
+	if (!barrier) return state;
+
+	const gate = terrainDef(T.gateOpen);
+	const deltas: Record<string, GameState["deltas"][string]> = { ...state.deltas };
+	// A gate spans as many tiles as the road is wide, and they lift together — so the
+	// whole span is written here rather than the one tile the player happened to face.
+	for (const tile of barrier.tiles) {
+		const key = chunkKey(toChunkX(tile.x), toChunkY(tile.y));
+		const index = localIndex(toLocalX(tile.x), toLocalY(tile.y));
+		const existing = deltas[key];
+		deltas[key] = {
+			...existing,
+			tiles: [...(existing?.tiles ?? []), index, gate.id, gate.flags],
+		};
+	}
+
+	return { ...state, flags: { ...state.flags, [barrierKey(id)]: true }, deltas };
 }
 
 /** Apply a change to one NPC, leaving the state untouched if they are unknown. */

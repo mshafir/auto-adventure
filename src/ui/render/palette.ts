@@ -72,3 +72,42 @@ export const PAL = {
 	wary: rgb("#e8c96a"),
 	hostile: rgb("#ff7b6a"),
 } as const;
+
+/**
+ * A palette a theme can be built against: colours by name.
+ *
+ * Flat, unlike `PAL` — `bloom` is an array there because the accent colours are
+ * picked from at random, and a table keyed by name cannot hold one. The five are
+ * spelled out as `bloom0`…`bloom4` so a pack can reach any of them.
+ */
+export type Palette = Readonly<Record<string, RGB>>;
+
+export const DEFAULT_PALETTE: Palette = (() => {
+	const flat: Record<string, RGB> = {};
+	for (const [key, value] of Object.entries(PAL)) {
+		// An `RGB` *is* an array, so "is this an array" cannot tell a colour from a list
+		// of them — asking that flattened every colour in the palette into three entries
+		// named `moss0`, `moss1`, `moss2`, and left the whole map magenta. What
+		// distinguishes a list is that its first element is itself an array.
+		if (Array.isArray(value) && Array.isArray(value[0])) {
+			for (const [i, entry] of (value as RGB[]).entries()) flat[`${key}${i}`] = entry;
+		} else {
+			flat[key] = value as RGB;
+		}
+	}
+	return flat;
+})();
+
+/**
+ * A colour by name, or written out as a hex string.
+ *
+ * A missing name is a loud magenta rather than a throw. A tile pack is data from
+ * outside the program and a typo in one colour reference should cost that one tile,
+ * visibly — not the whole session.
+ */
+export function paletteColor(palette: Palette, name: string): RGB {
+	if (name.startsWith("#")) return rgb(name);
+	return palette[name] ?? MISSING_COLOR;
+}
+
+export const MISSING_COLOR: RGB = rgb("#ff00ff");

@@ -119,8 +119,13 @@ export function itemsStoredIn(structure: string): readonly string[] {
  * Keyed on the interior and the local position rather than on anything mutable,
  * so it survives the chunk being evicted and regenerated.
  */
-export function lootKey(place: number | undefined, x: number, y: number): string {
-	return `looted:${place ?? "world"}:${x},${y}`;
+export function lootKey(place: number | undefined, x: number, y: number, level = 0): string {
+	// The ground floor keeps the key it always had, so a save made before interiors
+	// had storeys still knows which crates it emptied. Anything above it is a distinct
+	// grid that happens to share coordinates, and sharing the key would mean looting a
+	// chest on the ground floor emptied the one directly above it.
+	const floor = level === 0 ? "" : `:${level}`;
+	return `looted:${place ?? "world"}${floor}:${x},${y}`;
 }
 
 /**
@@ -137,13 +142,17 @@ export function containerContents(
 	y: number,
 	decor: DecorId,
 	structure: string,
+	level = 0,
 ): readonly LootItem[] {
 	if (!isContainer(decor)) return [];
 
 	const store = storeFor(structure);
 	if (store.length === 0) return [];
 
-	const rng = rngFor(seed, "loot", place, x, y);
+	// The level joins the stream only above the ground floor, for the same reason it
+	// joins the key only above it: a chest on level 0 must roll what it always rolled.
+	const rng =
+		level === 0 ? rngFor(seed, "loot", place, x, y) : rngFor(seed, "loot", place, x, y, level);
 
 	// A chest is a find; a crate is furniture that happens to have a lid.
 	const chance = decor === D.chest ? 1 : decor === D.barrel ? 0.45 : 0.35;
