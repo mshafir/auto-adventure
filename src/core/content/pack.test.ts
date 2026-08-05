@@ -4,14 +4,14 @@ import { residentsOf } from "../gen/features/residents.js";
 import { hashString } from "../rand/hash.js";
 import { personName, placeName, regionName } from "../world/names.js";
 import { DEFAULT_PACK } from "./default.js";
-import { isOverrideEmpty, mergePack, type PackOverride } from "./pack.js";
+import { isOverrideEmpty, mergeOverride, mergePack, type PackOverride } from "./pack.js";
 import { ContentPackSchema, PackOverrideSchema } from "./schema.js";
 
 const SEED = hashString("pack-test");
 
 describe("the default pack", () => {
 	it("validates against the full schema", () => {
-		// Which is what makes `assets/content/default.json` a worked example an author
+		// Which is what makes `.packs/default.json` a worked example an author
 		// can copy rather than a fragment they have to guess the shape of.
 		expect(ContentPackSchema.safeParse(DEFAULT_PACK).success).toBe(true);
 	});
@@ -58,6 +58,52 @@ describe("mergePack", () => {
 	it("takes the override's id, so a log says which pack is in play", () => {
 		expect(mergePack(DEFAULT_PACK, { id: "thornwick" }).id).toBe("thornwick");
 		expect(mergePack(DEFAULT_PACK, { appearance: {} }).id).toBe("default");
+	});
+});
+
+describe("mergeOverride", () => {
+	// Two overrides rather than an override on a pack, because that is what a
+	// scenario borrowing a pack produces — and the result is what gets written into
+	// the save, so merging the whole default in here would put every table the game
+	// ships with into every save file.
+	it("keeps whichever side is present when only one is", () => {
+		const only: PackOverride = { appearance: { cooper: "x" } };
+		expect(mergeOverride(undefined, only)).toBe(only);
+		expect(mergeOverride(only, undefined)).toBe(only);
+		expect(mergeOverride(undefined, undefined)).toBeUndefined();
+	});
+
+	it("merges maps by key, so the scenario changes one line and keeps the rest", () => {
+		const merged = mergeOverride(
+			{ appearance: { cooper: "pack", miller: "pack" } },
+			{ appearance: { cooper: "scenario" } },
+		);
+		expect(merged?.appearance).toEqual({ cooper: "scenario", miller: "pack" });
+	});
+
+	it("merges heads by mood, which is the one nested map", () => {
+		const merged = mergeOverride(
+			{ names: { heads: { wet: ["sump"], green: ["thorn"] } } },
+			{ names: { heads: { wet: ["leat"] } } },
+		);
+		expect(merged?.names?.heads).toEqual({ wet: ["leat"], green: ["thorn"] });
+	});
+
+	it("replaces lists, because writing one means these are the names now", () => {
+		const merged = mergeOverride(
+			{ names: { given: ["Ott", "Bevan"] } },
+			{ names: { given: ["Sedge"] } },
+		);
+		expect(merged?.names?.given).toEqual(["Sedge"]);
+	});
+
+	it("leaves absent tables absent rather than writing empty ones", () => {
+		// An override full of `{}` is not the same as one that says nothing:
+		// `isOverrideEmpty` reads it as content, and it would be persisted.
+		const merged = mergeOverride({ appearance: { cooper: "x" } }, { appearance: { cooper: "y" } });
+		expect(merged?.wanderers).toBeUndefined();
+		expect(merged?.lore).toBeUndefined();
+		expect(merged?.names).toBeUndefined();
 	});
 });
 

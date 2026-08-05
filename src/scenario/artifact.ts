@@ -36,10 +36,25 @@ export interface ScenarioArtifact {
 	readonly blurb: string;
 	readonly brief: ScenarioBrief;
 	/**
-	 * The flavour tables this scenario is peopled from, as an override on the default.
+	 * A pack in `.packs/`, by name.
 	 *
-	 * Travels in the artifact so a scenario names its own trades and families wherever
-	 * it is opened, with no file beside it and nothing to install.
+	 * A reference rather than a copy so the pack and the scenario that uses it can be
+	 * read as one thing and changed in one place — the first scenario written carried a
+	 * verbatim duplicate of `thornwick.json`, every given name and family and trade,
+	 * which is a second copy to keep in step by hand.
+	 *
+	 * Resolved when the file is read, and the *resolved* tables are what reach the save
+	 * (see {@link readScenarioFile}). So the reference is an authoring convenience, not
+	 * a runtime dependency: a pack deleted next month renames nobody who has already
+	 * met them.
+	 */
+	readonly pack?: string;
+	/**
+	 * Flavour tables written into the scenario itself, laid over {@link pack}.
+	 *
+	 * Still worth having alongside the reference: a scenario that wants one household
+	 * changed should not have to fork a whole pack to say so. A scenario with no `pack`
+	 * and only this is the original shape and still loads.
 	 */
 	readonly content?: PackOverride;
 

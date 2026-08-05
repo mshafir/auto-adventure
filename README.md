@@ -313,8 +313,32 @@ npm run author -- --id drowned-archipelago \
   --duration short
 ```
 
-It lands in `~/.auto-adventure/scenarios/` and appears in the launcher. Roughly
-sixty model calls for a medium world, a couple of minutes.
+It lands in `.scenarios/` and appears in the launcher. Roughly sixty model calls
+for a medium world, a couple of minutes.
+
+Both kinds of content live in the repository and are committed:
+
+| `.packs/` | flavour packs — names, households, trades, the ambient lines |
+| `.scenarios/` | whole authored worlds |
+
+In the repository rather than under your home directory because they are *source*.
+A pack decides what everybody in a world is called and what they trade in; a
+scenario is thirty kilobytes of hand-editable JSON keyed to a seed, and every way
+it can go wrong is silent at runtime — a site id the seed does not produce is a
+town that never gets its name, and nothing anywhere reports an error. Content you
+can read in a diff is content you can review. `AUTO_ADVENTURE_PACKS` and
+`AUTO_ADVENTURE_SCENARIOS` redirect either one elsewhere.
+
+A scenario names the pack it is peopled from rather than embedding a copy:
+
+```json
+{ "id": "thornwick-road", "pack": "thornwick", "seed": 1234, … }
+```
+
+The tables are folded in when the file is read, so what a *save* records is the
+names themselves, not a pointer to them — deleting a pack next month cannot rename
+anybody you have already met. A scenario may still write `content` of its own on
+top, for the two or three tables it wants differently from the pack it borrows.
 
 ### Writing one by hand, or with an agent
 

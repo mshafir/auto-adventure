@@ -184,6 +184,15 @@ export const ScenarioArtifactSchema = z.object({
 	title: z.string().min(1).max(80),
 	blurb: z.string().max(400),
 	brief: ScenarioBriefSchema,
+	// A pack name, resolved against `.packs/`. Constrained like the scenario id
+	// because it becomes a filename, and a name that can walk up out of the packs
+	// directory would let a scenario file choose what gets read.
+	pack: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case letters, digits and dashes only")
+		.optional(),
 	content: PackOverrideSchema.optional(),
 	seed: z.number().int(),
 	spawn: z.object({ x: z.number().int(), y: z.number().int() }),

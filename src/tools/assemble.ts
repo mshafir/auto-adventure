@@ -11,6 +11,7 @@
  * a character standing nowhere, and nothing at runtime would ever say so.
  */
 import { readFileSync } from "node:fs";
+import { resolveOverride } from "../content/load.js";
 import { assembleArtifact, ScenarioDraftSchema } from "../scenario/draft.js";
 import { verifyArtifact, writeScenario } from "../scenario/repo.js";
 import { hasErrors, validateArtifact } from "../scenario/validate.js";
@@ -71,7 +72,19 @@ function main() {
 		process.exit(1);
 	}
 
-	const artifact = assembleArtifact(parsed.data, new Date().toISOString());
+	// Read here rather than at play time, so a draft naming a pack that does not
+	// exist fails now — while the author is looking at it — instead of at the
+	// launcher, weeks later, as a scenario that has stopped appearing.
+	const named = parsed.data.pack;
+	const pack = named ? resolveOverride(named) : undefined;
+	if (named && !pack) {
+		process.stderr.write(`no content pack named "${named}"\n`);
+		process.exit(1);
+	}
+
+	const artifact = assembleArtifact(parsed.data, new Date().toISOString(), {
+		...(pack ? { pack } : {}),
+	});
 
 	const structural = verifyArtifact(artifact);
 	const findings = validateArtifact(artifact);

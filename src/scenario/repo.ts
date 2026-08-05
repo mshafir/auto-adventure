@@ -1,16 +1,17 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { danglingTargets } from "../ai/dialogue/tree.js";
+import { resolveOverride } from "../content/load.js";
+import { mergeOverride } from "../core/content/pack.js";
 import { MACRO, macroSite } from "../core/world/macro.js";
 import { npcId } from "../core/world/spec.js";
-import { saveRoot, writeFileAtomic } from "../persist/save-repo.js";
+import { scenarioRoot } from "../paths.js";
+import { writeFileAtomic } from "../persist/save-repo.js";
 import { logger } from "../utils/log.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { ScenarioArtifactSchema } from "./schema.js";
 
-export function scenarioRoot(): string {
-	return join(saveRoot(), "scenarios");
-}
+export { scenarioRoot };
 
 export function scenarioPath(id: string): string {
 	return join(scenarioRoot(), `${id}.json`);
@@ -28,8 +29,9 @@ export interface ScenarioSummary {
  * Read and validate one scenario file.
  *
  * Returns undefined rather than throwing for every way a file can be wrong —
- * missing, unparseable, a shape from a future build, or internally inconsistent.
- * A bad scenario must not stop the launcher from listing the good ones.
+ * missing, unparseable, a shape from a future build, internally inconsistent, or
+ * naming a pack that is not there. A bad scenario must not stop the launcher from
+ * listing the good ones.
  */
 export function readScenarioFile(path: string): ScenarioArtifact | undefined {
 	if (!existsSync(path)) return undefined;
@@ -53,7 +55,35 @@ export function readScenarioFile(path: string): ScenarioArtifact | undefined {
 		logger.warn(`scenario ${artifact.id} is inconsistent: ${problems.join("; ")}`);
 		return undefined;
 	}
-	return artifact;
+	return resolvePack(artifact);
+}
+
+/**
+ * Fold the named pack into the scenario's own tables.
+ *
+ * Done here, at the edge, so that everything downstream sees one `content`
+ * override and nothing else has to know a reference existed. That is what keeps
+ * the *save* self-contained: `buildSession` persists whatever `content` it is
+ * given, so by resolving before it is handed over, a world already in progress
+ * survives the pack file being renamed or deleted — the same rule that makes a
+ * save carry its own pack rather than a pointer to one.
+ *
+ * A named pack that cannot be read fails the whole scenario. Starting the world
+ * anyway would hand the player a place whose people are named out of the default
+ * tables, which reads as a scenario that was written badly rather than one that
+ * did not fully load.
+ */
+function resolvePack(artifact: ScenarioArtifact): ScenarioArtifact | undefined {
+	if (!artifact.pack) return artifact;
+
+	const named = resolveOverride(artifact.pack);
+	if (!named) {
+		logger.warn(`scenario ${artifact.id} names pack "${artifact.pack}", which could not be read`);
+		return undefined;
+	}
+
+	const content = mergeOverride(named, artifact.content);
+	return content ? { ...artifact, content } : artifact;
 }
 
 export function loadScenario(id: string): ScenarioArtifact | undefined {

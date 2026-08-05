@@ -52,7 +52,7 @@ interface Mark {
  * One character stands for a whole 64-tile chunk, so this is a different
  * alphabet from the map's own and cannot be read out of the tile registry. It is
  * kept declarative and JSON-shaped — plain strings, no imports, no branching —
- * so that it can move into a theme pack beside `assets/content` without being
+ * so that it can move into a theme pack beside `.packs` without being
  * rewritten. Colours name a palette swatch so the minimap stays tied to the map
  * it summarises; a literal `#rrggbb` also works.
  */

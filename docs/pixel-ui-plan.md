@@ -198,7 +198,7 @@ Each step ends green: `npx tsc --noEmit`, `npx vitest run`, biome clean.
 
 Glyphs, colours and sprite tables should be **resources**, not code, so a future
 pass can make them swappable. The repo already has the machinery and, more
-importantly, the convention: `src/content/load.ts` reads `assets/content/*.json`,
+importantly, the convention: `src/content/load.ts` reads `.packs/*.json`,
 validates with zod, and merges over a `DEFAULT_PACK` **baked into code**, so a
 missing or malformed file degrades to the default instead of stopping a run. A
 theme pack should work exactly the same way — this is not a new mechanism, it is

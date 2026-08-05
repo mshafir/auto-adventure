@@ -5,7 +5,7 @@ import type { ContentPack } from "./pack.js";
  *
  * Held as code rather than read from disk, so the pure generators always have a
  * complete set of tables with no filesystem in the path — `core` must stay callable
- * from a test, a validator and a browser alike. `assets/content/default.json` is the
+ * from a test, a validator and a browser alike. `.packs/default.json` is the
  * same data as a file, for authors to copy from, and a test pins the two together so
  * they cannot drift.
  *

@@ -1,0 +1,1286 @@
+{
+	"artifactVersion": 1,
+	"id": "thornwick-road",
+	"title": "The Hollow Tithe",
+	"blurb": "A toll road, a levy counted in timber, and a warden who stopped writing home.",
+	"brief": {
+		"premise": "a forest toll road where the levy is counted in felled timber",
+		"storyline": "the player is looking for a sibling who took the warden's badge and stopped writing",
+		"tone": "damp, wry, and short of daylight",
+		"protagonist": "a timber-tallier walking the road out of season",
+		"duration": "short"
+	},
+	"pack": "thornwick",
+	"seed": 4245522410,
+	"spawn": {
+		"x": 32,
+		"y": 32
+	},
+	"bounds": {
+		"minX": -259,
+		"minY": -259,
+		"maxX": 323,
+		"maxY": 323,
+		"style": "cliffs",
+		"thickness": 8
+	},
+	"lore": {
+		"title": "The Hollow Tithe",
+		"premise": "The crown stopped asking for coin three winters ago and started asking for timber. The forest has been paying ever since, and the road that carries it is the only law out here.",
+		"era": "the third winter of the timber levy",
+		"tone": "damp, wry, and short of daylight",
+		"factions": ["The Warden's Road", "The Fellers' Compact"],
+		"deities": ["Ossa of the Standing Trees"]
+	},
+	"regions": {
+		"467299905": {
+			"id": "467299905",
+			"name": "Shoulder Bottoms",
+			"blurb": "Shoulder Bottoms is highland country, and keeps to itself.",
+			"tone": "quiet",
+			"culture": "smallholders and road-traders",
+			"lore": [],
+			"ambient": [
+				"The wind moves across the highland.",
+				"Somewhere off the track, an axe stops mid-stroke.",
+				"A cart has been through here recently, and heavily.",
+				"Sap has stuck your sleeve to your arm again.",
+				"The stumps beside the road are fresh, and numbered in white paint."
+			]
+		},
+		"493477641": {
+			"id": "493477641",
+			"name": "Kiln Bottoms",
+			"blurb": "Kiln Bottoms is meadow country, and keeps to itself.",
+			"tone": "quiet",
+			"culture": "smallholders and road-traders",
+			"lore": [],
+			"ambient": [
+				"The wind moves across the meadow.",
+				"Somewhere off the track, an axe stops mid-stroke.",
+				"A cart has been through here recently, and heavily.",
+				"Sap has stuck your sleeve to your arm again.",
+				"The stumps beside the road are fresh, and numbered in white paint."
+			]
+		},
+		"2259585032": {
+			"id": "2259585032",
+			"name": "The Warden's Shoulder",
+			"blurb": "High open ground where the road climbs out of the trees and the crown can finally see it.",
+			"tone": "wind-scoured and official",
+			"culture": "Wardens, weighers and people who have learned to be elsewhere.",
+			"factionName": "The Warden's Road",
+			"lore": [
+				"Every cart is weighed twice on the Shoulder, and the second weight is the one that counts."
+			],
+			"ambient": [
+				"The wind up here has nothing to break it.",
+				"You can see the road for a mile in both directions, which is the point."
+			]
+		},
+		"4222914290": {
+			"id": "4222914290",
+			"name": "The Long Fell",
+			"blurb": "Deep forest cut by one road and a hundred arguments about who owns the trees beside it.",
+			"tone": "damp and close",
+			"culture": "Fellers and cart-drivers who count in cords and trust in writing.",
+			"factionName": "The Fellers' Compact",
+			"lore": [
+				"A cord of oak buys more here than a purse of silver.",
+				"The Compact keeps its own tally, and it does not match the crown's."
+			],
+			"ambient": [
+				"The canopy closes over the road and the light goes green.",
+				"Somewhere off the track, an axe stops mid-stroke.",
+				"Sap has stuck your sleeve to your arm again."
+			]
+		}
+	},
+	"sites": {
+		"3105199": {
+			"siteId": 3105199,
+			"name": "Wainbridge",
+			"shortName": "Wainbridge",
+			"description": "A hamlet of meadow, where two roads meet.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "farmhouse",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Wainbridge"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Bevan Measure",
+					"role": "farmer",
+					"glyph": "F",
+					"appearance": "A farmer, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "yard",
+					"knows": []
+				},
+				{
+					"slot": 1,
+					"name": "Grisel Hollow",
+					"role": "messenger",
+					"glyph": "M",
+					"appearance": "A messenger, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "gate",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"232432215": {
+			"siteId": 232432215,
+			"name": "Brackenholt",
+			"shortName": "Brackenholt",
+			"description": "A landmark of deep forest, at the end of a road.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "shrine",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Brackenholt"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Cull Winterbough",
+					"role": "feller",
+					"glyph": "F",
+					"appearance": "A feller, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "bench",
+					"knows": []
+				},
+				{
+					"slot": 1,
+					"name": "Grisel Bracken",
+					"role": "carter",
+					"glyph": "C",
+					"appearance": "A carter, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "well",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"338095591": {
+			"siteId": 338095591,
+			"name": "Cord Mere",
+			"shortName": "Cord",
+			"description": "A camp of woodland, where two roads meet.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Cord Mere"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Wick Winterbough",
+					"role": "carter",
+					"glyph": "C",
+					"appearance": "A carter, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "well",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"933820581": {
+			"siteId": 933820581,
+			"name": "Kilnbridge",
+			"shortName": "Kilnbridge",
+			"description": "A hamlet of dry plain, where two roads meet.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "farmhouse",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Kilnbridge"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Meret Sawtry",
+					"role": "farmer",
+					"glyph": "F",
+					"appearance": "A farmer, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "yard",
+					"knows": []
+				},
+				{
+					"slot": 1,
+					"name": "Ott Fell",
+					"role": "messenger",
+					"glyph": "M",
+					"appearance": "A messenger, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "gate",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"1803785688": {
+			"siteId": 1803785688,
+			"name": "Measurewick",
+			"shortName": "Measurewick",
+			"description": "A hamlet of grassland, where two roads meet.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "farmhouse",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "barn",
+						"size": "large",
+						"importance": 2
+					},
+					{
+						"kind": "farmhouse",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Measurewick"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Bryn Hollow",
+					"role": "farmer",
+					"glyph": "F",
+					"appearance": "A farmer, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "yard",
+					"knows": []
+				},
+				{
+					"slot": 1,
+					"name": "Grisel Underbough",
+					"role": "bark-peeler",
+					"glyph": "B",
+					"appearance": "A bark-peeler, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "stall",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"2009483734": {
+			"siteId": 2009483734,
+			"name": "Kilnwait",
+			"shortName": "Kilnwait",
+			"description": "A camp of meadow, at the end of a road.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "stable",
+						"size": "small",
+						"importance": 2
+					}
+				],
+				"name": "Kilnwait"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Bryn Fell",
+					"role": "stablehand",
+					"glyph": "S",
+					"appearance": "A stablehand, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "yard",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"2150566345": {
+			"siteId": 2150566345,
+			"name": "Bracken Cross",
+			"shortName": "Bracken",
+			"description": "Three roads meet under trees old enough to have opinions. Everything here smells of wet sawdust and everyone here is waiting for a cart.",
+			"settlement": {
+				"name": "Bracken Cross",
+				"walled": false,
+				"structures": [
+					{
+						"kind": "inn",
+						"size": "medium",
+						"importance": 5,
+						"name": "The Green Measure",
+						"signText": "Beds, Beer, Tally Kept"
+					},
+					{
+						"kind": "warehouse",
+						"size": "large",
+						"importance": 4,
+						"name": "The Cord House"
+					},
+					{
+						"kind": "smithy",
+						"size": "medium",
+						"importance": 3,
+						"name": "Halloway & Daughter"
+					},
+					{
+						"kind": "shrine",
+						"size": "small",
+						"importance": 3
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 2
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "barn",
+						"size": "medium",
+						"importance": 1
+					}
+				]
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Ilse Marrow",
+					"role": "innkeeper",
+					"glyph": "I",
+					"appearance": "Broad, wind-burnt, two fingers short on her left hand and unbothered about it.",
+					"persona": "Blunt, fair, and counting something the whole time she talks to you.",
+					"disposition": 12,
+					"placement": "doorstep",
+					"structureName": "The Green Measure",
+					"knows": [
+						"A warden came through in autumn with a new badge and would not give a name.",
+						"The Cord House tally has been short every month since the levy doubled.",
+						"Nobody has walked the high road past the fort since the first frost."
+					]
+				},
+				{
+					"slot": 1,
+					"name": "Bevan Halloway",
+					"role": "smith",
+					"glyph": "S",
+					"appearance": "Grey, deliberate, hands scarred pale across the knuckles.",
+					"persona": "Answers the question you asked and not the one you meant.",
+					"disposition": 4,
+					"placement": "stall",
+					"structureName": "Halloway & Daughter",
+					"knows": [
+						"He re-shod a warden's horse in autumn and was paid in crown paper, which nobody here will take.",
+						"His daughter took the road east and has not written either."
+					]
+				},
+				{
+					"slot": 2,
+					"name": "Sedge",
+					"role": "carter",
+					"glyph": "C",
+					"appearance": "Thin, cheerful, wearing three coats none of which fit.",
+					"persona": "Talks to fill the silence and does not much mind what with.",
+					"disposition": 20,
+					"placement": "well",
+					"knows": [
+						"The weighbridge on the Shoulder gives a different number going up than coming down.",
+						"A cord of oak is worth a week's wage and worth losing a hand over."
+					]
+				}
+			],
+			"hooks": ["The Cord House tally has come up short every month since the levy doubled."]
+		},
+		"2165261147": {
+			"siteId": 2165261147,
+			"name": "Measuregate",
+			"shortName": "Measuregate",
+			"description": "A hamlet of meadow, where two roads meet.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "shop",
+						"size": "medium",
+						"importance": 4
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "farmhouse",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Measuregate"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Corve Underbough",
+					"role": "shopkeeper",
+					"glyph": "S",
+					"appearance": "A shopkeeper, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "doorstep",
+					"knows": []
+				},
+				{
+					"slot": 1,
+					"name": "Bevan Ashlade",
+					"role": "farmer",
+					"glyph": "F",
+					"appearance": "A farmer, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "yard",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"2309958617": {
+			"siteId": 2309958617,
+			"name": "Tallybastion",
+			"shortName": "Tallybastion",
+			"description": "A fort of grassland, where two roads meet.",
+			"settlement": {
+				"walled": true,
+				"structures": [
+					{
+						"kind": "barracks",
+						"size": "large",
+						"importance": 5
+					},
+					{
+						"kind": "barracks",
+						"size": "large",
+						"importance": 5
+					},
+					{
+						"kind": "stable",
+						"size": "small",
+						"importance": 2
+					},
+					{
+						"kind": "barracks",
+						"size": "large",
+						"importance": 5
+					},
+					{
+						"kind": "barracks",
+						"size": "large",
+						"importance": 5
+					},
+					{
+						"kind": "warehouse",
+						"size": "large",
+						"importance": 2
+					}
+				],
+				"name": "Tallybastion"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Marrow Measure",
+					"role": "warden",
+					"glyph": "W",
+					"appearance": "A warden, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "gate",
+					"knows": []
+				},
+				{
+					"slot": 1,
+					"name": "Anse Underbough",
+					"role": "stablehand",
+					"glyph": "S",
+					"appearance": "A stablehand, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "yard",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"2528282773": {
+			"siteId": 2528282773,
+			"name": "Stonewait",
+			"shortName": "Stonewait",
+			"description": "A weighing station that grew walls. The road runs straight through it and stops, twice, whether you like it or not.",
+			"settlement": {
+				"name": "Stonewait",
+				"walled": true,
+				"structures": [
+					{
+						"kind": "barracks",
+						"size": "large",
+						"importance": 5,
+						"name": "The Warden's Hall"
+					},
+					{
+						"kind": "tower",
+						"size": "medium",
+						"importance": 4
+					},
+					{
+						"kind": "stable",
+						"size": "medium",
+						"importance": 3,
+						"name": "The Second Weight"
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 2
+					}
+				]
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Warden Cull",
+					"role": "warden",
+					"glyph": "W",
+					"appearance": "Neat, tired, badge polished past the point of vanity.",
+					"persona": "Correct about everything and comfortable about none of it.",
+					"disposition": -10,
+					"placement": "gate",
+					"structureName": "The Warden's Hall",
+					"knows": [
+						"The badge you are asking after was signed out in autumn and never signed back in.",
+						"Two tallies leave this station: one for the crown and one that is true."
+					]
+				},
+				{
+					"slot": 1,
+					"name": "Ott Pell",
+					"role": "weigher",
+					"glyph": "W",
+					"appearance": "Small, ink-stained, permanently mid-sum.",
+					"persona": "Would rather show you the ledger than argue with you about it.",
+					"disposition": 6,
+					"placement": "bench",
+					"knows": [
+						"The autumn warden walked east off the road and left the horse behind.",
+						"He keeps his own copy of every weight, and he keeps it somewhere else."
+					]
+				}
+			],
+			"hooks": ["A warden's badge was signed out in autumn and never signed back in."]
+		},
+		"3139050156": {
+			"siteId": 3139050156,
+			"name": "Harrowmere",
+			"shortName": "Harrowmere",
+			"description": "Where the timber finally stops being timber and starts being money. The biggest place on the road and the one least interested in the forest that pays for it.",
+			"settlement": {
+				"name": "Harrowmere",
+				"walled": false,
+				"structures": [
+					{
+						"kind": "warehouse",
+						"size": "large",
+						"importance": 5,
+						"name": "The Crown Yard"
+					},
+					{
+						"kind": "inn",
+						"size": "large",
+						"importance": 5,
+						"name": "The Weighed Anchor",
+						"signText": "No Tally Kept"
+					},
+					{
+						"kind": "temple",
+						"size": "large",
+						"importance": 4
+					},
+					{
+						"kind": "mill",
+						"size": "large",
+						"importance": 4
+					},
+					{
+						"kind": "shop",
+						"size": "medium",
+						"importance": 3,
+						"name": "Odell's",
+						"signText": "Paper Bought"
+					},
+					{
+						"kind": "apothecary",
+						"size": "medium",
+						"importance": 3
+					},
+					{
+						"kind": "smithy",
+						"size": "medium",
+						"importance": 2
+					},
+					{
+						"kind": "stable",
+						"size": "medium",
+						"importance": 2
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 2
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "barn",
+						"size": "medium",
+						"importance": 1
+					}
+				]
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Factor Odell",
+					"role": "factor",
+					"glyph": "F",
+					"appearance": "Comfortable, courteous, sleeves too clean for the trade he is in.",
+					"persona": "Agrees with you warmly and concedes nothing.",
+					"disposition": -4,
+					"placement": "doorstep",
+					"structureName": "Odell's",
+					"knows": [
+						"He buys crown paper at four parts in five and does not ask where it came from.",
+						"A warden sold him a full ledger in autumn and asked to be forgotten."
+					]
+				},
+				{
+					"slot": 1,
+					"name": "Meret Sallow",
+					"role": "clerk",
+					"glyph": "C",
+					"appearance": "Young, precise, one sleeve permanently pushed up.",
+					"persona": "Frightened of the ledger and unable to leave it alone.",
+					"disposition": 8,
+					"placement": "square",
+					"knows": [
+						"The Crown Yard receives more cord than the road can carry.",
+						"Somebody has been signing the difference off in a hand she recognises."
+					]
+				}
+			],
+			"hooks": ["The Crown Yard takes in more timber than the road could possibly deliver."]
+		},
+		"3217682817": {
+			"siteId": 3217682817,
+			"name": "Kilnbarrow",
+			"shortName": "Kilnbarrow",
+			"description": "A ruins of woodland, where two roads meet.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "ruin",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "ruin",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "ruin",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Kilnbarrow"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Wick Bracken",
+					"role": "carter",
+					"glyph": "C",
+					"appearance": "A carter, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "well",
+					"knows": []
+				},
+				{
+					"slot": 1,
+					"name": "Marrow Tallow",
+					"role": "bark-peeler",
+					"glyph": "B",
+					"appearance": "A bark-peeler, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "stall",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"4073541284": {
+			"siteId": 4073541284,
+			"name": "Bellmere",
+			"shortName": "Bellmere",
+			"description": "A camp of grassland, where two roads meet.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Bellmere"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Bryn Scantling",
+					"role": "carter",
+					"glyph": "C",
+					"appearance": "A carter, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "well",
+					"knows": []
+				}
+			],
+			"hooks": []
+		},
+		"4125361648": {
+			"siteId": 4125361648,
+			"name": "Measurewrack",
+			"shortName": "Measurewrack",
+			"description": "A ruins of meadow, where two roads meet.",
+			"settlement": {
+				"walled": false,
+				"structures": [
+					{
+						"kind": "ruin",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "ruin",
+						"size": "small",
+						"importance": 1
+					},
+					{
+						"kind": "ruin",
+						"size": "small",
+						"importance": 1
+					}
+				],
+				"name": "Measurewrack"
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Odell Tallow",
+					"role": "carter",
+					"glyph": "C",
+					"appearance": "A carter, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "well",
+					"knows": []
+				},
+				{
+					"slot": 1,
+					"name": "Bryn Sawtry",
+					"role": "bark-peeler",
+					"glyph": "B",
+					"appearance": "A bark-peeler, dressed for the work and the weather.",
+					"persona": "Plainspoken. Talks about the trade and little else.",
+					"disposition": 0,
+					"placement": "stall",
+					"knows": []
+				}
+			],
+			"hooks": []
+		}
+	},
+	"arc": {
+		"title": "The Hollow Tithe",
+		"premise": "Your sister took the warden's badge, walked the road east, and stopped writing. The tally she was keeping stopped adding up at about the same time.",
+		"beats": [
+			{
+				"id": "the-short-tally",
+				"order": 0,
+				"siteId": 2150566345,
+				"npcSlot": 0,
+				"requires": [],
+				"setsFlag": "arc:the-short-tally",
+				"quest": {
+					"id": "the-short-tally",
+					"name": "Take the tally to Stonewait",
+					"description": "Ilse's own count is short by a cord a month. The weighing station up the high road is where the crown's number is made. Carry it there and find the warden at the gate.",
+					"objectives": [
+						{
+							"kind": "reach",
+							"target": "Stonewait",
+							"done": false
+						}
+					]
+				},
+				"journal": "Ilse Marrow says a warden came through in autumn with a new badge and no name, and that the Cord House tally has been short ever since."
+			},
+			{
+				"id": "the-second-weight",
+				"order": 1,
+				"siteId": 2528282773,
+				"npcSlot": 0,
+				"requires": ["arc:the-short-tally"],
+				"setsFlag": "arc:the-second-weight",
+				"quest": {
+					"id": "the-second-weight",
+					"name": "Ask Ott Pell about the true weight",
+					"description": "Cull signs two tallies and only one is honest. Ott Pell keeps the honest one, and does not keep it here. He is on the bench inside the walls.",
+					"objectives": [
+						{
+							"kind": "talk",
+							"target": "Ott Pell",
+							"done": false
+						}
+					]
+				},
+				"journal": "Warden Cull confirms it: the badge was signed out in autumn and never signed back in. Two tallies leave Stonewait, and only one of them is true."
+			},
+			{
+				"id": "the-honest-weight",
+				"order": 2,
+				"siteId": 2528282773,
+				"npcSlot": 1,
+				"requires": ["arc:the-second-weight"],
+				"setsFlag": "arc:the-honest-weight",
+				"quest": {
+					"id": "the-honest-weight",
+					"name": "Follow the ledger to Harrowmere",
+					"description": "Ott sold his true count to Factor Odell, in Harrowmere, where the timber stops being timber and starts being money. The road runs on east. Go and read it.",
+					"objectives": [
+						{
+							"kind": "reach",
+							"target": "Harrowmere",
+							"done": false
+						}
+					]
+				},
+				"journal": "Ott Pell keeps the honest weights nowhere near the station. He sold the lot down the road to a factor in Harrowmere who buys paper and does not ask where it came from."
+			},
+			{
+				"id": "the-crown-yard",
+				"order": 3,
+				"siteId": 3139050156,
+				"npcSlot": 0,
+				"requires": ["arc:the-honest-weight"],
+				"setsFlag": "arc:the-crown-yard",
+				"journal": "Factor Odell bought a full ledger from a warden in autumn, at four parts in five, and was asked to forget her. He remembers the hand it was written in. So do you."
+			}
+		],
+		"ending": {
+			"title": "The hand you know",
+			"subtitle": "read in the back room of Odell's, by one lamp",
+			"sections": [
+				{
+					"heading": "The ledger",
+					"body": "It is not the crown's book and it was never meant to be. Two columns to a page: what the road carried, and what the yard received. The second is always the larger, and the difference is always about a cord, and it has been about a cord every month since the levy doubled."
+				},
+				{
+					"heading": "The hand",
+					"body": "Small, hard, and slanted to the left, the way she wrote everything from the time she was nine. She kept the true count for three winters, sold it to a man who buys paper and does not ask, and asked him to forget her. She did not stop writing. She stopped writing to you."
+				},
+				{
+					"heading": "And now",
+					"body": "You know where she went and why she stopped writing, and you are holding the reason in both hands. Nobody is waiting on you. The road out of Harrowmere runs west, back the way you came, and the levy will be counted again next month whatever you do about it."
+				}
+			]
+		}
+	},
+	"trees": {
+		"npc:2150566345:0": {
+			"npcId": "npc:2150566345:0",
+			"entry": ["hello-after", "hello"],
+			"revisit": ["again"],
+			"nodes": {
+				"hello": {
+					"id": "hello",
+					"speech": "Out of season and on foot. You are either lost or you are looking for somebody.",
+					"choices": [
+						{
+							"text": "Looking for a warden. New badge, autumn.",
+							"goto": "warden"
+						},
+						{
+							"text": "What is wrong with the tally here?",
+							"goto": "tally"
+						},
+						{
+							"text": "Just a bed, thanks.",
+							"goto": null
+						}
+					]
+				},
+				"warden": {
+					"id": "warden",
+					"speech": "She came through, yes. Would not give a name, which around here is the same as giving one. Went up the high road toward Stonewait — that is the weighing station, north and uphill, you cannot miss it — and did not come back down.",
+					"choices": [
+						{
+							"text": "And the tally?",
+							"goto": "tally"
+						},
+						{
+							"text": "That is enough to go on.",
+							"goto": null
+						}
+					]
+				},
+				"tally": {
+					"id": "tally",
+					"speech": "Short. Every month since the levy doubled, and always by about a cord. I keep my own count because I am not a fool. Here — take a copy up the road and see whose face changes.",
+					"choices": [
+						{
+							"text": "North to Stonewait, then.",
+							"goto": null
+						}
+					],
+					"actions": [
+						{
+							"kind": "giveItem",
+							"item": "Cord House tally",
+							"description": "Ilse's own count, in a small hard hand, folded twice.",
+							"quantity": 1,
+							"questId": null,
+							"questName": null,
+							"note": null,
+							"objectives": null,
+							"key": null,
+							"value": null
+						}
+					]
+				},
+				"hello-after": {
+					"id": "hello-after",
+					"speech": "You still have my count, I see. Good. It is worth more out of this house than in it.",
+					"choices": [
+						{
+							"text": "Who weighs at Stonewait?",
+							"goto": "warden"
+						},
+						{
+							"text": "Later.",
+							"goto": null
+						}
+					],
+					"requires": ["arc:the-short-tally"]
+				},
+				"again": {
+					"id": "again",
+					"speech": "Back again. There is stew, and there is the other stew.",
+					"choices": [
+						{
+							"text": "The first one.",
+							"goto": null
+						},
+						{
+							"text": "About the warden, again.",
+							"goto": "warden"
+						}
+					]
+				}
+			}
+		},
+		"npc:2528282773:0": {
+			"npcId": "npc:2528282773:0",
+			"entry": ["hello-tally", "hello"],
+			"revisit": ["again"],
+			"nodes": {
+				"hello": {
+					"id": "hello",
+					"speech": "The road is open and the weighbridge is not. State your business or use the verge.",
+					"choices": [
+						{
+							"text": "I am looking for a warden.",
+							"goto": "badge"
+						},
+						{
+							"text": "The verge, then.",
+							"goto": null
+						}
+					]
+				},
+				"hello-tally": {
+					"id": "hello-tally",
+					"speech": "You are carrying paper. I can always tell. Whose is it?",
+					"choices": [
+						{
+							"text": "Bracken Cross's own count.",
+							"goto": "badge"
+						},
+						{
+							"text": "Mine.",
+							"goto": "badge"
+						}
+					],
+					"requires": ["arc:the-short-tally"]
+				},
+				"badge": {
+					"id": "badge",
+					"speech": "Signed out in autumn. Never signed back in. I have written it up four times and four times it has come back initialled and unread.",
+					"choices": [
+						{
+							"text": "Who reads them, then?",
+							"goto": "weights"
+						},
+						{
+							"text": "Where did she go?",
+							"goto": "east"
+						},
+						{
+							"text": "That is all I needed.",
+							"goto": null
+						}
+					]
+				},
+				"weights": {
+					"id": "weights",
+					"speech": "Two tallies leave this station. One goes to the crown and one is true. I sign both, which is the part I would rather you did not write down.",
+					"choices": [
+						{
+							"text": "Who keeps the true one?",
+							"goto": "east"
+						},
+						{
+							"text": "I did not hear it.",
+							"goto": null
+						}
+					]
+				},
+				"east": {
+					"id": "east",
+					"speech": "Ott keeps the honest weight and Ott does not keep it here. Ask him, not me — he is on the bench inside the wall, doing sums I cannot bear to watch.",
+					"choices": [
+						{
+							"text": "The bench inside the wall. I will find him.",
+							"goto": null
+						}
+					]
+				},
+				"again": {
+					"id": "again",
+					"speech": "Still here. Still open. Still not the weighbridge.",
+					"choices": [
+						{
+							"text": "About the badge.",
+							"goto": "badge"
+						},
+						{
+							"text": "Nothing.",
+							"goto": null
+						}
+					]
+				}
+			}
+		},
+		"npc:3139050156:0": {
+			"npcId": "npc:3139050156:0",
+			"entry": ["hello"],
+			"revisit": ["again"],
+			"nodes": {
+				"hello": {
+					"id": "hello",
+					"speech": "Paper, timber, or trouble? I buy the first, weigh the second, and price the third rather high.",
+					"choices": [
+						{
+							"text": "A ledger, sold to you in autumn.",
+							"goto": "ledger"
+						},
+						{
+							"text": "Why does the Crown Yard take more cord than the road carries?",
+							"goto": "yard"
+						},
+						{
+							"text": "None of the three.",
+							"goto": null
+						}
+					]
+				},
+				"ledger": {
+					"id": "ledger",
+					"speech": "A warden, yes. Four parts in five, which was generous, and she asked to be forgotten, which was cheap. I have an excellent memory and a very short one, depending.",
+					"choices": [
+						{
+							"text": "Depending on what?",
+							"goto": "price"
+						},
+						{
+							"text": "Do you still have it?",
+							"goto": "price"
+						}
+					]
+				},
+				"yard": {
+					"id": "yard",
+					"speech": "Because the road is not the only way in, and the yard is not the only one counting. You did not need me to tell you that. You needed somebody to say it out loud.",
+					"choices": [
+						{
+							"text": "The ledger, then.",
+							"goto": "ledger"
+						},
+						{
+							"text": "It is said.",
+							"goto": null
+						}
+					]
+				},
+				"price": {
+					"id": "price",
+					"speech": "On whether the person asking is family. You have her hand about the mouth, if not the sense. It is in the back room, under the counter, and it is not for sale twice. Read it there and then decide what you are going to do about it.",
+					"choices": [
+						{
+							"text": "Then I will read it here.",
+							"goto": null
+						}
+					]
+				},
+				"again": {
+					"id": "again",
+					"speech": "Back. The ledger has not moved and neither have I.",
+					"choices": [
+						{
+							"text": "Good.",
+							"goto": null
+						}
+					]
+				}
+			}
+		}
+	},
+	"authoredWith": {
+		"models": {
+			"author": "claude-code"
+		},
+		"calls": 0,
+		"at": "2026-08-04T22:58:31.531Z"
+	}
+}

@@ -507,7 +507,7 @@ the scenario is self-contained: no file to install, nothing beside it to lose.
 
 The baked default is **code** (`core/content/default.ts`), not a file, so the pure
 generators always have a complete set of tables with no filesystem in the path —
-`core` has to stay callable from a validator and a test. `assets/content/default.json`
+`core` has to stay callable from a validator and a test. `.packs/default.json`
 is the same data as a file, for authors to copy, and a test pins the two together so
 they cannot drift. A missing or invalid pack logs and falls back to the default
 rather than refusing to start: a player asked to play, not to debug their JSON.

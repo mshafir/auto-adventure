@@ -1,33 +1,25 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { DEFAULT_PACK } from "../core/content/default.js";
 import { type ContentPack, mergePack, type PackOverride } from "../core/content/pack.js";
 import { PackOverrideSchema } from "../core/content/schema.js";
+import { packRoot } from "../paths.js";
 import { logger } from "../utils/log.js";
+
+export { packRoot };
 
 /**
  * Reading packs off disk.
  *
  * Kept out of `core` because it touches the filesystem, and `core` has to stay
- * callable from a validator, a test and a headless tool with no assets directory at
+ * callable from a validator, a test and a headless tool with no `.packs` directory at
  * all. That is also why the baked default is code: the pure generators always have a
  * complete set of tables, and a missing or broken file degrades to the default rather
  * than to a world of people called "undefined undefined".
- */
-
-/**
- * Where the shipped packs live.
  *
- * Resolved by walking up from this module rather than from `process.cwd()`, because
- * the game is run from the repo root, from `dist`, and from a test's temporary
- * directory. `src/content/` and `dist/content/` are both two levels under the repo
- * root, so the same relative path answers for a source run and a compiled one.
+ * {@link packRoot} is re-exported from `../paths.js` so that callers keep importing
+ * pack locations from the module that reads them.
  */
-export function packRoot(): string {
-	const here = dirname(fileURLToPath(import.meta.url));
-	return resolve(here, "..", "..", "assets", "content");
-}
 
 export function packPath(name: string): string {
 	return join(packRoot(), `${name}.json`);

@@ -2,7 +2,7 @@
  * Naming a colour, for tables that want to be data.
  *
  * The renderer's glyph and colour tables are on their way out of TypeScript and
- * into theme packs, alongside the content packs in `assets/content`. A pack is
+ * into theme packs, alongside the content packs in `.packs`. A pack is
  * JSON, so it cannot hold a `PAL.moss` reference — but it should not be reduced
  * to hex literals either, because naming the swatch is what keeps a legend, a
  * minimap and the tile they describe the same green after somebody retunes the

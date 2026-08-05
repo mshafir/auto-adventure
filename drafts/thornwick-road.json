@@ -10,206 +10,19 @@
 	},
 	"title": "The Hollow Tithe",
 	"blurb": "A toll road, a levy counted in timber, and a warden who stopped writing home.",
-	"content": {
-		"id": "thornwick",
-		"names": {
-			"given": [
-				"Ott",
-				"Bevan",
-				"Ilse",
-				"Sedge",
-				"Cull",
-				"Meret",
-				"Odell",
-				"Wick",
-				"Tam",
-				"Bryn",
-				"Halloway",
-				"Marrow",
-				"Pell",
-				"Grisel",
-				"Corve",
-				"Anse"
-			],
-			"family": [
-				"Cordwright",
-				"Tallow",
-				"Bracken",
-				"Underbough",
-				"Sawtry",
-				"Kilnwright",
-				"Measure",
-				"Fell",
-				"Hollow",
-				"Winterbough",
-				"Scantling",
-				"Ashlade",
-				"Rickyard",
-				"Longcord"
-			],
-			"heads": {
-				"green": ["thorn", "bracken", "sawtry", "kiln", "cord", "timber", "haw", "underbough"],
-				"plain": ["cord", "wain", "tally", "bell", "long", "oak", "measure", "kiln"],
-				"high": ["scarp", "warden", "weigh", "stone", "grey", "pike", "shoulder", "beacon"],
-				"wet": ["sump", "sedge", "mire", "leat", "sluice", "reed", "marl", "drift"]
-			},
-			"tails": [
-				"cross",
-				"wait",
-				"mere",
-				"march",
-				"wick",
-				"reach",
-				"holt",
-				"bridge",
-				"yard",
-				"gate",
-				"stile",
-				"bottom"
-			],
-			"regionTails": ["fell", "shoulder", "reach", "marches", "wold", "bottoms"]
-		},
-		"households": {
-			"house": {
-				"count": [1, 3],
-				"roles": ["feller", "sawyer", "cordwainer", "widow", "child", "bark-peeler", "carter"]
-			},
-			"inn": {
-				"count": [2, 4],
-				"roles": ["cook", "server", "drover", "traveller", "feller"]
-			},
-			"warehouse": {
-				"count": [1, 2],
-				"roles": ["tallyman", "porter"]
-			},
-			"barn": {
-				"count": [0, 2],
-				"roles": ["farmhand", "bark-peeler"]
-			},
-			"mill": {
-				"count": [1, 2],
-				"roles": ["sawyer", "carter"]
-			},
-			"barracks": {
-				"count": [2, 4],
-				"roles": ["warden", "sergeant", "recruit", "cook"]
-			},
-			"tower": {
-				"count": [1, 2],
-				"roles": ["watchman", "signaller"]
-			},
-			"smithy": {
-				"count": [1, 2],
-				"roles": ["striker", "apprentice"]
-			},
-			"stable": {
-				"count": [1, 2],
-				"roles": ["groom", "carter"]
-			}
-		},
-		"appearance": {
-			"feller": "Shoulders built by the work, and a notch out of one boot where the axe went wrong.",
-			"sawyer": "Sawdust to the knee, and deaf on the side the pit was on.",
-			"cordwainer": "Measuring something against a forearm, and not liking the answer.",
-			"bark-peeler": "Hands stained to the wrist, a spud-iron leaning by the door.",
-			"tallyman": "A slate, a stub of chalk, and a very poor opinion of your timing.",
-			"warden": "The badge is polished past the point of vanity. The coat is not.",
-			"carter": "One boot up on a sack, resting a leg that has been walked on all day.",
-			"widow": "Neat, grey, and composed. Black worn past the point of mourning.",
-			"child": "Small, unbothered, and counting your buttons instead of answering."
-		},
-		"talksAbout": {
-			"feller": "which stands are cut out and which the wardens have marked",
-			"sawyer": "the pit, the blade, and what the levy takes before the mill sees it",
-			"bark-peeler": "the tannery price and the wardens who fix it",
-			"tallyman": "what came in, what went out, and the cord that is always missing",
-			"warden": "the road, the weighbridge, and paperwork that comes back unread",
-			"carter": "the second weight on the Shoulder, and how it differs from the first",
-			"widow": "who has left for the levy and who has not come back",
-			"child": "the wardens' horses, and whatever you are carrying"
-		},
-		"outdoorRoles": {
-			"warehouse": {
-				"role": "tallyman",
-				"placement": "yard"
-			},
-			"mill": {
-				"role": "sawyer",
-				"placement": "yard"
-			},
-			"barracks": {
-				"role": "warden",
-				"placement": "gate"
-			},
-			"inn": {
-				"role": "innkeeper",
-				"placement": "doorstep"
-			},
-			"smithy": {
-				"role": "blacksmith",
-				"placement": "doorstep"
-			},
-			"stable": {
-				"role": "stablehand",
-				"placement": "yard"
-			},
-			"shop": {
-				"role": "shopkeeper",
-				"placement": "doorstep"
-			},
-			"temple": {
-				"role": "priest",
-				"placement": "doorstep"
-			},
-			"apothecary": {
-				"role": "apothecary",
-				"placement": "doorstep"
-			},
-			"farmhouse": {
-				"role": "farmer",
-				"placement": "yard"
-			}
-		},
-		"wanderers": [
-			{
-				"role": "carter",
-				"placement": "well"
-			},
-			{
-				"role": "feller",
-				"placement": "bench"
-			},
-			{
-				"role": "bark-peeler",
-				"placement": "stall"
-			},
-			{
-				"role": "messenger",
-				"placement": "gate"
-			}
-		],
-		"lore": {
-			"title": "The Hollow Tithe",
-			"premise": "The crown stopped asking for coin three winters ago and started asking for timber. The forest has been paying ever since, and the road that carries it is the only law out here.",
-			"era": "the third winter of the timber levy",
-			"tone": "damp, wry, and short of daylight",
-			"factions": ["The Warden's Road", "The Fellers' Compact", "The Crown Yard"],
-			"deities": ["Ossa of the Standing Trees"]
-		},
-		"ambient": [
-			"Somewhere off the track, an axe stops mid-stroke.",
-			"A cart has been through here recently, and heavily.",
-			"Sap has stuck your sleeve to your arm again.",
-			"The stumps beside the road are fresh, and numbered in white paint."
-		]
-	},
+	"pack": "thornwick",
 	"lore": {
 		"title": "The Hollow Tithe",
 		"premise": "The crown stopped asking for coin three winters ago and started asking for timber. The forest has been paying ever since, and the road that carries it is the only law out here.",
 		"era": "the third winter of the timber levy",
 		"tone": "damp, wry, and short of daylight",
-		"factions": ["The Warden's Road", "The Fellers' Compact"],
-		"deities": ["Ossa of the Standing Trees"]
+		"factions": [
+			"The Warden's Road",
+			"The Fellers' Compact"
+		],
+		"deities": [
+			"Ossa of the Standing Trees"
+		]
 	},
 	"regions": [
 		{
@@ -334,7 +147,9 @@
 					]
 				}
 			],
-			"hooks": ["The Cord House tally has come up short every month since the levy doubled."]
+			"hooks": [
+				"The Cord House tally has come up short every month since the levy doubled."
+			]
 		},
 		{
 			"siteId": 2528282773,
@@ -393,7 +208,9 @@
 					]
 				}
 			],
-			"hooks": ["A warden's badge was signed out in autumn and never signed back in."]
+			"hooks": [
+				"A warden's badge was signed out in autumn and never signed back in."
+			]
 		},
 		{
 			"siteId": 3139050156,
@@ -495,7 +312,9 @@
 					]
 				}
 			],
-			"hooks": ["The Crown Yard takes in more timber than the road could possibly deliver."]
+			"hooks": [
+				"The Crown Yard takes in more timber than the road could possibly deliver."
+			]
 		}
 	],
 	"arc": {

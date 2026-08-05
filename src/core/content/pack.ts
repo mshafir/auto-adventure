@@ -134,6 +134,50 @@ export function mergePack(base: ContentPack, override?: PackOverride): ContentPa
 	};
 }
 
+/**
+ * Lay one override over another, without a base pack under either.
+ *
+ * A scenario names the pack it is peopled from and may still write a few tables of
+ * its own on top, so the two have to be combined *as overrides* — the result is
+ * what gets persisted into the save, and persisting a fully merged pack instead
+ * would write the entire default into every save file.
+ *
+ * The merge rules are {@link mergePack}'s, for the reason given there: an author
+ * who names one household expects the rest of the pack's to survive, and one who
+ * writes `given` means those are the given names, full stop.
+ */
+export function mergeOverride(
+	base: PackOverride | undefined,
+	over: PackOverride | undefined,
+): PackOverride | undefined {
+	if (!base) return over;
+	if (!over) return base;
+
+	const names =
+		base.names || over.names
+			? {
+					...base.names,
+					...over.names,
+					// The one nested map, and it merges by key like every other map.
+					...(base.names?.heads || over.names?.heads
+						? { heads: { ...base.names?.heads, ...over.names?.heads } }
+						: {}),
+				}
+			: undefined;
+
+	return {
+		id: over.id ?? base.id,
+		...(names ? { names } : {}),
+		households: { ...base.households, ...over.households },
+		appearance: { ...base.appearance, ...over.appearance },
+		talksAbout: { ...base.talksAbout, ...over.talksAbout },
+		outdoorRoles: { ...base.outdoorRoles, ...over.outdoorRoles },
+		...((over.wanderers ?? base.wanderers) ? { wanderers: over.wanderers ?? base.wanderers } : {}),
+		...((over.lore ?? base.lore) ? { lore: over.lore ?? base.lore } : {}),
+		...((over.ambient ?? base.ambient) ? { ambient: over.ambient ?? base.ambient } : {}),
+	};
+}
+
 /** Whether an override actually asks for anything. */
 export function isOverrideEmpty(override?: PackOverride): boolean {
 	if (!override) return true;

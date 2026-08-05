@@ -4,7 +4,12 @@ import type { DialogueTree } from "../ai/dialogue/tree.js";
 import { fallbackRegion, fallbackSite } from "../ai/director/fallback.js";
 import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
 import { DEFAULT_PACK } from "../core/content/default.js";
-import { isOverrideEmpty, mergePack } from "../core/content/pack.js";
+import {
+	isOverrideEmpty,
+	mergeOverride,
+	mergePack,
+	type PackOverride,
+} from "../core/content/pack.js";
 import { PackOverrideSchema } from "../core/content/schema.js";
 import { hashString } from "../core/rand/hash.js";
 import type { ScenarioArc, ScenarioBeat } from "../core/rules/arc.js";
@@ -174,7 +179,20 @@ export const ScenarioDraftSchema = z.object({
 		.optional(),
 	trees: z.array(TreeDraftSchema).optional(),
 	/**
-	 * Flavour tables for this scenario, laid over the defaults.
+	 * A pack in `.packs/`, by name. The usual way to say what a world sounds like.
+	 *
+	 * Named rather than copied in so the pack stays one file that can be edited once
+	 * and reviewed on its own. `content` below is still there for the tables this
+	 * particular scenario wants differently from the pack it borrows.
+	 */
+	pack: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case letters, digits and dashes only")
+		.optional(),
+	/**
+	 * Flavour tables for this scenario, laid over the pack and then the defaults.
 	 *
 	 * Maps merge by key and lists replace, so overriding one trade's appearance is one
 	 * line while supplying `family` means "these are the families in my world".
@@ -184,6 +202,17 @@ export const ScenarioDraftSchema = z.object({
 
 export type ScenarioDraft = z.infer<typeof ScenarioDraftSchema>;
 
+export interface AssembleOptions {
+	/**
+	 * The tables `draft.pack` names, already read.
+	 *
+	 * Passed in rather than loaded here so this module stays free of the filesystem —
+	 * it has to run from a validator and a test with no `.packs` directory in sight.
+	 * The tool that owns the draft file is the one that can read a pack beside it.
+	 */
+	readonly pack?: PackOverride;
+}
+
 /**
  * Turn a draft into an artifact.
  *
@@ -191,13 +220,18 @@ export type ScenarioDraft = z.infer<typeof ScenarioDraftSchema>;
  * duration rather than carried in the file, so an artifact assembled twice from one
  * draft is identical, and a draft can never disagree with the world it describes.
  */
-export function assembleArtifact(draft: ScenarioDraft, at: string): ScenarioArtifact {
+export function assembleArtifact(
+	draft: ScenarioDraft,
+	at: string,
+	options: AssembleOptions = {},
+): ScenarioArtifact {
 	const brief = normalizeBrief(draft.brief) ?? {};
 	const seed = resolveDraftSeed(draft);
 	const survey = surveyWorld(seed, brief.duration);
 	// The filler is named from the scenario's own pack, or half the world reads in a
-	// different register from the half the author wrote.
-	const pack = mergePack(DEFAULT_PACK, draft.content);
+	// different register from the half the author wrote. The named pack goes under the
+	// draft's own tables, so a scenario borrowing a pack can still change one line of it.
+	const pack = mergePack(DEFAULT_PACK, mergeOverride(options.pack, draft.content));
 
 	const regions: Record<string, RegionSpec> = {};
 	const drafted = new Map(draft.regions?.map((region) => [region.regionId, region]) ?? []);
@@ -272,6 +306,9 @@ export function assembleArtifact(draft: ScenarioDraft, at: string): ScenarioArti
 		title: draft.title,
 		blurb: draft.blurb,
 		brief,
+		// The reference travels, not the resolved copy: `readScenarioFile` resolves it
+		// again on the way in, so the artifact stays as small as the draft was.
+		...(draft.pack ? { pack: draft.pack } : {}),
 		...(draft.content && !isOverrideEmpty(draft.content) ? { content: draft.content } : {}),
 		seed,
 		spawn: survey.spawn,

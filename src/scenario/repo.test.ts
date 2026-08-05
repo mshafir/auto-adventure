@@ -23,13 +23,16 @@ import {
 
 let home: string;
 
+// Redirected explicitly rather than through `AUTO_ADVENTURE_HOME`: scenarios live
+// in the repository now, so without this the suite would read — and `writeScenario`
+// would write — the real `.scenarios/` directory that is under version control.
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), "auto-adventure-scenario-"));
-	process.env.AUTO_ADVENTURE_HOME = home;
+	process.env.AUTO_ADVENTURE_SCENARIOS = home;
 });
 
 afterEach(() => {
-	delete process.env.AUTO_ADVENTURE_HOME;
+	delete process.env.AUTO_ADVENTURE_SCENARIOS;
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -103,6 +106,79 @@ describe("writeScenario and readScenarioFile", () => {
 			JSON.stringify({ ...artifact(), id: "../../etc/passwd" }),
 		);
 		expect(loadScenario("escape")).toBeUndefined();
+	});
+});
+
+/**
+ * A scenario names its pack; the tables have to be *there* by the time anything
+ * downstream sees the artifact.
+ *
+ * The reason that matters is not tidiness. `buildSession` persists whatever
+ * `content` it is handed straight into the save, so resolving late — or not at all —
+ * would give a running world a pointer to a file instead of the names it is using,
+ * and deleting the pack would rename everybody the player had already met.
+ */
+describe("a scenario's pack reference", () => {
+	let packs: string;
+
+	beforeEach(() => {
+		packs = mkdtempSync(join(tmpdir(), "auto-adventure-packs-"));
+		process.env.AUTO_ADVENTURE_PACKS = packs;
+		writeFileSync(
+			join(packs, "borrowed.json"),
+			JSON.stringify({
+				id: "borrowed",
+				names: { given: ["Ott", "Bevan"], heads: { wet: ["sump"] } },
+				appearance: { cooper: "hands like bark" },
+			}),
+		);
+	});
+
+	afterEach(() => {
+		delete process.env.AUTO_ADVENTURE_PACKS;
+		rmSync(packs, { recursive: true, force: true });
+	});
+
+	it("arrives resolved, so nothing downstream has to know a reference existed", () => {
+		writeScenario({ ...artifact(), pack: "borrowed" });
+		const read = loadScenario("drowned-archipelago");
+		expect(read?.content?.names?.given).toEqual(["Ott", "Bevan"]);
+		expect(read?.content?.appearance?.cooper).toBe("hands like bark");
+		// The reference itself survives, so the file can be rewritten from what was read.
+		expect(read?.pack).toBe("borrowed");
+	});
+
+	it("lets the scenario's own tables win over the pack it borrows", () => {
+		writeScenario({
+			...artifact(),
+			pack: "borrowed",
+			content: { appearance: { cooper: "a coil of rope over one shoulder" } },
+		});
+		const content = loadScenario("drowned-archipelago")?.content;
+		expect(content?.appearance?.cooper).toBe("a coil of rope over one shoulder");
+		// And the tables it said nothing about still come through.
+		expect(content?.names?.given).toEqual(["Ott", "Bevan"]);
+	});
+
+	it("refuses a scenario whose pack is missing, rather than quietly using defaults", () => {
+		// A world of correctly-placed towns full of default-named people reads as a
+		// scenario written badly, not as one that failed to load.
+		writeScenario({ ...artifact(), pack: "not-installed" });
+		expect(loadScenario("drowned-archipelago")).toBeUndefined();
+	});
+
+	it("refuses a pack name that could walk out of the packs directory", () => {
+		mkdirSync(scenarioRoot(), { recursive: true });
+		writeFileSync(
+			scenarioPath("sneaky"),
+			JSON.stringify({ ...artifact(), id: "sneaky", pack: "../../etc/passwd" }),
+		);
+		expect(loadScenario("sneaky")).toBeUndefined();
+	});
+
+	it("still loads a scenario that carries its tables inline and names no pack", () => {
+		writeScenario({ ...artifact(), content: { appearance: { cooper: "inline" } } });
+		expect(loadScenario("drowned-archipelago")?.content?.appearance?.cooper).toBe("inline");
 	});
 });
 
