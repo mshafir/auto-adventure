@@ -116,7 +116,12 @@ function reportPresentation(out: string[], raw: string, uploads: number): void {
 	while (at >= 0) {
 		const opened = raw.lastIndexOf(BSU, at);
 		const closed = raw.lastIndexOf(ESU, at);
-		if (opened < 0 || closed > opened) loose++;
+		// A capability query is not a flash. It draws nothing, and it deliberately
+		// goes out *before* Ink starts — which is also before the stdout wrapper that
+		// brackets everything else exists. Counting it would report a fault on every
+		// launcher run and train the eye to ignore this line.
+		const isQuery = raw.slice(at, raw.indexOf(";", at)).includes("a=q");
+		if (!isQuery && (opened < 0 || closed > opened)) loose++;
 		at = raw.indexOf(APC, at + 1);
 	}
 

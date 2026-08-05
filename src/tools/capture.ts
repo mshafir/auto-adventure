@@ -44,24 +44,48 @@ if (!existsSync("dist/main.js")) {
 	process.exit(1);
 }
 
+/**
+ * Answering the front door: ENTER onto the New page, ENTER to start.
+ *
+ * Deterministic only because `AUTO_ADVENTURE_HOME` below points somewhere empty.
+ * Against the real home directory the title screen would offer Continue as well,
+ * the cursor would start there instead, and the same two keypresses would resume
+ * somebody's world rather than beginning one — so the capture would depend on who
+ * was running it.
+ *
+ * With `NO_AI=1` the two live modes are shown greyed and the cursor lands on
+ * "Without a model", which is the one this wants.
+ */
+const LAUNCHER_KEYS: readonly { readonly at: number; readonly key: string }[] = [
+	{ at: 700, key: "\r" },
+	{ at: 1100, key: "\r" },
+];
+
+const HOME = "/tmp/auto-adventure-capture";
+
 const inner = [
 	`stty cols ${COLUMNS} rows ${ROWS}`,
+	THROUGH_LAUNCHER ? `rm -rf ${HOME}` : "",
 	[
 		"TILE_MODE=kitty NO_AI=1",
-		THROUGH_LAUNCHER ? "" : "WORLD_NAME=capture",
+		THROUGH_LAUNCHER ? `AUTO_ADVENTURE_HOME=${HOME}` : "WORLD_NAME=capture",
 		`timeout ${SECONDS} node dist/main.js`,
 	]
 		.filter(Boolean)
 		.join(" "),
-].join("; ");
+]
+	.filter(Boolean)
+	.join("; ");
 
 const child = spawn("script", ["-qec", inner, OUT], {
 	stdio: ["pipe", "inherit", "inherit"],
 });
 
 // The menu needs answering before any of the in-game keys mean anything.
-const offset = THROUGH_LAUNCHER ? 1200 : 0;
-if (THROUGH_LAUNCHER) setTimeout(() => child.stdin?.write("\r"), 800);
+const offset = THROUGH_LAUNCHER ? (LAUNCHER_KEYS.at(-1)?.at ?? 0) + 600 : 0;
+if (THROUGH_LAUNCHER) {
+	for (const { at, key } of LAUNCHER_KEYS) setTimeout(() => child.stdin?.write(key), at);
+}
 for (const { at, key } of KEYS) {
 	setTimeout(() => child.stdin?.write(key), at + offset);
 }
