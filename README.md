@@ -250,6 +250,19 @@ map has to own every column of its rows — which is why the panel that used to 
 beside it is now a top bar, an overlay composited into the frame, and pages that
 take the whole screen.
 
+A frame is three or four megapixels, so the pixel path is measured rather than
+guessed at. `npm run pixel-bench` times it stage by stage, and
+`npm run capture && npm run analyze` runs the built game under a real PTY and
+reports what actually went down the wire — how many tiles each row carried, and
+how many times the terminal was asked to present. The second number is the one
+that shows as flicker: the image and the frame that displays it have to reach
+the terminal inside a single synchronized update, or every step is presented
+twice.
+
+If it still flickers on your terminal, the next lever is the payload —
+`KITTY_DEFLATE=6` roughly halves the bytes for more CPU, and `ZOOM=0.8` reduces
+both.
+
 ## Choosing what to play
 
 `npm start` opens a menu: worlds to continue, scenarios to begin, and a new world
