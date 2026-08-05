@@ -11,6 +11,7 @@
 import {
 	cellPixels,
 	cellPixelsWereMeasured,
+	lastCellReply,
 	measureCellPixels,
 	resolveTileMode,
 } from "../ui/render/mode.js";
@@ -54,6 +55,7 @@ async function main() {
 					? "  (measured from the terminal)"
 					: "  (assumed; the terminal did not answer — set CELL_PX=WxH)"),
 		`tile size       ${TILE_PX} px`,
+		`query reply     ${lastCellReply() || "(nothing came back)"}`,
 		"",
 		`map area        ${mapWidth} x ${mapHeight} cells`,
 		`side panel      ${SIDE_PANEL_WIDTH} cells`,

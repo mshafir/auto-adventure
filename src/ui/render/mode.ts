@@ -72,6 +72,17 @@ export interface CellSize {
 const ASSUMED_CELL: CellSize = { width: 8, height: 16 };
 
 let measured: CellSize | undefined;
+let lastReply = "";
+
+/**
+ * Whatever the terminal sent back, printable-escaped.
+ *
+ * Kept only so a terminal that answers in an unexpected shape can be diagnosed
+ * from a bug report rather than by guessing at it.
+ */
+export function lastCellReply(): string {
+	return lastReply.replace(/\u001B/g, "<ESC>");
+}
 
 /**
  * Ask the terminal how big a cell is, once, before Ink starts.
@@ -94,6 +105,7 @@ export async function measureCellPixels(
 ): Promise<CellSize> {
 	if (!stdin.isTTY || !stdout.isTTY) return ASSUMED_CELL;
 
+	lastReply = "";
 	return new Promise<CellSize>((resolve) => {
 		let settled = false;
 		const wasRaw = stdin.isRaw;
@@ -112,13 +124,32 @@ export async function measureCellPixels(
 		};
 
 		const onData = (chunk: Buffer) => {
-			// CSI 6 ; <height> ; <width> t
-			const match = /\[6;(\d+);(\d+)t/.exec(chunk.toString("latin1"));
-			if (!match) return;
-			const height = Number(match[1]);
-			const width = Number(match[2]);
-			const ok = height > 0 && width > 0;
-			finish(ok ? { width, height } : ASSUMED_CELL, ok);
+			const text = chunk.toString("latin1");
+			lastReply += text;
+
+			// CSI 6 ; <height> ; <width> t — the cell size, asked for directly.
+			const cell = /\[6;(\d+);(\d+)t/.exec(text);
+			if (cell) {
+				const height = Number(cell[1]);
+				const width = Number(cell[2]);
+				const ok = height > 0 && width > 0;
+				finish(ok ? { width, height } : ASSUMED_CELL, ok);
+				return;
+			}
+
+			// CSI 4 ; <height> ; <width> t — the text area in pixels. Divided by the
+			// grid it gives the same answer, and terminals that ignore `16t` often
+			// still answer this one.
+			const area = /\[4;(\d+);(\d+)t/.exec(text);
+			if (area) {
+				const areaH = Number(area[1]);
+				const areaW = Number(area[2]);
+				const cols = stdout.columns ?? 0;
+				const rowCount = stdout.rows ?? 0;
+				if (areaH > 0 && areaW > 0 && cols > 0 && rowCount > 0) {
+					finish({ width: Math.round(areaW / cols), height: Math.round(areaH / rowCount) }, true);
+				}
+			}
 		};
 
 		const timer = setTimeout(() => finish(ASSUMED_CELL, false), timeoutMs);
@@ -128,7 +159,10 @@ export async function measureCellPixels(
 		stdin.setRawMode(true);
 		stdin.resume();
 		stdin.on("data", onData);
-		stdout.write("[16t");
+		// Both at once. They are independent queries and a terminal answers the
+		// ones it knows, so asking for the fallback up front costs one round trip
+		// instead of two.
+		stdout.write("[16t[14t");
 	});
 }
 

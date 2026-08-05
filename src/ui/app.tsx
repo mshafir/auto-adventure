@@ -13,6 +13,7 @@ import { toChunk } from "../core/world/coords.js";
 import { weatherAt } from "../core/world/weather.js";
 import type { GameEngine } from "../engine/engine.js";
 import type { WorldView } from "../engine/world-view.js";
+import { logger } from "../utils/log.js";
 import { hudReducer, initialHud, LIST_TABS } from "./hud-state.js";
 import { useGameInput } from "./input/use-game-input.js";
 import { CardScreen } from "./panels/card-screen.js";
@@ -195,6 +196,17 @@ export default function App({
 		tileMode() === "kitty"
 			? tileFit(mapWidth, mapHeight, cellPixels())
 			: { width: tilesAcross(mapWidth), height: mapHeight };
+
+	// Logged because a screenshot cannot tell you what the game *thought* the
+	// terminal was, and a disagreement between the two is exactly the kind of
+	// bug that looks like a rendering fault.
+	useEffect(() => {
+		const cell = cellPixels();
+		logger.info(
+			`layout: terminal ${width}x${height} cells, map ${mapWidth}x${mapHeight}, ` +
+				`cell ${cell.width}x${cell.height}px, camera ${fit.width}x${fit.height} tiles`,
+		);
+	}, [width, height, mapWidth, mapHeight, fit.width, fit.height]);
 	const camera = useMemo(
 		() => cameraCenteredOn([player.x, player.y], fit.width, fit.height),
 		[player.x, player.y, fit.width, fit.height],
