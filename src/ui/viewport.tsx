@@ -10,7 +10,7 @@ import {
 } from "./render/compose.js";
 import { deleteFrame, placeholderRows, transmitFrame } from "./render/kitty.js";
 import type { MiniCell } from "./render/minimap-data.js";
-import { cellPixels, resolveTileMode, type TileMode } from "./render/mode.js";
+import { cellPixels, resolveTileMode, type TileMode, tilePixels } from "./render/mode.js";
 import { overlayMinimap, paintMinimap } from "./render/overlay.js";
 import { rasterScene } from "./render/raster.js";
 import { expandScene, TILE_WIDTH, tilesAcross } from "./render/scale.js";
@@ -140,7 +140,11 @@ function KittyViewport({
 	const { write } = useStdout();
 
 	const rows = useMemo(() => {
-		const frame = rasterScene(composeScene(source, camera, options));
+		// Sized from the terminal's own cell, not from a constant. A fixed sixteen
+		// pixels is smaller than a cell on any modern terminal, so tiles came out
+		// smaller than the glyph renderer's and the map showed two and a half times
+		// as much world at a third of the size.
+		const frame = rasterScene(composeScene(source, camera, options), { tilePx: tilePixels() });
 		// Into the pixels, before the image goes out. A chunk gets one cell of the
 		// terminal, doubled across, which is the same room the glyph path gives it —
 		// so the minimap covers the same patch of screen in either renderer, and

@@ -14,7 +14,7 @@
  */
 import type { RGB } from "./color.js";
 import type { Cell } from "./compose.js";
-import { paintFor, TILE_PX } from "./sprite.js";
+import { paintFor, type Shape, TILE_PX, type TilePaint } from "./sprite.js";
 
 export interface Frame {
 	readonly rgb: Buffer;
@@ -50,32 +50,90 @@ export function rasterScene(
 	const tilesW = rows[0]?.length ?? 0;
 	const width = tilesW * size;
 	const height = tilesH * size;
-	const rgb = Buffer.alloc(width * height * 3);
+	// `allocUnsafe` because every byte is written below. At three or four
+	// megapixels the zeroing `alloc` does is a measurable fraction of the frame.
+	const rgb = Buffer.allocUnsafe(width * height * 3);
+	const stride = width * 3;
+	const tileStride = size * 3;
 
 	for (let ty = 0; ty < tilesH; ty++) {
 		const tiles = rows[ty] as readonly Cell[];
+		const top = ty * size;
 		for (let tx = 0; tx < tilesW; tx++) {
-			const cell = tiles[tx] as Cell;
-			const paint = paintFor(cell);
-			const x0 = tx * size;
-			const y0 = ty * size;
-
+			const tile = tileBitmap(paintFor(tiles[tx] as Cell), size);
+			let at = (top * width + tx * size) * 3;
+			// Row at a time. `set` on a subarray is a memcpy, where the loop this
+			// replaced evaluated a shape closure once per pixel.
 			for (let py = 0; py < size; py++) {
-				// Row base, computed once rather than per pixel: this is the innermost
-				// loop of the renderer and runs a few hundred thousand times a frame.
-				let at = ((y0 + py) * width + x0) * 3;
-				const v = (py + 0.5) / size;
-				for (let px = 0; px < size; px++) {
-					const c: RGB = paint.shape((px + 0.5) / size, v) ? paint.fg : paint.bg;
-					rgb[at++] = c[0] as number;
-					rgb[at++] = c[1] as number;
-					rgb[at++] = c[2] as number;
-				}
+				rgb.set(tile.subarray(py * tileStride, py * tileStride + tileStride), at);
+				at += stride;
 			}
 		}
 	}
 
 	return { rgb, width, height, tilePx: size };
+}
+
+/**
+ * One tile, drawn once and kept.
+ *
+ * A frame is three or four million pixels and the old loop called a shape
+ * function for every one of them. It did not need to: a whole frame of open
+ * country uses about forty distinct combinations of shape and two colours —
+ * measured, not assumed — so almost every tile is a copy of one already drawn.
+ *
+ * Keyed on the two colours as well as the shape because lighting, tint, relief
+ * and contact shadows are already folded into them by the time the compositor is
+ * done. That is what keeps this correct: two tiles share a bitmap only when they
+ * would have been drawn identically anyway.
+ */
+const bitmaps = new Map<string, Buffer>();
+const shapeIds = new WeakMap<object, number>();
+let nextShapeId = 0;
+
+/**
+ * Enough that a frame never evicts its own tiles, small enough that a day's
+ * worth of light levels cannot grow this without bound. Cleared wholesale
+ * rather than evicted one at a time: the working set turns over completely when
+ * the light changes, so picking victims would be work spent to no end.
+ */
+const BITMAP_LIMIT = 4096;
+
+function shapeKey(shape: Shape): number {
+	let id = shapeIds.get(shape);
+	if (id === undefined) {
+		id = nextShapeId++;
+		shapeIds.set(shape, id);
+	}
+	return id;
+}
+
+function tileBitmap(paint: TilePaint, size: number): Buffer {
+	const { fg, bg } = paint;
+	const key = `${shapeKey(paint.shape)}:${size}:${fg[0]},${fg[1]},${fg[2]}:${bg[0]},${bg[1]},${bg[2]}`;
+	const found = bitmaps.get(key);
+	if (found) return found;
+
+	const tile = Buffer.allocUnsafe(size * size * 3);
+	let at = 0;
+	for (let py = 0; py < size; py++) {
+		const v = (py + 0.5) / size;
+		for (let px = 0; px < size; px++) {
+			const c: RGB = paint.shape((px + 0.5) / size, v) ? fg : bg;
+			tile[at++] = c[0] as number;
+			tile[at++] = c[1] as number;
+			tile[at++] = c[2] as number;
+		}
+	}
+
+	if (bitmaps.size >= BITMAP_LIMIT) bitmaps.clear();
+	bitmaps.set(key, tile);
+	return tile;
+}
+
+/** Test seam, and what the tools call between measurements. */
+export function clearTileCache(): void {
+	bitmaps.clear();
 }
 
 /**

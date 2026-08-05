@@ -7,6 +7,7 @@
  * out has to end in glyphs when the answer is no.
  */
 import { detectKittyGraphics, graphicsBlockedByMultiplexer } from "./kitty.js";
+import { TILE_WIDTH } from "./scale.js";
 
 export type TileMode = "glyph" | "kitty";
 
@@ -187,6 +188,32 @@ function fromAreaReply(reply: string, stdout: NodeJS.WriteStream): CellSize | un
 	const rows = stdout.rows ?? 0;
 	if (areaH <= 0 || areaW <= 0 || columns <= 0 || rows <= 0) return undefined;
 	return { width: Math.round(areaW / columns), height: Math.round(areaH / rows) };
+}
+
+/**
+ * How many pixels a tile gets, derived from the cell size.
+ *
+ * Not a constant, and that was the bug: sixteen pixels is smaller than a cell on
+ * any modern terminal — 19x42 on the one this was found on — so a tile took less
+ * than a cell and the pixel renderer showed 193x76 tiles where the glyph
+ * renderer showed 81x29. Two and a half times the world at a third of the size,
+ * which is the "everything is tiny" complaint exactly, and four times the pixels
+ * to push for the privilege.
+ *
+ * A tile therefore gets the room the glyph renderer gives it: `TILE_WIDTH`
+ * columns. That is the same field of view, at forty-odd pixels a tile instead of
+ * one character.
+ *
+ * `ZOOM` scales it — above 1 for bigger tiles and less world, below for more.
+ * `TILE_PX` still pins an exact size for experiments.
+ */
+export function tilePixels(env: NodeJS.ProcessEnv = process.env, cell = cellPixels(env)): number {
+	const pinned = Number(env.TILE_PX);
+	if (Number.isFinite(pinned) && pinned >= 4) return Math.trunc(pinned);
+
+	const zoom = Number(env.ZOOM);
+	const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+	return Math.max(4, Math.round(cell.width * TILE_WIDTH * scale));
 }
 
 /**

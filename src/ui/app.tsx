@@ -24,7 +24,7 @@ import { TOP_BAR_ROWS, TopBar } from "./panels/top-bar.js";
 import { FACING_MARKER, PLAYER_GLYPH } from "./render/glyphs.js";
 import { lightFor } from "./render/lighting.js";
 import { minimapCells } from "./render/minimap-data.js";
-import { cellPixels } from "./render/mode.js";
+import { cellPixels, tilePixels } from "./render/mode.js";
 import { minimapExtent } from "./render/overlay.js";
 import { PAL } from "./render/palette.js";
 import { tileFit } from "./render/raster.js";
@@ -185,7 +185,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	// in tile space is what keeps them in the middle either way.
 	const fit =
 		tileMode() === "kitty"
-			? tileFit(mapWidth, mapHeight, cellPixels())
+			? tileFit(mapWidth, mapHeight, cellPixels(), tilePixels())
 			: { width: tilesAcross(mapWidth), height: mapHeight };
 
 	// Logged because a screenshot cannot tell you what the game *thought* the
@@ -195,7 +195,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		const cell = cellPixels();
 		logger.info(
 			`layout: terminal ${width}x${height} cells, map ${mapWidth}x${mapHeight}, ` +
-				`cell ${cell.width}x${cell.height}px, camera ${fit.width}x${fit.height} tiles`,
+				`cell ${cell.width}x${cell.height}px, tile ${tilePixels()}px, camera ${fit.width}x${fit.height} tiles`,
 		);
 	}, [width, height, mapWidth, mapHeight, fit.width, fit.height]);
 	const camera = useMemo(

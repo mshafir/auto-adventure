@@ -130,9 +130,31 @@ export interface FrameSpec {
  * splitting them would present a frame with the image already deleted and the
  * new one not yet arrived — a blink of empty map on every step.
  */
+/**
+ * How hard to compress. Level 1, deliberately.
+ *
+ * A frame is three or four megapixels of mostly flat colour, and the levels are
+ * not a smooth trade — measured on one, at 3078x1216:
+ *
+ * ```
+ * level 1     7 ms   159 KB      level 4    53 ms   103 KB
+ * level 3    10 ms   140 KB      level 6    69 ms    69 KB
+ * ```
+ *
+ * Level 4 is where zlib changes strategy, and it costs seven times the CPU to
+ * save a third of the bytes. Those bytes go down a pipe to a local terminal,
+ * which is the cheap resource here; the CPU is the one the player feels as lag
+ * between a keypress and the map moving. `KITTY_DEFLATE` raises it for anyone
+ * whose terminal is at the far end of a slow link, where the trade reverses.
+ */
+const DEFLATE_LEVEL = (() => {
+	const raw = Number(process.env.KITTY_DEFLATE);
+	return Number.isInteger(raw) && raw >= 0 && raw <= 9 ? raw : 1;
+})();
+
 export function transmitFrame(spec: FrameSpec): string {
 	const id = spec.imageId ?? FRAME_IMAGE_ID;
-	const payload = deflateSync(spec.rgb).toString("base64");
+	const payload = deflateSync(spec.rgb, { level: DEFLATE_LEVEL }).toString("base64");
 	// `d=I` takes the image and every placement of it, which is exactly the
 	// state that must not survive into the next frame.
 	const clear = `${APC}a=d,d=I,q=2,i=${id}${ST}`;

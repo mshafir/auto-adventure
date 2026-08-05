@@ -6,8 +6,10 @@ import {
 	measureCellPixels,
 	resolveTileMode,
 	setCellPixels,
+	tilePixels,
 } from "./mode.js";
 import { tileFit } from "./raster.js";
+import { TILE_WIDTH } from "./scale.js";
 
 afterEach(() => setCellPixels(undefined));
 
@@ -163,6 +165,34 @@ describe("measureCellPixels", () => {
 		const promise = measureCellPixels(fakeStdin(), stream, 60);
 		expect(timers()).toBeGreaterThan(before);
 		expect(await promise).toEqual({ width: 8, height: 16 });
+	});
+});
+
+describe("tilePixels", () => {
+	/*
+	 * A tile gets the room the glyph renderer gives it — TILE_WIDTH columns — so
+	 * the two show the same field of view. A fixed sixteen pixels is smaller than
+	 * a cell on any modern terminal, which is how the pixel map came to show two
+	 * and a half times as much world at a third of the size.
+	 */
+	it("gives a tile the columns the glyph renderer gives it", () => {
+		expect(tilePixels({}, { width: 19, height: 42 })).toBe(19 * TILE_WIDTH);
+		expect(tilePixels({}, { width: 8, height: 16 })).toBe(8 * TILE_WIDTH);
+	});
+
+	it("scales with ZOOM", () => {
+		const cell = { width: 19, height: 42 };
+		expect(tilePixels({ ZOOM: "2" }, cell)).toBe(19 * TILE_WIDTH * 2);
+		expect(tilePixels({ ZOOM: "0.5" }, cell)).toBe(19);
+	});
+
+	it("lets TILE_PX pin an exact size, and ignores nonsense", () => {
+		const cell = { width: 19, height: 42 };
+		expect(tilePixels({ TILE_PX: "24" }, cell)).toBe(24);
+		expect(tilePixels({ TILE_PX: "banana" }, cell)).toBe(19 * TILE_WIDTH);
+		expect(tilePixels({ ZOOM: "0" }, cell)).toBe(19 * TILE_WIDTH);
+		// Below four pixels a sprite is not a picture of anything.
+		expect(tilePixels({ ZOOM: "0.01" }, cell)).toBe(4);
 	});
 });
 
