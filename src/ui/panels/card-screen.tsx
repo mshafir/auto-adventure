@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
-import stringWidth from "string-width";
 import type { Card } from "../../core/rules/card.js";
 import { wrapToLines } from "../render/text.js";
+import { FRAME_CHROME, Frame, Rule } from "./primitives.js";
 
 /**
  * A card, filling the frame.
@@ -27,12 +27,12 @@ export interface CardScreenProps {
 }
 
 export function CardScreen({ card, width, height }: CardScreenProps) {
-	const text = Math.max(20, Math.min(width - 8, MAX_TEXT_WIDTH));
+	const text = Math.max(20, Math.min(width - FRAME_CHROME - 8, MAX_TEXT_WIDTH));
 
 	// Rows spoken for before any body text: the title, an optional subtitle, the
 	// blank under them, one rule and one blank per section, and the footer with its
-	// own blank above it.
-	const fixed = 1 + (card.subtitle ? 1 : 0) + 1 + card.sections.length * 2 + 2;
+	// own blank above it. The border takes its own two on top of that.
+	const fixed = 1 + (card.subtitle ? 1 : 0) + 1 + card.sections.length * 2 + 2 + FRAME_CHROME;
 	const budget = Math.max(card.sections.length, height - fixed);
 
 	// Share the remaining rows out evenly, giving the leftovers to the earliest
@@ -42,7 +42,7 @@ export function CardScreen({ card, width, height }: CardScreenProps) {
 	const extra = budget - per * card.sections.length;
 
 	return (
-		<Box flexDirection="column" width={width} height={height} paddingX={4} paddingTop={1}>
+		<Frame style="card" width={width} height={height}>
 			<Text bold wrap="truncate">
 				{card.title}
 			</Text>
@@ -72,17 +72,6 @@ export function CardScreen({ card, width, height }: CardScreenProps) {
 			<Text color="gray" wrap="truncate">
 				{card.footer ?? "SPACE to go on"}
 			</Text>
-		</Box>
-	);
-}
-
-/** Matches the side panel's rule, so a card does not read as a different program. */
-function Rule({ width, label }: { width: number; label?: string }) {
-	const text = label ? `─ ${label.toUpperCase()} ` : "";
-	return (
-		<Text color="gray" wrap="truncate">
-			{text}
-			{"─".repeat(Math.max(0, width - stringWidth(text)))}
-		</Text>
+		</Frame>
 	);
 }

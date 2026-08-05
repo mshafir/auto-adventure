@@ -4,7 +4,6 @@ import { FULL_MASK } from "../render/autotile.js";
 import { toHex } from "../render/color.js";
 import {
 	decorGlyphSource,
-	FACING_MARKER,
 	type GlyphSource,
 	PLAYER_GLYPH,
 	terrainGlyphSource,
@@ -69,7 +68,6 @@ export function mapLegend(): readonly LegendEntry[] {
 	return [
 		{ ch: PLAYER_GLYPH, color: toHex(PAL.player), label: "you", bold: true },
 		{ ch: "A", color: toHex(PAL.neutral), label: "folk" },
-		{ ch: FACING_MARKER, color: toHex(PAL.player), label: "facing", bold: true },
 		fromTerrain(T.doorClosed, "door"),
 		fromDecor(D.sign, "sign"),
 		fromDecor(D.chest, "chest"),
@@ -79,26 +77,5 @@ export function mapLegend(): readonly LegendEntry[] {
 		fromTerrain(T.rock, "rock"),
 		fromTerrain(T.water, "water"),
 		fromTerrain(T.stoneWall, "wall"),
-	];
-}
-
-/**
- * The minimap key.
- *
- * Its glyphs are chosen in `minimap.tsx` rather than taken from the tile
- * registry — one character stands for a whole 64-tile chunk, so it is a
- * different alphabet — but it is the one people actually ask about, because a
- * `▣` next to a `▪` means nothing until somebody says which is the town.
- */
-export function minimapLegend(): readonly LegendEntry[] {
-	return [
-		{ ch: "@", color: "green", label: "here", bold: true },
-		{ ch: "▣", color: "yellow", label: "town", bold: true },
-		{ ch: "▪", color: "yellow", label: "village", bold: true },
-		{ ch: "!", color: "magenta", label: "errand", bold: true },
-		{ ch: "▲", color: "green", label: "wood" },
-		{ ch: "~", color: "blue", label: "water" },
-		{ ch: "^", color: "white", label: "high" },
-		{ ch: "░", color: "gray", label: "open" },
 	];
 }

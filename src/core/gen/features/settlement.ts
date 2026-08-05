@@ -662,4 +662,4 @@ export function settlementsOverlapping(
 	return patches;
 }
 
-export type { BuildingPlacement, Anchor };
+export type { Anchor, BuildingPlacement };

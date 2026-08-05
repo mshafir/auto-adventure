@@ -1,29 +1,27 @@
-import { Box, Text } from "ink";
+import { Text } from "ink";
 import { arcOutline } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { describeObjective, questNeeding } from "../../core/rules/quests.js";
 import { activeQuests, type GameState, type Quest } from "../../core/rules/state.js";
 import { toChunk } from "../../core/world/coords.js";
-import type { HudState } from "../hud-state.js";
-import { Bullet, Field, Prose, Rule, ScrollList } from "./primitives.js";
-import type { PanelTab } from "./side-panel.js";
+import { type HudState, PANEL_TABS, type PanelTab } from "../hud-state.js";
+import { mapLegend } from "./legend.js";
+import { Bullet, Field, FRAME_CHROME, Frame, Prose, Rule, ScrollList } from "./primitives.js";
 
 /**
- * A list, given the whole frame.
+ * A page, given the whole frame.
  *
- * The side panel is 32 columns wide, and everything in these three tabs is prose
- * written for a human: a quest description, a journal entry, a story clue. All of it
- * was arriving elided mid-sentence, and the elision fell on exactly the part worth
- * reading — the panel showed "The miller wants three…" and the rest was gone.
+ * Everything here is prose written for a human: a quest description, a journal
+ * entry, a story clue. In the 32-column side panel this used to share with the map,
+ * all of it arrived elided mid-sentence, and the elision fell on exactly the part
+ * worth reading — the panel showed "The miller wants three…" and the rest was gone.
  *
  * Widening the panel was the wrong fix twice over: the map would pay for the columns,
  * and a pane tall enough to hold a quest log reaches the terminal height, at which
- * point Ink clears the screen on every keypress. Handing the same list the whole
- * frame for as long as somebody is reading costs nothing when they are not.
- *
- * The same tab, the same cursor and the same list as the panel — only the space
- * changes. That is why the cursor survives collapsing: the two views agree about what
- * index means.
+ * point Ink clears the screen on every keypress. Taking the frame for as long as
+ * somebody is reading costs nothing when they are not — and it is the only shape
+ * that works in pixel mode, where anything laid out beside the map cuts a row of
+ * kitty placeholders in half.
  */
 
 export interface ReaderProps {
@@ -31,31 +29,97 @@ export interface ReaderProps {
 	readonly hud: HudState;
 	readonly width: number;
 	readonly height: number;
+	/** Which page to draw. The caller has already decided one is open. */
+	readonly tab: PanelTab;
 }
 
 /** How much of the frame the list of entries gets before the detail below it. */
 const LIST_SHARE = 0.35;
 
-export function Reader({ state, hud, width, height }: ReaderProps) {
-	const inner = Math.max(20, width - 4);
+/**
+ * The tab strip's one row.
+ *
+ * One and not two: every tab opens with a rule of its own, so a rule under the
+ * strip as well put two horizontal lines in consecutive rows and cost a row of
+ * content to do it.
+ */
+const STRIP_ROWS = 1;
+
+const TAB_LABELS: Readonly<Record<PanelTab, string>> = {
+	inventory: "Carrying",
+	quests: "Errands",
+	journal: "Journal",
+	key: "Key",
+};
+
+export function Reader({ state, hud, width, height, tab }: ReaderProps) {
+	// The border, the padding inside it and the tab strip all come off before
+	// anything is laid out. Every component here is told its size rather than
+	// measuring, because a pane that grows to fit reaches the terminal height, and
+	// at that point Ink clears the screen on every keypress.
+	const inner = Math.max(20, width - FRAME_CHROME - 4);
+	const rows = Math.max(3, height - FRAME_CHROME - STRIP_ROWS);
 	return (
-		<Box flexDirection="column" width={width} height={height} paddingX={2} paddingTop={1}>
-			{hud.tab === "quests" && (
-				<QuestReader state={state} hud={hud} width={inner} rows={height - 1} />
-			)}
-			{hud.tab === "journal" && (
-				<JournalReader state={state} hud={hud} width={inner} rows={height - 1} />
-			)}
-			{hud.tab === "inventory" && (
-				<InventoryReader state={state} hud={hud} width={inner} rows={height - 1} />
-			)}
-		</Box>
+		<Frame style="reader" width={width} height={height}>
+			<TabStrip tab={tab} inList={hud.inList} />
+			{tab === "quests" && <QuestReader state={state} hud={hud} width={inner} rows={rows} />}
+			{tab === "journal" && <JournalReader state={state} hud={hud} width={inner} rows={rows} />}
+			{tab === "inventory" && <InventoryReader state={state} hud={hud} width={inner} rows={rows} />}
+			{tab === "key" && <KeyReader width={inner} rows={rows} />}
+		</Frame>
 	);
 }
 
-/** Whether this tab has anything a reader could show. */
-export function readable(tab: PanelTab): boolean {
-	return tab === "quests" || tab === "journal" || tab === "inventory";
+/**
+ * Which tabs there are, and which one you are on.
+ *
+ * The whole reason there is one menu key rather than four: the strip is what
+ * tells the player what is in here, so nothing has to be remembered. It is
+ * highlighted while the arrow keys belong to it and dimmed once they have been
+ * handed to the list below, which is what makes "down goes in" visible rather
+ * than something to be discovered.
+ */
+function TabStrip({ tab, inList }: { tab: PanelTab; inList: boolean }) {
+	return (
+		<Text wrap="truncate">
+			{PANEL_TABS.map((each, index) => {
+				const here = each === tab;
+				return (
+					<Text key={each}>
+						{index > 0 ? <Text color="gray">{"   "}</Text> : null}
+						<Text bold={here} color={here ? (inList ? "gray" : "cyan") : "gray"} underline={here}>
+							{TAB_LABELS[each]}
+						</Text>
+					</Text>
+				);
+			})}
+		</Text>
+	);
+}
+
+/**
+ * What the glyphs on the map mean.
+ *
+ * A page of its own because the map is full width now and there is no panel to
+ * put a key in. That is no loss: read at full width it fits in one column with
+ * room for the labels, where in the panel it was a two-column grid the bottom of
+ * which fell off a short terminal.
+ */
+function KeyReader({ width, rows }: { width: number; rows: number }) {
+	const entries = mapLegend().slice(0, Math.max(0, rows - 1));
+	return (
+		<>
+			<Rule width={width} label="what you are looking at" />
+			{entries.map((entry) => (
+				<Text key={entry.label} wrap="truncate">
+					<Text bold={entry.bold ?? false} color={entry.color}>
+						{entry.ch}
+					</Text>
+					<Text color="gray">{`  ${entry.label}`}</Text>
+				</Text>
+			))}
+		</>
+	);
 }
 
 /**
@@ -141,7 +205,7 @@ function QuestReader({
 					count={open.length}
 					cursor={cursor}
 					rows={listRows}
-					focus
+					focus={hud.inList}
 					render={(index) => {
 						const quest = open[index];
 						if (!quest) return null;
@@ -263,7 +327,7 @@ function JournalReader({
 				count={entries.length}
 				cursor={cursor}
 				rows={listRows}
-				focus
+				focus={hud.inList}
 				render={(index) => {
 					const entry = entries[index];
 					if (!entry) return null;
@@ -329,7 +393,7 @@ function InventoryReader({
 				count={items.length}
 				cursor={cursor}
 				rows={listRows}
-				focus
+				focus={hud.inList}
 				render={(index) => {
 					const item = items[index];
 					if (!item) return null;

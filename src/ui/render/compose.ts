@@ -1,3 +1,4 @@
+import type { Facing } from "../../core/rules/state.js";
 import type { DecorId } from "../../core/tiles/decor.js";
 import { T, TERRAIN, type TerrainId } from "../../core/tiles/terrain.js";
 import { autotileGlyph, neighborMask } from "./autotile.js";
@@ -21,6 +22,29 @@ export interface Cell {
 	 * to sit in the same half every frame or it appears to wobble as it walks.
 	 */
 	entity?: boolean;
+	/**
+	 * Which way the entity on this cell is looking.
+	 *
+	 * Only the pixel renderer has anywhere to put it: a sprite is forty pixels and
+	 * can carry a wedge on the side it faces, where a single character cannot.
+	 * The glyph renderer says it in words at the bottom of the screen instead.
+	 */
+	facing?: Facing;
+	/**
+	 * What this cell was drawn from, before it became a glyph.
+	 *
+	 * The glyph renderer has no use for these, but a pixel renderer does: the
+	 * glyph vocabulary is lossy in a way that only shows up once a tile is more
+	 * than one character. `▒` is the shingle on a roof *and* a bush, and `░` is
+	 * grass, sand, gravel, ice and rubble — distinctions the eye does not need
+	 * at one glyph per tile and very much does at sixteen pixels.
+	 *
+	 * Optional because the compositor is not the only thing that builds cells;
+	 * tests and the panels make them by hand, and a sprite layer falls back to
+	 * the glyph when the id is absent.
+	 */
+	terrain?: TerrainId;
+	decor?: DecorId;
 }
 
 /** Drawn above decor: the player, NPCs, creatures. */
@@ -28,6 +52,8 @@ export interface EntityGlyph {
 	readonly ch: string;
 	readonly fg: RGB;
 	readonly bold?: boolean;
+	/** Only the player has one, and only the pixel renderer draws it. */
+	readonly facing?: Facing;
 }
 
 /** Drawn above everything: cursors, path previews, targeting, damage flashes. */
@@ -312,6 +338,7 @@ export function composeScene(
 			}
 
 			let moving = false;
+			let facing: Facing | undefined;
 
 			const entity = source.entityAt(wx, wy);
 			if (entity) {
@@ -320,6 +347,7 @@ export function composeScene(
 				bold = entity.bold ?? true;
 				dim = false;
 				moving = true;
+				facing = entity.facing;
 			}
 
 			const overlay = source.overlayAt?.(wx, wy);
@@ -343,7 +371,9 @@ export function composeScene(
 				bg = scaleColor(bg, light);
 			}
 
-			cells[col] = moving ? { ch, fg, bg, bold, dim, entity: true } : { ch, fg, bg, bold, dim };
+			cells[col] = moving
+				? { ch, fg, bg, bold, dim, entity: true, terrain, decor, ...(facing ? { facing } : {}) }
+				: { ch, fg, bg, bold, dim, terrain, decor };
 		}
 
 		rows[row] = cells;

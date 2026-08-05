@@ -1,7 +1,5 @@
 import type { Command } from "../../core/rules/commands.js";
 import type { HudAction, HudState } from "../hud-state.js";
-import { LIST_TABS } from "../hud-state.js";
-import type { PanelTab } from "../panels/side-panel.js";
 
 /**
  * What one keypress means.
@@ -43,22 +41,27 @@ export interface RouteContext {
 	readonly canDrop: boolean;
 }
 
-const TAB_KEYS: Readonly<Record<string, PanelTab>> = {
-	m: "map",
-	w: "world",
-	i: "inventory",
-	q: "quests",
-	j: "journal",
-};
+/**
+ * One key opens everything.
+ *
+ * Four letters for four tabs meant four bindings to know before any of them
+ * could be found, and it does not scale: a fifth page would want a fifth letter
+ * and the good ones are taken. `M` for menu, and Tab because it is what a player
+ * tries first — the menu then says what is in it, so nothing has to be
+ * remembered.
+ */
+function isMenuKey(letter: string, key: KeyFlags, plain: boolean): boolean {
+	return (plain && letter === "m") || key.tab === true;
+}
 
 /**
  * The order below *is* the precedence: a pending confirmation swallows
- * everything, then a card, then a full-frame reader, then a conversation, then the
- * panel-switching keys, then a focused panel, then the world.
+ * everything, then a card, then the menu, then a conversation, then the key that
+ * opens the menu, then the world.
  *
  * A card sits above the conversation because it can be raised *by* one — a story
  * beat opens as somebody speaks — and the card is what the player is looking at.
- * The reader sits above it for the same reason: a turn landing asynchronously must
+ * The menu sits above it for the same reason: a turn landing asynchronously must
  * not take the arrow keys off somebody who is reading their quest log.
  */
 export function routeKey(input: string, key: KeyFlags, context: RouteContext): Routed {
@@ -93,19 +96,32 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		return undefined;
 	}
 
-	// Reading takes the whole frame, so nothing behind it can be acted on. The panel
-	// keys still work: switching what you are reading should not mean leaving.
-	if (hud.expanded) {
-		if (key.escape) return { t: "hud", action: { t: "Collapse" } };
-		if (key.upArrow) {
+	/*
+	 * The menu takes the whole frame, so nothing behind it can be acted on.
+	 *
+	 * Left and right walk the tab strip and down steps into whatever is on the
+	 * tab, which is why `inList` exists: without it, the first left press would
+	 * move a cursor inside a list nobody had chosen yet, and the tab beside it
+	 * would be unreachable. Escape leaves outright rather than retreating to the
+	 * strip — one press out is what a player expects from a menu, and left or
+	 * right is already the way back to the strip.
+	 */
+	if (hud.tab !== undefined) {
+		if (key.escape) return { t: "hud", action: { t: "CloseMenu" } };
+		if (isMenuKey(letter, key, plain)) return { t: "hud", action: { t: "CloseMenu" } };
+		if (key.leftArrow) return { t: "hud", action: { t: "StepTab", delta: -1 } };
+		if (key.rightArrow) return { t: "hud", action: { t: "StepTab", delta: 1 } };
+		if (key.downArrow) {
+			return hud.inList
+				? { t: "hud", action: { t: "MoveCursor", delta: 1, count: context.listCount } }
+				: { t: "hud", action: { t: "EnterList" } };
+		}
+		if (key.upArrow && hud.inList) {
 			return { t: "hud", action: { t: "MoveCursor", delta: -1, count: context.listCount } };
 		}
-		if (key.downArrow) {
-			return { t: "hud", action: { t: "MoveCursor", delta: 1, count: context.listCount } };
-		}
-		const reading = plain ? TAB_KEYS[letter] : undefined;
-		if (reading) return { t: "hud", action: { t: "SelectTab", tab: reading } };
-		if (letter === "d" && context.canDrop) return { t: "askDrop" };
+		if (letter === "d" && plain && context.canDrop) return { t: "askDrop" };
+		// Everything else is swallowed. A stray keypress must not walk the player
+		// somewhere they cannot see.
 		return undefined;
 	}
 
@@ -117,10 +133,7 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		return undefined;
 	}
 
-	// Switching panes works from anywhere outside a conversation, so the player
-	// never has to leave one list to reach another.
-	const tab = plain ? TAB_KEYS[letter] : undefined;
-	if (tab) return { t: "hud", action: { t: "SelectTab", tab } };
+	if (isMenuKey(letter, key, plain)) return { t: "hud", action: { t: "OpenMenu" } };
 	if (letter === "s" && plain) {
 		return {
 			t: "hud",
@@ -128,27 +141,6 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		};
 	}
 
-	if (hud.focus && LIST_TABS.has(hud.tab)) {
-		if (key.escape) return { t: "hud", action: { t: "Blur" } };
-		if (key.upArrow) {
-			return { t: "hud", action: { t: "MoveCursor", delta: -1, count: context.listCount } };
-		}
-		if (key.downArrow) {
-			return { t: "hud", action: { t: "MoveCursor", delta: 1, count: context.listCount } };
-		}
-		if (letter === "d" && context.canDrop) return { t: "askDrop" };
-		// The panel is 32 columns wide, so anything written for a human to read is
-		// elided in it. Enter hands the list the whole frame instead.
-		//
-		// Enter and not space: space is the world's look-and-act key, and it stays
-		// swallowed here so a keypress meant for the world cannot reach it from a panel.
-		if (key.return) return { t: "hud", action: { t: "Expand" } };
-		// Deliberately swallowed: while the panel has the arrow keys, a stray
-		// keypress must not walk the player somewhere they cannot see.
-		return undefined;
-	}
-
-	if (key.tab) return { t: "hud", action: { t: "Focus" } };
 	if (key.upArrow) return { t: "command", command: { t: "Move", facing: "up" } };
 	if (key.downArrow) return { t: "command", command: { t: "Move", facing: "down" } };
 	if (key.leftArrow) return { t: "command", command: { t: "Move", facing: "left" } };

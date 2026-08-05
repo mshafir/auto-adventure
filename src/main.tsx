@@ -5,6 +5,7 @@ import type { LaunchChoice } from "./scenario/scenario.js";
 import { buildSession } from "./session.js";
 import App from "./ui/app.js";
 import { pickLaunch } from "./ui/launcher/pick-launch.js";
+import { measureCellPixels, resolveTileMode } from "./ui/render/mode.js";
 import { endSynchronizedOutput, withSynchronizedOutput } from "./ui/render/sync-output.js";
 import { bindEngine } from "./ui/store.js";
 import { logger } from "./utils/log.js";
@@ -52,6 +53,14 @@ async function startGame() {
 
 	const session = buildSession(choice, { saveDebounceMs: CONFIG.saveDebounceMs });
 	bindEngine(session.engine);
+
+	// Before Ink takes stdin, and only when the pixel renderer will actually use
+	// the answer. Guessing the cell size wrong sizes the camera for a viewport
+	// of the wrong shape, which puts the player off toward an edge.
+	if (resolveTileMode().mode === "kitty") {
+		const cell = await measureCellPixels();
+		logger.info(`cell size ${cell.width}x${cell.height}px`);
+	}
 
 	const restoreScreen = enterAltScreen();
 	const shutdown = (code: number) => {

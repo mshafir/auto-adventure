@@ -1,4 +1,4 @@
-import { Text } from "ink";
+import { Box, Text } from "ink";
 import type React from "react";
 import stringWidth from "string-width";
 import { listWindow } from "../hud-state.js";
@@ -18,6 +18,55 @@ import { wrapToLines } from "../render/text.js";
  * the player sees as flicker. Fixed boxes are what avoid that, and the cost is that
  * every component here has to be told how much space it has.
  */
+
+/**
+ * A frame around something that has taken the whole screen.
+ *
+ * Both full-frame views hide the map completely, so without a border there is
+ * nothing on screen that says you are in a mode rather than looking at a game
+ * that has stopped drawing. The two are deliberately different shapes, because
+ * they mean different things and one of them can appear without being asked for:
+ *
+ * - `reader` is heavy — a page you opened, and Esc puts it down.
+ * - `card` is double — the game telling you something, and it arrived by itself.
+ *
+ * Box Drawing throughout, which `glyph-safety.ts` vouches for as single-width
+ * everywhere; a double-width corner would leave the frame a column short on the
+ * side the map's own rows are measured against.
+ */
+export const FRAME_CHROME = 2;
+
+const FRAMES = {
+	reader: { border: "bold", color: "cyan" },
+	card: { border: "double", color: "yellow" },
+} as const;
+
+export function Frame({
+	style,
+	width,
+	height,
+	children,
+}: {
+	style: keyof typeof FRAMES;
+	width: number;
+	height: number;
+	children: React.ReactNode;
+}) {
+	const frame = FRAMES[style];
+	return (
+		<Box
+			flexDirection="column"
+			width={width}
+			height={height}
+			flexShrink={0}
+			borderStyle={frame.border}
+			borderColor={frame.color}
+			paddingX={2}
+		>
+			{children}
+		</Box>
+	);
+}
 
 export function Rule({ width, label }: { width: number; label?: string }) {
 	const text = label ? `─ ${label.toUpperCase()} ` : "";

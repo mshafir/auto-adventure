@@ -1,15 +1,34 @@
-import type { PanelTab } from "./panels/side-panel.js";
-
 /**
  * Everything about the interface that is not part of the game.
  *
- * Kept out of `GameState` deliberately: which tab is open and where a cursor
+ * Kept out of `GameState` deliberately: which page is open and where a cursor
  * sits are not facts about the world, they do not belong in a save file, and
  * the old design's habit of serialising UI flags into domain state is what made
  * a save taken mid-action load permanently locked. Kept *pure* so the awkward
  * parts — clamping a cursor against a list that shrank, keeping a selection
  * visible inside a short window — are testable without rendering anything.
  */
+
+/**
+ * The pages that can take the frame.
+ *
+ * There used to be five, two of which — the map summary and the minimap — were
+ * views of the standing state of the world rather than pages to open. Those are
+ * on screen always now: the first along the top, the second composited into the
+ * map. What is left is the three lists and the key, all of them things you go
+ * and look at and then come back from.
+ */
+export type PanelTab = "inventory" | "quests" | "journal" | "key";
+
+/**
+ * The tabs, in the order they are laid out and stepped through.
+ *
+ * An array rather than a set because left and right move along it, so the order
+ * on screen and the order under the keys are the same thing by construction.
+ * Carrying most often first: what you have, then what you owe, then what
+ * happened, then what the map means.
+ */
+export const PANEL_TABS: readonly PanelTab[] = ["inventory", "quests", "journal", "key"];
 
 /** Tabs holding a list the player can move a cursor through. */
 export const LIST_TABS: ReadonlySet<PanelTab> = new Set<PanelTab>([
@@ -37,83 +56,77 @@ export interface PendingConfirm {
 }
 
 export interface HudState {
-	readonly tab: PanelTab;
 	/**
-	 * Whether the arrow keys drive the panel instead of the player.
+	 * Which tab the menu is showing, or absent when the player is on the map.
 	 *
-	 * A modeful binding rather than a second set of keys: the panel needs up and
-	 * down, and every unshifted alternative is either taken or unguessable.
-	 * Which mode you are in is shown by the panel border and spelled out in the
-	 * key bar, so the mode is never invisible.
+	 * One field where there were three. A tab used to be a 32-column box beside
+	 * the map that could be open, focused, and then separately expanded to full
+	 * frame — three states to be in and two keys to get through them. With the
+	 * side panel gone there is no small version to be in, so opening the menu *is*
+	 * taking the frame.
+	 *
+	 * The side panel had to go regardless: Ink cuts a row of kitty placeholders
+	 * in half the moment anything shares the screen line with it.
 	 */
-	readonly focus: boolean;
+	readonly tab?: PanelTab;
 	/**
-	 * Whether the focused list has taken the whole frame.
+	 * Whether the arrow keys are moving down a list or along the tab strip.
 	 *
-	 * The side panel is 32 columns wide and a fixed number of rows tall, which is
-	 * fine for checking a bearing and hopeless for reading. A quest description, a
-	 * journal entry and a story clue all arrive as prose written for a human, and all
-	 * three were being elided mid-sentence. Rather than grow the panel — which would
-	 * cost the map the width, and at the terminal's full height makes Ink clear the
-	 * screen on every keypress — the same list can be read full-frame.
-	 *
-	 * Not a separate screen: the same tab, the same cursor, the same list. Only the
-	 * space it is given changes.
+	 * The menu opens on the strip: left and right change tab, down steps into
+	 * what is on it. Without this, opening the menu and pressing left would move
+	 * the cursor inside a list the player has not chosen yet — and there would be
+	 * no way to reach the tab beside it except by name.
 	 */
-	readonly expanded: boolean;
+	readonly inList: boolean;
 	readonly cursor: number;
 	readonly confirm?: PendingConfirm;
 }
 
 export type HudAction =
-	| { readonly t: "SelectTab"; readonly tab: PanelTab }
-	| { readonly t: "Focus" }
-	| { readonly t: "Blur" }
-	/** Give the focused list the whole frame, so its prose can be read in full. */
-	| { readonly t: "Expand" }
-	| { readonly t: "Collapse" }
+	/** Open the menu, on a given tab or on the first. */
+	| { readonly t: "OpenMenu"; readonly tab?: PanelTab }
+	| { readonly t: "CloseMenu" }
+	/** Step along the tab strip. Wraps, because four tabs is a short ring. */
+	| { readonly t: "StepTab"; readonly delta: number }
+	/** Hand the arrow keys to the list on the open tab. */
+	| { readonly t: "EnterList" }
 	/** `count` is the current list length, so a stale cursor cannot outlive it. */
 	| { readonly t: "MoveCursor"; readonly delta: number; readonly count: number }
 	| { readonly t: "Ask"; readonly confirm: PendingConfirm }
 	| { readonly t: "Dismiss" };
 
 /**
- * Opening on a tab puts the interface in the same state pressing its key would.
- * Only the screenshot tool and the tests start anywhere but the map, and a shot
- * of the inventory should show the inventory as the player would meet it.
+ * Opening on a tab puts the interface in the state opening the menu and stepping
+ * there would. Only the screenshot tool and the tests start anywhere but the
+ * map, and a shot of the inventory should show it as the player would meet it.
  */
-export function initialHud(tab: PanelTab = "map"): HudState {
-	return { tab, focus: LIST_TABS.has(tab), expanded: false, cursor: 0 };
+export function initialHud(tab?: PanelTab): HudState {
+	return { ...(tab ? { tab } : {}), inList: false, cursor: 0 };
 }
 
 export function hudReducer(state: HudState, action: HudAction): HudState {
 	switch (action.t) {
-		case "SelectTab":
-			// Opening a list is the whole reason for pressing its key, so it arrives
-			// focused; the two read-only panes release the keys again.
-			return {
-				tab: action.tab,
-				focus: LIST_TABS.has(action.tab),
-				// Switching while reading keeps reading. The map has no list to read, so
-				// asking for it is also how you leave.
-				expanded: state.expanded && LIST_TABS.has(action.tab),
-				cursor: action.tab === state.tab ? state.cursor : 0,
-			};
-		case "Focus":
-			if (!LIST_TABS.has(state.tab) || state.focus) return withoutConfirm(state);
-			return { ...withoutConfirm(state), focus: true };
-		case "Blur":
-			if (!state.focus && !state.confirm && !state.expanded) return state;
-			return { ...withoutConfirm(state), focus: false, expanded: false };
-		case "Expand":
-			if (!LIST_TABS.has(state.tab) || state.expanded) return withoutConfirm(state);
-			// Reading implies the list has the keys, so this focuses too: expanding from
-			// an unfocused pane and then finding the arrows still moved the player would
-			// be the worst of both modes.
-			return { ...withoutConfirm(state), focus: true, expanded: true };
-		case "Collapse":
-			if (!state.expanded) return state;
-			return { ...withoutConfirm(state), expanded: false };
+		case "OpenMenu":
+			return { tab: action.tab ?? PANEL_TABS[0], inList: false, cursor: 0 };
+		case "CloseMenu":
+			if (state.tab === undefined && !state.confirm) return state;
+			// The cursor goes with the menu. Keeping it would mean the next tab
+			// opened — which may be a different list entirely — started somewhere in
+			// the middle for no reason the player could see.
+			return { inList: false, cursor: 0 };
+		case "StepTab": {
+			if (state.tab === undefined) return state;
+			const at = PANEL_TABS.indexOf(state.tab);
+			const next = PANEL_TABS[(at + action.delta + PANEL_TABS.length) % PANEL_TABS.length];
+			// Row four of the inventory has nothing to do with row four of the
+			// journal, so changing tab starts from the top.
+			return { ...withoutConfirm(state), tab: next, inList: false, cursor: 0 };
+		}
+		case "EnterList":
+			// The key tab has nothing to select, so stepping into it would take the
+			// arrow keys and give nothing back for them.
+			if (state.tab === undefined || !LIST_TABS.has(state.tab)) return state;
+			return { ...withoutConfirm(state), inList: true };
 		case "MoveCursor":
 			return { ...state, cursor: clampCursor(state.cursor + action.delta, action.count) };
 		case "Ask":
@@ -146,7 +159,7 @@ export interface ListWindow {
 /**
  * The slice of a list to draw so the cursor is on screen.
  *
- * A panel cannot grow to fit its contents — Ink stops updating incrementally
+ * A page cannot grow to fit its contents — Ink stops updating incrementally
  * once the frame is as tall as the terminal and clears the screen on every
  * keypress instead — so a list longer than its box has to be windowed rather
  * than simply rendered and clipped.

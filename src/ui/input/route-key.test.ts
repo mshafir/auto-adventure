@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type HudState, initialHud } from "../hud-state.js";
+import { type HudState, initialHud, type PanelTab } from "../hud-state.js";
 import { type KeyFlags, type RouteContext, routeKey } from "./route-key.js";
 
 function context(overrides: Partial<RouteContext> = {}): RouteContext {
@@ -27,25 +27,29 @@ describe("walking about", () => {
 		});
 	});
 
-	it("opens each pane on its own letter", () => {
-		for (const [letter, tab] of [
-			["m", "map"],
-			["w", "world"],
-			["i", "inventory"],
-			["q", "quests"],
-			["j", "journal"],
-		] as const) {
-			expect(routeKey(letter, NONE, context())).toEqual({
-				t: "hud",
-				action: { t: "SelectTab", tab },
-			});
+	/*
+	 * One key rather than four. Four letters for four tabs meant four bindings to
+	 * know before any of them could be found, and it does not scale — a fifth page
+	 * would want a fifth letter and the good ones are taken.
+	 */
+	it("opens the menu on M, and on Tab because that is what gets tried", () => {
+		expect(routeKey("m", NONE, context())).toEqual({ t: "hud", action: { t: "OpenMenu" } });
+		expect(routeKey("", { tab: true }, context())).toEqual({
+			t: "hud",
+			action: { t: "OpenMenu" },
+		});
+	});
+
+	it("no longer answers to the old per-tab letters", () => {
+		for (const letter of ["i", "q", "j", "k", "w"]) {
+			expect(routeKey(letter, NONE, context()), letter).toBeUndefined();
 		}
 	});
 
-	it("ignores those letters when a modifier is held", () => {
-		// Ctrl-W is a word-erase in most terminals and Ctrl-C already quits; neither
-		// should quietly change what is on the right of the screen.
-		expect(routeKey("w", { ctrl: true }, context())).toBeUndefined();
+	it("ignores the menu letter when a modifier is held", () => {
+		// Ctrl-M is carriage return on a terminal and Ctrl-C already quits; neither
+		// should quietly put a menu over the map.
+		expect(routeKey("m", { ctrl: true }, context())).toBeUndefined();
 		expect(routeKey("s", { ctrl: true }, context())).toBeUndefined();
 	});
 });
@@ -60,69 +64,18 @@ describe("a conversation", () => {
 		});
 	});
 
-	it("swallows the panel keys, so a reply beginning with q does not open the log", () => {
+	it("swallows the menu key, so a reply beginning with M does not open it", () => {
 		// The bug this replaced: the side panel registered its own `useInput`, so
-		// tab letters fired mid-sentence with no modal guard at all.
-		for (const letter of ["m", "w", "i", "q", "j", "s"]) {
+		// panel letters fired mid-sentence with no modal guard at all.
+		for (const letter of ["m", "s"]) {
 			expect(routeKey(letter, NONE, talking), letter).toBeUndefined();
 		}
 	});
 });
 
-describe("a focused panel", () => {
-	const browsing: HudState = { tab: "inventory", focus: true, expanded: false, cursor: 1 };
-
-	it("moves the cursor instead of the player", () => {
-		const ctx = context({ hud: browsing, listCount: 4 });
-		expect(routeKey("", { downArrow: true }, ctx)).toEqual({
-			t: "hud",
-			action: { t: "MoveCursor", delta: 1, count: 4 },
-		});
-	});
-
-	it("gives the arrow keys back on escape", () => {
-		expect(routeKey("", { escape: true }, context({ hud: browsing }))).toEqual({
-			t: "hud",
-			action: { t: "Blur" },
-		});
-	});
-
-	it("swallows space rather than acting on the world behind it", () => {
-		// Pressing space while reading the inventory would otherwise search the
-		// crate the player happens to be facing, off screen.
-		expect(routeKey(" ", NONE, context({ hud: browsing }))).toBeUndefined();
-	});
-
-	it("still switches panes and still quits", () => {
-		const ctx = context({ hud: browsing });
-		expect(routeKey("q", NONE, ctx)).toEqual({
-			t: "hud",
-			action: { t: "SelectTab", tab: "quests" },
-		});
-		expect(routeKey("s", NONE, ctx)?.t).toBe("hud");
-	});
-
-	it("offers a drop only when there is something to drop", () => {
-		expect(routeKey("d", NONE, context({ hud: browsing, canDrop: true }))).toEqual({
-			t: "askDrop",
-		});
-		expect(routeKey("d", NONE, context({ hud: browsing, canDrop: false }))).toBeUndefined();
-	});
-
-	it("does nothing on a pane that is only a display", () => {
-		// `focus` should never be true here, but if it ever were, the arrow keys
-		// must not vanish into a minimap.
-		const ctx = context({ hud: { tab: "world", focus: true, expanded: false, cursor: 0 } });
-		expect(routeKey("", { upArrow: true }, ctx)).toEqual({
-			t: "command",
-			command: { t: "Move", facing: "up" },
-		});
-	});
-});
-
 describe("a question that cannot be undone", () => {
 	const asking = (confirm: NonNullable<HudState["confirm"]>): RouteContext =>
-		context({ hud: { tab: "inventory", focus: true, expanded: false, cursor: 0, confirm } });
+		context({ hud: { tab: "inventory", inList: true, cursor: 0, confirm } });
 
 	const dropTimber = asking({
 		action: { t: "drop", name: "Timber", quantity: 3 },
@@ -145,7 +98,7 @@ describe("a question that cannot be undone", () => {
 	});
 
 	it("ignores everything else, so nothing answers it by accident", () => {
-		// Notably the keys that would otherwise be live: an arrow, a pane letter,
+		// Notably the keys that would otherwise be live: an arrow, a page letter,
 		// space, and `s` — which without this guard would raise a second question
 		// on top of the first.
 		for (const [input, key] of [
@@ -190,16 +143,15 @@ describe("a card in front of everything", () => {
 		expect(routeKey("", { rightArrow: true }, context({ onCard: true }))).toBeUndefined();
 	});
 
-	it("swallows the panel and quit keys too", () => {
+	it("swallows the menu and quit keys too", () => {
 		// These would otherwise fire behind the card and look like the game had hung.
-		expect(routeKey("j", NONE, context({ onCard: true }))).toBeUndefined();
+		expect(routeKey("m", NONE, context({ onCard: true }))).toBeUndefined();
 		expect(routeKey("s", NONE, context({ onCard: true }))).toBeUndefined();
 	});
 
 	it("comes second to a pending confirmation, which is irreversible", () => {
-		const hud = initialHud();
 		const asking: HudState = {
-			...hud,
+			...initialHud(),
 			confirm: { action: { t: "quit" }, prompt: "Save and quit?" },
 		};
 		expect(routeKey("y", NONE, context({ onCard: true, hud: asking }))).toEqual({ t: "quit" });
@@ -216,69 +168,94 @@ describe("a card in front of everything", () => {
 	});
 });
 
-describe("reading a list in full", () => {
-	const focused = (tab: "quests" | "journal" | "inventory" = "quests"): HudState => ({
-		...initialHud(tab),
-		focus: true,
-	});
-	const reading = (tab: "quests" | "journal" | "inventory" = "quests"): HudState => ({
-		...focused(tab),
-		expanded: true,
-	});
+describe("the menu over the map", () => {
+	const onStrip = (tab: PanelTab = "quests"): HudState => initialHud(tab);
+	const inList = (tab: PanelTab = "quests"): HudState => ({ ...initialHud(tab), inList: true });
 
-	it("expands on Enter from a focused list", () => {
-		expect(routeKey("", { return: true }, context({ hud: focused() }))).toEqual({
+	it("walks the tab strip on left and right", () => {
+		expect(routeKey("", { rightArrow: true }, context({ hud: onStrip() }))).toEqual({
 			t: "hud",
-			action: { t: "Expand" },
+			action: { t: "StepTab", delta: 1 },
+		});
+		expect(routeKey("", { leftArrow: true }, context({ hud: onStrip() }))).toEqual({
+			t: "hud",
+			action: { t: "StepTab", delta: -1 },
 		});
 	});
 
-	it("leaves space alone, so a keypress meant for the world cannot reach it", () => {
-		// Space is the world's look-and-act key and was already swallowed here on
-		// purpose; borrowing it for the reader would undo that.
-		expect(routeKey(" ", NONE, context({ hud: focused() }))).toBeUndefined();
-	});
-
-	it("collapses on Esc", () => {
-		expect(routeKey("", { escape: true }, context({ hud: reading() }))).toEqual({
+	/*
+	 * Down means two different things depending on where you are, and that is the
+	 * point: on the strip it steps into the list, and once there it moves the
+	 * cursor. Without the two states the first left press would move a cursor
+	 * inside a list nobody had chosen yet, and the tab beside it would be
+	 * unreachable.
+	 */
+	it("goes into the list on the first down, and moves the cursor after", () => {
+		expect(routeKey("", { downArrow: true }, context({ hud: onStrip(), listCount: 4 }))).toEqual({
 			t: "hud",
-			action: { t: "Collapse" },
+			action: { t: "EnterList" },
 		});
-	});
-
-	it("moves through the entries on the arrow keys", () => {
-		expect(routeKey("", { downArrow: true }, context({ hud: reading(), listCount: 4 }))).toEqual({
+		expect(routeKey("", { downArrow: true }, context({ hud: inList(), listCount: 4 }))).toEqual({
 			t: "hud",
 			action: { t: "MoveCursor", delta: 1, count: 4 },
 		});
-		expect(routeKey("", { upArrow: true }, context({ hud: reading(), listCount: 4 }))).toEqual({
+		expect(routeKey("", { upArrow: true }, context({ hud: inList(), listCount: 4 }))).toEqual({
 			t: "hud",
 			action: { t: "MoveCursor", delta: -1, count: 4 },
 		});
 	});
 
-	it("switches what is being read without leaving the reader", () => {
-		expect(routeKey("j", NONE, context({ hud: reading() }))).toEqual({
+	// Nothing to move through yet, so up is not a cursor key on the strip.
+	it("leaves up alone until the list has the arrow keys", () => {
+		expect(routeKey("", { upArrow: true }, context({ hud: onStrip() }))).toBeUndefined();
+	});
+
+	// One press out, from wherever you are. Left and right are already the way
+	// back to the strip, so a two-stage Esc would only cost a press.
+	it("gives the map back on Esc, from the strip or from a list", () => {
+		for (const hud of [onStrip(), inList()]) {
+			expect(routeKey("", { escape: true }, context({ hud }))).toEqual({
+				t: "hud",
+				action: { t: "CloseMenu" },
+			});
+		}
+	});
+
+	it("closes on the same key that opened it", () => {
+		expect(routeKey("m", NONE, context({ hud: onStrip() }))).toEqual({
 			t: "hud",
-			action: { t: "SelectTab", tab: "journal" },
+			action: { t: "CloseMenu" },
+		});
+		expect(routeKey("", { tab: true }, context({ hud: inList() }))).toEqual({
+			t: "hud",
+			action: { t: "CloseMenu" },
 		});
 	});
 
-	it("still lets an item be dropped while reading it", () => {
-		expect(routeKey("d", NONE, context({ hud: reading("inventory"), canDrop: true }))).toEqual({
+	it("swallows space rather than acting on the world behind it", () => {
+		// Pressing space while reading the inventory would otherwise search the
+		// crate the player happens to be facing, off screen.
+		expect(routeKey(" ", NONE, context({ hud: inList() }))).toBeUndefined();
+	});
+
+	it("offers a drop only when there is something to drop", () => {
+		expect(routeKey("d", NONE, context({ hud: inList("inventory"), canDrop: true }))).toEqual({
 			t: "askDrop",
 		});
+		expect(
+			routeKey("d", NONE, context({ hud: inList("inventory"), canDrop: false })),
+		).toBeUndefined();
 	});
 
-	it("swallows everything else, including the keys that would walk away", () => {
-		expect(routeKey("", { leftArrow: true }, context({ hud: reading() }))).toBeUndefined();
-		expect(routeKey("s", NONE, context({ hud: reading() }))).toBeUndefined();
-		expect(routeKey("", { tab: true }, context({ hud: reading() }))).toBeUndefined();
+	it("swallows everything else, including the key that saves and quits", () => {
+		expect(routeKey("s", NONE, context({ hud: inList() }))).toBeUndefined();
+		expect(routeKey("j", NONE, context({ hud: inList() }))).toBeUndefined();
+		expect(routeKey("", { return: true }, context({ hud: inList() }))).toBeUndefined();
 	});
 
 	it("comes second to a pending confirmation", () => {
 		const asking: HudState = {
-			...reading("inventory"),
+			...inList("inventory"),
 			confirm: { action: { t: "drop", name: "Timber", quantity: 1 }, prompt: "Drop it?" },
 		};
 		expect(routeKey("y", NONE, context({ hud: asking }))).toEqual({
@@ -291,11 +268,7 @@ describe("reading a list in full", () => {
 		// A dialogue turn resolves asynchronously and can arrive at any moment; taking
 		// the arrow keys off somebody mid-read would be indistinguishable from a bug.
 		expect(
-			routeKey(
-				"",
-				{ downArrow: true },
-				context({ hud: reading(), inDialogue: true, listCount: 3 }),
-			),
+			routeKey("", { downArrow: true }, context({ hud: inList(), inDialogue: true, listCount: 3 })),
 		).toEqual({ t: "hud", action: { t: "MoveCursor", delta: 1, count: 3 } });
 	});
 });

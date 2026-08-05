@@ -27,6 +27,46 @@ export function syncOutputEnabled(): boolean {
 	return process.stdout.isTTY === true;
 }
 
+let pendingGraphics = "";
+
+/**
+ * Hold image bytes back so they go out inside the frame that displays them.
+ *
+ * The pixel renderer cannot write its image through Ink — an APC graphics escape
+ * measures hundreds of columns and would shear the row — so it writes straight
+ * to the stream during render, and Ink writes the text a moment later. Two
+ * writes, and every write is its own synchronized update, so the terminal
+ * presented twice per frame. Captured, not guessed:
+ *
+ * ```
+ * BSU  delete  upload  chunks x19  ESU     <- the image, on its own
+ * BSU  ESU                                 <- the text that references it
+ * ```
+ *
+ * The first of those presentations is a frame in which the old image has been
+ * deleted and a new one installed under placeholder text still describing the
+ * previous one. That is the flicker: one presented frame per move that nobody
+ * asked to be shown.
+ *
+ * Queueing means the escape still bypasses Ink's layout — which is the part that
+ * matters — while landing in the same atomic update as the row of placeholders
+ * that references it.
+ *
+ * Replaces rather than appends. Each transmission is a whole frame, so if two
+ * renders happen before Ink writes, the second is the one that should go: sending
+ * both would upload an image nothing will ever display.
+ */
+export function queueGraphics(bytes: string): void {
+	pendingGraphics = bytes;
+}
+
+/** For a caller that has to reach the terminal outside a frame, such as teardown. */
+export function flushGraphics(): string {
+	const out = pendingGraphics;
+	pendingGraphics = "";
+	return out;
+}
+
 /**
  * Wrap a stream so every write is one synchronized update.
  *
@@ -36,8 +76,11 @@ export function syncOutputEnabled(): boolean {
  * that `this` is never the proxy.
  */
 export function withSynchronizedOutput(stream: NodeJS.WriteStream): NodeJS.WriteStream {
-	if (!syncOutputEnabled()) return stream;
+	const bracket = syncOutputEnabled();
 
+	// Wrapped even when the brackets are off, because the graphics queue still has
+	// to be flushed into the frame. Turning synchronisation off should cost the
+	// atomic present, not the ordering.
 	return new Proxy(stream, {
 		get(target, property) {
 			if (property === "write") {
@@ -47,8 +90,12 @@ export function withSynchronizedOutput(stream: NodeJS.WriteStream): NodeJS.Write
 					if (typeof chunk !== "string") {
 						return (target.write as (...args: unknown[]) => boolean)(chunk, ...rest);
 					}
+					// Image first, then the placeholders that display it. Ink emits its
+					// frame from `resetAfterCommit`, after the render that queued the
+					// image, so this order is the order they were produced in.
+					const body = flushGraphics() + chunk;
 					return (target.write as (...args: unknown[]) => boolean)(
-						BEGIN_SYNC + chunk + END_SYNC,
+						bracket ? BEGIN_SYNC + body + END_SYNC : body,
 						...rest,
 					);
 				};

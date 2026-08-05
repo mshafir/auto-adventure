@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { withSynchronizedOutput } from "./sync-output.js";
+import { flushGraphics, queueGraphics, withSynchronizedOutput } from "./sync-output.js";
 
 const BEGIN = "\u001B[?2026h";
 const END = "\u001B[?2026l";
@@ -32,6 +32,9 @@ beforeEach(() => {
 afterEach(() => {
 	Object.defineProperty(process.stdout, "isTTY", { value: wasTTY, configurable: true });
 	delete process.env.NO_SYNC_OUTPUT;
+	// The queue is module state, so a test that queues and never writes would
+	// otherwise hand its image to whichever test ran next.
+	flushGraphics();
 });
 
 describe("synchronized output", () => {
@@ -82,17 +85,59 @@ describe("synchronized output", () => {
 		expect(stream.listenerCount("resize")).toBe(1);
 	});
 
-	it("does nothing when NO_SYNC_OUTPUT is set", () => {
+	it("adds no markers when NO_SYNC_OUTPUT is set", () => {
 		process.env.NO_SYNC_OUTPUT = "1";
 		const stream = fakeStream();
-		expect(withSynchronizedOutput(stream)).toBe(stream);
 		withSynchronizedOutput(stream).write("FRAME");
 		expect(stream.writes).toEqual(["FRAME"]);
 	});
 
-	it("does nothing when the output is redirected, so markers stay out of files", () => {
+	it("adds no markers when the output is redirected, so they stay out of files", () => {
 		Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
 		const stream = fakeStream();
-		expect(withSynchronizedOutput(stream)).toBe(stream);
+		withSynchronizedOutput(stream).write("FRAME");
+		expect(stream.writes).toEqual(["FRAME"]);
+	});
+
+	/*
+	 * The whole reason the wrapper is installed even with the markers off. The
+	 * pixel renderer queues its image so it lands in the same update as the frame
+	 * displaying it; if turning synchronisation off also unhooked the queue, the
+	 * image would simply never be written and the map would go blank.
+	 */
+	it("still carries queued graphics when the markers are off", () => {
+		process.env.NO_SYNC_OUTPUT = "1";
+		const stream = fakeStream();
+		queueGraphics("IMAGE");
+		withSynchronizedOutput(stream).write("FRAME");
+		expect(stream.writes).toEqual(["IMAGEFRAME"]);
+	});
+
+	// Image first, then the placeholders that display it — the order they were
+	// produced in, since Ink writes its frame after the render that queued it.
+	it("puts queued graphics inside the update, ahead of the frame", () => {
+		const stream = fakeStream();
+		queueGraphics("IMAGE");
+		withSynchronizedOutput(stream).write("FRAME");
+		expect(stream.writes).toEqual([`${BEGIN}IMAGEFRAME${END}`]);
+	});
+
+	// Each transmission is a whole frame. Two renders before one write means the
+	// first image will never be displayed, so sending it is pure cost.
+	it("keeps only the newest queued image", () => {
+		const stream = fakeStream();
+		queueGraphics("OLD");
+		queueGraphics("NEW");
+		withSynchronizedOutput(stream).write("FRAME");
+		expect(stream.writes).toEqual([`${BEGIN}NEWFRAME${END}`]);
+	});
+
+	it("does not repeat an image on the next frame", () => {
+		const stream = fakeStream();
+		queueGraphics("IMAGE");
+		const out = withSynchronizedOutput(stream);
+		out.write("ONE");
+		out.write("TWO");
+		expect(stream.writes).toEqual([`${BEGIN}IMAGEONE${END}`, `${BEGIN}TWO${END}`]);
 	});
 });

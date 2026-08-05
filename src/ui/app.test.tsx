@@ -164,7 +164,7 @@ describe("the key bar", () => {
 		const { lastFrame, unmount } = renderInk(<App />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
-		expect(text).toContain("MWIQJ panels");
+		expect(text).toContain("M menu");
 		expect(text).toContain("S save+quit");
 		expect(text).toContain("Arrows move");
 	});
@@ -185,31 +185,19 @@ describe("the key bar", () => {
 		unmount();
 		expect(text).toContain("Up/Dn choose");
 		expect(text).toContain("Esc leave");
-		// The panel keys do not work mid-sentence, so they are not advertised.
-		expect(text).not.toContain("MWIQJ panels");
+		// The page keys do not work mid-sentence, so they are not advertised.
+		expect(text).not.toContain("M menu");
 	});
 });
 
-describe("the side panels", () => {
+describe("the pages", () => {
 	it("explains the map's glyphs rather than leaving them to be guessed", () => {
 		const { engine } = engineBesideSomeone();
 		bindEngine(engine);
-		const { lastFrame, unmount } = renderInk(<App initialTab="map" />);
+		const { lastFrame, unmount } = renderInk(<App initialTab="key" />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
-		expect(text).toContain("KEY");
 		for (const label of ["you", "folk", "door", "chest", "water"]) {
-			expect(text, `the key does not mention ${label}`).toContain(label);
-		}
-	});
-
-	it("explains the minimap's glyphs too, which are a different alphabet", () => {
-		const { engine } = engineBesideSomeone();
-		bindEngine(engine);
-		const { lastFrame, unmount } = renderInk(<App initialTab="world" />);
-		const text = stripAnsi(lastFrame() ?? "");
-		unmount();
-		for (const label of ["here", "town", "village", "errand"]) {
 			expect(text, `the key does not mention ${label}`).toContain(label);
 		}
 	});
@@ -224,10 +212,11 @@ describe("the side panels", () => {
 		const { lastFrame, unmount } = renderInk(<App initialTab="inventory" />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
-		expect(text).toContain("3x Timber");
-		// The pane arrives focused, so the cursor is drawn and the detail follows it
-		// — whatever the cursor happens to start on, which is the first thing the
-		// player was given rather than the first thing this test added.
+		expect(text).toContain("Timber");
+		expect(text).toContain("x3");
+		// The page has the arrow keys the moment it opens, so the cursor is drawn and
+		// the detail follows it — whatever it happens to start on, which is the first
+		// thing the player was given rather than the first thing this test added.
 		expect(text).toContain("▸ ");
 		const first = engine.getState().inventory[0];
 		expect(first).toBeDefined();
@@ -309,30 +298,29 @@ describe("the side panels", () => {
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 
-		// Fragments rather than whole sentences: the pane is 32 columns and wraps, so
-		// asserting a phrase that spans a line break would fail on formatting alone.
-		expect(text).toContain("THE TITHE 0/1");
-		expect(text).toContain("Somebody has to pay for the");
+		expect(text).toContain("THE TITHE — THE STORY SO FAR");
+		expect(text).toContain("Somebody has to pay for the rope.");
 		// The step it has reached, marked as still in hand rather than done.
 		expect(text).toContain("[~] Find the season");
 		// And the clue it has gathered.
 		expect(text).toContain("CLUES");
-		// Elided at 32 columns, which is the pane doing its job — the journal tab is
-		// where a clue is read in full.
 		expect(text).toContain("Ilse says the barge");
 	});
 });
 
 describe("reading a list in full", () => {
 	/**
-	 * The screen with its line breaks collapsed.
+	 * The screen with its frame and its line breaks taken out.
 	 *
 	 * Wrapping is the point of the reader, so asserting on a whole sentence has to
 	 * ignore where it wrapped — and collapsing whitespace is a stronger check than
 	 * picking a fragment that happens to fit one line: it proves the sentence is
 	 * present *entire*, which is exactly what was failing before.
+	 *
+	 * The border has to come out first or every wrap point carries a `┃` through
+	 * the middle of the sentence being matched.
 	 */
-	const flat = (screen: string) => screen.replace(/\s+/g, " ");
+	const flat = (screen: string) => screen.replace(/[┃┏┓┗┛━]/g, " ").replace(/\s+/g, " ");
 
 	/** The prose that was being cut in a 32-column pane. */
 	const DESCRIPTION =
@@ -386,15 +374,12 @@ describe("reading a list in full", () => {
 		return engine;
 	}
 
-	it("shows a quest description in full once the list has the frame", async () => {
-		// The complaint this answers: at 32 columns the panel showed "The miller wants
-		// three…" and the rest was simply gone.
+	it("shows a quest description in full", async () => {
+		// The complaint this answers: at 32 columns the old side panel showed "The
+		// miller wants three…" and the rest was simply gone.
 		readingQuests();
 		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
 		await harness.settle();
-		expect(harness.screen()).not.toContain(DESCRIPTION.slice(0, 60));
-
-		await harness.type(KEY.enter);
 		const read = harness.screen();
 		harness.unmount();
 
@@ -405,7 +390,6 @@ describe("reading a list in full", () => {
 		readingQuests();
 		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
 		await harness.settle();
-		await harness.type(KEY.enter);
 		const read = harness.screen();
 		harness.unmount();
 
@@ -414,41 +398,86 @@ describe("reading a list in full", () => {
 		expect(read).toContain("• Ilse Marrow says");
 	});
 
+	// One key rather than four, and the tab strip then says what is in here — so
+	// nothing has to be remembered before it can be found.
+	it("is what the menu key opens, straight from the map", async () => {
+		readingQuests();
+		const harness = renderInk(<App />, { columns: 120, rows: 34 });
+		await harness.settle();
+		expect(harness.screen()).not.toContain("Carrying");
+
+		await harness.type("m");
+		const menu = harness.screen();
+		harness.unmount();
+		for (const label of ["Carrying", "Errands", "Journal", "Key"]) {
+			expect(menu, `the strip does not offer ${label}`).toContain(label);
+		}
+	});
+
+	it("walks the tabs on left and right, and steps in on down", async () => {
+		readingQuests();
+		const harness = renderInk(<App initialTab="inventory" />, { columns: 120, rows: 34 });
+		await harness.settle();
+		expect(harness.screen()).not.toContain("THE HOLLOW TITHE");
+
+		await harness.type(KEY.right);
+		expect(harness.screen()).toContain("THE HOLLOW TITHE");
+
+		// The cursor is drawn either way; stepping in is what makes it live.
+		await harness.type(KEY.down);
+		const inList = harness.screen();
+		harness.unmount();
+		expect(inList).toContain("Up/Dn read");
+	});
+
 	it("comes back to the map on Esc, with the world still there", async () => {
 		readingQuests();
 		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
 		await harness.settle();
-		await harness.type(KEY.enter);
 		expect(harness.screen()).toContain("THE HOLLOW TITHE");
 
 		await harness.type(KEY.escape);
 		const back = harness.screen();
 		harness.unmount();
-		// The tab strip is part of the side panel, so its presence means the map layout
-		// is back rather than the reader still holding the frame.
-		expect(back).toContain("Map World Inv Quests Jrnl");
+		// The top bar is only drawn over the map, so its presence means the map is
+		// back rather than the page still holding the frame.
+		expect(back).toContain("Arrows move");
+		expect(back).not.toContain("THE HOLLOW TITHE");
 	});
 
-	it("switches what is being read without dropping out of the reader", async () => {
+	// The same press that opened it, which is what every other toggle does — and it
+	// means Esc is not the only way back to the map.
+	it("closes on the key that opened it", async () => {
 		readingQuests();
 		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
 		await harness.settle();
-		await harness.type(KEY.enter);
-		await harness.type("j");
+		await harness.type("m");
+		const back = harness.screen();
+		harness.unmount();
+		expect(back).not.toContain("THE HOLLOW TITHE");
+	});
+
+	it("switches what is being read without dropping back to the map", async () => {
+		readingQuests();
+		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
+		await harness.settle();
+		await harness.type(KEY.right);
 		const read = harness.screen();
 		harness.unmount();
 
 		expect(read).toContain("JOURNAL");
-		expect(read).not.toContain("Map World Inv Quests Jrnl");
+		expect(read).not.toContain("Arrows move");
 	});
 
-	it("says which keys it has taken", async () => {
+	// Down means two different things and which one is not guessable from the
+	// screen, so the bar says which.
+	it("says which keys it has taken, and what down will do", async () => {
 		readingQuests();
 		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
 		await harness.settle();
-		expect(harness.screen()).toContain("Enter read in full");
+		expect(harness.screen()).toContain("Dn go in");
 
-		await harness.type(KEY.enter);
+		await harness.type(KEY.down);
 		const read = harness.screen();
 		harness.unmount();
 		expect(read).toContain("Up/Dn read");

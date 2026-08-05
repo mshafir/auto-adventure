@@ -48,7 +48,8 @@ four chunks is one town seen four ways.
 | `src/ai/author/` | The offline authoring pipeline and its prompts |
 | `src/scenario/` | Artifacts, the survey, and validation against the real generator |
 | `src/persist/` | Deltas-only saves, atomic writes, versioned migration |
-| `src/ui/` | Ink app, glyphs, autotile, ANSI run-length encoding, panels |
+| `src/ui/` | Ink app, panels, and the two renderers |
+| `src/ui/render/` | Glyphs, autotile, ANSI run-length encoding, sprites, the kitty graphics protocol |
 
 ## Configuration
 
@@ -93,7 +94,12 @@ All variables are optional.
 | `LOG_FILE`, `LOG_LEVEL` | `log.txt`, `info` | The TUI owns stdout, so logs go to a file. |
 | `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Only needed if your terminal prints the escape instead of honouring it. |
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
-| `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. |
+| `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
+| `TILE_MODE` | `auto` | `auto` uses pixels only where the terminal is known to support them. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
+| `ZOOM` | `1` | Scales the tiles in kitty mode. Above 1 is bigger tiles and less world on screen; below is the reverse. |
+| `TILE_PX` | derived | Pixels per tile edge, pinned. Left alone it is derived from the terminal's cell so pixel mode shows the same field of view as glyph mode. |
+| `KITTY_DEFLATE` | `1` | zlib level for the frame. Raise it to trade CPU for bytes on a slow link. |
+| `CELL_PX` | measured | `WxH` override for a terminal that will not answer `CSI 16 t` with its cell size. |
 | `CONTENT_PACK` | — | A flavour pack: a shipped name (`thornwick`) or a path (`./my-pack.json`). Steers a new world only; a save keeps the pack it was made with. |
 
 Model calls cost tokens, so they are counted: `src/ai/telemetry.ts` reports
@@ -114,7 +120,11 @@ a turn a line of dialogue cannot carry.
 
 ![How a game introduces itself](docs/screens/opening.svg)
 
-A town from the road, with the local map, the clock and a key to the glyphs.
+A town from the road. The map takes the full width and every one of its rows —
+where you are, the clock and the weather are pinned along the top, and the
+explored world is drawn into the corner of the map itself rather than laid out
+beside it. That is what lets the same layout be drawn as pixels: see
+[the renderers](#renderers) below.
 
 ![A town, seen from the road](docs/screens/town.svg)
 
@@ -144,23 +154,31 @@ send you after something that was never placed.
 ![The story so far, and the errand in hand](docs/screens/quest.svg)
 
 When the last beat closes and the last errand is done, the story says so — a line in
-the journal, `told` in the quest pane, and a closing card the way it opened on one.
+the journal, `told` in the quest page, and a closing card the way it opened on one.
 A scenario can write its own last page; one is assembled from what the player
 actually did if it does not.
 
-The same log, read in full. The panel is 32 columns and everything in it is prose
-written for a human, so a quest description or a story clue arrived elided
-mid-sentence. `Enter` hands the focused list the whole frame — same tab, same
-cursor, same list, just more room — arrows move through the entries, `Esc` goes
-back to the map. It works for the journal and the inventory too.
+`M` — or `Tab` — opens the menu, which takes the whole frame inside a heavy
+border that says you are in a mode. Left and right walk the tabs, down steps
+into the one you are on, `Esc` goes back to the map, and `M` again closes it.
+One key rather than four because four letters is four bindings to know before
+any of them can be found; the strip along the top then says what is in here, so
+nothing has to be remembered.
 
-![The same quest log, given the whole frame to be read in](docs/screens/reader.svg)
+Each tab takes the full width because everything in it is prose written for a
+human — a 32-column panel elided a quest description or a story clue
+mid-sentence, on exactly the part worth reading.
 
-What you are carrying. The list takes the arrow keys while it is open — the
-border says so — and `D` drops the selection. Dropping destroys the item, so it
-asks first, and it tells you when an open errand still wants it.
+What you are carrying. The arrow keys move the selection and `D` drops it.
+Dropping destroys the item, so it asks first, and it tells you when an open
+errand still wants it.
 
 ![The inventory panel, with an errand item flagged](docs/screens/inventory.svg)
+
+What the glyphs mean, read out of the tile registry rather than written down, so
+the key cannot start describing a colour or a character the game stopped using.
+
+![What the glyphs on the map mean](docs/screens/key.svg)
 
 The stills are rendered from real frames by `npm run screens` — the same
 compositor, palette and panels the game uses, captured through Ink and written
@@ -189,18 +207,61 @@ The bar along the bottom always says which keys are live, because they change:
 the arrow keys mean three different things depending on whether you are walking,
 choosing a reply, or reading a list.
 
-`M` `W` `I` `Q` `J` switch the side panel between the local map, the world map,
-inventory, quests and the journal. The three list panels take the arrow keys when
-you open them — the border turns cyan to say so — and `ESC` gives them back.
-Inside the inventory, `D` drops what the cursor is on; it asks first, and warns
-you if an open errand wants it, because there is no ground layer to pick it back
-up from. `S` saves and quits, also with a confirmation.
+`M` or `TAB` opens the menu: what you are carrying, the errands, the journal and
+the map key. Left and right walk the tabs, down hands the arrow keys to the list
+on the one you are on, and `ESC` or `M` goes back to the map. Inside the
+inventory, `D` drops what the cursor is on; it asks first, and warns you if an
+open errand wants it, because there is no ground layer to pick it back up from.
+`S` saves and quits, also with a confirmation.
 
-The map panel carries the clock and a key to the glyphs on screen: a tick is a
-minute and a move is a tick, so an hour of world time is sixty steps. The world
-panel carries its own key, since one character stands for a whole chunk there and
-means something different. An open errand is marked `!` on the world map and
-carries a bearing in the quest list, in chunks — `E 2` rather than a tile count.
+The top bar carries the clock: a tick is a minute and a move is a tick, so an
+hour of world time is sixty steps. Which way you are facing decides what `SPACE`
+acts on, so it is shown — as a wedge on the player's own sprite in pixel mode,
+and as an arrow beside the line describing what is in front of you in glyph
+mode. The minimap in the corner of the map draws one
+cell per chunk of the world you have walked into, `@` for where you are and `!`
+for a chunk with an errand waiting; the quest list gives the same errand a
+bearing in chunks — `E 2` rather than a tile count.
+
+## Renderers
+
+The map draws as glyphs by default and can draw as pixels instead, on terminals
+that implement the kitty graphics protocol:
+
+```bash
+npm start                   # pixels only if the terminal is known to do them
+TILE_MODE=kitty npm start   # pixels, no capability check
+TILE_MODE=glyph npm start   # glyphs, whatever the terminal can do
+npm run kitty-check         # does this terminal actually support it?
+```
+
+Left to itself the detection is conservative and every uncertainty ends in
+glyphs, which are the permanent floor rather than a fallback that might one day
+be dropped. `TILE_MODE` overrides it in both directions and without a check,
+because a terminal that supports the protocol but does not advertise it is
+something the player is better placed to know than we are. Sprites are
+procedures over the unit square rather than a bitmap, so tile size is a free
+choice; both renderers consume the same composed scene, so lighting, field of
+view, autotiling and the minimap overlay are shared and cannot drift apart.
+
+The layout above is what makes this possible. Ink cuts a row of Unicode
+placeholders in half the moment anything shares the screen line with it, so the
+map has to own every column of its rows — which is why the panel that used to sit
+beside it is now a top bar, an overlay composited into the frame, and pages that
+take the whole screen.
+
+A frame is three or four megapixels, so the pixel path is measured rather than
+guessed at. `npm run pixel-bench` times it stage by stage, and
+`npm run capture && npm run analyze` runs the built game under a real PTY and
+reports what actually went down the wire — how many tiles each row carried, and
+how many times the terminal was asked to present. The second number is the one
+that shows as flicker: the image and the frame that displays it have to reach
+the terminal inside a single synchronized update, or every step is presented
+twice.
+
+If it still flickers on your terminal, the next lever is the payload —
+`KITTY_DEFLATE=6` roughly halves the bytes for more CPU, and `ZOOM=0.8` reduces
+both.
 
 ## Choosing what to play
 

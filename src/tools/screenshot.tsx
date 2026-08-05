@@ -21,6 +21,7 @@ import { CHUNK, chunkKey } from "../core/world/coords.js";
 import { type MacroSite, macroSite } from "../core/world/macro.js";
 import { GameEngine } from "../engine/engine.js";
 import App from "../ui/app.js";
+import type { PanelTab } from "../ui/hud-state.js";
 import { bindEngine } from "../ui/store.js";
 import { setColorDepth } from "../ui/viewport.js";
 
@@ -362,12 +363,11 @@ async function capture(
 	name: string,
 	title: string,
 	prepare: (engine: GameEngine, site: MacroSite) => void,
-	tab?: "map" | "world" | "inventory" | "quests" | "journal",
+	tab?: PanelTab,
 	cursor?: number,
 	withArc = false,
-	/** Open the full-frame reader, as pressing Enter on a focused list does. */
-	expand = false,
 ) {
+	if (WANTED.size > 0 && !WANTED.has(name)) return;
 	const { engine, site } = buildEngine(withArc);
 	prepare(engine, site);
 	bindEngine(engine);
@@ -375,11 +375,7 @@ async function capture(
 	const stdout = fakeStdout();
 	const stdin = fakeStdin();
 	const instance = render(
-		<App
-			{...(tab ? { initialTab: tab } : {})}
-			{...(cursor ? { initialCursor: cursor } : {})}
-			{...(expand ? { initialExpanded: true } : {})}
-		/>,
+		<App {...(tab ? { initialTab: tab } : {})} {...(cursor ? { initialCursor: cursor } : {})} />,
 		{
 			stdout,
 			stdin,
@@ -394,15 +390,37 @@ async function capture(
 	instance.unmount();
 	instance.cleanup();
 
+	// `--text` prints the frame instead of writing it. The SVGs are for the README
+	// and have to be looked at in a browser; this is for checking a layout change
+	// from the terminal that made it, without a round trip through a human.
+	if (TEXT_ONLY) {
+		process.stdout.write(`\n── ${name}: ${title} ${"─".repeat(Math.max(0, 60 - name.length))}\n`);
+		process.stdout.write(`${stripAnsi(frame)}\n`);
+		return;
+	}
+
 	const path = `docs/screens/${name}.svg`;
 	writeFileSync(path, toSvg(frame, title));
 	process.stdout.write(`${path}  ${frame.split("\n").length} lines\n`);
 }
 
+const TEXT_ONLY = process.argv.includes("--text");
+/** Only these shots, when named; all of them otherwise. */
+const WANTED = new Set(process.argv.slice(2).filter((arg) => !arg.startsWith("--")));
+
 async function main() {
 	setColorDepth("truecolor");
 
-	await capture("town", "A town, seen from the road", () => undefined);
+	await capture("town", "A town, seen from the road", (engine, site) => {
+		// Walked here rather than dropped here. Without some ground behind them the
+		// minimap in the corner is an empty box, which reads as a panel that failed
+		// to load rather than as a map still to be filled in.
+		for (let dy = -4; dy <= 4; dy++) {
+			for (let dx = -6; dx <= 6; dx++) {
+				engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx + dx, site.my + dy) });
+			}
+		}
+	});
 
 	await capture("conversation", "Talking to somebody", (engine) => {
 		const npc = engine.getNpcs().all()[0];
@@ -421,58 +439,6 @@ async function main() {
 	await capture(
 		"quest",
 		"The story so far, and the errand in hand",
-		(engine, site) => {
-			// Discovered, then walked away from, so the quest carries a real bearing
-			// rather than reading "here".
-			engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx, site.my) });
-			engine.dispatch({
-				t: "ApplyEffects",
-				effects: [
-					// Two beats reached: the first finished, the second still in hand. That
-					// contrast is the point of the pane.
-					{ t: "SetFlag", key: "arc:the-short-tally", value: true },
-					{ t: "SetFlag", key: "arc:the-second-weight", value: true },
-					{
-						t: "RecordJournal",
-						entry: {
-							kind: "event",
-							text: "Ilse Marrow keeps her own count, and it is short by a cord a month.",
-							source: "arc:the-short-tally",
-						},
-					},
-					{
-						t: "CreateQuest",
-						id: "tally",
-						name: "Take the tally to Stonewait",
-						description: "Carry Ilse's own count up the high road.",
-						objectives: [{ kind: "reach", target: "Stonewait", done: true }],
-						siteId: site.id,
-					},
-					{ t: "CompleteQuest", id: "tally" },
-					{
-						t: "CreateQuest",
-						id: "timber",
-						name: "Timber for the mill",
-						description: "The miller wants three lengths of sawn timber.",
-						objectives: [
-							{ kind: "have", target: "Timber", quantity: 3, done: false },
-							{ kind: "talk", target: "Sedge", done: false },
-						],
-						siteId: site.id,
-					},
-					{ t: "GrantItem", name: "Timber", description: "Rough-sawn planks.", quantity: 1 },
-					{ t: "Teleport", x: site.site.x + CHUNK * 2, y: site.site.y - CHUNK },
-				],
-			});
-		},
-		"quests",
-		undefined,
-		true,
-	);
-
-	await capture(
-		"reader",
-		"The same quest log, given the whole frame to be read in",
 		(engine, site) => {
 			engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx, site.my) });
 			engine.dispatch({
@@ -525,7 +491,6 @@ async function main() {
 		"quests",
 		undefined,
 		true,
-		true,
 	);
 
 	await capture(
@@ -565,6 +530,8 @@ async function main() {
 		// shows the warning that stops an errand item being thrown away.
 		1,
 	);
+
+	await capture("key", "What the glyphs on the map mean", () => undefined, "key");
 
 	await capture("opening", "How a game introduces itself", (engine) => {
 		// The card every flavour opens on, assembled from what the world knows about

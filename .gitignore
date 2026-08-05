@@ -5,3 +5,4 @@ log.txt
 .env.local
 maps
 state.json
+*.raw

@@ -1,34 +1,56 @@
 import { describe, expect, it } from "vitest";
-import { clampCursor, type HudState, hudReducer, initialHud, listWindow } from "./hud-state.js";
+import {
+	clampCursor,
+	type HudState,
+	hudReducer,
+	initialHud,
+	listWindow,
+	PANEL_TABS,
+} from "./hud-state.js";
 
-describe("panel focus", () => {
-	it("takes the arrow keys when a list is opened, and gives them back on a display", () => {
-		// Pressing `i` to look at your bag and then having to press something else
-		// before you can move the cursor would be a binding nobody would find.
-		const inventory = hudReducer(initialHud(), { t: "SelectTab", tab: "inventory" });
-		expect(inventory.focus).toBe(true);
-		const map = hudReducer(inventory, { t: "SelectTab", tab: "map" });
-		expect(map.focus).toBe(false);
+describe("the menu", () => {
+	it("starts on the map, with nothing open", () => {
+		expect(initialHud().tab).toBeUndefined();
 	});
 
-	it("refuses focus on a pane with nothing to select", () => {
-		// Otherwise the arrow keys would be swallowed by the minimap and the player
-		// would be unable to walk with no way to tell why.
-		expect(hudReducer(initialHud("world"), { t: "Focus" }).focus).toBe(false);
-		expect(hudReducer(initialHud("quests"), { t: "Focus" }).focus).toBe(true);
+	it("takes the frame, and gives it back", () => {
+		const open = hudReducer(initialHud(), { t: "OpenMenu" });
+		expect(open.tab).toBe(PANEL_TABS[0]);
+		expect(hudReducer(open, { t: "CloseMenu" }).tab).toBeUndefined();
 	});
 
-	it("keeps the cursor when the same tab is reselected", () => {
-		let state = hudReducer(initialHud("inventory"), { t: "MoveCursor", delta: 3, count: 8 });
-		expect(state.cursor).toBe(3);
-		state = hudReducer(state, { t: "SelectTab", tab: "inventory" });
-		expect(state.cursor).toBe(3);
+	// Left and right walk the strip; without this the arrow keys would be moving
+	// a cursor in a list the player has not chosen yet.
+	it("opens on the tab strip rather than inside a list", () => {
+		expect(hudReducer(initialHud(), { t: "OpenMenu" }).inList).toBe(false);
+	});
+
+	it("steps along the tabs and wraps at both ends", () => {
+		const open = hudReducer(initialHud(), { t: "OpenMenu" });
+		expect(hudReducer(open, { t: "StepTab", delta: 1 }).tab).toBe(PANEL_TABS[1]);
+		expect(hudReducer(open, { t: "StepTab", delta: -1 }).tab).toBe(PANEL_TABS.at(-1));
+	});
+
+	it("goes into the list on the tab, and hands the arrow keys over", () => {
+		const open = hudReducer(initialHud("inventory"), { t: "EnterList" });
+		expect(open.inList).toBe(true);
+	});
+
+	// The key tab has nothing to select, so stepping in would take the arrow keys
+	// and give nothing back for them.
+	it("refuses to step into a tab with no list", () => {
+		expect(hudReducer(initialHud("key"), { t: "EnterList" }).inList).toBe(false);
+	});
+
+	it("comes back out to the strip when the tab changes", () => {
+		const inList = hudReducer(initialHud("inventory"), { t: "EnterList" });
+		expect(hudReducer(inList, { t: "StepTab", delta: 1 }).inList).toBe(false);
 	});
 
 	it("starts a different tab from the top", () => {
 		// Row four of the inventory has nothing to do with row four of the journal.
 		let state = hudReducer(initialHud("inventory"), { t: "MoveCursor", delta: 3, count: 8 });
-		state = hudReducer(state, { t: "SelectTab", tab: "journal" });
+		state = hudReducer(state, { t: "StepTab", delta: 1 });
 		expect(state.cursor).toBe(0);
 	});
 
@@ -40,8 +62,8 @@ describe("panel focus", () => {
 			confirm: { action: { t: "drop", name: "Timber", quantity: 3 }, prompt: "Drop?" },
 		});
 		expect(asked.confirm).toBeDefined();
-		expect(hudReducer(asked, { t: "SelectTab", tab: "map" }).confirm).toBeUndefined();
-		expect(hudReducer(asked, { t: "Blur" }).confirm).toBeUndefined();
+		expect(hudReducer(asked, { t: "StepTab", delta: 1 }).confirm).toBeUndefined();
+		expect(hudReducer(asked, { t: "CloseMenu" }).confirm).toBeUndefined();
 		expect(hudReducer(asked, { t: "Dismiss" }).confirm).toBeUndefined();
 	});
 });
@@ -49,12 +71,10 @@ describe("panel focus", () => {
 describe("the cursor", () => {
 	it("stops at both ends rather than wrapping", () => {
 		// Wrapping a five-item list means one press past the bottom is the top,
-		// which in a panel this short reads as the list having jumped.
+		// which reads as the list having jumped.
 		const at = (cursor: number, delta: number) =>
-			hudReducer(
-				{ tab: "inventory", focus: true, expanded: false, cursor },
-				{ t: "MoveCursor", delta, count: 5 },
-			).cursor;
+			hudReducer({ tab: "inventory", inList: true, cursor }, { t: "MoveCursor", delta, count: 5 })
+				.cursor;
 		expect(at(0, -1)).toBe(0);
 		expect(at(4, 1)).toBe(4);
 		expect(at(2, 1)).toBe(3);
@@ -62,10 +82,18 @@ describe("the cursor", () => {
 
 	it("survives the list shrinking underneath it", () => {
 		// Real: the last item is dropped while the cursor is on it, or a quest
-		// closes. Clamping at the move is what stops the pane reading past the end.
+		// closes. Clamping at the move is what stops the page reading past the end.
 		expect(clampCursor(7, 3)).toBe(2);
 		expect(clampCursor(7, 0)).toBe(0);
 		expect(clampCursor(-4, 3)).toBe(0);
+	});
+
+	// Keeping it would mean the next page opened — which may be a different list
+	// entirely — started somewhere in the middle for no reason the player could see.
+	it("goes back to the top when the menu is closed", () => {
+		const at = hudReducer(initialHud("quests"), { t: "MoveCursor", delta: 2, count: 5 });
+		expect(at.cursor).toBe(2);
+		expect(hudReducer(at, { t: "CloseMenu" }).cursor).toBe(0);
 	});
 });
 
@@ -100,48 +128,16 @@ describe("hud state", () => {
 		// mid-action load permanently locked in the previous design; this type
 		// exists to keep that separation visible.
 		const state: HudState = initialHud();
-		expect(Object.keys(state).sort()).toEqual(["cursor", "expanded", "focus", "tab"]);
-	});
-});
-
-describe("expanding a list to read it", () => {
-	it("focuses as well, so the arrows cannot still be moving the player", () => {
-		const state = hudReducer(initialHud("map"), { t: "SelectTab", tab: "quests" });
-		const reading = hudReducer(state, { t: "Expand" });
-		expect(reading.expanded).toBe(true);
-		expect(reading.focus).toBe(true);
+		expect(Object.keys(state).sort()).toEqual(["cursor", "inList"]);
 	});
 
-	it("refuses on a tab with no list to read", () => {
-		expect(hudReducer(initialHud("map"), { t: "Expand" }).expanded).toBe(false);
-		expect(hudReducer(initialHud("world"), { t: "Expand" }).expanded).toBe(false);
-	});
-
-	it("keeps reading when the player switches to another list", () => {
-		const reading = hudReducer(initialHud("quests"), { t: "Expand" });
-		const moved = hudReducer(reading, { t: "SelectTab", tab: "journal" });
-		expect(moved.expanded).toBe(true);
-		expect(moved.tab).toBe("journal");
-	});
-
-	it("stops reading when the player asks for a tab that has no list", () => {
-		// Asking for the map is how you leave, so it must not leave a reader up over it.
-		const reading = hudReducer(initialHud("quests"), { t: "Expand" });
-		expect(hudReducer(reading, { t: "SelectTab", tab: "map" }).expanded).toBe(false);
-	});
-
-	it("keeps the cursor across expanding and collapsing", () => {
-		// The two views index the same list, which is the whole reason the reader is the
-		// same tab rather than a screen of its own.
-		const at = hudReducer(initialHud("quests"), { t: "MoveCursor", delta: 2, count: 5 });
-		const reading = hudReducer(at, { t: "Expand" });
-		expect(hudReducer(reading, { t: "Collapse" }).cursor).toBe(2);
-	});
-
-	it("is closed by blurring, not merely unfocused behind a reader", () => {
-		const reading = hudReducer(initialHud("quests"), { t: "Expand" });
-		const blurred = hudReducer(reading, { t: "Blur" });
-		expect(blurred.expanded).toBe(false);
-		expect(blurred.focus).toBe(false);
+	/*
+	 * One field where there were three. A page used to be a box beside the map that
+	 * could be open, focused, and then separately expanded — three states and two
+	 * keys to get through them. With no small version to be in, opening a page is
+	 * taking the frame, and this is what says so.
+	 */
+	it("says what has the keys in two fields, where there were four", () => {
+		expect(initialHud("quests")).toEqual({ tab: "quests", inList: false, cursor: 0 });
 	});
 });

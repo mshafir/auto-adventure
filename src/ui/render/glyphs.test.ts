@@ -3,7 +3,7 @@ import stringWidth from "string-width";
 import { describe, expect, it } from "vitest";
 import { AUTOTILE_SETS, autotileGlyph, FULL_MASK } from "./autotile.js";
 import { checkGlyph, describeRejection } from "./glyph-safety.js";
-import { allRegisteredGlyphs, FACING_MARKER, PLAYER_GLYPH } from "./glyphs.js";
+import { allRegisteredGlyphs, PLAYER_GLYPH } from "./glyphs.js";
 
 describe("glyph safety", () => {
 	const glyphs = [...new Set(allRegisteredGlyphs())];
@@ -63,13 +63,11 @@ describe("glyph safety", () => {
 
 	it("gives the player a glyph no terrain also uses", () => {
 		// The player sharing a glyph with conifers made them disappear into a
-		// treeline; the facing marker is likewise deliberately not a terrain glyph.
+		// treeline, which is why every directional alternative was rejected too.
 		const terrainGlyphs = new Set(allRegisteredGlyphs());
 		terrainGlyphs.delete(PLAYER_GLYPH);
-		terrainGlyphs.delete(FACING_MARKER);
 		expect(terrainGlyphs.has(PLAYER_GLYPH)).toBe(false);
 		expect(checkGlyph(PLAYER_GLYPH).ok).toBe(true);
-		expect(checkGlyph(FACING_MARKER).ok).toBe(true);
 	});
 });
 
