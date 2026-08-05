@@ -1,7 +1,19 @@
 # Pixel renderer + HUD restructure — working plan
 
 Branch `quadrant-render`, in the worktree `.claude/worktrees/quadrant-render`,
-rebased onto `origin/main` at `2323f6a`. 899 tests pass, typecheck and lint clean.
+rebased onto `origin/main` at `2323f6a`.
+
+**Steps 1–8 are done.** 929 tests pass, typecheck and lint clean. What the
+capture harness says about the pixel path, which was the point of all of it:
+
+```
+tiles per line      163          <- one constant, equal to the map width
+uploads 4, deletes 4             <- paired, so no placements stack
+panel starts at     (no text after tiles)
+```
+
+Before: 129 falling to 64 halfway down the frame, with the side panel composited
+into the gap. Step 9 (§7, glyph tables into theme packs) has not been started.
 
 ---
 
