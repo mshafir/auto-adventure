@@ -11,6 +11,10 @@ import { tileFit } from "./raster.js";
 
 afterEach(() => setCellPixels(undefined));
 
+/** What Ghostty actually answers, byte for byte: a 19x42 cell in a 1554px area. */
+const CELL_REPLY = "\u001B[6;42;19t";
+const AREA_REPLY = "\u001B[4;1554;3097t";
+
 /** A stdin that answers the cell-size query with whatever it is told to. */
 function fakeStdin(reply?: string) {
 	const stream = new EventEmitter() as unknown as NodeJS.ReadStream & { isRaw: boolean };
@@ -105,6 +109,60 @@ describe("measureCellPixels", () => {
 		const { stream } = fakeStdout();
 		await measureCellPixels(fakeStdin("\u001B[6;30;13t"), stream, 50);
 		expect(cellPixels({ CELL_PX: "9x18" })).toEqual({ width: 9, height: 18 });
+	});
+
+	/*
+	 * Two queries go out, so two answers come back, and both have to be read.
+	 * Returning on the first left the answer to the second sitting in the
+	 * terminal's input buffer — and the next thing to read stdin is Ink, which
+	 * took it for somebody typing: the tail of the reply printed itself out, and
+	 * the rest was routed as keystrokes.
+	 */
+	it("waits for both answers rather than leaving one for Ink to eat", async () => {
+		const { stream } = fakeStdout();
+		const stdin = fakeStdin();
+		const promise = measureCellPixels(stdin, stream, 500);
+		await Promise.resolve();
+
+		stdin.emit("data", Buffer.from(`${CELL_REPLY}`, "latin1"));
+		// Still listening: the answer to the second query has not arrived.
+		expect(stdin.listenerCount("data")).toBe(1);
+
+		stdin.emit("data", Buffer.from(`${AREA_REPLY}`, "latin1"));
+		expect(await promise).toEqual({ width: 19, height: 42 });
+		expect(stdin.listenerCount("data")).toBe(0);
+	});
+
+	// Two escape sequences, with nothing promising they arrive in one read.
+	// Parsing the chunk in hand rather than everything received misses the split.
+	it("reads a reply that arrives in pieces", async () => {
+		const { stream } = fakeStdout();
+		const stdin = fakeStdin();
+		const promise = measureCellPixels(stdin, stream, 500);
+		await Promise.resolve();
+
+		const whole = `${CELL_REPLY}${AREA_REPLY}`;
+		for (const piece of [whole.slice(0, 5), whole.slice(5, 14), whole.slice(14)]) {
+			stdin.emit("data", Buffer.from(piece, "latin1"));
+		}
+		expect(await promise).toEqual({ width: 19, height: 42 });
+	});
+
+	/*
+	 * The timeout is the only thing holding the event loop open while this waits,
+	 * and it used to be unref'd. On the path that matters — after the launcher,
+	 * whose own Ink instance leaves stdin unref'd — node found no work left and
+	 * exited: the game closed without a word after the menu, having never drawn a
+	 * frame and logged nothing to say why.
+	 */
+	it("keeps the process alive while it waits for an answer", async () => {
+		const { stream } = fakeStdout();
+		const timers = () =>
+			(process.getActiveResourcesInfo?.() ?? []).filter((r) => r === "Timeout").length;
+		const before = timers();
+		const promise = measureCellPixels(fakeStdin(), stream, 60);
+		expect(timers()).toBeGreaterThan(before);
+		expect(await promise).toEqual({ width: 8, height: 16 });
 	});
 });
 

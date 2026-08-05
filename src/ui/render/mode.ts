@@ -114,7 +114,8 @@ export async function measureCellPixels(
 	return new Promise<CellSize>((resolve) => {
 		let settled = false;
 		const wasRaw = stdin.isRaw;
-		const finish = (size: CellSize, real: boolean) => {
+
+		const finish = () => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
@@ -122,44 +123,35 @@ export async function measureCellPixels(
 			// Leave stdin exactly as it was found; Ink sets its own mode after this.
 			if (!wasRaw) stdin.setRawMode(false);
 			stdin.pause();
-			// Only a real answer is recorded, so callers can tell a measurement
-			// from a guess and say which they are using.
-			if (real) measured = size;
-			resolve(size);
+
+			const size = fromCellReply(lastReply) ?? fromAreaReply(lastReply, stdout);
+			// Only a real answer is recorded, so callers can tell a measurement from a
+			// guess and say which they are using.
+			if (size) measured = size;
+			resolve(size ?? ASSUMED_CELL);
 		};
 
+		/*
+		 * Parsed from everything received so far rather than from the chunk in hand.
+		 * A reply can arrive split — it is two escape sequences and there is nothing
+		 * saying they come in one read — and matching per chunk would then miss an
+		 * answer that did in fact arrive.
+		 */
 		const onData = (chunk: Buffer) => {
-			const text = chunk.toString("latin1");
-			lastReply += text;
-
-			// CSI 6 ; <height> ; <width> t — the cell size, asked for directly.
-			const cell = /\[6;(\d+);(\d+)t/.exec(text);
-			if (cell) {
-				const height = Number(cell[1]);
-				const width = Number(cell[2]);
-				const ok = height > 0 && width > 0;
-				finish(ok ? { width, height } : ASSUMED_CELL, ok);
-				return;
-			}
-
-			// CSI 4 ; <height> ; <width> t — the text area in pixels. Divided by the
-			// grid it gives the same answer, and terminals that ignore `16t` often
-			// still answer this one.
-			const area = /\[4;(\d+);(\d+)t/.exec(text);
-			if (area) {
-				const areaH = Number(area[1]);
-				const areaW = Number(area[2]);
-				const cols = stdout.columns ?? 0;
-				const rowCount = stdout.rows ?? 0;
-				if (areaH > 0 && areaW > 0 && cols > 0 && rowCount > 0) {
-					finish({ width: Math.round(areaW / cols), height: Math.round(areaH / rowCount) }, true);
-				}
-			}
+			lastReply += chunk.toString("latin1");
+			// Both answers, or the window closes. Stopping at the first would leave
+			// the second sitting in the terminal's input buffer, and the next thing
+			// to read stdin is Ink — which would take `<ESC>[4;1554;3097t` for
+			// somebody typing, print what it could not parse, and act on the rest.
+			if (fromCellReply(lastReply) && fromAreaReply(lastReply, stdout)) finish();
 		};
 
-		const timer = setTimeout(() => finish(ASSUMED_CELL, false), timeoutMs);
-		// Unref'd so a terminal that never answers cannot hold the process open.
-		timer.unref?.();
+		// Deliberately *not* unref'd. It is the only thing holding the event loop
+		// open for these hundred milliseconds: stdin arrives unref'd from the
+		// launcher's own Ink instance, so an unref'd timer here let node run out of
+		// work and exit — the game closing without a word after the menu, before it
+		// ever drew a frame.
+		const timer = setTimeout(finish, timeoutMs);
 
 		stdin.setRawMode(true);
 		stdin.resume();
@@ -169,6 +161,32 @@ export async function measureCellPixels(
 		// instead of two.
 		stdout.write(`${CSI}16t${CSI}14t`);
 	});
+}
+
+/** `CSI 6 ; <height> ; <width> t` — the cell size, asked for directly. */
+function fromCellReply(reply: string): CellSize | undefined {
+	const match = /\[6;(\d+);(\d+)t/.exec(reply);
+	if (!match) return undefined;
+	const height = Number(match[1]);
+	const width = Number(match[2]);
+	return height > 0 && width > 0 ? { width, height } : undefined;
+}
+
+/**
+ * `CSI 4 ; <height> ; <width> t` — the text area in pixels.
+ *
+ * Divided by the grid it gives the same answer, and terminals that ignore `16t`
+ * often still answer this one.
+ */
+function fromAreaReply(reply: string, stdout: NodeJS.WriteStream): CellSize | undefined {
+	const match = /\[4;(\d+);(\d+)t/.exec(reply);
+	if (!match) return undefined;
+	const areaH = Number(match[1]);
+	const areaW = Number(match[2]);
+	const columns = stdout.columns ?? 0;
+	const rows = stdout.rows ?? 0;
+	if (areaH <= 0 || areaW <= 0 || columns <= 0 || rows <= 0) return undefined;
+	return { width: Math.round(areaW / columns), height: Math.round(areaH / rows) };
 }
 
 /**

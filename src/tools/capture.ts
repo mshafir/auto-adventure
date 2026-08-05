@@ -30,6 +30,15 @@ const KEYS: readonly { readonly at: number; readonly key: string }[] = [
 	{ at: 3900, key: "[C" },
 ];
 
+/**
+ * `--launcher` goes in the front door instead.
+ *
+ * Naming a world skips the menu, which is what a capture normally wants — but it
+ * also skips the only path where the cell-size query runs *after* another Ink app
+ * has held stdin, and that is where the reply-leaking bug lived.
+ */
+const THROUGH_LAUNCHER = process.argv.includes("--launcher");
+
 if (!existsSync("dist/main.js")) {
 	process.stderr.write("dist/main.js is missing — run `npm run build` first.\n");
 	process.exit(1);
@@ -37,15 +46,24 @@ if (!existsSync("dist/main.js")) {
 
 const inner = [
 	`stty cols ${COLUMNS} rows ${ROWS}`,
-	`TILE_MODE=kitty NO_AI=1 WORLD_NAME=capture timeout ${SECONDS} node dist/main.js`,
+	[
+		"TILE_MODE=kitty NO_AI=1",
+		THROUGH_LAUNCHER ? "" : "WORLD_NAME=capture",
+		`timeout ${SECONDS} node dist/main.js`,
+	]
+		.filter(Boolean)
+		.join(" "),
 ].join("; ");
 
 const child = spawn("script", ["-qec", inner, OUT], {
 	stdio: ["pipe", "inherit", "inherit"],
 });
 
+// The menu needs answering before any of the in-game keys mean anything.
+const offset = THROUGH_LAUNCHER ? 1200 : 0;
+if (THROUGH_LAUNCHER) setTimeout(() => child.stdin?.write("\r"), 800);
 for (const { at, key } of KEYS) {
-	setTimeout(() => child.stdin?.write(key), at);
+	setTimeout(() => child.stdin?.write(key), at + offset);
 }
 
 child.on("exit", (code) => {
