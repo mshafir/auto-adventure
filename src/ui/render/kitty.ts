@@ -80,6 +80,14 @@ export interface FrameSpec {
 	readonly columns: number;
 	readonly rows: number;
 	readonly imageId?: number;
+	/**
+	 * Let the terminal answer back.
+	 *
+	 * Off in the game for a hard reason — see below — but a silenced terminal is
+	 * also a terminal that cannot tell you why it drew nothing, so the diagnostic
+	 * tool turns replies on.
+	 */
+	readonly loud?: boolean;
 }
 
 /**
@@ -106,9 +114,13 @@ export function transmitFrame(spec: FrameSpec): string {
 		"a=T", // transmit and display
 		"f=24", // 24-bit RGB
 		"o=z", // zlib-compressed payload
-		"q=2", // stay silent
+		`q=${spec.loud ? 0 : 2}`, // stay silent unless someone is debugging
 		"U=1", // virtual placement, shown via placeholders
 		`i=${id}`,
+		// A fixed placement id, so re-sending a frame *replaces* the placement
+		// rather than stacking another one on top of it. Without this every
+		// render leaves its predecessor behind, and the count only goes up.
+		"p=1",
 		`s=${spec.width}`,
 		`v=${spec.height}`,
 		`c=${spec.columns}`,
