@@ -5,6 +5,7 @@ import { describeObjective, questNeeding } from "../../core/rules/quests.js";
 import { activeQuests, type GameState, type Quest } from "../../core/rules/state.js";
 import { toChunk } from "../../core/world/coords.js";
 import { type HudState, PANEL_TABS, type PanelTab } from "../hud-state.js";
+import { tileMode } from "../viewport.js";
 import { mapLegend } from "./legend.js";
 import { Bullet, Field, FRAME_CHROME, Frame, Prose, Rule, ScrollList } from "./primitives.js";
 
@@ -98,18 +99,23 @@ function TabStrip({ tab, inList }: { tab: PanelTab; inList: boolean }) {
 }
 
 /**
- * What the glyphs on the map mean.
+ * What is on the map, in whichever terms the map is currently drawn in.
  *
  * A page of its own because the map is full width now and there is no panel to
  * put a key in. That is no loss: read at full width it fits in one column with
  * room for the labels, where in the panel it was a two-column grid the bottom of
  * which fell off a short terminal.
+ *
+ * The renderer is asked rather than assumed. A key listing `♠ ▒ ~` beside "trees"
+ * and "water" is describing characters that are not on screen at all in pixel
+ * mode, where the same registry entries are drawn as shapes in colour.
  */
 function KeyReader({ width, rows }: { width: number; rows: number }) {
-	const entries = mapLegend().slice(0, Math.max(0, rows - 1));
+	const pixels = tileMode() === "kitty";
+	const entries = mapLegend(tileMode()).slice(0, Math.max(0, rows - 1));
 	return (
 		<>
-			<Rule width={width} label="what you are looking at" />
+			<Rule width={width} label={pixels ? "the colours on the map" : "what you are looking at"} />
 			{entries.map((entry) => (
 				<Text key={entry.label} wrap="truncate">
 					<Text bold={entry.bold ?? false} color={entry.color}>

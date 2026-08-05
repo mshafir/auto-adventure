@@ -11,7 +11,9 @@ import { siteContext } from "../core/world/context.js";
 import { type MacroSite, macroSite } from "../core/world/macro.js";
 import { GameEngine } from "../engine/engine.js";
 import App from "./app.js";
+import { mapLegend } from "./panels/legend.js";
 import { bindEngine } from "./store.js";
+import { setTileMode } from "./viewport.js";
 
 const SEED = hashString("app-test");
 
@@ -199,6 +201,39 @@ describe("the pages", () => {
 		unmount();
 		for (const label of ["you", "folk", "door", "chest", "water"]) {
 			expect(text, `the key does not mention ${label}`).toContain(label);
+		}
+	});
+
+	/*
+	 * The same page, drawn for the other renderer. It used to list glyph characters
+	 * whichever one was running, so a player looking at sprites was handed a key to
+	 * a map nobody was showing them.
+	 */
+	it("keys the colours instead, once the map is drawn as pixels", () => {
+		const { engine } = engineBesideSomeone();
+		bindEngine(engine);
+		setTileMode("kitty");
+		try {
+			const { lastFrame, unmount } = renderInk(<App initialTab="key" />);
+			const text = stripAnsi(lastFrame() ?? "");
+			unmount();
+
+			// The rule uppercases its label.
+			expect(text).toContain("COLOURS ON THE MAP");
+			// The things are still named; only the way they are shown has changed.
+			for (const label of ["you", "door", "chest", "water"]) {
+				expect(text, `the key does not mention ${label}`).toContain(label);
+			}
+			// And what pixel mode alone has to say: everyone is the same figure, so
+			// disposition is carried entirely by colour.
+			expect(text).toContain("wary");
+			// No map glyph anywhere on the page.
+			for (const glyph of mapLegend("glyph").map((entry) => entry.ch)) {
+				if (glyph === "A") continue; // a capital A is also just a letter in prose
+				expect(text, `the pixel key still shows ${glyph}`).not.toContain(glyph);
+			}
+		} finally {
+			setTileMode(undefined);
 		}
 	});
 
