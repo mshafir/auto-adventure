@@ -40,6 +40,15 @@ export interface ChooserProps {
 	readonly items: readonly ChoiceItem[];
 	/** Columns the list may use. Bodies wrap to it rather than being cut. */
 	readonly width?: number;
+	/**
+	 * Rows the list may use.
+	 *
+	 * The whole list has to fit: it lives inside a fixed-height frame now, and a
+	 * frame that overflows does not scroll — Ink clips it, so the last choice and the
+	 * footer simply vanish. Given too few rows the bodies shrink, and given fewer
+	 * still only the selected choice keeps one.
+	 */
+	readonly height?: number;
 	readonly onChoose: (item: ChoiceItem, index: number) => void;
 	/** ESC, and `q` where the page above is the title. */
 	readonly onBack?: () => void;
@@ -56,6 +65,7 @@ export interface ChooserProps {
 export function Chooser({
 	items,
 	width = 76,
+	height = Number.POSITIVE_INFINITY,
 	onChoose,
 	onBack,
 	onKey,
@@ -88,27 +98,70 @@ export function Chooser({
 	// Clamped rather than stored back, so a list that shrinks under the cursor —
 	// which is what deleting a save does — cannot leave it pointing past the end.
 	const at = Math.min(cursor, Math.max(0, items.length - 1));
+	const budget = bodyBudget(items, height);
 
 	return (
 		<Box flexDirection="column">
 			{items.map((item, index) => (
-				<Row key={item.id} item={item} width={width} selected={index === at && isActive} />
+				<Row
+					key={item.id}
+					item={item}
+					width={width}
+					// In `selected` mode only the choice under the cursor explains itself,
+					// which is what keeps a four-paragraph page usable on a short terminal.
+					rows={budget.mode === "all" || index === at ? budget.rows : 0}
+					selected={index === at && isActive}
+				/>
 			))}
 		</Box>
 	);
 }
 
+interface BodyBudget {
+	readonly mode: "all" | "selected";
+	readonly rows: number;
+}
+
+/**
+ * How many rows each choice's paragraph may have.
+ *
+ * Every choice gets one while there is room for every choice to get one — reading
+ * four descriptions side by side is the whole point of the page. Below that it
+ * collapses to explaining only what the cursor is on, which is worse but still
+ * answers the question, and is much better than the alternative of the page
+ * overflowing and dropping its last choice off the bottom without a word.
+ */
+function bodyBudget(items: readonly ChoiceItem[], height: number): BodyBudget {
+	const explained = items.filter((item) => item.body).length;
+	if (explained === 0) return { mode: "all", rows: 0 };
+
+	// One row per label, and one blank under each body.
+	const spare = height - items.length - explained;
+	const each = Math.floor(spare / explained);
+	if (each >= 1) return { mode: "all", rows: Math.min(BODY_ROWS, each) };
+	return { mode: "selected", rows: Math.max(0, Math.min(BODY_ROWS, height - items.length - 1)) };
+}
+
 /** Room the body has once the four columns of indent are taken off. */
 const BODY_INDENT = 4;
 
-function Row({ item, width, selected }: { item: ChoiceItem; width: number; selected: boolean }) {
+function Row({
+	item,
+	width,
+	rows,
+	selected,
+}: {
+	item: ChoiceItem;
+	width: number;
+	rows: number;
+	selected: boolean;
+}) {
 	const color = item.disabled ? "gray" : selected ? "cyan" : undefined;
 	// Wrapped rather than truncated. A paragraph is the whole reason a choice has a
 	// body — cutting it mid-sentence puts back exactly the problem the old one-line
 	// list had.
-	const body = item.body
-		? wrapToLines(item.body, Math.max(20, width - BODY_INDENT), BODY_ROWS)
-		: [];
+	const body =
+		item.body && rows > 0 ? wrapToLines(item.body, Math.max(20, width - BODY_INDENT), rows) : [];
 
 	return (
 		<Box flexDirection="column" marginBottom={body.length > 0 ? 1 : 0}>

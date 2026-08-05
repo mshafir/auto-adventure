@@ -29,6 +29,12 @@ import { wrapToLines } from "../render/text.js";
  *
  * - `reader` is heavy — a page you opened, and Esc puts it down.
  * - `card` is double — the game telling you something, and it arrived by itself.
+ * - `menu` is round — the launcher, which is not the game yet.
+ *
+ * The launcher uses one for the same reason the in-game pages do: a full-screen
+ * view with nothing around it looks like a program that has stopped drawing. It
+ * also makes the front door look like the same piece of software as the thing
+ * behind it, which it did not before.
  *
  * Box Drawing throughout, which `glyph-safety.ts` vouches for as single-width
  * everywhere; a double-width corner would leave the frame a column short on the
@@ -39,6 +45,7 @@ export const FRAME_CHROME = 2;
 const FRAMES = {
 	reader: { border: "bold", color: "cyan" },
 	card: { border: "double", color: "yellow" },
+	menu: { border: "round", color: "cyan" },
 } as const;
 
 export function Frame({

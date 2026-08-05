@@ -4,6 +4,8 @@ import { normalizeBrief, type ScenarioBrief } from "../../core/world/brief.js";
 import type { SaveSummary } from "../../persist/save-repo.js";
 import type { ScenarioSummary } from "../../scenario/repo.js";
 import type { LaunchChoice } from "../../scenario/scenario.js";
+import { Frame } from "../panels/primitives.js";
+import { detectColorDepth } from "../render/color.js";
 import { type ChoiceContext, choiceFor, withBrief } from "./choice.js";
 import { Continue } from "./continue.js";
 import { type NewChoice, NewWorld, ScenarioList } from "./new-world.js";
@@ -66,6 +68,11 @@ export function Launcher({
 	// list it renders from is state rather than the prop.
 	const [worlds, setWorlds] = useState(saves);
 	const columns = stdout.columns ?? 80;
+	// One row short of the terminal, the same rule the game itself follows: Ink
+	// updates incrementally only while its output is *shorter* than the window, and
+	// at exactly the window height it clears the screen on every keypress.
+	const rows = Math.max(12, (stdout.rows ?? 24) - 1);
+	const depth = detectColorDepth();
 
 	// Rebuilt from the live list rather than taken from the prop, so a slot freed by
 	// a delete is one a new world can immediately be given.
@@ -83,12 +90,14 @@ export function Launcher({
 
 	if (asking) {
 		return (
-			<Box flexDirection="column" paddingX={2} paddingY={1}>
-				<Text bold>What should this world be about?</Text>
+			<Frame style="menu" width={columns} height={rows}>
+				<Text bold color="cyan">
+					What should this world be about?
+				</Text>
 				<Text dimColor>
 					A premise, a setting, a story — a sentence is plenty. ENTER to begin, ESC to go back.
 				</Text>
-				<Box marginTop={1}>
+				<Box flexGrow={1} marginTop={1} flexDirection="column">
 					<TextField
 						value={premise}
 						onChange={setPremise}
@@ -104,7 +113,7 @@ export function Launcher({
 						onCancel={() => setAsking(false)}
 					/>
 				</Box>
-			</Box>
+			</Frame>
 		);
 	}
 
@@ -113,6 +122,7 @@ export function Launcher({
 			<Continue
 				saves={worlds}
 				columns={columns}
+				rows={rows}
 				now={now}
 				onResume={(save) => take(choiceFor({ kind: "save", save }, here))}
 				onDelete={(save) => {
@@ -129,6 +139,7 @@ export function Launcher({
 			<ScenarioList
 				scenarios={scenarios}
 				columns={columns}
+				rows={rows}
 				onChoose={(scenario) => take(choiceFor({ kind: "scenario", scenario }, here))}
 				onBack={() => setPage("new")}
 			/>
@@ -140,6 +151,7 @@ export function Launcher({
 			<NewWorld
 				scenarios={scenarios}
 				columns={columns}
+				rows={rows}
 				canUseModel={canUseModel}
 				{...(unavailableNote ? { unavailableNote } : {})}
 				onScenarios={() => setPage("scenarios")}
@@ -163,6 +175,8 @@ export function Launcher({
 	return (
 		<Title
 			columns={columns}
+			rows={rows}
+			depth={depth}
 			saveCount={worlds.length}
 			onNew={() => setPage("new")}
 			onContinue={() => setPage("continue")}

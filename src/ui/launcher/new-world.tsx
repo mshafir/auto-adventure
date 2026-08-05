@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type { ScenarioSummary } from "../../scenario/repo.js";
+import { FRAME_CHROME, Frame } from "../panels/primitives.js";
 import { type ChoiceItem, Chooser } from "./chooser.js";
 
 /**
@@ -19,13 +20,17 @@ import { type ChoiceItem, Chooser } from "./chooser.js";
 
 export type NewChoice = "briefed" | "unguided" | "procedural";
 
-/** The `paddingX` on every page here, taken off before anything is wrapped. */
-const PADDING = 4;
+/** Border and padding, taken off before anything is laid out inside the frame. */
+const CHROME = FRAME_CHROME + 4;
+
+/** The heading, the blank under it, and the footer. */
+const PAGE_CHROME = 3;
 
 export interface NewWorldProps {
 	readonly scenarios: readonly ScenarioSummary[];
-	/** Terminal width, so the paragraphs wrap to the screen rather than a guess. */
+	/** Terminal size. The paragraphs wrap to it rather than to a guess. */
 	readonly columns: number;
+	readonly rows: number;
 	readonly canUseModel: boolean;
 	/** Why a live world is not on offer, in the caller's words. */
 	readonly unavailableNote?: string;
@@ -38,6 +43,7 @@ export interface NewWorldProps {
 export function NewWorld({
 	scenarios,
 	columns,
+	rows,
 	canUseModel,
 	unavailableNote,
 	onStart,
@@ -78,32 +84,38 @@ export function NewWorld({
 			body:
 				scenarios.length === 0
 					? "A world authored ahead of time. There are none in .scenarios yet — `npm run author` makes one."
-					: "A world authored ahead of time: premise, towns, people and story all written down, so nothing arrives late and no model runs while you play.",
+					: "Authored ahead of time — premise, towns, people and story all written down. Nothing arrives late, and no model runs while you play.",
 			...(scenarios.length === 0 ? { disabled: true } : {}),
 		},
 	];
 
 	return (
-		<Box flexDirection="column" paddingX={2} paddingY={1}>
+		<Frame style="menu" width={columns} height={rows}>
 			<Box marginBottom={1}>
 				<Text bold color="cyan">
 					A new world
 				</Text>
+				<Text dimColor>{"  what should the game do for you?"}</Text>
 			</Box>
 
-			<Chooser
-				items={items}
-				width={columns - PADDING}
-				isActive={isActive}
-				onBack={onBack}
-				onChoose={(item) => {
-					if (item.id === "scenarios") onScenarios();
-					else onStart(item.id as NewChoice);
-				}}
-			/>
+			<Box flexGrow={1} flexDirection="column">
+				<Chooser
+					items={items}
+					width={columns - CHROME}
+					height={rows - FRAME_CHROME - PAGE_CHROME}
+					isActive={isActive}
+					onBack={onBack}
+					onChoose={(item) => {
+						if (item.id === "scenarios") onScenarios();
+						else onStart(item.id as NewChoice);
+					}}
+				/>
+			</Box>
 
-			<Text dimColor>{"↑↓ move · ENTER choose · ESC back"}</Text>
-		</Box>
+			<Text dimColor wrap="truncate">
+				{"↑↓ move · ENTER choose · ESC back"}
+			</Text>
+		</Frame>
 	);
 }
 
@@ -117,12 +129,14 @@ export function NewWorld({
 export function ScenarioList({
 	scenarios,
 	columns,
+	rows,
 	onChoose,
 	onBack,
 	isActive = true,
 }: {
 	readonly scenarios: readonly ScenarioSummary[];
 	readonly columns: number;
+	readonly rows: number;
 	readonly onChoose: (scenario: ScenarioSummary) => void;
 	readonly onBack: () => void;
 	readonly isActive?: boolean;
@@ -135,25 +149,31 @@ export function ScenarioList({
 	}));
 
 	return (
-		<Box flexDirection="column" paddingX={2} paddingY={1}>
+		<Frame style="menu" width={columns} height={rows}>
 			<Box marginBottom={1}>
 				<Text bold color="cyan">
 					A written scenario
 				</Text>
+				<Text dimColor>{"  a world somebody wrote before you got here"}</Text>
 			</Box>
 
-			<Chooser
-				items={items}
-				width={columns - PADDING}
-				isActive={isActive}
-				onBack={onBack}
-				onChoose={(item) => {
-					const scenario = scenarios.find((candidate) => candidate.id === item.id);
-					if (scenario) onChoose(scenario);
-				}}
-			/>
+			<Box flexGrow={1} flexDirection="column">
+				<Chooser
+					items={items}
+					width={columns - CHROME}
+					height={rows - FRAME_CHROME - PAGE_CHROME}
+					isActive={isActive}
+					onBack={onBack}
+					onChoose={(item) => {
+						const scenario = scenarios.find((candidate) => candidate.id === item.id);
+						if (scenario) onChoose(scenario);
+					}}
+				/>
+			</Box>
 
-			<Text dimColor>{"↑↓ move · ENTER begin · ESC back"}</Text>
-		</Box>
+			<Text dimColor wrap="truncate">
+				{"↑↓ move · ENTER begin · ESC back"}
+			</Text>
+		</Frame>
 	);
 }

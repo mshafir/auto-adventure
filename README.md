@@ -278,19 +278,26 @@ both.
 `npm start` opens a title screen with two ways on:
 
 ```
- ###  #   # #####  ###   ###  ####  #   # ##### #   # ##### #   # ####  #####
-#   # #   #   #   #   # #   # #   # #   # #     ##  #   #   #   # #   # #
-##### #   #   #   #   # ##### #   # #   # ####  # # #   #   #   # ####  ####
-#   # #   #   #   #   # #   # #   #  # #  #     #  ##   #   #   # #  #  #
-#   #  ###    #    ###  #   # ####    #   ##### #   #   #    ###  #   # #####
-
-by Michael Shafir
-(produced with the help of large language models)
-
-❯ Continue  2 worlds
-  New world
-  Quit
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│             ▄▀█ █░█ ▀█▀ █▀█ ▄▀█ █▀▄ █░█ █▀▀ █▄░█ ▀█▀ █░█ █▀█ █▀▀             │
+│             █▀█ █▄█ ░█░ █▄█ █▀█ █▄▀ ▀▄▀ ██▄ █░▀█ ░█░ █▄█ █▀▄ ██▄             │
+│                An endless world, written as you walk into it.                │
+│      by Michael Shafir · produced with the help of large language models     │
+│                                                                              │
+│                  ──────────────────── ◆ ────────────────────                 │
+│                                                                              │
+│                             ❯ Continue  7 worlds                             │
+│                               New world                                      │
+│                               Quit                                           │
+│                                                                              │
+│                       ↑↓ move · ENTER choose · Q quit                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
+
+Every page here takes the whole screen inside a border, the way the game's own
+reader and card screens do, so the front door looks like the same piece of
+software as the thing behind it.
 
 **New world** explains the four ways to start one — briefed, unguided, without a
 model, or a written scenario — with a paragraph each rather than five words,
@@ -299,16 +306,24 @@ network, and says things nobody wrote. An option that is unavailable is shown
 greyed with the reason, not hidden: a player who has heard the game writes its
 own worlds and cannot find the option concludes they have the wrong build.
 
-**Continue** lists each world with how far in it is, where you were standing,
-when you last played it in words ("yesterday") and when it was made. `D` deletes
-one, behind a confirm, which is the first time there has been any way to do that
-short of knowing where the game keeps its files.
+**Continue** is a grid of cards, as many across and down as the terminal allows,
+scrolling by whole rows when there are more worlds than fit. Each says how far in
+it is, where you were standing, when you last played it in words ("yesterday",
+because a wall-clock timestamp makes the reader do the subtraction) and either
+the scenario it came from or the date it was made. `D` deletes one, behind a
+confirm — the first way to do that short of knowing where the game keeps its
+files.
 
-ESC goes back a page throughout, and back from the title is quitting. The banner
-is plain ASCII and comes from `assets/ui/title.txt` in several sizes; the widest
-that fits is used, and below the narrowest it falls back to the plain words. A
-wrapped banner does not read as a small title — it reads as a rendering fault, on
-the first screen anybody sees.
+ESC goes back a page throughout, and back from the title is quitting.
+
+The banner comes from `assets/ui/title.txt` in three sizes and is coloured with a
+diagonal ramp, quantised so a wide row costs a dozen escape sequences rather than
+seventy-seven, and degraded by colour depth — this is the one screen drawn before
+anything has been asked of the terminal, so it has to look deliberate on sixteen
+colours too. The widest size that fits *both* the width and the height is used,
+and below the smallest it falls back to the plain words: a wrapped banner does not
+read as a small title, it reads as a rendering fault, on the first screen anybody
+sees.
 
 Two cases skip the menu, because a menu would be wrong for both: naming a slot
 with `WORLD_NAME` (the caller already knows which world it wants) and having no

@@ -26,6 +26,19 @@ const SCENARIO: ScenarioSummary = {
 	siteCount: 13,
 };
 
+/** Enough worlds to need more than one row, and more than one screen. */
+function manySaves(count: number): SaveSummary[] {
+	return Array.from({ length: count }, (_, i) => ({
+		worldId: `world-${i}`,
+		name: `World ${i}`,
+		seed: i,
+		at: { x: i, y: i },
+		day: i + 1,
+		playedAt: NOW - (i + 1) * 60 * 60 * 1000,
+		createdAt: "2026-06-01T09:00:00.000Z",
+	}));
+}
+
 interface Mounted {
 	readonly ink: InkHarness;
 	readonly chosen: LaunchChoice[];
@@ -39,6 +52,8 @@ function mount(
 		scenarios?: ScenarioSummary[];
 		canUseModel?: boolean;
 		unavailableNote?: string;
+		columns?: number;
+		rows?: number;
 	} = {},
 ): Mounted {
 	const chosen: LaunchChoice[] = [];
@@ -57,12 +72,26 @@ function mount(
 			onDelete={(worldId) => deleted.push(worldId)}
 			onQuit={() => quits.push(1)}
 		/>,
+		{
+			...(options.columns !== undefined ? { columns: options.columns } : {}),
+			...(options.rows !== undefined ? { rows: options.rows } : {}),
+		},
 	);
 	return { ink, chosen, quits, deleted };
 }
 
-/** A screen with its line wrapping undone, for matching a sentence that spans rows. */
-const flowed = (screen: string) => screen.replace(/\s+/g, " ");
+/**
+ * A screen with its line wrapping undone, for matching a sentence that spans rows.
+ *
+ * Box-drawing goes first. Every page is inside a frame now, so a wrapped sentence
+ * has a border character at each break, and collapsing the whitespace without
+ * dropping those leaves `and a model │ │ writes the places` in the middle of it.
+ */
+const flowed = (screen: string) =>
+	screen
+		.replace(/[\u2500-\u257f]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
 
 /** From the title screen to the New page. Continue is above it when saves exist. */
 async function toNew(m: Mounted, hasSaves = true) {
@@ -89,7 +118,7 @@ describe("the title screen", () => {
 		for (const line of ink.screen().split("\n")) {
 			expect(line.length, line).toBeLessThanOrEqual(100);
 		}
-		expect(ink.screen()).toContain("#");
+		expect(ink.screen()).toContain("█");
 		ink.unmount();
 	});
 
@@ -109,7 +138,7 @@ describe("the title screen", () => {
 		);
 		await ink.settle();
 		expect(ink.screen()).toContain("AUTO ADVENTURE");
-		expect(ink.screen()).not.toContain("#");
+		expect(ink.screen()).not.toContain("█");
 		ink.unmount();
 	});
 
@@ -374,5 +403,78 @@ describe("continuing a world", () => {
 		await m.ink.type(KEY.escape);
 		expect(m.ink.screen()).toContain("by Michael Shafir");
 		m.ink.unmount();
+	});
+
+	/*
+	 * The list this replaces showed one world per row and did not scroll, so past a
+	 * dozen the older half could not be reached at all. Cards in a grid show three or
+	 * four times as many in the same space, and what still does not fit scrolls.
+	 */
+	it("lays the worlds out across the width, not one per row", async () => {
+		const m = mount({ saves: manySaves(6), columns: 100, rows: 40 });
+		await toContinue(m);
+		const text = m.ink.screen();
+		// Two names on one screen row is the whole claim.
+		expect(text.split("\n").some((line) => /World 0.*World 1/.test(line))).toBe(true);
+		m.ink.unmount();
+	});
+
+	it("moves across a row and down between rows", async () => {
+		const m = mount({ saves: manySaves(6), columns: 100, rows: 40 });
+		await toContinue(m);
+		await m.ink.type(KEY.right);
+		await m.ink.type(KEY.enter);
+		expect(m.chosen[0]?.worldId).toBe("world-1");
+		m.ink.unmount();
+
+		const down = mount({ saves: manySaves(6), columns: 100, rows: 40 });
+		await toContinue(down);
+		await down.ink.type(KEY.down);
+		await down.ink.type(KEY.enter);
+		// Three columns fit in a hundred, so down is three along.
+		expect(down.chosen[0]?.worldId).toBe("world-3");
+		down.ink.unmount();
+	});
+
+	it("scrolls to worlds that do not fit, and says it is doing so", async () => {
+		// Two rows of three on this size, so world 8 starts off screen.
+		const m = mount({ saves: manySaves(9), columns: 100, rows: 22 });
+		await toContinue(m);
+		expect(m.ink.screen()).toContain("showing 1-6");
+		expect(m.ink.screen()).not.toContain("World 8");
+
+		// Down twice lands on the last row; a third does nothing, since there is
+		// nothing below it. Right walks along that row to the world that was hidden.
+		for (let i = 0; i < 3; i++) await m.ink.type(KEY.down);
+		expect(m.ink.screen()).toContain("World 8");
+		expect(m.ink.screen()).toContain("showing 4-9");
+		await m.ink.type(KEY.right);
+		await m.ink.type(KEY.right);
+		await m.ink.type(KEY.enter);
+		expect(m.chosen[0]?.worldId).toBe("world-8");
+		m.ink.unmount();
+	});
+
+	it("says nothing about scrolling when everything is on screen", async () => {
+		const m = mount({ saves: manySaves(3), columns: 100, rows: 40 });
+		await toContinue(m);
+		expect(m.ink.screen()).not.toContain("showing");
+		m.ink.unmount();
+	});
+
+	/*
+	 * Every page here lives in a fixed-height frame, and a frame that overflows does
+	 * not scroll — Ink clips it, and the footer with the keys in it is the first thing
+	 * to go.
+	 */
+	it("stays inside its frame however many worlds there are", async () => {
+		for (const rows of [16, 24, 40]) {
+			const m = mount({ saves: manySaves(30), columns: 100, rows });
+			await toContinue(m);
+			const lines = m.ink.screen().split("\n");
+			expect(lines.length, `${rows} rows`).toBeLessThanOrEqual(rows);
+			expect(m.ink.screen(), `${rows} rows`).toContain("ESC back");
+			m.ink.unmount();
+		}
 	});
 });
