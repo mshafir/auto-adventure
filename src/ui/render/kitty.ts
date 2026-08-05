@@ -36,6 +36,17 @@ import { deflateSync } from "node:zlib";
  */
 export const FRAME_IMAGE_ID = 0x61_64_76;
 
+/**
+ * A different id for the diagnostic tool.
+ *
+ * Sharing one with the game cost a whole debugging round. A leftover test
+ * pattern stayed resident under the shared id, so when the game's own upload
+ * did not land, its placeholders resolved against the *test* image and drew
+ * slices of it — which reads as the game rendering badly rather than as the
+ * game not uploading at all.
+ */
+export const CHECK_IMAGE_ID = 0x61_64_77;
+
 /** U+10EEEE. Every cell showing part of the image is one of these. */
 export const PLACEHOLDER = String.fromCodePoint(0x10_ee_ee);
 

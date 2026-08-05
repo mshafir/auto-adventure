@@ -288,7 +288,13 @@ export default function App({
 		<Box flexDirection="column" width={width} height={frameHeight}>
 			<Box flexDirection="row" height={bodyHeight}>
 				<Box flexDirection="column" flexGrow={1}>
-					<Viewport source={source} camera={camera} options={composeOptions} />
+					<Viewport
+						source={source}
+						camera={camera}
+						options={composeOptions}
+						columns={mapWidth}
+						rows={fit.height}
+					/>
 					<DialoguePanel
 						width={mapWidth}
 						height={panelHeight}

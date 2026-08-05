@@ -1,5 +1,5 @@
-import { Box, Text, Transform } from "ink";
-import { useMemo } from "react";
+import { Box, Text, useStdout } from "ink";
+import { useEffect, useMemo } from "react";
 import { encodeScene } from "./render/ansi.js";
 import { type ColorDepth, detectColorDepth } from "./render/color.js";
 import {
@@ -8,8 +8,8 @@ import {
 	composeScene,
 	type TileSource,
 } from "./render/compose.js";
-import { placeholderRows, transmitFrame } from "./render/kitty.js";
-import { cellPixels, resolveTileMode, type TileMode } from "./render/mode.js";
+import { deleteFrame, placeholderRows, transmitFrame } from "./render/kitty.js";
+import { resolveTileMode, type TileMode } from "./render/mode.js";
 import { rasterScene } from "./render/raster.js";
 import { expandScene, TILE_WIDTH, tilesAcross } from "./render/scale.js";
 
@@ -43,6 +43,15 @@ export interface ViewportProps {
 	readonly source: TileSource;
 	readonly camera: Camera;
 	readonly options?: ComposeOptions;
+	/**
+	 * The cell rectangle the map may occupy.
+	 *
+	 * Passed in rather than derived, because only the layout knows it. The image
+	 * renderer must not exceed it: the map box does not shrink, so anything wider
+	 * runs into the side panel instead of being clipped.
+	 */
+	readonly columns: number;
+	readonly rows: number;
 }
 
 /**
@@ -85,59 +94,61 @@ function GlyphViewport({ source, camera, options }: ViewportProps) {
 /**
  * Renders the map as an image, placed through Unicode placeholder cells.
  *
- * The image data cannot go inline: `string-width` measures an APC graphics
- * escape as 24 columns, so Ink would lay every row out too wide and the map
- * would shear. It rides instead on Ink's `Transform`, which rewrites a line's
- * final output *after* layout has been computed from the line it wrapped — so
- * Ink lays out a grid of placeholders, each one column wide, and the pixels are
- * smuggled onto the front of the first row.
+ * Only the placeholders go through Ink. They are ordinary text — `string-width`
+ * reports 1 for U+10EEEE and 0 for its diacritics — so Ink lays them out and
+ * repaints them like any other row.
  *
- * That also makes the upload atomic with the repaint. `sync-output.ts` brackets
- * each of Ink's writes in DEC 2026, and because the image is part of the same
- * write, the terminal never presents a frame where the placeholders have been
- * drawn but their image has not arrived.
+ * The image itself is written straight to the stream, and it has to be. An APC
+ * graphics escape measures *hundreds* of columns wide, and Ink composes the map
+ * and the side panel as siblings on one screen row: a line carrying the escape
+ * pushes everything to its right out of place, painting over the panel. Ink's
+ * `Transform` does not save this. It bypasses layout, not row composition, so
+ * the oversized line still lands in the frame — which is exactly how the panel
+ * ended up with map colours bleeding across it.
+ *
+ * Writing during render rather than from an effect is deliberate. Ink emits its
+ * frame from the reconciler's `resetAfterCommit`, which runs *before* layout
+ * effects, so an effect would upload the image only after the placeholders
+ * referencing it had already been painted — and on the first frame there would
+ * be no image at all.
+ *
+ * Memoising the upload is not just an optimisation either: an image stays
+ * resident in the terminal until it is replaced, so a re-render that does not
+ * change the scene — a menu opening, a key bar changing — costs no pixels at
+ * all, only the placeholder text.
  */
-function KittyViewport({ source, camera, options }: ViewportProps) {
-	const cell = cellPixels();
+function KittyViewport({ source, camera, options, columns, rows: maxRows }: ViewportProps) {
+	const { write } = useStdout();
 
-	const { transmit, rows } = useMemo(() => {
-		const scene = composeScene(source, camera, options);
-		const frame = rasterScene(scene);
-		// The cell rectangle the image is asked to fill. Rounded up, so the image
-		// is never given fewer cells than it has tiles and squeezed.
-		const columns = Math.max(1, Math.ceil(frame.width / cell.width));
-		const cellRows = Math.max(1, Math.ceil(frame.height / cell.height));
-		return {
-			transmit: transmitFrame({
+	const rows = useMemo(() => {
+		const frame = rasterScene(composeScene(source, camera, options));
+		// The image fills exactly the rectangle the layout allowed, and the
+		// placeholder grid is that same rectangle. Sizing either from the image's
+		// pixels instead lets it come out wider than the space available, and the
+		// map box is `flexShrink={0}`, so the surplus is not clipped.
+		write(
+			transmitFrame({
 				rgb: frame.rgb,
 				width: frame.width,
 				height: frame.height,
 				columns,
-				rows: cellRows,
+				rows: maxRows,
 			}),
-			rows: placeholderRows(columns, cellRows),
-		};
-	}, [source, camera, options, cell.width, cell.height]);
+		);
+		return placeholderRows(columns, maxRows);
+	}, [source, camera, options, columns, maxRows, write]);
+
+	// Leave nothing behind in the terminal when the map goes away.
+	useEffect(() => () => write(deleteFrame()), [write]);
 
 	return (
 		<Box flexDirection="column" flexShrink={0}>
-			{rows.map((row, i) => {
-				const text = (
-					// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional, not identities
-					<Text key={i} wrap="truncate">
-						{row}
-					</Text>
-				);
-				// Only the first row carries the upload; the rest are plain text.
-				return i === 0 ? (
-					// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional, not identities
-					<Transform key={i} transform={(line) => transmit + line}>
-						{text}
-					</Transform>
-				) : (
-					text
-				);
-			})}
+			{rows.map((row, i) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional, not identities
+				<Text key={i} wrap="truncate">
+					{row}
+				</Text>
+			))}
 		</Box>
 	);
 }

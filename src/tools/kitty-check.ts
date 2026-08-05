@@ -13,6 +13,7 @@
  */
 import { readFileSync } from "node:fs";
 import {
+	CHECK_IMAGE_ID,
 	deleteFrame,
 	detectKittyGraphics,
 	graphicsBlockedByMultiplexer,
@@ -111,6 +112,7 @@ function main() {
 		columns,
 		rows,
 		loud,
+		imageId: CHECK_IMAGE_ID,
 	});
 	const chunks = escapes.split(`${ESC}_G`).length - 1;
 
@@ -133,7 +135,8 @@ function main() {
 	// reproducible here without Ink in the way.
 	const alt = args.has("alt");
 	const sync = args.has("sync");
-	const body = escapes + placeholderRows(columns, rows, { explicit }).join("\n");
+	const body =
+		escapes + placeholderRows(columns, rows, { explicit, imageId: CHECK_IMAGE_ID }).join("\n");
 
 	if (alt) out.write("[?1049h");
 	// One write, exactly as Ink emits a frame, so the bracketing wraps the image

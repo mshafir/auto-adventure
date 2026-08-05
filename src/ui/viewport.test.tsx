@@ -19,7 +19,12 @@ const flatWorld: TileSource = {
 
 function rowsOf(width: number, height: number): string[] {
 	const { lastFrame, unmount } = render(
-		<Viewport source={flatWorld} camera={{ x: 0, y: 0, width, height }} />,
+		<Viewport
+			source={flatWorld}
+			camera={{ x: 0, y: 0, width, height }}
+			columns={width * TILE_WIDTH}
+			rows={height}
+		/>,
 	);
 	const rows = (lastFrame() ?? "").split("\n").filter((row) => row.length > 0);
 	unmount();
