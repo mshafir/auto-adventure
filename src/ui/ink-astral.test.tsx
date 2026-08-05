@@ -22,6 +22,17 @@ import { describe, expect, it } from "vitest";
 const PH = String.fromCodePoint(0x10_ee_ee);
 const WIDTH = 20;
 
+/** How many placeholders survive when the row has no neighbour beside it. */
+function aloneCount(fill: string): number {
+	const { lastFrame } = render(
+		<Box flexDirection="column" width={WIDTH}>
+			<Text>{fill.repeat(WIDTH)}</Text>
+		</Box>,
+	);
+	const line = (lastFrame() ?? "").split("\n")[0] ?? "";
+	return line.split(fill).length - 1;
+}
+
 function siblingColumn(fill: string): number {
 	const { lastFrame } = render(
 		<Box width={WIDTH + 10}>
@@ -58,5 +69,19 @@ describe("Ink and astral-plane characters", () => {
 		const at = siblingColumn(PH);
 		expect(at).toBe(WIDTH / 2);
 		expect(at).not.toBe(WIDTH);
+	});
+
+	/**
+	 * And this is the way out. The slicing is a *compositing* fault, not a
+	 * measuring one: Ink only cuts the row when it has to place something to the
+	 * right of it on the same screen line. A row that owns its line survives
+	 * whole.
+	 *
+	 * That is why the map cannot share rows with a side panel in pixel mode, and
+	 * why anything that has to appear over the map — a minimap, an overlay — has
+	 * to be composited into the frame itself rather than laid out beside it.
+	 */
+	it("keeps every placeholder when nothing shares the row", () => {
+		expect(aloneCount(PH)).toBe(WIDTH);
 	});
 });

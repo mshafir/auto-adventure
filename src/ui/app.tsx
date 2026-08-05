@@ -299,7 +299,7 @@ export default function App({
 	return (
 		<Box flexDirection="column" width={width} height={frameHeight}>
 			<Box flexDirection="row" height={bodyHeight}>
-<Box flexDirection="column" flexGrow={1}>
+				<Box flexDirection="column" flexGrow={1}>
 					<Viewport
 						source={source}
 						camera={camera}
