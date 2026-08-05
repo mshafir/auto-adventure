@@ -310,14 +310,17 @@ describe("the pages", () => {
 
 describe("reading a list in full", () => {
 	/**
-	 * The screen with its line breaks collapsed.
+	 * The screen with its frame and its line breaks taken out.
 	 *
 	 * Wrapping is the point of the reader, so asserting on a whole sentence has to
 	 * ignore where it wrapped — and collapsing whitespace is a stronger check than
 	 * picking a fragment that happens to fit one line: it proves the sentence is
 	 * present *entire*, which is exactly what was failing before.
+	 *
+	 * The border has to come out first or every wrap point carries a `┃` through
+	 * the middle of the sentence being matched.
 	 */
-	const flat = (screen: string) => screen.replace(/\s+/g, " ");
+	const flat = (screen: string) => screen.replace(/[┃┏┓┗┛━]/g, " ").replace(/\s+/g, " ");
 
 	/** The prose that was being cut in a 32-column pane. */
 	const DESCRIPTION =

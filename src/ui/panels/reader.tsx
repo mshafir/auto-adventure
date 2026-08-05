@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Text } from "ink";
 import { arcOutline } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { describeObjective, questNeeding } from "../../core/rules/quests.js";
@@ -6,7 +6,7 @@ import { activeQuests, type GameState, type Quest } from "../../core/rules/state
 import { toChunk } from "../../core/world/coords.js";
 import type { HudState, PanelTab } from "../hud-state.js";
 import { mapLegend } from "./legend.js";
-import { Bullet, Field, Prose, Rule, ScrollList } from "./primitives.js";
+import { Bullet, Field, FRAME_CHROME, Frame, Prose, Rule, ScrollList } from "./primitives.js";
 
 /**
  * A page, given the whole frame.
@@ -37,18 +37,19 @@ export interface ReaderProps {
 const LIST_SHARE = 0.35;
 
 export function Reader({ state, hud, width, height, tab }: ReaderProps) {
-	const inner = Math.max(20, width - 4);
+	// The border and the padding inside it come off before anything is laid out.
+	// Every component here is told its size rather than measuring, because a pane
+	// that grows to fit reaches the terminal height, and at that point Ink clears
+	// the screen on every keypress.
+	const inner = Math.max(20, width - FRAME_CHROME - 4);
+	const rows = Math.max(3, height - FRAME_CHROME);
 	return (
-		<Box flexDirection="column" width={width} height={height} paddingX={2} paddingTop={1}>
-			{tab === "quests" && <QuestReader state={state} hud={hud} width={inner} rows={height - 1} />}
-			{tab === "journal" && (
-				<JournalReader state={state} hud={hud} width={inner} rows={height - 1} />
-			)}
-			{tab === "inventory" && (
-				<InventoryReader state={state} hud={hud} width={inner} rows={height - 1} />
-			)}
-			{tab === "key" && <KeyReader width={inner} rows={height - 1} />}
-		</Box>
+		<Frame style="reader" width={width} height={height}>
+			{tab === "quests" && <QuestReader state={state} hud={hud} width={inner} rows={rows} />}
+			{tab === "journal" && <JournalReader state={state} hud={hud} width={inner} rows={rows} />}
+			{tab === "inventory" && <InventoryReader state={state} hud={hud} width={inner} rows={rows} />}
+			{tab === "key" && <KeyReader width={inner} rows={rows} />}
+		</Frame>
 	);
 }
 
