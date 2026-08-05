@@ -18,6 +18,7 @@
  * sprite resolution-independent; a shape written against pixel indices is a
  * shape that only works at one size.
  */
+import type { Facing } from "../../core/rules/state.js";
 import { decorDef } from "../../core/tiles/decor.js";
 import { terrainDef } from "../../core/tiles/terrain.js";
 import { AUTOTILE_SETS } from "./autotile.js";
@@ -200,12 +201,49 @@ function derivedBoxSprites(): Map<string, Sprite> {
  * guard at a glance and this does not. Disposition survives, identity does not,
  * so pixel mode leans harder on the side panel to say who is on screen.
  */
+/*
+ * Drawn into the middle two thirds rather than filling the tile, so there is
+ * room round the edge for the facing wedge below. Both are ink — a tile has only
+ * two colours — so if they touch anywhere they merge into one blob and the
+ * direction stops reading.
+ */
 const FIGURE: Shape = any(
-	disc(0.5, 0.22, 0.15),
-	cone(0.5, 0.36, 0.76, 0.26),
-	box(0.36, 0.74, 0.46, 0.96),
-	box(0.54, 0.74, 0.64, 0.96),
+	disc(0.5, 0.33, 0.12),
+	cone(0.5, 0.43, 0.7, 0.22),
+	box(0.38, 0.68, 0.46, 0.8),
+	box(0.54, 0.68, 0.62, 0.8),
 );
+
+/**
+ * The figure, with a wedge on the side it is facing.
+ *
+ * Which way you are facing decides what SPACE acts on, so it has to be on
+ * screen — and it used to be shown by marking the tile *in front*, which meant
+ * the marker painted over whatever was there. At a character per tile that was
+ * a fair trade; at forty pixels it means a signpost you are about to read has a
+ * dot punched through it.
+ *
+ * So the direction goes inside the player's own tile. A wedge at the edge rather
+ * than a redrawn figure, because a figure seen from behind and a figure seen
+ * from the front are the same handful of pixels at this size, and the eye reads
+ * a mark at an edge far faster than it reads a turned shoulder.
+ */
+/** Pointing up, hard against the top edge. The other three are this one turned. */
+const WEDGE_UP: Shape = cone(0.5, 0.01, 0.15, 0.19);
+
+const FACING_WEDGE: Readonly<Record<Facing, Shape>> = {
+	up: WEDGE_UP,
+	down: (u, v) => WEDGE_UP(u, 1 - v),
+	left: (u, v) => WEDGE_UP(v, u),
+	right: (u, v) => WEDGE_UP(v, 1 - u),
+};
+
+const FIGURE_FACING: Readonly<Record<Facing, Shape>> = {
+	up: any(FIGURE, FACING_WEDGE.up),
+	down: any(FIGURE, FACING_WEDGE.down),
+	left: any(FIGURE, FACING_WEDGE.left),
+	right: any(FIGURE, FACING_WEDGE.right),
+};
 
 /**
  * Hand-drawn sprites, for everything that is not a box-drawing line.
@@ -423,7 +461,9 @@ export interface TilePaint {
  */
 export function paintFor(cell: PaintInput): TilePaint {
 	const { fg, bg } = cell;
-	if (cell.entity) return { shape: FIGURE, fg, bg };
+	if (cell.entity) {
+		return { shape: cell.facing ? FIGURE_FACING[cell.facing] : FIGURE, fg, bg };
+	}
 
 	const byDecor = cell.decor !== undefined ? BY_DECOR[decorDef(cell.decor).key] : undefined;
 	const byTerrain =
@@ -449,6 +489,8 @@ export interface PaintInput {
 	readonly fg: RGB;
 	readonly bg: RGB;
 	readonly entity?: boolean;
+	/** Which way an entity is looking. Only the player has one. */
+	readonly facing?: Facing;
 	readonly terrain?: number;
 	readonly decor?: number;
 }

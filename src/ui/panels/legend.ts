@@ -4,7 +4,6 @@ import { FULL_MASK } from "../render/autotile.js";
 import { toHex } from "../render/color.js";
 import {
 	decorGlyphSource,
-	FACING_MARKER,
 	type GlyphSource,
 	PLAYER_GLYPH,
 	terrainGlyphSource,
@@ -69,7 +68,6 @@ export function mapLegend(): readonly LegendEntry[] {
 	return [
 		{ ch: PLAYER_GLYPH, color: toHex(PAL.player), label: "you", bold: true },
 		{ ch: "A", color: toHex(PAL.neutral), label: "folk" },
-		{ ch: FACING_MARKER, color: toHex(PAL.player), label: "facing", bold: true },
 		fromTerrain(T.doorClosed, "door"),
 		fromDecor(D.sign, "sign"),
 		fromDecor(D.chest, "chest"),

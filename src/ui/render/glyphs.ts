@@ -135,16 +135,20 @@ export const DECOR_GLYPH: readonly GlyphSource[] = DECOR.map(
 /**
  * The player is `@` regardless of facing.
  *
- * Directional triangles read well in isolation but `▲` is also the conifer and
- * mountain glyph, so on a wooded map the player vanishes into the treeline.
- * `@` is the roguelike convention precisely because nothing else uses it.
- * Facing is shown instead by highlighting the tile being faced, which is more
- * useful anyway — it shows exactly what SPACE would interact with.
+ * Every directional alternative is worse. `▲▼◀▶` collide with the conifer and
+ * mountain glyphs, so on a wooded map the player vanishes into the treeline —
+ * and `◀▶` carry emoji presentations that render double-width, which tears the
+ * row. `↑↓←→` read as interface rather than as a person and are East-Asian
+ * Ambiguous, so the same width risk applies. `@` is the roguelike convention
+ * precisely because nothing else uses it.
+ *
+ * So facing is not in the glyph. It used to be a mark painted on the tile in
+ * front, which cost that tile its own character — you could not see the sign you
+ * were about to read. It is now the pixel renderer's business, where a sprite
+ * has room for a wedge on the side it faces, and in glyph mode it is stated as
+ * an arrow beside the line describing what is there.
  */
 export const PLAYER_GLYPH = "@";
-
-/** Marks the tile the player is facing. */
-export const FACING_MARKER = "·";
 
 export function terrainGlyphSource(id: TerrainId): GlyphSource {
 	return TERRAIN_GLYPH[id] ?? (TERRAIN_GLYPH[T.void] as GlyphSource);
@@ -170,7 +174,7 @@ export function allRegisteredGlyphs(): string[] {
 				break;
 		}
 	}
-	out.push(PLAYER_GLYPH, FACING_MARKER);
+	out.push(PLAYER_GLYPH);
 	return out;
 }
 

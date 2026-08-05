@@ -21,7 +21,7 @@ import { DialoguePanel, panelHeightFor } from "./panels/dialogue-panel.js";
 import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
 import { Reader } from "./panels/reader.js";
 import { TOP_BAR_ROWS, TopBar } from "./panels/top-bar.js";
-import { FACING_MARKER, PLAYER_GLYPH } from "./render/glyphs.js";
+import { PLAYER_GLYPH } from "./render/glyphs.js";
 import { lightFor } from "./render/lighting.js";
 import { minimapCells } from "./render/minimap-data.js";
 import { cellPixels, tilePixels } from "./render/mode.js";
@@ -144,7 +144,11 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 			tileSourceFrom(view, {
 				entityAt: (x, y) => {
 					if (x === player.x && y === player.y) {
-						return { ch: PLAYER_GLYPH, fg: PAL.player, bold: true };
+						// The facing rides on the player rather than being painted on the
+						// tile in front. Only the pixel renderer can use it — a sprite has
+						// room for a wedge, a character does not — and it is what stops the
+						// marker punching a hole through the signpost about to be read.
+						return { ch: PLAYER_GLYPH, fg: PAL.player, bold: true, facing: player.facing };
 					}
 					// `personAt` rather than the outdoor directory: indoors the coordinates
 					// are interior-local and the people are the building's own residents.
@@ -153,14 +157,8 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 					// with no glyph-width risk at all.
 					return npc ? { ch: npc.glyph, fg: dispositionColor(npc.spec.disposition) } : undefined;
 				},
-				// Marking the faced tile communicates direction better than a
-				// directional player glyph: it shows what SPACE would act on.
-				overlayAt: (x, y) =>
-					x === facedX && y === facedY
-						? { ch: FACING_MARKER, fg: PAL.player, bold: true }
-						: undefined,
 			}),
-		[view, engine, npcs, npcs.revision, player.x, player.y, facedX, facedY, player.inside],
+		[view, engine, npcs, npcs.revision, player.x, player.y, player.facing, player.inside],
 	);
 
 	// Stay one row short of the window. Ink updates incrementally only while the
@@ -324,6 +322,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 				width={mapWidth}
 				height={panelHeight}
 				looking={looking}
+				facing={player.facing}
 				{...(facedNpc ? { nearbyName: facedNpc.name } : {})}
 			/>
 			<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { Facing } from "../../core/rules/state.js";
 import type { RGB } from "./color.js";
 import { allRegisteredGlyphs } from "./glyphs.js";
+import { PAL } from "./palette.js";
 import { inkAt, paintFor, spriteCoverage, spriteFor, TILE_PX } from "./sprite.js";
 
 const FG: RGB = [255, 0, 0];
@@ -154,6 +156,77 @@ describe("entities", () => {
 
 	it("does not use the figure for terrain that happens to share a glyph", () => {
 		expect(draw("▲", 16, true)).not.toEqual(draw("▲", 16, false));
+	});
+
+	/*
+	 * Which way you face decides what SPACE acts on, so it has to be visible. It
+	 * used to be a mark painted on the tile in *front*, which cost that tile its
+	 * own glyph — at forty pixels that means a hole punched through the signpost
+	 * you are about to read. So it lives on the player's own sprite instead.
+	 */
+	describe("facing", () => {
+		const SIZE = 24;
+		const EDGE = 2;
+		/** Ink in the outermost band of each side: top, bottom, left, right. */
+		function edges(facing?: Facing): [boolean, boolean, boolean, boolean] {
+			const paint = paintFor({
+				ch: "@",
+				fg: PAL.player,
+				bg: PAL.loam,
+				entity: true,
+				...(facing ? { facing } : {}),
+			});
+			const ink = (x: number, y: number) => inkAt(paint.shape, x, y, SIZE);
+			const band = (pick: (n: number) => [number, number]) => {
+				for (let n = 0; n < SIZE; n++) {
+					const [x, y] = pick(n);
+					if (ink(x, y)) return true;
+				}
+				return false;
+			};
+			return [
+				band((n) => [n, EDGE]),
+				band((n) => [n, SIZE - 1 - EDGE]),
+				band((n) => [EDGE, n]),
+				band((n) => [SIZE - 1 - EDGE, n]),
+			];
+		}
+
+		it("marks the edge it is facing and no other", () => {
+			expect(edges("up")).toEqual([true, false, false, false]);
+			expect(edges("down")).toEqual([false, true, false, false]);
+			expect(edges("left")).toEqual([false, false, true, false]);
+			expect(edges("right")).toEqual([false, false, false, true]);
+		});
+
+		it("keeps its edges to itself when it has no facing", () => {
+			expect(edges()).toEqual([false, false, false, false]);
+		});
+
+		/*
+		 * A tile has two colours, so the wedge and the figure are the same ink. If
+		 * they touch anywhere they merge into one blob and the direction stops
+		 * reading — which is what the first attempt did, with the wedge swallowed by
+		 * the head.
+		 */
+		it("leaves a gap between the wedge and the figure", () => {
+			const paint = paintFor({
+				ch: "@",
+				fg: PAL.player,
+				bg: PAL.loam,
+				entity: true,
+				facing: "up",
+			});
+			const column = Math.floor(SIZE / 2);
+			const rows: boolean[] = [];
+			for (let y = 0; y < SIZE; y++) rows.push(inkAt(paint.shape, column, y, SIZE));
+			// Down the middle: wedge, gap, then figure. Two runs of ink, not one.
+			const runs = rows
+				.join("")
+				.split(/false+/)
+				.filter(Boolean).length;
+			expect(runs).toBeGreaterThanOrEqual(2);
+		});
 	});
 });
 
