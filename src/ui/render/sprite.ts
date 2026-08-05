@@ -230,6 +230,8 @@ const AUTHORED: Readonly<Record<string, Sprite>> = {
 
 	// --- scenery -----------------------------------------------------------
 	"▲": shape(any(cone(0.5, 0.06, 0.8, 0.4), box(0.44, 0.76, 0.56, 0.98))),
+	// High ground. A bare peak with no trunk, so it does not read as a tree.
+	"^": shape(cone(0.5, 0.18, 0.86, 0.44)),
 	"●": shape(disc(0.5, 0.55, 0.34)),
 	"†": shape(any(box(0.44, 0.1, 0.56, 0.98), box(0.24, 0.28, 0.76, 0.4))),
 	o: shape(ring(0.5, 0.6, 0.28, 0.1)),
@@ -256,6 +258,9 @@ const AUTHORED: Readonly<Record<string, Sprite>> = {
 	"▣": shape(any(ring(0.5, 0.5, 0.42, 0.1), disc(0.5, 0.5, 0.16))),
 	"▩": shape(both(box(0.08, 0.08, 0.92, 0.92), (u, v) => ((u * 4) | 0) % 2 === ((v * 4) | 0) % 2)),
 	"▢": shape(ring(0.5, 0.5, 0.42, 0.1)),
+	// A smaller hollow square than `▢`, so a village reads as the lesser of the
+	// two settlement marks beside a town's `▣`.
+	"□": shape(ring(0.5, 0.5, 0.3, 0.1)),
 	"▭": shape(box(0.08, 0.34, 0.92, 0.7)),
 	"▬": shape(box(0.06, 0.36, 0.94, 0.62)),
 	"≣": shape(any(box(0.1, 0.16, 0.9, 0.28), box(0.1, 0.44, 0.9, 0.56), box(0.1, 0.72, 0.9, 0.84))),

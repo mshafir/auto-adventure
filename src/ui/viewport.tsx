@@ -10,8 +10,8 @@ import {
 } from "./render/compose.js";
 import { deleteFrame, placeholderRows, transmitFrame } from "./render/kitty.js";
 import type { MiniCell } from "./render/minimap-data.js";
-import { resolveTileMode, type TileMode } from "./render/mode.js";
-import { overlayMinimap } from "./render/overlay.js";
+import { cellPixels, resolveTileMode, type TileMode } from "./render/mode.js";
+import { overlayMinimap, paintMinimap } from "./render/overlay.js";
 import { rasterScene } from "./render/raster.js";
 import { expandScene, TILE_WIDTH, tilesAcross } from "./render/scale.js";
 
@@ -129,11 +129,28 @@ function GlyphViewport({ source, camera, options, minimap }: ViewportProps) {
  * change the scene — a menu opening, a key bar changing — costs no pixels at
  * all, only the placeholder text.
  */
-function KittyViewport({ source, camera, options, columns, rows: maxRows }: ViewportProps) {
+function KittyViewport({
+	source,
+	camera,
+	options,
+	columns,
+	rows: maxRows,
+	minimap,
+}: ViewportProps) {
 	const { write } = useStdout();
 
 	const rows = useMemo(() => {
 		const frame = rasterScene(composeScene(source, camera, options));
+		// Into the pixels, before the image goes out. A chunk gets one cell of the
+		// terminal, doubled across, which is the same room the glyph path gives it —
+		// so the minimap covers the same patch of screen in either renderer, and
+		// changing renderer does not change how much world it shows.
+		if (minimap) {
+			const cell = cellPixels();
+			paintMinimap(frame, minimap, {
+				chunk: { width: cell.width * TILE_WIDTH, height: cell.height },
+			});
+		}
 		// The image fills exactly the rectangle the layout allowed, and the
 		// placeholder grid is that same rectangle. Sizing either from the image's
 		// pixels instead lets it come out wider than the space available, and the
@@ -148,7 +165,7 @@ function KittyViewport({ source, camera, options, columns, rows: maxRows }: View
 			}),
 		);
 		return placeholderRows(columns, maxRows);
-	}, [source, camera, options, columns, maxRows, write]);
+	}, [source, camera, options, columns, maxRows, write, minimap]);
 
 	// Leave nothing behind in the terminal when the map goes away.
 	useEffect(() => () => write(deleteFrame()), [write]);

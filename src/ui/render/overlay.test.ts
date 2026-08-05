@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Cell } from "./compose.js";
 import type { MiniCell } from "./minimap-data.js";
-import { minimapExtent, overlayMinimap } from "./overlay.js";
+import { minimapExtent, overlayMinimap, paintMinimap } from "./overlay.js";
 import { PAL } from "./palette.js";
+import { type Frame, rasterScene } from "./raster.js";
 import { TILE_WIDTH } from "./scale.js";
 
 function scene(width: number, height: number): Cell[][] {
@@ -137,7 +138,8 @@ describe("minimapExtent", () => {
 		expect(minimapExtent(20, 8)).toBeUndefined();
 	});
 
-	// Whatever it returns has to leave room for a border and a margin.
+	// Whatever it returns has to leave room for a border and a margin, in both
+	// renderers.
 	it("always returns something the overlay can actually place", () => {
 		for (let columns = 20; columns <= 200; columns += 3) {
 			for (let rows = 8; rows <= 60; rows += 3) {
@@ -147,5 +149,87 @@ describe("minimapExtent", () => {
 				expect(mapCells(painted), `${columns}x${rows}`).toBeLessThan(columns * rows);
 			}
 		}
+	});
+});
+
+describe("paintMinimap", () => {
+	// A chunk gets one terminal cell, doubled across, the same room the glyph path
+	// gives it. These stand in for a cell of 4x6 pixels.
+	const CHUNK_PX = { width: 8, height: 6 };
+
+	/** A rasterised scene of flat ground, with no minimap on it yet. */
+	function frameOf(tilesW: number, tilesH: number) {
+		return rasterScene(scene(tilesW, tilesH));
+	}
+
+	function at(frame: Frame, x: number, y: number): number[] {
+		const i = (y * frame.width + x) * 3;
+		return [frame.rgb[i] as number, frame.rgb[i + 1] as number, frame.rgb[i + 2] as number];
+	}
+
+	it("fills a shaded chunk with its own colour", () => {
+		const frame = frameOf(40, 20);
+		paintMinimap(frame, mini(5, 3), { corner: "topLeft", margin: 4, chunk: CHUNK_PX });
+		// Four pixels of margin and two of border put the first chunk at (6, 6).
+		expect(at(frame, 6, 6)).toEqual([...PAL.deep]);
+		expect(at(frame, 6 + 5 * CHUNK_PX.width - 1, 6 + 3 * CHUNK_PX.height - 1)).toEqual([
+			...PAL.deep,
+		]);
+	});
+
+	it("draws a border around it and leaves the map outside alone", () => {
+		const frame = frameOf(40, 20);
+		paintMinimap(frame, mini(5, 3), { corner: "topLeft", margin: 4, chunk: CHUNK_PX });
+		expect(at(frame, 4, 4)).toEqual([...PAL.stone]);
+		expect(at(frame, 3, 3)).not.toEqual([...PAL.stone]);
+	});
+
+	/*
+	 * The counterpart of the glyph path's fill-versus-mark rule. There a mark takes
+	 * one column of its chunk and the rest goes blank; here it is drawn as a sprite
+	 * over a wash of the chunk's own colour, so it stands off the ground it is on.
+	 */
+	it("draws a mark as a sprite over a wash rather than filling flat", () => {
+		const frame = frameOf(40, 20);
+		const mark: MiniCell[][] = [[{ ch: "▲", fg: PAL.oak, bold: false, fill: false }]];
+		paintMinimap(frame, mark, { corner: "topLeft", margin: 4, chunk: CHUNK_PX });
+
+		const pixels = new Set<string>();
+		for (let y = 0; y < CHUNK_PX.height; y++) {
+			for (let x = 0; x < CHUNK_PX.width; x++) pixels.add(at(frame, 6 + x, 6 + y).join(","));
+		}
+		expect(pixels.size).toBe(2);
+		expect(pixels.has(PAL.oak.join(","))).toBe(true);
+	});
+
+	it("lands in whichever corner it was asked for", () => {
+		const corners = {
+			topLeft: [4, 4],
+			topRight: [4, -5],
+			bottomLeft: [-5, 4],
+			bottomRight: [-5, -5],
+		} as const;
+		for (const [corner, [dy, dx]] of Object.entries(corners)) {
+			const frame = frameOf(40, 20);
+			paintMinimap(frame, mini(5, 3), { corner: corner as never, margin: 4, chunk: CHUNK_PX });
+			const x = dx > 0 ? dx : frame.width + dx;
+			const y = dy > 0 ? dy : frame.height + dy;
+			expect(at(frame, x, y), corner).toEqual([...PAL.stone]);
+		}
+	});
+
+	it("draws nothing at all rather than a box that will not fit", () => {
+		const frame = frameOf(4, 2);
+		const before = Buffer.from(frame.rgb);
+		paintMinimap(frame, mini(9, 5), { chunk: CHUNK_PX });
+		expect(frame.rgb.equals(before)).toBe(true);
+	});
+
+	// Every write goes through a bounds check, so a badly placed box loses the
+	// pixels that fell outside rather than corrupting the row below.
+	it("never writes outside the buffer", () => {
+		const frame = frameOf(40, 20);
+		paintMinimap(frame, mini(5, 3), { corner: "bottomRight", margin: 0, chunk: CHUNK_PX });
+		expect(frame.rgb).toHaveLength(frame.width * frame.height * 3);
 	});
 });

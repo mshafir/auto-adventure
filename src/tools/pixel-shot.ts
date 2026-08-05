@@ -17,8 +17,11 @@ import { writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 import { generateChunk } from "../core/gen/pipeline.js";
 import { hashString } from "../core/rand/hash.js";
-import { CHUNK, type ChunkCoord } from "../core/world/coords.js";
+import { createInitialState } from "../core/rules/state.js";
+import { CHUNK, type ChunkCoord, chunkKey } from "../core/world/coords.js";
 import { composeScene } from "../ui/render/compose.js";
+import { minimapCells } from "../ui/render/minimap-data.js";
+import { paintMinimap } from "../ui/render/overlay.js";
 import { rasterScene } from "../ui/render/raster.js";
 import { TILE_PX } from "../ui/render/sprite.js";
 import { createWorldTileSource } from "../ui/render/world-source.js";
@@ -108,6 +111,27 @@ function main() {
 	// Exactly the buffer the kitty path transmits, so what this writes to a PNG
 	// is what the terminal is asked to draw — not a second implementation of it.
 	const frame = rasterScene(scene, { tilePx: tile });
+
+	// `--minimap` paints the overlay the game paints, from a state that has walked
+	// the chunks around the camera. Without it there is no way to look at the
+	// pixel minimap short of a kitty terminal and a pair of eyes.
+	if (args.has("minimap")) {
+		const discovered: string[] = [];
+		for (let dy = -8; dy <= 8; dy++) {
+			for (let dx = -8; dx <= 8; dx++) discovered.push(chunkKey(cc.cx + dx, cc.cy + dy));
+		}
+		const state = {
+			...createInitialState(
+				{ id: "shot", name: "shot", seed, createdAt: "2026-01-01T00:00:00.000Z" },
+				{ x: camera.x + Math.floor(tilesW / 2), y: camera.y + Math.floor(tilesH / 2) },
+			),
+			discovered,
+		};
+		const chunkPx = Number(args.get("chunk-px") ?? tile * 2);
+		paintMinimap(frame, minimapCells(state, 13, 7), {
+			chunk: { width: chunkPx, height: chunkPx },
+		});
+	}
 
 	// Magnified by nearest-neighbour, because the point is to inspect pixels.
 	const zw = frame.width * zoom;
