@@ -75,7 +75,7 @@ const DIACRITICS: readonly number[] = [
 
 export const MAX_PLACEHOLDER_INDEX = DIACRITICS.length;
 
-const ESC = "";
+const ESC = "\u001B";
 const APC = `${ESC}_G`;
 const ST = `${ESC}\\`;
 

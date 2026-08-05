@@ -138,10 +138,10 @@ function main() {
 	const body =
 		escapes + placeholderRows(columns, rows, { explicit, imageId: CHECK_IMAGE_ID }).join("\n");
 
-	if (alt) out.write("[?1049h");
+	if (alt) out.write("\u001B[?1049h");
 	// One write, exactly as Ink emits a frame, so the bracketing wraps the image
 	// and its placeholders together rather than separately.
-	out.write(sync ? `[?2026h${body}[?2026l` : body);
+	out.write(sync ? `\u001B[?2026h${body}\u001B[?2026l` : body);
 	out.write("\n");
 	if (alt) {
 		out.write("\nalt screen: press Enter to return.\n");
@@ -150,7 +150,7 @@ function main() {
 		} catch {
 			// Not a terminal, or no input; fall through and restore anyway.
 		}
-		out.write("[?1049l");
+		out.write("\u001B[?1049l");
 	}
 
 	out.write("\nExpected: a rectangle in four colours — red top-left, green top-right,\n");

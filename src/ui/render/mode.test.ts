@@ -32,6 +32,8 @@ function fakeStdout() {
 	const written: string[] = [];
 	const stream = {
 		isTTY: true,
+		columns: 80,
+		rows: 24,
 		write: (s: string) => {
 			written.push(s);
 			return true;
@@ -42,12 +44,36 @@ function fakeStdout() {
 
 describe("measureCellPixels", () => {
 	it("reads the size the terminal reports", async () => {
-		const { stream, written } = fakeStdout();
-		const size = await measureCellPixels(fakeStdin("[6;30;13t"), stream, 50);
+		const { stream } = fakeStdout();
+		const size = await measureCellPixels(fakeStdin("\u001B[6;30;13t"), stream, 50);
 		expect(size).toEqual({ width: 13, height: 30 });
 		expect(cellPixelsWereMeasured()).toBe(true);
 		expect(cellPixels({})).toEqual({ width: 13, height: 30 });
-		expect(written.join("")).toContain("[16t");
+	});
+
+	/**
+	 * Checks the bytes, not just that the string looks right.
+	 *
+	 * The query shipped once with no escape byte at all: it wrote the literal
+	 * text `[16t[14t` to the terminal, which printed it and of course never
+	 * answered. The assertion here used to be `toContain("[16t")` — with no
+	 * escape either — so it passed against the broken output. A test written in
+	 * the same typo as the code proves nothing.
+	 */
+	it("actually sends escape sequences, not their printable text", async () => {
+		const { stream, written } = fakeStdout();
+		await measureCellPixels(fakeStdin(), stream, 20);
+		expect(written.join("")).toBe("\u001B[16t\u001B[14t");
+	});
+
+	it("falls back to the text-area query when the cell query is ignored", async () => {
+		const { stream } = fakeStdout();
+		// 1168x1184 pixels over a 73x37 grid is a 16x32 cell.
+		stream.columns = 73;
+		stream.rows = 37;
+		const size = await measureCellPixels(fakeStdin("\u001B[4;1184;1168t"), stream, 50);
+		expect(size).toEqual({ width: 16, height: 32 });
+		expect(cellPixelsWereMeasured()).toBe(true);
 	});
 
 	// A terminal that does not implement the query simply never answers, which is
@@ -60,7 +86,7 @@ describe("measureCellPixels", () => {
 	});
 
 	it("leaves stdin as it found it, for Ink to configure", async () => {
-		const stdin = fakeStdin("[6;30;13t");
+		const stdin = fakeStdin("\u001B[6;30;13t");
 		const { stream } = fakeStdout();
 		await measureCellPixels(stdin, stream, 50);
 		expect(stdin.isRaw).toBe(false);
@@ -77,7 +103,7 @@ describe("measureCellPixels", () => {
 
 	it("lets CELL_PX override a measurement", async () => {
 		const { stream } = fakeStdout();
-		await measureCellPixels(fakeStdin("[6;30;13t"), stream, 50);
+		await measureCellPixels(fakeStdin("\u001B[6;30;13t"), stream, 50);
 		expect(cellPixels({ CELL_PX: "9x18" })).toEqual({ width: 9, height: 18 });
 	});
 });

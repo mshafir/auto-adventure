@@ -71,6 +71,8 @@ export interface CellSize {
  */
 const ASSUMED_CELL: CellSize = { width: 8, height: 16 };
 
+const CSI = "\u001B[";
+
 let measured: CellSize | undefined;
 let lastReply = "";
 
@@ -162,7 +164,7 @@ export async function measureCellPixels(
 		// Both at once. They are independent queries and a terminal answers the
 		// ones it knows, so asking for the fallback up front costs one round trip
 		// instead of two.
-		stdout.write("[16t[14t");
+		stdout.write(`${CSI}16t${CSI}14t`);
 	});
 }
 
