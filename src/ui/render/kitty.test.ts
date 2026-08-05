@@ -1,4 +1,6 @@
+import stringWidth from "string-width";
 import { describe, expect, it } from "vitest";
+import wrapAnsi from "wrap-ansi";
 import {
 	encodeCell,
 	encodeRowStart,
@@ -6,6 +8,7 @@ import {
 	imageIdSequence,
 	MAX_PLACEHOLDER_INDEX,
 	PLACEHOLDER,
+	PLACEHOLDER_LAYOUT_SLACK,
 	placeholderRows,
 	transmitFrame,
 } from "./kitty.js";
@@ -56,6 +59,61 @@ describe("placeholderRows", () => {
 	it("refuses a row index past the table rather than wrapping", () => {
 		expect(() => encodeRowStart(MAX_PLACEHOLDER_INDEX)).toThrow(/past the diacritic table/);
 		expect(() => encodeCell(0, MAX_PLACEHOLDER_INDEX)).toThrow(/column/);
+	});
+});
+
+/**
+ * How Ink measures a row, which is not how `string-width` measures a string.
+ *
+ * These pin the reason `PLACEHOLDER_LAYOUT_SLACK` exists. Ink lays a `<Text>` out
+ * with `wrap-ansi`, which walks a long unbroken run one character at a time and
+ * adds up `string-width` per character — and on a bare row-anchor mark that answer
+ * disagrees with the answer for the whole row.
+ */
+describe("how a placeholder row measures", () => {
+	const WIDTH = 60;
+	const row = (index: number) => placeholderRows(WIDTH, index + 1)[index] as string;
+
+	it("occupies exactly the columns it was asked for, at any row", () => {
+		// The measurement that is right, and the reason this went unnoticed: asked
+		// about the whole row, `string-width` gives the true answer every time.
+		for (const index of [0, 29, 30, 63]) {
+			expect(stringWidth(row(index)), `row ${index}`).toBe(WIDTH);
+		}
+	});
+
+	/*
+	 * And the measurement that is wrong, in the one place it matters. Rows 0-29 are
+	 * anchored with Combining Diacritical Marks, which measure 0 on their own; from
+	 * row 30 the table moves into Cyrillic, Hebrew and Arabic marks, which
+	 * `string-width` calls one column wide when asked about them by themselves — and
+	 * asking about them by themselves is what a line-breaker does.
+	 */
+	it("is anchored past the thirtieth row by a mark that measures a column alone", () => {
+		const anchor = (index: number) => [...(row(index).match(/\p{Mn}/gu) ?? [])][0] ?? "";
+		expect(stringWidth(anchor(29))).toBe(0);
+		expect(stringWidth(anchor(30))).toBe(PLACEHOLDER_LAYOUT_SLACK);
+		expect(stringWidth(anchor(63))).toBe(PLACEHOLDER_LAYOUT_SLACK);
+	});
+
+	/*
+	 * Which is what tore a tall map in half: `wrap-ansi` folds the last cell of the
+	 * row onto the next line, leaving 162 cells and a stray 1 with the scrollback
+	 * showing through between them.
+	 */
+	it("survives Ink's wrapping only when the layout allows for the slack", () => {
+		const wrapped = (line: string, width: number) =>
+			wrapAnsi(line, width, { trim: false, hard: true }).split("\n").length;
+
+		for (const index of [0, 29]) {
+			expect(wrapped(row(index), WIDTH), `row ${index}`).toBe(1);
+		}
+		for (const index of [30, 63]) {
+			expect(wrapped(row(index), WIDTH), `row ${index} without slack`).toBe(2);
+			expect(wrapped(row(index), WIDTH + PLACEHOLDER_LAYOUT_SLACK), `row ${index} with slack`).toBe(
+				1,
+			);
+		}
 	});
 });
 

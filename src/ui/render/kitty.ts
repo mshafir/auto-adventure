@@ -64,6 +64,13 @@ export const PLACEHOLDER = String.fromCodePoint(0x10_ee_ee);
  *
  * A viewport is far wider than 64 columns, which is exactly how this limit was
  * found. Columns are handled by continuation instead.
+ *
+ * The first thirty entries are Combining Diacritical Marks, which every text
+ * measurer agrees are zero-width. The rest — Cyrillic, Hebrew, Arabic — are
+ * nonspacing marks that `string-width` reports as **one column wide** when asked
+ * about them on their own, which is how Ink asks. See
+ * {@link PLACEHOLDER_LAYOUT_SLACK}; the entries are still correct for the
+ * protocol, so they are kept.
  */
 const DIACRITICS: readonly number[] = [
 	0x0305, 0x030d, 0x030e, 0x0310, 0x0312, 0x033d, 0x033e, 0x033f, 0x0346, 0x034a, 0x034b, 0x034c,
@@ -75,6 +82,40 @@ const DIACRITICS: readonly number[] = [
 ];
 
 export const MAX_PLACEHOLDER_INDEX = DIACRITICS.length;
+
+/**
+ * How many columns wider than it draws a row of placeholders can *measure*.
+ *
+ * One, and the layout has to allow for it, or a tall map tears in half.
+ *
+ * Ink lays a `<Text>` out with `wrap-ansi`, which walks a long unbroken run one
+ * character at a time and adds up `string-width` per character. On a whole row
+ * `string-width` is right — the mark joins its placeholder into one grapheme of
+ * width 1 — but on the bare mark it is not: the first thirty entries above are
+ * Combining Diacritical Marks and measure 0, while everything from `U+0483`
+ * onward measures **1**. So a row anchored with entry 30 or later adds up to one
+ * column more than it occupies, and `wrap-ansi` folds its last cell onto the next
+ * line.
+ *
+ * Which is exactly what a tall terminal looked like: fine to row 29, and from row
+ * 30 down every map row split into 162 cells and a stray 1, with the shell's
+ * scrollback showing through the gaps. Measured, not guessed — `wrap-ansi` at 163
+ * gives `162 + 1` for entry 30 and a whole row for entry 29.
+ *
+ * The bytes were never wrong; only the measurement was. So the fix is to give the
+ * layout the width it thinks it needs rather than to change what is emitted — a
+ * row that renders correctly at index 20 renders correctly at index 40, because
+ * it is the same sequence with a different mark in it.
+ *
+ * `wrap="truncate"` is not the way out, and this is the second time that has been
+ * checked: `cli-truncate` at 163 columns returns *161* placeholders, because it
+ * counts the astral placeholder as two. It loses cells rather than moving them.
+ *
+ * Only the default encoding is covered. {@link PlaceholderOptions.explicit} puts
+ * two marks on every cell and is for debugging one placement by hand, not for
+ * laying out a map.
+ */
+export const PLACEHOLDER_LAYOUT_SLACK = 1;
 
 const ESC = "\u001B";
 const APC = `${ESC}_G`;

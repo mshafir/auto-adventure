@@ -8,7 +8,12 @@ import {
 	composeScene,
 	type TileSource,
 } from "./render/compose.js";
-import { deleteFrame, placeholderRows, transmitFrame } from "./render/kitty.js";
+import {
+	deleteFrame,
+	PLACEHOLDER_LAYOUT_SLACK,
+	placeholderRows,
+	transmitFrame,
+} from "./render/kitty.js";
 import type { MiniCell } from "./render/minimap-data.js";
 import { cellPixels, resolveTileMode, type TileMode, tilePixels } from "./render/mode.js";
 import { overlayMinimap, paintMinimap } from "./render/overlay.js";
@@ -183,7 +188,22 @@ function KittyViewport({
 	useEffect(() => () => write(deleteFrame()), [write]);
 
 	return (
-		<Box flexDirection="column" flexShrink={0}>
+		/*
+		 * One column wider than the map draws, and it has to be.
+		 *
+		 * Ink measures a row with `wrap-ansi`, which adds up `string-width` per
+		 * character, and past row 29 the row-anchor diacritic is one that measures a
+		 * column on its own. So a full-width row adds up to one more than it occupies
+		 * and Ink folds its last cell onto the next line — which on a tall terminal
+		 * tore every row from the thirtieth down into 162 cells and a stray 1, with
+		 * the scrollback showing through the gaps.
+		 *
+		 * The slack is layout only. Nothing is drawn in the extra column, so the map
+		 * still owns exactly the rectangle it was given and the bytes are unchanged —
+		 * see `PLACEHOLDER_LAYOUT_SLACK` for why fixing the measurement is the right
+		 * end of this rather than fixing the emission.
+		 */
+		<Box flexDirection="column" flexShrink={0} width={columns + PLACEHOLDER_LAYOUT_SLACK}>
 			{rows.map((row, i) => (
 				/*
 				 * No `wrap="truncate"` here, and it must not come back. A placeholder

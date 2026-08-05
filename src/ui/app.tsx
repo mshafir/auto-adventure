@@ -22,6 +22,7 @@ import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
 import { Reader } from "./panels/reader.js";
 import { TOP_BAR_ROWS, TopBar } from "./panels/top-bar.js";
 import { PLAYER_GLYPH } from "./render/glyphs.js";
+import { MAX_PLACEHOLDER_INDEX } from "./render/kitty.js";
 import { lightFor } from "./render/lighting.js";
 import { minimapCells } from "./render/minimap-data.js";
 import { cellPixels, tilePixels } from "./render/mode.js";
@@ -178,7 +179,20 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	// The conversation panel has two fixed sizes; the map takes whatever is left,
 	// so the total is constant either way.
 	const panelHeight = panelHeightFor(state.dialogue !== undefined);
-	const mapHeight = Math.max(6, bodyHeight - panelHeight - TOP_BAR_ROWS);
+	/*
+	 * How many rows the map may have, and in pixel mode there is a ceiling on it.
+	 *
+	 * Every placeholder row is anchored by a combining mark from a fixed table, and
+	 * the table here holds 64 of the protocol's 297 — a deliberate limit, because the
+	 * entries cannot be computed and a wrong one silently draws the wrong slice of
+	 * the image. Past the end `diacritic` throws, which on a window taller than about
+	 * seventy-five rows took the whole game down rather than drawing a shorter map.
+	 *
+	 * So the map stops at the table and the leftover rows go under it. A band of
+	 * empty terminal is a poor look; a crash on a big monitor is worse.
+	 */
+	const wanted = Math.max(6, bodyHeight - panelHeight - TOP_BAR_ROWS);
+	const mapHeight = tileMode() === "kitty" ? Math.min(wanted, MAX_PLACEHOLDER_INDEX) : wanted;
 	// The camera is measured in tiles and the layout in terminal cells, and how
 	// many cells a tile takes depends on the renderer: TILE_WIDTH columns and one
 	// row for glyphs, and whatever its pixel size works out to for the image
@@ -326,6 +340,12 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 				rows={mapHeight}
 				{...(minimap ? { minimap } : {})}
 			/>
+			{/*
+			 * Takes up whatever the map could not, so the conversation and the key bar
+			 * stay against the bottom of the window rather than floating under a map
+			 * that stopped short of the diacritic table.
+			 */}
+			<Box flexGrow={1} />
 			<DialoguePanel
 				width={mapWidth}
 				height={panelHeight}

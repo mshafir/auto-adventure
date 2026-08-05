@@ -69,6 +69,30 @@ describe("KittyViewport", () => {
 		}
 	});
 
+	/*
+	 * And still exactly that rectangle on a tall terminal, which it was not.
+	 *
+	 * Ink lays a row out with `wrap-ansi`, which adds up `string-width` per
+	 * character. The first thirty row-anchor diacritics measure 0 on their own; from
+	 * `U+0483` on they measure 1. So every row from the thirtieth down added up to
+	 * one column more than it occupied and Ink folded its last cell onto the next
+	 * line — 162 cells and a stray 1, with the shell's scrollback showing through the
+	 * gaps between them.
+	 *
+	 * Thirty is the boundary, so this has to run past it to mean anything: at five
+	 * rows, and at twenty-nine, the map was always fine.
+	 */
+	it("keeps every row whole past the thirtieth, where the diacritics change block", () => {
+		for (const rows of [29, 30, 31, 48, 62]) {
+			const { frame } = frameOf(60, rows, 20, 8);
+			const lines = frame.split("\n").filter((l) => l.includes(PLACEHOLDER));
+			expect(lines, `${rows} rows`).toHaveLength(rows);
+			for (const [index, line] of lines.entries()) {
+				expect(line.split(PLACEHOLDER).length - 1, `${rows} rows, row ${index}`).toBe(60);
+			}
+		}
+	});
+
 	// The image and the placeholder grid have to agree, or the terminal maps the
 	// wrong part of the picture into each cell and the map comes out sheared.
 	it("tells the terminal the same rectangle it draws placeholders for", () => {

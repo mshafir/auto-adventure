@@ -12,6 +12,7 @@ import { type MacroSite, macroSite } from "../core/world/macro.js";
 import { GameEngine } from "../engine/engine.js";
 import App from "./app.js";
 import { mapLegend } from "./panels/legend.js";
+import { MAX_PLACEHOLDER_INDEX, PLACEHOLDER } from "./render/kitty.js";
 import { bindEngine } from "./store.js";
 import { setTileMode } from "./viewport.js";
 
@@ -189,6 +190,60 @@ describe("the key bar", () => {
 		expect(text).toContain("Esc leave");
 		// The page keys do not work mid-sentence, so they are not advertised.
 		expect(text).not.toContain("M menu");
+	});
+});
+
+describe("a very tall window", () => {
+	/*
+	 * Every placeholder row is anchored by a combining mark from a fixed table, and
+	 * only 64 of the protocol's 297 entries are written down here — a deliberate
+	 * limit, since the values cannot be computed and a wrong one silently draws the
+	 * wrong slice of the image. Past the end `diacritic` throws, and on a window
+	 * taller than about seventy-five rows that took the whole game down rather than
+	 * drawing a shorter map.
+	 */
+	it("stops the map at the diacritic table instead of taking the game down", () => {
+		const { engine } = engineBesideSomeone();
+		bindEngine(engine);
+		setTileMode("kitty");
+		try {
+			for (const rows of [40, 76, 120]) {
+				const { lastFrame, unmount } = renderInk(<App />, { columns: 100, rows });
+				const frame = lastFrame() ?? "";
+				unmount();
+
+				expect(stripAnsi(frame), `${rows} rows`).not.toContain("ERROR");
+				const map = frame.split("\n").filter((line) => line.includes(PLACEHOLDER));
+				expect(map.length, `${rows} rows`).toBeGreaterThan(0);
+				expect(map.length, `${rows} rows`).toBeLessThanOrEqual(MAX_PLACEHOLDER_INDEX);
+			}
+		} finally {
+			setTileMode(undefined);
+		}
+	});
+
+	/*
+	 * And every row of it whole. Ink measures with `wrap-ansi`, which counts the
+	 * anchor marks from row 30 on as a column each, so a full-width row added up one
+	 * too wide and had its last cell folded onto the next line — which on screen was
+	 * the map tearing into stripes with the scrollback showing between them.
+	 */
+	it("keeps every map row the full width of the terminal", () => {
+		const { engine } = engineBesideSomeone();
+		bindEngine(engine);
+		setTileMode("kitty");
+		try {
+			const { lastFrame, unmount } = renderInk(<App />, { columns: 100, rows: 76 });
+			const frame = lastFrame() ?? "";
+			unmount();
+			const map = frame.split("\n").filter((line) => line.includes(PLACEHOLDER));
+			expect(map.length).toBeGreaterThan(30);
+			for (const [index, line] of map.entries()) {
+				expect(line.split(PLACEHOLDER).length - 1, `map row ${index}`).toBe(100);
+			}
+		} finally {
+			setTileMode(undefined);
+		}
 	});
 });
 
