@@ -17,7 +17,7 @@
 		"kitty-check": "vite-node src/tools/kitty-check.ts --",
 		"kitty-size": "vite-node src/tools/kitty-size.ts",
 		"kitty-geometry": "vite-node src/tools/kitty-geometry.ts",
-		"capture": "script -qec \"stty cols 163 rows 37; TILE_MODE=kitty NO_AI=1 timeout 6 node dist/main.js\" capture.raw",
+		"capture": "vite-node src/tools/capture.ts",
 		"analyze": "vite-node src/tools/analyze-capture.ts -- capture.raw --columns 163 --rows 37",
 		"test": "vitest run",
 		"test:watch": "vitest",
