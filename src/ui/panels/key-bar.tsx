@@ -19,7 +19,13 @@ import type { PendingConfirm } from "../hud-state.js";
 export type KeyBarMode =
 	| { readonly t: "world" }
 	| { readonly t: "card" }
-	| { readonly t: "reader"; readonly canDrop: boolean; readonly hasList: boolean }
+	/** The menu. `inList` decides what up and down are doing right now. */
+	| {
+			readonly t: "menu";
+			readonly canDrop: boolean;
+			readonly hasList: boolean;
+			readonly inList: boolean;
+	  }
 	| { readonly t: "dialogue" };
 
 export interface KeyBarProps {
@@ -50,11 +56,15 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 	switch (mode.t) {
 		case "card":
 			return [{ key: "Space", label: "go on" }];
-		case "reader":
+		case "menu":
 			return [
-				// The key page has nothing to select, and offering Up/Dn on it would be
-				// a binding that visibly does nothing.
-				...(mode.hasList ? [{ key: "Up/Dn", label: "read" }] : []),
+				{ key: "Lt/Rt", label: "tab" },
+				// Down means two different things, and which one is not guessable from
+				// the screen alone — so the bar says which. A tab with nothing to select
+				// offers neither, rather than a binding that visibly does nothing.
+				...(mode.hasList
+					? [mode.inList ? { key: "Up/Dn", label: "read" } : { key: "Dn", label: "go in" }]
+					: []),
 				...(mode.canDrop ? [{ key: "D", label: "drop" }] : []),
 				{ key: "Esc", label: "back to map" },
 			];
@@ -67,6 +77,7 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 			return [
 				{ key: "Arrows", label: "move" },
 				{ key: "Space", label: "look/act" },
+				{ key: "M", label: "menu" },
 			];
 	}
 }
@@ -99,22 +110,21 @@ function contentFor(mode: KeyBarMode, confirm: PendingConfirm | undefined): BarC
 		};
 	}
 
-	// Opening a page and quitting work from everywhere outside a conversation, so
-	// they sit apart from the keys that change meaning. A conversation swallows
-	// both, and offers the only key that gets you out of it instead.
+	// Quitting works from everywhere outside a conversation and a menu, so it sits
+	// apart from the keys that change meaning. A conversation swallows it, and
+	// offers the only key that gets you out of it instead.
 	return {
 		left: keys(bindingsFor(mode)),
 		right: keys(
-			// A card swallows the page keys too, and saying so is better than letting
-			// the player press J and watch nothing happen.
+			// A card swallows the menu key too, and saying so is better than letting
+			// the player press it and watch nothing happen.
 			mode.t === "card"
 				? []
 				: mode.t === "dialogue"
 					? [{ key: "Esc", label: "leave" }]
-					: [
-							{ key: "IQJK", label: "pages" },
-							{ key: "S", label: "save+quit" },
-						],
+					: mode.t === "menu"
+						? []
+						: [{ key: "S", label: "save+quit" }],
 		),
 	};
 }

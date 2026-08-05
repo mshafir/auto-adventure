@@ -20,7 +20,17 @@
  */
 export type PanelTab = "inventory" | "quests" | "journal" | "key";
 
-/** Pages holding a list the player can move a cursor through. */
+/**
+ * The tabs, in the order they are laid out and stepped through.
+ *
+ * An array rather than a set because left and right move along it, so the order
+ * on screen and the order under the keys are the same thing by construction.
+ * Carrying most often first: what you have, then what you owe, then what
+ * happened, then what the map means.
+ */
+export const PANEL_TABS: readonly PanelTab[] = ["inventory", "quests", "journal", "key"];
+
+/** Tabs holding a list the player can move a cursor through. */
 export const LIST_TABS: ReadonlySet<PanelTab> = new Set<PanelTab>([
 	"inventory",
 	"quests",
@@ -47,55 +57,76 @@ export interface PendingConfirm {
 
 export interface HudState {
 	/**
-	 * Which page has the frame, or absent when the player is on the map.
+	 * Which tab the menu is showing, or absent when the player is on the map.
 	 *
-	 * One field where there were three. A page used to be a 32-column box beside
+	 * One field where there were three. A tab used to be a 32-column box beside
 	 * the map that could be open, focused, and then separately expanded to full
 	 * frame — three states to be in and two keys to get through them. With the
-	 * side panel gone there is no small version to be in, so opening a page *is*
-	 * taking the frame, and the arrow keys belong to whatever is on it.
+	 * side panel gone there is no small version to be in, so opening the menu *is*
+	 * taking the frame.
 	 *
 	 * The side panel had to go regardless: Ink cuts a row of kitty placeholders
 	 * in half the moment anything shares the screen line with it.
 	 */
 	readonly tab?: PanelTab;
+	/**
+	 * Whether the arrow keys are moving down a list or along the tab strip.
+	 *
+	 * The menu opens on the strip: left and right change tab, down steps into
+	 * what is on it. Without this, opening the menu and pressing left would move
+	 * the cursor inside a list the player has not chosen yet — and there would be
+	 * no way to reach the tab beside it except by name.
+	 */
+	readonly inList: boolean;
 	readonly cursor: number;
 	readonly confirm?: PendingConfirm;
 }
 
 export type HudAction =
-	/** Open a page, or switch to another without going back to the map first. */
-	| { readonly t: "OpenTab"; readonly tab: PanelTab }
-	| { readonly t: "Close" }
+	/** Open the menu, on a given tab or on the first. */
+	| { readonly t: "OpenMenu"; readonly tab?: PanelTab }
+	| { readonly t: "CloseMenu" }
+	/** Step along the tab strip. Wraps, because four tabs is a short ring. */
+	| { readonly t: "StepTab"; readonly delta: number }
+	/** Hand the arrow keys to the list on the open tab. */
+	| { readonly t: "EnterList" }
 	/** `count` is the current list length, so a stale cursor cannot outlive it. */
 	| { readonly t: "MoveCursor"; readonly delta: number; readonly count: number }
 	| { readonly t: "Ask"; readonly confirm: PendingConfirm }
 	| { readonly t: "Dismiss" };
 
 /**
- * Opening on a page puts the interface in the same state pressing its key would.
- * Only the screenshot tool and the tests start anywhere but the map, and a shot
- * of the inventory should show the inventory as the player would meet it.
+ * Opening on a tab puts the interface in the state opening the menu and stepping
+ * there would. Only the screenshot tool and the tests start anywhere but the
+ * map, and a shot of the inventory should show it as the player would meet it.
  */
 export function initialHud(tab?: PanelTab): HudState {
-	return { ...(tab ? { tab } : {}), cursor: 0 };
+	return { ...(tab ? { tab } : {}), inList: false, cursor: 0 };
 }
 
 export function hudReducer(state: HudState, action: HudAction): HudState {
 	switch (action.t) {
-		case "OpenTab":
-			return {
-				tab: action.tab,
-				// Row four of the inventory has nothing to do with row four of the
-				// journal, so only reopening the same page keeps its place.
-				cursor: action.tab === state.tab ? state.cursor : 0,
-			};
-		case "Close":
+		case "OpenMenu":
+			return { tab: action.tab ?? PANEL_TABS[0], inList: false, cursor: 0 };
+		case "CloseMenu":
 			if (state.tab === undefined && !state.confirm) return state;
-			// The cursor goes with the page. Keeping it would mean the next page
+			// The cursor goes with the menu. Keeping it would mean the next tab
 			// opened — which may be a different list entirely — started somewhere in
 			// the middle for no reason the player could see.
-			return { cursor: 0 };
+			return { inList: false, cursor: 0 };
+		case "StepTab": {
+			if (state.tab === undefined) return state;
+			const at = PANEL_TABS.indexOf(state.tab);
+			const next = PANEL_TABS[(at + action.delta + PANEL_TABS.length) % PANEL_TABS.length];
+			// Row four of the inventory has nothing to do with row four of the
+			// journal, so changing tab starts from the top.
+			return { ...withoutConfirm(state), tab: next, inList: false, cursor: 0 };
+		}
+		case "EnterList":
+			// The key tab has nothing to select, so stepping into it would take the
+			// arrow keys and give nothing back for them.
+			if (state.tab === undefined || !LIST_TABS.has(state.tab)) return state;
+			return { ...withoutConfirm(state), inList: true };
 		case "MoveCursor":
 			return { ...state, cursor: clampCursor(state.cursor + action.delta, action.count) };
 		case "Ask":

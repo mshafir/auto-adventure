@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type HudState, initialHud } from "../hud-state.js";
+import { type HudState, initialHud, type PanelTab } from "../hud-state.js";
 import { type KeyFlags, type RouteContext, routeKey } from "./route-key.js";
 
 function context(overrides: Partial<RouteContext> = {}): RouteContext {
@@ -27,31 +27,30 @@ describe("walking about", () => {
 		});
 	});
 
-	it("opens each page on its own letter", () => {
-		for (const [letter, tab] of [
-			["i", "inventory"],
-			["q", "quests"],
-			["j", "journal"],
-			["k", "key"],
-		] as const) {
-			expect(routeKey(letter, NONE, context())).toEqual({
-				t: "hud",
-				action: { t: "OpenTab", tab },
-			});
+	/*
+	 * One key rather than four. Four letters for four tabs meant four bindings to
+	 * know before any of them could be found, and it does not scale — a fifth page
+	 * would want a fifth letter and the good ones are taken.
+	 */
+	it("opens the menu on M, and on Tab because that is what gets tried", () => {
+		expect(routeKey("m", NONE, context())).toEqual({ t: "hud", action: { t: "OpenMenu" } });
+		expect(routeKey("", { tab: true }, context())).toEqual({
+			t: "hud",
+			action: { t: "OpenMenu" },
+		});
+	});
+
+	it("no longer answers to the old per-tab letters", () => {
+		for (const letter of ["i", "q", "j", "k", "w"]) {
+			expect(routeKey(letter, NONE, context()), letter).toBeUndefined();
 		}
 	});
 
-	it("ignores those letters when a modifier is held", () => {
-		// Ctrl-Q closes a window in some terminals and Ctrl-C already quits; neither
-		// should quietly put a page over the map.
-		expect(routeKey("q", { ctrl: true }, context())).toBeUndefined();
+	it("ignores the menu letter when a modifier is held", () => {
+		// Ctrl-M is carriage return on a terminal and Ctrl-C already quits; neither
+		// should quietly put a menu over the map.
+		expect(routeKey("m", { ctrl: true }, context())).toBeUndefined();
 		expect(routeKey("s", { ctrl: true }, context())).toBeUndefined();
-	});
-
-	// The map is the whole frame now, so there is no panel beside it to hand the
-	// arrow keys to and nothing for Tab to mean.
-	it("has nothing bound to Tab", () => {
-		expect(routeKey("", { tab: true }, context())).toBeUndefined();
 	});
 });
 
@@ -65,10 +64,10 @@ describe("a conversation", () => {
 		});
 	});
 
-	it("swallows the page keys, so a reply beginning with q does not open the log", () => {
+	it("swallows the menu key, so a reply beginning with M does not open it", () => {
 		// The bug this replaced: the side panel registered its own `useInput`, so
-		// page letters fired mid-sentence with no modal guard at all.
-		for (const letter of ["i", "q", "j", "k", "s"]) {
+		// panel letters fired mid-sentence with no modal guard at all.
+		for (const letter of ["m", "s"]) {
 			expect(routeKey(letter, NONE, talking), letter).toBeUndefined();
 		}
 	});
@@ -76,7 +75,7 @@ describe("a conversation", () => {
 
 describe("a question that cannot be undone", () => {
 	const asking = (confirm: NonNullable<HudState["confirm"]>): RouteContext =>
-		context({ hud: { tab: "inventory", cursor: 0, confirm } });
+		context({ hud: { tab: "inventory", inList: true, cursor: 0, confirm } });
 
 	const dropTimber = asking({
 		action: { t: "drop", name: "Timber", quantity: 3 },
@@ -106,7 +105,7 @@ describe("a question that cannot be undone", () => {
 			["", { upArrow: true }],
 			["", { downArrow: true }],
 			[" ", NONE],
-			["j", NONE],
+			["m", NONE],
 			["s", NONE],
 			["d", NONE],
 		] as const) {
@@ -144,9 +143,9 @@ describe("a card in front of everything", () => {
 		expect(routeKey("", { rightArrow: true }, context({ onCard: true }))).toBeUndefined();
 	});
 
-	it("swallows the page and quit keys too", () => {
+	it("swallows the menu and quit keys too", () => {
 		// These would otherwise fire behind the card and look like the game had hung.
-		expect(routeKey("j", NONE, context({ onCard: true }))).toBeUndefined();
+		expect(routeKey("m", NONE, context({ onCard: true }))).toBeUndefined();
 		expect(routeKey("s", NONE, context({ onCard: true }))).toBeUndefined();
 	});
 
@@ -169,68 +168,94 @@ describe("a card in front of everything", () => {
 	});
 });
 
-describe("a page over the map", () => {
-	const open = (tab: "quests" | "journal" | "inventory" | "key" = "quests"): HudState =>
-		initialHud(tab);
+describe("the menu over the map", () => {
+	const onStrip = (tab: PanelTab = "quests"): HudState => initialHud(tab);
+	const inList = (tab: PanelTab = "quests"): HudState => ({ ...initialHud(tab), inList: true });
 
-	it("moves the cursor instead of the player", () => {
-		expect(routeKey("", { downArrow: true }, context({ hud: open(), listCount: 4 }))).toEqual({
+	it("walks the tab strip on left and right", () => {
+		expect(routeKey("", { rightArrow: true }, context({ hud: onStrip() }))).toEqual({
+			t: "hud",
+			action: { t: "StepTab", delta: 1 },
+		});
+		expect(routeKey("", { leftArrow: true }, context({ hud: onStrip() }))).toEqual({
+			t: "hud",
+			action: { t: "StepTab", delta: -1 },
+		});
+	});
+
+	/*
+	 * Down means two different things depending on where you are, and that is the
+	 * point: on the strip it steps into the list, and once there it moves the
+	 * cursor. Without the two states the first left press would move a cursor
+	 * inside a list nobody had chosen yet, and the tab beside it would be
+	 * unreachable.
+	 */
+	it("goes into the list on the first down, and moves the cursor after", () => {
+		expect(routeKey("", { downArrow: true }, context({ hud: onStrip(), listCount: 4 }))).toEqual({
+			t: "hud",
+			action: { t: "EnterList" },
+		});
+		expect(routeKey("", { downArrow: true }, context({ hud: inList(), listCount: 4 }))).toEqual({
 			t: "hud",
 			action: { t: "MoveCursor", delta: 1, count: 4 },
 		});
-		expect(routeKey("", { upArrow: true }, context({ hud: open(), listCount: 4 }))).toEqual({
+		expect(routeKey("", { upArrow: true }, context({ hud: inList(), listCount: 4 }))).toEqual({
 			t: "hud",
 			action: { t: "MoveCursor", delta: -1, count: 4 },
 		});
 	});
 
-	it("gives the map back on Esc", () => {
-		expect(routeKey("", { escape: true }, context({ hud: open() }))).toEqual({
-			t: "hud",
-			action: { t: "Close" },
-		});
+	// Nothing to move through yet, so up is not a cursor key on the strip.
+	it("leaves up alone until the list has the arrow keys", () => {
+		expect(routeKey("", { upArrow: true }, context({ hud: onStrip() }))).toBeUndefined();
 	});
 
-	// The same press that opened it, which is what every other toggle on a
-	// keyboard does — and it means Esc is not the only way out.
-	it("closes on the key of the page already open", () => {
-		expect(routeKey("q", NONE, context({ hud: open("quests") }))).toEqual({
-			t: "hud",
-			action: { t: "Close" },
-		});
+	// One press out, from wherever you are. Left and right are already the way
+	// back to the strip, so a two-stage Esc would only cost a press.
+	it("gives the map back on Esc, from the strip or from a list", () => {
+		for (const hud of [onStrip(), inList()]) {
+			expect(routeKey("", { escape: true }, context({ hud }))).toEqual({
+				t: "hud",
+				action: { t: "CloseMenu" },
+			});
+		}
 	});
 
-	it("switches to another page without going back to the map", () => {
-		expect(routeKey("j", NONE, context({ hud: open("quests") }))).toEqual({
+	it("closes on the same key that opened it", () => {
+		expect(routeKey("m", NONE, context({ hud: onStrip() }))).toEqual({
 			t: "hud",
-			action: { t: "OpenTab", tab: "journal" },
+			action: { t: "CloseMenu" },
+		});
+		expect(routeKey("", { tab: true }, context({ hud: inList() }))).toEqual({
+			t: "hud",
+			action: { t: "CloseMenu" },
 		});
 	});
 
 	it("swallows space rather than acting on the world behind it", () => {
 		// Pressing space while reading the inventory would otherwise search the
 		// crate the player happens to be facing, off screen.
-		expect(routeKey(" ", NONE, context({ hud: open() }))).toBeUndefined();
+		expect(routeKey(" ", NONE, context({ hud: inList() }))).toBeUndefined();
 	});
 
 	it("offers a drop only when there is something to drop", () => {
-		expect(routeKey("d", NONE, context({ hud: open("inventory"), canDrop: true }))).toEqual({
+		expect(routeKey("d", NONE, context({ hud: inList("inventory"), canDrop: true }))).toEqual({
 			t: "askDrop",
 		});
 		expect(
-			routeKey("d", NONE, context({ hud: open("inventory"), canDrop: false })),
+			routeKey("d", NONE, context({ hud: inList("inventory"), canDrop: false })),
 		).toBeUndefined();
 	});
 
-	it("swallows everything else, including the keys that would walk away", () => {
-		expect(routeKey("", { leftArrow: true }, context({ hud: open() }))).toBeUndefined();
-		expect(routeKey("s", NONE, context({ hud: open() }))).toBeUndefined();
-		expect(routeKey("", { tab: true }, context({ hud: open() }))).toBeUndefined();
+	it("swallows everything else, including the key that saves and quits", () => {
+		expect(routeKey("s", NONE, context({ hud: inList() }))).toBeUndefined();
+		expect(routeKey("j", NONE, context({ hud: inList() }))).toBeUndefined();
+		expect(routeKey("", { return: true }, context({ hud: inList() }))).toBeUndefined();
 	});
 
 	it("comes second to a pending confirmation", () => {
 		const asking: HudState = {
-			...open("inventory"),
+			...inList("inventory"),
 			confirm: { action: { t: "drop", name: "Timber", quantity: 1 }, prompt: "Drop it?" },
 		};
 		expect(routeKey("y", NONE, context({ hud: asking }))).toEqual({
@@ -243,7 +268,7 @@ describe("a page over the map", () => {
 		// A dialogue turn resolves asynchronously and can arrive at any moment; taking
 		// the arrow keys off somebody mid-read would be indistinguishable from a bug.
 		expect(
-			routeKey("", { downArrow: true }, context({ hud: open(), inDialogue: true, listCount: 3 })),
+			routeKey("", { downArrow: true }, context({ hud: inList(), inDialogue: true, listCount: 3 })),
 		).toEqual({ t: "hud", action: { t: "MoveCursor", delta: 1, count: 3 } });
 	});
 });

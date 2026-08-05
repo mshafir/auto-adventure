@@ -164,7 +164,7 @@ describe("the key bar", () => {
 		const { lastFrame, unmount } = renderInk(<App />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
-		expect(text).toContain("IQJK pages");
+		expect(text).toContain("M menu");
 		expect(text).toContain("S save+quit");
 		expect(text).toContain("Arrows move");
 	});
@@ -186,7 +186,7 @@ describe("the key bar", () => {
 		expect(text).toContain("Up/Dn choose");
 		expect(text).toContain("Esc leave");
 		// The page keys do not work mid-sentence, so they are not advertised.
-		expect(text).not.toContain("IQJK pages");
+		expect(text).not.toContain("M menu");
 	});
 });
 
@@ -398,16 +398,36 @@ describe("reading a list in full", () => {
 		expect(read).toContain("• Ilse Marrow says");
 	});
 
-	it("is what the page key opens, straight from the map", async () => {
+	// One key rather than four, and the tab strip then says what is in here — so
+	// nothing has to be remembered before it can be found.
+	it("is what the menu key opens, straight from the map", async () => {
 		readingQuests();
 		const harness = renderInk(<App />, { columns: 120, rows: 34 });
 		await harness.settle();
+		expect(harness.screen()).not.toContain("Carrying");
+
+		await harness.type("m");
+		const menu = harness.screen();
+		harness.unmount();
+		for (const label of ["Carrying", "Errands", "Journal", "Key"]) {
+			expect(menu, `the strip does not offer ${label}`).toContain(label);
+		}
+	});
+
+	it("walks the tabs on left and right, and steps in on down", async () => {
+		readingQuests();
+		const harness = renderInk(<App initialTab="inventory" />, { columns: 120, rows: 34 });
+		await harness.settle();
 		expect(harness.screen()).not.toContain("THE HOLLOW TITHE");
 
-		await harness.type("q");
-		const read = harness.screen();
+		await harness.type(KEY.right);
+		expect(harness.screen()).toContain("THE HOLLOW TITHE");
+
+		// The cursor is drawn either way; stepping in is what makes it live.
+		await harness.type(KEY.down);
+		const inList = harness.screen();
 		harness.unmount();
-		expect(read).toContain("THE HOLLOW TITHE");
+		expect(inList).toContain("Up/Dn read");
 	});
 
 	it("comes back to the map on Esc, with the world still there", async () => {
@@ -427,11 +447,11 @@ describe("reading a list in full", () => {
 
 	// The same press that opened it, which is what every other toggle does — and it
 	// means Esc is not the only way back to the map.
-	it("closes on the key of the page already open", async () => {
+	it("closes on the key that opened it", async () => {
 		readingQuests();
 		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
 		await harness.settle();
-		await harness.type("q");
+		await harness.type("m");
 		const back = harness.screen();
 		harness.unmount();
 		expect(back).not.toContain("THE HOLLOW TITHE");
@@ -441,7 +461,7 @@ describe("reading a list in full", () => {
 		readingQuests();
 		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
 		await harness.settle();
-		await harness.type("j");
+		await harness.type(KEY.right);
 		const read = harness.screen();
 		harness.unmount();
 
@@ -449,10 +469,15 @@ describe("reading a list in full", () => {
 		expect(read).not.toContain("Arrows move");
 	});
 
-	it("says which keys it has taken", async () => {
+	// Down means two different things and which one is not guessable from the
+	// screen, so the bar says which.
+	it("says which keys it has taken, and what down will do", async () => {
 		readingQuests();
 		const harness = renderInk(<App initialTab="quests" />, { columns: 120, rows: 34 });
 		await harness.settle();
+		expect(harness.screen()).toContain("Dn go in");
+
+		await harness.type(KEY.down);
 		const read = harness.screen();
 		harness.unmount();
 		expect(read).toContain("Up/Dn read");

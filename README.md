@@ -96,7 +96,9 @@ All variables are optional.
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
 | `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
 | `TILE_MODE` | `auto` | `auto` uses pixels only where the terminal is known to support them. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
-| `TILE_PX` | `16` | Pixels per tile edge in kitty mode. Sprites are procedures, not bitmaps, so any size draws. |
+| `ZOOM` | `1` | Scales the tiles in kitty mode. Above 1 is bigger tiles and less world on screen; below is the reverse. |
+| `TILE_PX` | derived | Pixels per tile edge, pinned. Left alone it is derived from the terminal's cell so pixel mode shows the same field of view as glyph mode. |
+| `KITTY_DEFLATE` | `1` | zlib level for the frame. Raise it to trade CPU for bytes on a slow link. |
 | `CELL_PX` | measured | `WxH` override for a terminal that will not answer `CSI 16 t` with its cell size. |
 | `CONTENT_PACK` | — | A flavour pack: a shipped name (`thornwick`) or a path (`./my-pack.json`). Steers a new world only; a save keeps the pack it was made with. |
 
@@ -156,12 +158,16 @@ the journal, `told` in the quest page, and a closing card the way it opened on o
 A scenario can write its own last page; one is assembled from what the player
 actually did if it does not.
 
-Everything you can go and look at takes the whole frame, inside a heavy border
-that says you are in a mode: `I` for what you are carrying, `Q` for the errands,
-`J` for the journal, `K` for the key. The same key puts it down again, and so
-does `Esc`. It is one press either way because there is nothing smaller to be
-in — a 32-column panel elided a quest description or a story clue mid-sentence,
-which is exactly the part worth reading.
+`M` — or `Tab` — opens the menu, which takes the whole frame inside a heavy
+border that says you are in a mode. Left and right walk the tabs, down steps
+into the one you are on, `Esc` goes back to the map, and `M` again closes it.
+One key rather than four because four letters is four bindings to know before
+any of them can be found; the strip along the top then says what is in here, so
+nothing has to be remembered.
+
+Each tab takes the full width because everything in it is prose written for a
+human — a 32-column panel elided a quest description or a story clue
+mid-sentence, on exactly the part worth reading.
 
 What you are carrying. The arrow keys move the selection and `D` drops it.
 Dropping destroys the item, so it asks first, and it tells you when an open
@@ -201,14 +207,18 @@ The bar along the bottom always says which keys are live, because they change:
 the arrow keys mean three different things depending on whether you are walking,
 choosing a reply, or reading a list.
 
-`I` `Q` `J` `K` open the inventory, the errands, the journal and the map key.
-Each takes the whole frame inside a heavy border, and the same key puts it down
-again — as does `ESC`. Inside the inventory, `D` drops what the cursor is on; it
-asks first, and warns you if an open errand wants it, because there is no ground
-layer to pick it back up from. `S` saves and quits, also with a confirmation.
+`M` or `TAB` opens the menu: what you are carrying, the errands, the journal and
+the map key. Left and right walk the tabs, down hands the arrow keys to the list
+on the one you are on, and `ESC` or `M` goes back to the map. Inside the
+inventory, `D` drops what the cursor is on; it asks first, and warns you if an
+open errand wants it, because there is no ground layer to pick it back up from.
+`S` saves and quits, also with a confirmation.
 
 The top bar carries the clock: a tick is a minute and a move is a tick, so an
-hour of world time is sixty steps. The minimap in the corner of the map draws one
+hour of world time is sixty steps. Which way you are facing decides what `SPACE`
+acts on, so it is shown — as a wedge on the player's own sprite in pixel mode,
+and as an arrow beside the line describing what is in front of you in glyph
+mode. The minimap in the corner of the map draws one
 cell per chunk of the world you have walked into, `@` for where you are and `!`
 for a chunk with an errand waiting; the quest list gives the same errand a
 bearing in chunks — `E 2` rather than a tile count.

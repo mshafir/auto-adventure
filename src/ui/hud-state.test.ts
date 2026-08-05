@@ -1,46 +1,69 @@
 import { describe, expect, it } from "vitest";
-import { clampCursor, type HudState, hudReducer, initialHud, listWindow } from "./hud-state.js";
+import {
+	clampCursor,
+	type HudState,
+	hudReducer,
+	initialHud,
+	listWindow,
+	PANEL_TABS,
+} from "./hud-state.js";
 
-describe("opening a page", () => {
+describe("the menu", () => {
 	it("starts on the map, with nothing open", () => {
 		expect(initialHud().tab).toBeUndefined();
 	});
 
 	it("takes the frame, and gives it back", () => {
-		const open = hudReducer(initialHud(), { t: "OpenTab", tab: "inventory" });
-		expect(open.tab).toBe("inventory");
-		expect(hudReducer(open, { t: "Close" }).tab).toBeUndefined();
+		const open = hudReducer(initialHud(), { t: "OpenMenu" });
+		expect(open.tab).toBe(PANEL_TABS[0]);
+		expect(hudReducer(open, { t: "CloseMenu" }).tab).toBeUndefined();
 	});
 
-	it("keeps the cursor when the same page is reopened", () => {
-		let state = hudReducer(initialHud("inventory"), { t: "MoveCursor", delta: 3, count: 8 });
-		expect(state.cursor).toBe(3);
-		state = hudReducer(state, { t: "OpenTab", tab: "inventory" });
-		expect(state.cursor).toBe(3);
+	// Left and right walk the strip; without this the arrow keys would be moving
+	// a cursor in a list the player has not chosen yet.
+	it("opens on the tab strip rather than inside a list", () => {
+		expect(hudReducer(initialHud(), { t: "OpenMenu" }).inList).toBe(false);
 	});
 
-	it("starts a different page from the top", () => {
+	it("steps along the tabs and wraps at both ends", () => {
+		const open = hudReducer(initialHud(), { t: "OpenMenu" });
+		expect(hudReducer(open, { t: "StepTab", delta: 1 }).tab).toBe(PANEL_TABS[1]);
+		expect(hudReducer(open, { t: "StepTab", delta: -1 }).tab).toBe(PANEL_TABS.at(-1));
+	});
+
+	it("goes into the list on the tab, and hands the arrow keys over", () => {
+		const open = hudReducer(initialHud("inventory"), { t: "EnterList" });
+		expect(open.inList).toBe(true);
+	});
+
+	// The key tab has nothing to select, so stepping in would take the arrow keys
+	// and give nothing back for them.
+	it("refuses to step into a tab with no list", () => {
+		expect(hudReducer(initialHud("key"), { t: "EnterList" }).inList).toBe(false);
+	});
+
+	it("comes back out to the strip when the tab changes", () => {
+		const inList = hudReducer(initialHud("inventory"), { t: "EnterList" });
+		expect(hudReducer(inList, { t: "StepTab", delta: 1 }).inList).toBe(false);
+	});
+
+	it("starts a different tab from the top", () => {
 		// Row four of the inventory has nothing to do with row four of the journal.
 		let state = hudReducer(initialHud("inventory"), { t: "MoveCursor", delta: 3, count: 8 });
-		state = hudReducer(state, { t: "OpenTab", tab: "journal" });
+		state = hudReducer(state, { t: "StepTab", delta: 1 });
 		expect(state.cursor).toBe(0);
 	});
 
-	it("switches without going back to the map on the way", () => {
-		const reading = hudReducer(initialHud("quests"), { t: "OpenTab", tab: "journal" });
-		expect(reading.tab).toBe("journal");
-	});
-
 	it("drops a pending question when the player looks somewhere else", () => {
-		// A confirmation that survived a page change would be answered by whatever
+		// A confirmation that survived a tab change would be answered by whatever
 		// the player pressed next, about something they were no longer looking at.
 		const asked = hudReducer(initialHud("inventory"), {
 			t: "Ask",
 			confirm: { action: { t: "drop", name: "Timber", quantity: 3 }, prompt: "Drop?" },
 		});
 		expect(asked.confirm).toBeDefined();
-		expect(hudReducer(asked, { t: "OpenTab", tab: "journal" }).confirm).toBeUndefined();
-		expect(hudReducer(asked, { t: "Close" }).confirm).toBeUndefined();
+		expect(hudReducer(asked, { t: "StepTab", delta: 1 }).confirm).toBeUndefined();
+		expect(hudReducer(asked, { t: "CloseMenu" }).confirm).toBeUndefined();
 		expect(hudReducer(asked, { t: "Dismiss" }).confirm).toBeUndefined();
 	});
 });
@@ -50,7 +73,8 @@ describe("the cursor", () => {
 		// Wrapping a five-item list means one press past the bottom is the top,
 		// which reads as the list having jumped.
 		const at = (cursor: number, delta: number) =>
-			hudReducer({ tab: "inventory", cursor }, { t: "MoveCursor", delta, count: 5 }).cursor;
+			hudReducer({ tab: "inventory", inList: true, cursor }, { t: "MoveCursor", delta, count: 5 })
+				.cursor;
 		expect(at(0, -1)).toBe(0);
 		expect(at(4, 1)).toBe(4);
 		expect(at(2, 1)).toBe(3);
@@ -66,10 +90,10 @@ describe("the cursor", () => {
 
 	// Keeping it would mean the next page opened — which may be a different list
 	// entirely — started somewhere in the middle for no reason the player could see.
-	it("goes back to the top when the page is put down", () => {
+	it("goes back to the top when the menu is closed", () => {
 		const at = hudReducer(initialHud("quests"), { t: "MoveCursor", delta: 2, count: 5 });
 		expect(at.cursor).toBe(2);
-		expect(hudReducer(at, { t: "Close" }).cursor).toBe(0);
+		expect(hudReducer(at, { t: "CloseMenu" }).cursor).toBe(0);
 	});
 });
 
@@ -104,7 +128,7 @@ describe("hud state", () => {
 		// mid-action load permanently locked in the previous design; this type
 		// exists to keep that separation visible.
 		const state: HudState = initialHud();
-		expect(Object.keys(state).sort()).toEqual(["cursor"]);
+		expect(Object.keys(state).sort()).toEqual(["cursor", "inList"]);
 	});
 
 	/*
@@ -113,7 +137,7 @@ describe("hud state", () => {
 	 * keys to get through them. With no small version to be in, opening a page is
 	 * taking the frame, and this is what says so.
 	 */
-	it("says what has the keys in one field", () => {
-		expect(initialHud("quests")).toEqual({ tab: "quests", cursor: 0 });
+	it("says what has the keys in two fields, where there were four", () => {
+		expect(initialHud("quests")).toEqual({ tab: "quests", inList: false, cursor: 0 });
 	});
 });

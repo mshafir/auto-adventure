@@ -4,7 +4,7 @@ import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { describeObjective, questNeeding } from "../../core/rules/quests.js";
 import { activeQuests, type GameState, type Quest } from "../../core/rules/state.js";
 import { toChunk } from "../../core/world/coords.js";
-import type { HudState, PanelTab } from "../hud-state.js";
+import { type HudState, PANEL_TABS, type PanelTab } from "../hud-state.js";
 import { mapLegend } from "./legend.js";
 import { Bullet, Field, FRAME_CHROME, Frame, Prose, Rule, ScrollList } from "./primitives.js";
 
@@ -36,20 +36,64 @@ export interface ReaderProps {
 /** How much of the frame the list of entries gets before the detail below it. */
 const LIST_SHARE = 0.35;
 
+/**
+ * The tab strip's one row.
+ *
+ * One and not two: every tab opens with a rule of its own, so a rule under the
+ * strip as well put two horizontal lines in consecutive rows and cost a row of
+ * content to do it.
+ */
+const STRIP_ROWS = 1;
+
+const TAB_LABELS: Readonly<Record<PanelTab, string>> = {
+	inventory: "Carrying",
+	quests: "Errands",
+	journal: "Journal",
+	key: "Key",
+};
+
 export function Reader({ state, hud, width, height, tab }: ReaderProps) {
-	// The border and the padding inside it come off before anything is laid out.
-	// Every component here is told its size rather than measuring, because a pane
-	// that grows to fit reaches the terminal height, and at that point Ink clears
-	// the screen on every keypress.
+	// The border, the padding inside it and the tab strip all come off before
+	// anything is laid out. Every component here is told its size rather than
+	// measuring, because a pane that grows to fit reaches the terminal height, and
+	// at that point Ink clears the screen on every keypress.
 	const inner = Math.max(20, width - FRAME_CHROME - 4);
-	const rows = Math.max(3, height - FRAME_CHROME);
+	const rows = Math.max(3, height - FRAME_CHROME - STRIP_ROWS);
 	return (
 		<Frame style="reader" width={width} height={height}>
+			<TabStrip tab={tab} inList={hud.inList} />
 			{tab === "quests" && <QuestReader state={state} hud={hud} width={inner} rows={rows} />}
 			{tab === "journal" && <JournalReader state={state} hud={hud} width={inner} rows={rows} />}
 			{tab === "inventory" && <InventoryReader state={state} hud={hud} width={inner} rows={rows} />}
 			{tab === "key" && <KeyReader width={inner} rows={rows} />}
 		</Frame>
+	);
+}
+
+/**
+ * Which tabs there are, and which one you are on.
+ *
+ * The whole reason there is one menu key rather than four: the strip is what
+ * tells the player what is in here, so nothing has to be remembered. It is
+ * highlighted while the arrow keys belong to it and dimmed once they have been
+ * handed to the list below, which is what makes "down goes in" visible rather
+ * than something to be discovered.
+ */
+function TabStrip({ tab, inList }: { tab: PanelTab; inList: boolean }) {
+	return (
+		<Text wrap="truncate">
+			{PANEL_TABS.map((each, index) => {
+				const here = each === tab;
+				return (
+					<Text key={each}>
+						{index > 0 ? <Text color="gray">{"   "}</Text> : null}
+						<Text bold={here} color={here ? (inList ? "gray" : "cyan") : "gray"} underline={here}>
+							{TAB_LABELS[each]}
+						</Text>
+					</Text>
+				);
+			})}
+		</Text>
 	);
 }
 
@@ -161,7 +205,7 @@ function QuestReader({
 					count={open.length}
 					cursor={cursor}
 					rows={listRows}
-					focus
+					focus={hud.inList}
 					render={(index) => {
 						const quest = open[index];
 						if (!quest) return null;
@@ -283,7 +327,7 @@ function JournalReader({
 				count={entries.length}
 				cursor={cursor}
 				rows={listRows}
-				focus
+				focus={hud.inList}
 				render={(index) => {
 					const entry = entries[index];
 					if (!entry) return null;
@@ -349,7 +393,7 @@ function InventoryReader({
 				count={items.length}
 				cursor={cursor}
 				rows={listRows}
-				focus
+				focus={hud.inList}
 				render={(index) => {
 					const item = items[index];
 					if (!item) return null;

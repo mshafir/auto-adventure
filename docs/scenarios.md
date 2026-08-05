@@ -290,10 +290,11 @@ tall enough to hold a quest log reaches the terminal height, at which point Ink
 stops updating incrementally and clears the screen on every keypress.
 
 So a list takes the whole frame, inside a heavy border that says you are in a
-mode. `Q` opens it and `Q` puts it down again, as does `Esc`; arrows move through
-the entries, and the other page keys switch what is being read without going back
-to the map first. Space is left alone throughout — it is the world's look-and-act
-key, and a keypress meant for the world must not reach it from a list.
+mode. `M` opens the menu and `M` puts it down again, as does `Esc`; left and
+right walk the tabs, down hands the arrow keys to the list on the one you are on,
+and up and down then move through it. Space is left alone throughout — it is the
+world's look-and-act key, and a keypress meant for the world must not reach it
+from a list.
 
 There is no smaller version to be in, which is a simplification the pixel
 renderer forced: Ink cuts a row of Unicode placeholders in half the moment

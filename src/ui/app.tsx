@@ -89,8 +89,11 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 					? state.journal.length
 					: 0;
 
+	// Only once the arrow keys are actually in the list. On the tab strip the
+	// cursor is not yet the player's — offering to destroy what it happens to be
+	// resting on would be a `D` press away from losing an errand item.
 	const held =
-		hud.tab === "inventory" && state.inventory.length > 0
+		hud.tab === "inventory" && hud.inList && state.inventory.length > 0
 			? state.inventory[Math.min(hud.cursor, state.inventory.length - 1)]
 			: undefined;
 
@@ -268,7 +271,12 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	const keyMode: KeyBarMode = state.card
 		? { t: "card" }
 		: hud.tab !== undefined
-			? { t: "reader", canDrop: held !== undefined, hasList: LIST_TABS.has(hud.tab) }
+			? {
+					t: "menu",
+					canDrop: held !== undefined,
+					hasList: LIST_TABS.has(hud.tab),
+					inList: hud.inList,
+				}
 			: state.dialogue
 				? { t: "dialogue" }
 				: { t: "world" };
