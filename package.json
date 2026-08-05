@@ -16,6 +16,7 @@
 		"pixel-shot": "vite-node src/tools/pixel-shot.ts --",
 		"kitty-check": "vite-node src/tools/kitty-check.ts --",
 		"kitty-size": "vite-node src/tools/kitty-size.ts",
+		"kitty-geometry": "vite-node src/tools/kitty-geometry.ts",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"lint": "./node_modules/.bin/biome check .",

@@ -56,24 +56,102 @@ export function resolveTileMode(env: NodeJS.ProcessEnv = process.env): ModeReaso
 	return { mode: "kitty", because: "terminal supports kitty graphics" };
 }
 
+export interface CellSize {
+	readonly width: number;
+	readonly height: number;
+}
+
+/**
+ * A guess, for when the terminal will not say.
+ *
+ * Being wrong here is not cosmetic. The cell size decides how many tiles fit,
+ * which decides the camera's size — so a bad guess draws a viewport of one
+ * shape while centring the player for a viewport of another, and the player
+ * ends up off toward an edge.
+ */
+const ASSUMED_CELL: CellSize = { width: 8, height: 16 };
+
+let measured: CellSize | undefined;
+
+/**
+ * Ask the terminal how big a cell is, once, before Ink starts.
+ *
+ * This has to happen before `render()`. The query works by writing an escape
+ * and reading the answer off stdin, and once Ink is running stdin is its —
+ * a reply arriving late is indistinguishable from the player typing, and would
+ * walk their character somewhere they did not ask to go. Called at startup
+ * there is no such race, and the answer is good for the life of the process
+ * unless the font changes.
+ *
+ * `CSI 16 t` asks for the cell size directly. Terminals that do not implement
+ * it simply never answer, which is why this gives up after a moment rather
+ * than waiting: a missing reply is the common case, not an error.
+ */
+export async function measureCellPixels(
+	stdin: NodeJS.ReadStream = process.stdin,
+	stdout: NodeJS.WriteStream = process.stdout,
+	timeoutMs = 100,
+): Promise<CellSize> {
+	if (!stdin.isTTY || !stdout.isTTY) return ASSUMED_CELL;
+
+	return new Promise<CellSize>((resolve) => {
+		let settled = false;
+		const wasRaw = stdin.isRaw;
+		const finish = (size: CellSize, real: boolean) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			stdin.off("data", onData);
+			// Leave stdin exactly as it was found; Ink sets its own mode after this.
+			if (!wasRaw) stdin.setRawMode(false);
+			stdin.pause();
+			// Only a real answer is recorded, so callers can tell a measurement
+			// from a guess and say which they are using.
+			if (real) measured = size;
+			resolve(size);
+		};
+
+		const onData = (chunk: Buffer) => {
+			// CSI 6 ; <height> ; <width> t
+			const match = /\[6;(\d+);(\d+)t/.exec(chunk.toString("latin1"));
+			if (!match) return;
+			const height = Number(match[1]);
+			const width = Number(match[2]);
+			const ok = height > 0 && width > 0;
+			finish(ok ? { width, height } : ASSUMED_CELL, ok);
+		};
+
+		const timer = setTimeout(() => finish(ASSUMED_CELL, false), timeoutMs);
+		// Unref'd so a terminal that never answers cannot hold the process open.
+		timer.unref?.();
+
+		stdin.setRawMode(true);
+		stdin.resume();
+		stdin.on("data", onData);
+		stdout.write("[16t");
+	});
+}
+
 /**
  * A terminal cell's size in pixels.
  *
- * Queried from the terminal in principle; in practice not, because the query
- * writes to the terminal and reads the reply off stdin, and stdin belongs to
- * Ink — a reply arriving a moment late is indistinguishable from the player
- * typing, and the cost of being wrong is only that the terminal scales the
- * image slightly. `CELL_PX=WxH` sets it for anyone who wants it exact.
- *
- * The default is the common case for a terminal at a normal font size.
+ * `CELL_PX=WxH` wins, then whatever {@link measureCellPixels} found, then the
+ * assumption. Synchronous because the renderer needs it during layout.
  */
-export function cellPixels(env: NodeJS.ProcessEnv = process.env): {
-	width: number;
-	height: number;
-} {
+export function cellPixels(env: NodeJS.ProcessEnv = process.env): CellSize {
 	const match = /^(\d+)x(\d+)$/.exec(env.CELL_PX?.trim() ?? "");
 	if (match) {
 		return { width: Number(match[1]), height: Number(match[2]) };
 	}
-	return { width: 8, height: 16 };
+	return measured ?? ASSUMED_CELL;
+}
+
+/** Did the terminal actually answer, or are we guessing? */
+export function cellPixelsWereMeasured(): boolean {
+	return measured !== undefined;
+}
+
+/** Test seam, and how the startup path installs what it measured. */
+export function setCellPixels(size: CellSize | undefined): void {
+	measured = size;
 }

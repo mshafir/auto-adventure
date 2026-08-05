@@ -293,7 +293,7 @@ export default function App({
 						camera={camera}
 						options={composeOptions}
 						columns={mapWidth}
-						rows={fit.height}
+						rows={mapHeight}
 					/>
 					<DialoguePanel
 						width={mapWidth}
