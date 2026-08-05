@@ -2,7 +2,7 @@ import { inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { transmitFrame } from "./kitty.js";
 
-const ESC = "";
+const ESC = "\u001B";
 
 /**
  * Decode a transmission the way a terminal would.
@@ -20,15 +20,16 @@ function receive(escapes: string) {
 	for (const part of parts) {
 		expect(part.endsWith(`${ESC}\\`), "chunk is not terminated with ST").toBe(true);
 		const body = part.slice(0, -2);
+		// A command with nothing to carry — the delete — has no `;` at all.
 		const semi = body.indexOf(";");
-		expect(semi, "chunk has no ; separating control data from payload").toBeGreaterThan(-1);
+		const head = semi === -1 ? body : body.slice(0, semi);
 		const control: Record<string, string> = {};
-		for (const pair of body.slice(0, semi).split(",")) {
+		for (const pair of head.split(",")) {
 			const [k, v] = pair.split("=");
 			if (k) control[k] = v ?? "";
 		}
 		controls.push(control);
-		payload += body.slice(semi + 1);
+		if (semi !== -1) payload += body.slice(semi + 1);
 	}
 
 	return { controls, rgb: inflateSync(Buffer.from(payload, "base64")) };
@@ -67,8 +68,23 @@ describe("chunked transmission", () => {
 		expect(received.equals(rgb)).toBe(true);
 	});
 
+	/**
+	 * `a=T` creates a placement; it does not replace one, and a fixed placement
+	 * id does not make it. Without deleting first, every render leaves its
+	 * predecessor on screen and copies of the map stack up across the terminal.
+	 */
+	it("deletes the previous image and its placements before uploading", () => {
+		const [first] = controls;
+		expect(first?.a).toBe("d");
+		expect(first?.d).toBe("I");
+		// In the same string, so the pair cannot be split across two synchronized
+		// updates and present a frame with no image at all.
+		expect(escapes.indexOf("a=d")).toBeLessThan(escapes.indexOf("a=T"));
+	});
+
 	it("puts the control data on the first chunk only", () => {
-		const [first, ...rest] = controls;
+		// The delete is its own escape; the upload begins after it.
+		const [, first, ...rest] = controls;
 		expect(first?.a).toBe("T");
 		expect(first?.f).toBe("24");
 		expect(first?.s).toBe(String(width));
@@ -81,13 +97,16 @@ describe("chunked transmission", () => {
 	});
 
 	it("marks every chunk but the last as continuing", () => {
-		const flags = controls.map((c) => c.m);
+		// Skipping the delete, which carries no `m` because it carries no payload.
+		const flags = controls.slice(1).map((c) => c.m);
 		expect(flags.slice(0, -1).every((m) => m === "1")).toBe(true);
 		expect(flags.at(-1)).toBe("0");
 	});
 
 	it("splits on base64 boundaries so no chunk ends mid-quantum", () => {
-		for (const part of escapes.split(`${ESC}_G`).slice(1, -1)) {
+		// From the first upload chunk to the second-to-last: the delete has no
+		// payload and the final chunk is allowed its base64 padding.
+		for (const part of escapes.split(`${ESC}_G`).slice(2, -1)) {
 			const body = part.slice(0, -2);
 			const data = body.slice(body.indexOf(";") + 1);
 			expect(data.length % 4).toBe(0);
@@ -112,7 +131,9 @@ describe("chunked transmission", () => {
 		const flat = Buffer.alloc(64 * 64 * 3, 7);
 		const one = transmitFrame({ rgb: flat, width: 64, height: 64, columns: 8, rows: 4 });
 		const got = receive(one);
-		expect(got.controls).toHaveLength(1);
+		// The delete, then the upload.
+		expect(got.controls).toHaveLength(2);
+		expect(got.controls[0]?.a).toBe("d");
 		expect(got.rgb.equals(flat)).toBe(true);
 	});
 });

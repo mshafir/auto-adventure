@@ -12,10 +12,11 @@
  *    never go inline in a `<Text>`: Ink would lay the row out 24 columns too
  *    wide and the map would shear. It has to ride out of band.
  *
- * Hence the split here between {@link transmitFrame}, which is bytes the
- * terminal eats silently, and {@link placeholderRows}, which is text Ink owns.
- * The viewport attaches the former to the latter with Ink's `Transform`, which
- * rewrites a line's final output without touching the layout computed from it.
+ * Hence the split here between {@link transmitFrame}, which is bytes written
+ * straight to the stream, and {@link placeholderRows}, which is text Ink owns
+ * and lays out. Smuggling the former into the latter does not work: Ink builds
+ * each screen row from the map and the side panel together, so an oversized
+ * line pushes the panel out of place and paints over it.
  *
  * One image is retransmitted per frame rather than a tileset being placed per
  * cell. That is not laziness: every tile's colour already carries lighting,
@@ -27,8 +28,8 @@
 import { deflateSync } from "node:zlib";
 
 /**
- * A fixed image id. The frame is replaced in place every render, so exactly one
- * image ever exists and nothing needs to be freed.
+ * A fixed image id, deleted and re-uploaded every frame so exactly one image
+ * and one placement exist at a time.
  *
  * Deliberately not 1: ids are global to the terminal and a low number is what
  * every other program picks, so a stale placement from a crashed neighbour can
@@ -116,10 +117,25 @@ export interface FrameSpec {
  * `U=1` makes the placement *virtual*: it draws nothing by itself and appears
  * only where a placeholder cell references it. That is what lets Ink decide
  * where the map goes, rather than the escape landing wherever the cursor was.
+ *
+ * Every frame begins by deleting the previous image and its placements. That is
+ * not tidiness either: `a=T` *creates* a placement, and a fixed placement id is
+ * not enough to make a second one replace the first. Without the delete, every
+ * render leaves its predecessor on screen, and after a few seconds copies of the
+ * map are stacked across the terminal — including over the side panel and
+ * outside the map area entirely.
+ *
+ * The delete and the upload go out as one string deliberately. They are written
+ * outside Ink's frame, and `sync-output.ts` brackets each write in DEC 2026, so
+ * splitting them would present a frame with the image already deleted and the
+ * new one not yet arrived — a blink of empty map on every step.
  */
 export function transmitFrame(spec: FrameSpec): string {
 	const id = spec.imageId ?? FRAME_IMAGE_ID;
 	const payload = deflateSync(spec.rgb).toString("base64");
+	// `d=I` takes the image and every placement of it, which is exactly the
+	// state that must not survive into the next frame.
+	const clear = `${APC}a=d,d=I,q=2,i=${id}${ST}`;
 
 	const control = [
 		"a=T", // transmit and display
@@ -128,9 +144,10 @@ export function transmitFrame(spec: FrameSpec): string {
 		`q=${spec.loud ? 0 : 2}`, // stay silent unless someone is debugging
 		"U=1", // virtual placement, shown via placeholders
 		`i=${id}`,
-		// A fixed placement id, so re-sending a frame *replaces* the placement
-		// rather than stacking another one on top of it. Without this every
-		// render leaves its predecessor behind, and the count only goes up.
+		// A fixed placement id. Not sufficient on its own — a second `a=T` adds a
+		// placement rather than replacing the one that shares its id, which is why
+		// the delete above exists — but it keeps the id predictable for anyone
+		// inspecting the terminal's state.
 		"p=1",
 		`s=${spec.width}`,
 		`v=${spec.height}`,
@@ -139,11 +156,11 @@ export function transmitFrame(spec: FrameSpec): string {
 	].join(",");
 
 	if (payload.length <= CHUNK) {
-		return `${APC}${control},m=0;${payload}${ST}`;
+		return `${clear}${APC}${control},m=0;${payload}${ST}`;
 	}
 
 	// Only the first chunk carries the control data; the rest carry just `m`.
-	let out = `${APC}${control},m=1;${payload.slice(0, CHUNK)}${ST}`;
+	let out = `${clear}${APC}${control},m=1;${payload.slice(0, CHUNK)}${ST}`;
 	for (let at = CHUNK; at < payload.length; at += CHUNK) {
 		const slice = payload.slice(at, at + CHUNK);
 		const more = at + CHUNK < payload.length ? 1 : 0;
