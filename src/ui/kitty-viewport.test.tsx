@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { T } from "../core/tiles/terrain.js";
 import type { TileSource } from "./render/compose.js";
 import { PLACEHOLDER } from "./render/kitty.js";
+import { flushGraphics } from "./render/sync-output.js";
 import { setTileMode, Viewport } from "./viewport.js";
 
 const world: TileSource = {
@@ -30,9 +31,10 @@ function frameOf(columns: number, rows: number, tilesW = 20, tilesH = 8) {
 			/>
 		</Box>,
 	);
-	// `lastFrame` is what Ink laid out; `all` also contains the direct writes the
-	// image goes out on, which never belong to a frame.
-	const out = { frame: lastFrame() ?? "", all: frames.join("") };
+	// `lastFrame` is what Ink laid out. The image is not in it and must not be:
+	// it is queued for the synchronized update that carries the frame, which the
+	// real stdout wrapper prepends. Here that queue is read directly.
+	const out = { frame: lastFrame() ?? "", all: frames.join("") + flushGraphics() };
 	unmount();
 	return out;
 }
@@ -75,12 +77,31 @@ describe("KittyViewport", () => {
 		expect(all).toContain("r=5");
 	});
 
-	// Ink writes its frame from the reconciler, before layout effects run, so an
-	// upload from an effect would arrive after the cells referencing it.
-	it("uploads the image before the placeholders that display it", () => {
-		const { all } = frameOf(20, 4);
-		expect(all.indexOf(`${ESC}_G`)).toBeGreaterThanOrEqual(0);
-		expect(all.indexOf(`${ESC}_G`)).toBeLessThan(all.indexOf(PLACEHOLDER));
+	/*
+	 * Queued during render, not written. The stdout wrapper prepends the queue to
+	 * Ink's next frame, so the image and the placeholders that display it reach
+	 * the terminal in one synchronized update — where writing it directly made
+	 * every move two presentations, the first of them the new image sitting under
+	 * the previous frame's text.
+	 */
+	it("queues the image rather than writing it beside the frame", () => {
+		setTileMode("kitty");
+		const { lastFrame, frames, unmount } = render(
+			<Box width={30}>
+				<Viewport
+					source={world}
+					camera={{ x: 0, y: 0, width: 20, height: 4 }}
+					columns={30}
+					rows={4}
+				/>
+			</Box>,
+		);
+		const written = frames.join("") + (lastFrame() ?? "");
+		const queued = flushGraphics();
+		unmount();
+
+		expect(written).not.toContain(`${ESC}_G`);
+		expect(queued).toContain(`${ESC}_G`);
 	});
 
 	it("falls back to glyphs when the mode says so", () => {

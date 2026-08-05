@@ -85,6 +85,52 @@ function parseArgs(argv: readonly string[]) {
 	return { args, positional };
 }
 
+/**
+ * How many times the terminal was asked to put something on screen, and whether
+ * the image ever went up on its own.
+ *
+ * This is what flicker looks like in the bytes. An image written straight to the
+ * stream is its own synchronized update, so the terminal presents it once with
+ * the previous frame's text over it and again when the real frame arrives —
+ * a frame per move that nobody asked to see:
+ *
+ * ```
+ * BSU  delete  upload  chunks  ESU      <- image, alone
+ * BSU  ESU                              <- the text that displays it
+ * ```
+ *
+ * Queued into the frame's own update, that collapses to one. Counted rather than
+ * looked at, because the difference is a few milliseconds on screen and entirely
+ * plain in the capture.
+ */
+function reportPresentation(out: string[], raw: string, uploads: number): void {
+	const BSU = "[?2026h";
+	const ESU = "[?2026l";
+	const APC = "_G";
+
+	const presented = raw.split(BSU).length - 1;
+	// A graphics escape with no open bracket before it is one the terminal will
+	// present by itself.
+	let loose = 0;
+	let at = raw.indexOf(APC);
+	while (at >= 0) {
+		const opened = raw.lastIndexOf(BSU, at);
+		const closed = raw.lastIndexOf(ESU, at);
+		if (opened < 0 || closed > opened) loose++;
+		at = raw.indexOf(APC, at + 1);
+	}
+
+	out.push(`presented           ${presented} synchronized updates`);
+	if (uploads > 0) {
+		out.push(`  per upload        ${(presented / uploads).toFixed(1)}`);
+	}
+	out.push(
+		loose === 0
+			? "  all graphics inside an update"
+			: `  LOOSE: ${loose} graphics escapes outside any update — each is its own flash`,
+	);
+}
+
 function main() {
 	const { args, positional } = parseArgs(process.argv.slice(2));
 	const file = positional[0];
@@ -124,6 +170,8 @@ function main() {
 				` s=${g.control.s} v=${g.control.v}`,
 		);
 	}
+
+	reportPresentation(out, raw, uploads.length);
 
 	// --- what the terminal was asked to lay out ---------------------------
 	// Only the last frame. A capture holds every frame Ink wrote, including the

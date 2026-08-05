@@ -14,6 +14,7 @@ import { cellPixels, resolveTileMode, type TileMode, tilePixels } from "./render
 import { overlayMinimap, paintMinimap } from "./render/overlay.js";
 import { rasterScene } from "./render/raster.js";
 import { expandScene, TILE_WIDTH, tilesAcross } from "./render/scale.js";
+import { queueGraphics } from "./render/sync-output.js";
 
 export { TILE_WIDTH, tilesAcross };
 
@@ -110,19 +111,21 @@ function GlyphViewport({ source, camera, options, minimap }: ViewportProps) {
  * reports 1 for U+10EEEE and 0 for its diacritics — so Ink lays them out and
  * repaints them like any other row.
  *
- * The image itself is written straight to the stream, and it has to be. An APC
- * graphics escape measures *hundreds* of columns wide, and Ink composes the map
- * and the side panel as siblings on one screen row: a line carrying the escape
- * pushes everything to its right out of place, painting over the panel. Ink's
- * `Transform` does not save this. It bypasses layout, not row composition, so
- * the oversized line still lands in the frame — which is exactly how the panel
- * ended up with map colours bleeding across it.
+ * The image itself never goes through Ink, and cannot. An APC graphics escape
+ * measures *hundreds* of columns wide, so a line carrying one pushes everything
+ * to its right out of place. Ink's `Transform` does not save this: it bypasses
+ * layout, not row composition, so the oversized line still lands in the frame.
  *
- * Writing during render rather than from an effect is deliberate. Ink emits its
+ * It is *queued* rather than written, though, so that it rides out inside the
+ * same synchronized update as the frame that displays it. Writing it straight to
+ * the stream made every move two presentations — the new image against the
+ * previous frame's text, then the text — and the first of those is a frame
+ * nobody asked to see.
+ *
+ * Queueing during render rather than from an effect is deliberate. Ink emits its
  * frame from the reconciler's `resetAfterCommit`, which runs *before* layout
- * effects, so an effect would upload the image only after the placeholders
- * referencing it had already been painted — and on the first frame there would
- * be no image at all.
+ * effects, so an effect would queue the image only after the frame it belonged
+ * to had already gone out.
  *
  * Memoising the upload is not just an optimisation either: an image stays
  * resident in the terminal until it is replaced, so a re-render that does not
@@ -155,11 +158,16 @@ function KittyViewport({
 				chunk: { width: cell.width * TILE_WIDTH, height: cell.height },
 			});
 		}
+		// Queued rather than written, so it lands inside the same synchronized
+		// update as the frame that displays it. Writing it here directly made the
+		// terminal present twice per move — once with the new image under the
+		// previous frame's text — which is what the flicker was.
+		//
 		// The image fills exactly the rectangle the layout allowed, and the
 		// placeholder grid is that same rectangle. Sizing either from the image's
 		// pixels instead lets it come out wider than the space available, and the
 		// map box is `flexShrink={0}`, so the surplus is not clipped.
-		write(
+		queueGraphics(
 			transmitFrame({
 				rgb: frame.rgb,
 				width: frame.width,
@@ -169,7 +177,7 @@ function KittyViewport({
 			}),
 		);
 		return placeholderRows(columns, maxRows);
-	}, [source, camera, options, columns, maxRows, write, minimap]);
+	}, [source, camera, options, columns, maxRows, minimap]);
 
 	// Leave nothing behind in the terminal when the map goes away.
 	useEffect(() => () => write(deleteFrame()), [write]);
