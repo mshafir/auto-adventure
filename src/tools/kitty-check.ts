@@ -9,8 +9,9 @@
  * is merely "colourful" would look fine while being completely wrong.
  *
  *   vite-node src/tools/kitty-check.ts --
- *   vite-node src/tools/kitty-check.ts -- --explicit
+ *   vite-node src/tools/kitty-check.ts -- --alt --sync
  */
+import { readFileSync } from "node:fs";
 import {
 	deleteFrame,
 	detectKittyGraphics,
@@ -127,8 +128,27 @@ function main() {
 	);
 	out.write(`replies: ${loud ? "on (q=0), errors will print below" : "suppressed (q=2)"}\n\n`);
 
-	out.write(escapes);
-	out.write(`${placeholderRows(columns, rows, { explicit }).join("\n")}\n`);
+	// The game differs from a plain run in two ways that have nothing to do with
+	// the protocol, and either could be what swallows the image. Both are
+	// reproducible here without Ink in the way.
+	const alt = args.has("alt");
+	const sync = args.has("sync");
+	const body = escapes + placeholderRows(columns, rows, { explicit }).join("\n");
+
+	if (alt) out.write("[?1049h");
+	// One write, exactly as Ink emits a frame, so the bracketing wraps the image
+	// and its placeholders together rather than separately.
+	out.write(sync ? `[?2026h${body}[?2026l` : body);
+	out.write("\n");
+	if (alt) {
+		out.write("\nalt screen: press Enter to return.\n");
+		try {
+			readFileSync("/dev/stdin", "utf8");
+		} catch {
+			// Not a terminal, or no input; fall through and restore anyway.
+		}
+		out.write("[?1049l");
+	}
 
 	out.write("\nExpected: a rectangle in four colours — red top-left, green top-right,\n");
 	out.write("blue bottom-left, yellow bottom-right — with a white diagonal from the\n");
@@ -141,6 +161,10 @@ function main() {
 	out.write("              does not, chunked transmission is the problem.\n");
 	out.write("  --loud      let the terminal report its errors instead of staying quiet.\n");
 	out.write("  --explicit  name every cell rather than continuing a run.\n");
+	out.write("  --alt       draw inside the alternate screen buffer, as the game does.\n");
+	out.write("  --sync      wrap the write in DEC 2026, as sync-output.ts does.\n");
+	out.write("\nThe game is --alt --sync. If that fails and a plain run works, the\n");
+	out.write("problem is not the graphics protocol at all.\n");
 
 	// Deliberately *not* deleting the image on the way out: the placement is what
 	// is on screen, and freeing it here would wipe the very thing being checked.
