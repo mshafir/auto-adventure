@@ -144,10 +144,20 @@ function KittyViewport({ source, camera, options, columns, rows: maxRows }: View
 	return (
 		<Box flexDirection="column" flexShrink={0}>
 			{rows.map((row, i) => (
+				/*
+				 * No `wrap="truncate"` here, and it must not come back. A placeholder
+				 * is U+10EEEE — outside the BMP, so two UTF-16 code units — and Ink's
+				 * truncation counts code units rather than display width. A row of
+				 * 129 placeholders was cut to 129 *units*, which is 64 placeholders,
+				 * and the side panel was then composited into the middle of the map
+				 * row at column 64. Captured and counted, not guessed.
+				 *
+				 * Nothing is lost by dropping it: the row is built to be exactly as
+				 * wide as the rectangle the layout allowed, so there is never
+				 * anything to truncate.
+				 */
 				// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional, not identities
-				<Text key={i} wrap="truncate">
-					{row}
-				</Text>
+				<Text key={i}>{row}</Text>
 			))}
 		</Box>
 	);
