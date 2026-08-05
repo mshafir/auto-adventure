@@ -14,13 +14,13 @@ import { weatherAt } from "../core/world/weather.js";
 import type { GameEngine } from "../engine/engine.js";
 import type { WorldView } from "../engine/world-view.js";
 import { logger } from "../utils/log.js";
-import { hudReducer, initialHud, LIST_TABS } from "./hud-state.js";
+import { hudReducer, initialHud, LIST_TABS, type PanelTab } from "./hud-state.js";
 import { useGameInput } from "./input/use-game-input.js";
 import { CardScreen } from "./panels/card-screen.js";
 import { DialoguePanel, panelHeightFor } from "./panels/dialogue-panel.js";
 import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
-import { Reader, readable } from "./panels/reader.js";
-import { type PanelTab, SidePanel } from "./panels/side-panel.js";
+import { Reader } from "./panels/reader.js";
+import { TOP_BAR_ROWS, TopBar } from "./panels/top-bar.js";
 import { FACING_MARKER, PLAYER_GLYPH } from "./render/glyphs.js";
 import { lightFor } from "./render/lighting.js";
 import { minimapCells } from "./render/minimap-data.js";
@@ -32,7 +32,6 @@ import { tileSourceFrom } from "./render/world-source.js";
 import { getEngine, useGameState } from "./store.js";
 import { cameraCenteredOn, tileMode, tilesAcross, Viewport } from "./viewport.js";
 
-const SIDE_PANEL_WIDTH = 32;
 /** How far a lamp carries indoors. */
 const INTERIOR_SIGHT = 9;
 
@@ -63,25 +62,13 @@ function useTerminalSize() {
 }
 
 export interface AppProps {
-	/** Which side panel starts open. Only the screenshot tool and tests pass this. */
+	/** Which page starts open. Only the screenshot tool and tests pass this. */
 	readonly initialTab?: PanelTab;
 	/** Which row of it is selected. Same callers, same reason. */
 	readonly initialCursor?: number;
-	/**
-	 * Start with the list already filling the frame.
-	 *
-	 * Same callers again. Simulating the keypress worked in the test harness and not
-	 * in the screenshot tool, where a captured frame is taken on a timer — and a shot
-	 * that quietly came out as the unexpanded panel reads as the feature not existing.
-	 */
-	readonly initialExpanded?: boolean;
 }
 
-export default function App({
-	initialTab = "map",
-	initialCursor = 0,
-	initialExpanded = false,
-}: AppProps = {}) {
+export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	const engine = getEngine();
 	const state = useGameState();
 	const { width, height } = useTerminalSize();
@@ -89,10 +76,9 @@ export default function App({
 	const [hud, hudDispatch] = useReducer(hudReducer, initialTab, (tab) => ({
 		...initialHud(tab),
 		cursor: initialCursor,
-		expanded: initialExpanded && LIST_TABS.has(tab),
 	}));
 
-	// How long the focused pane's list is, so a cursor cannot survive the list
+	// How long the open page's list is, so a cursor cannot survive the list
 	// shrinking under it — an item spent, a quest closed, a save reloaded.
 	const listCount =
 		hud.tab === "inventory"
@@ -184,11 +170,14 @@ export default function App({
 	// The key bar is one unbordered row along the bottom of the whole frame, so
 	// everything above it gets one row less.
 	const bodyHeight = Math.max(8, frameHeight - 1);
-	const mapWidth = Math.max(20, width - SIDE_PANEL_WIDTH - 2);
+	// The map owns every column of its rows, and it has to: Ink cuts a row of
+	// kitty placeholders in half the moment anything shares the screen line with
+	// it, then composites the neighbour into the gap.
+	const mapWidth = Math.max(20, width);
 	// The conversation panel has two fixed sizes; the map takes whatever is left,
 	// so the total is constant either way.
 	const panelHeight = panelHeightFor(state.dialogue !== undefined);
-	const mapHeight = Math.max(6, bodyHeight - panelHeight);
+	const mapHeight = Math.max(6, bodyHeight - panelHeight - TOP_BAR_ROWS);
 	// The camera is measured in tiles and the layout in terminal cells, and how
 	// many cells a tile takes depends on the renderer: TILE_WIDTH columns and one
 	// row for glyphs, and whatever its pixel size works out to for the image
@@ -280,13 +269,11 @@ export default function App({
 
 	const keyMode: KeyBarMode = state.card
 		? { t: "card" }
-		: hud.expanded && LIST_TABS.has(hud.tab)
-			? { t: "reader", canDrop: held !== undefined }
+		: hud.tab !== undefined
+			? { t: "reader", canDrop: held !== undefined, hasList: LIST_TABS.has(hud.tab) }
 			: state.dialogue
 				? { t: "dialogue" }
-				: hud.focus && LIST_TABS.has(hud.tab)
-					? { t: "panel", canDrop: held !== undefined }
-					: { t: "world" };
+				: { t: "world" };
 
 	// A card takes the whole frame rather than overlaying the map. Everything above
 	// is still computed, which costs a frame's worth of work nobody sees — but the
@@ -301,47 +288,44 @@ export default function App({
 		);
 	}
 
-	// Reading takes the frame the same way a card does. The map is still computed
+	// A page takes the frame the same way a card does. The map is still computed
 	// above, which costs a frame nobody sees but keeps the hooks unconditional — and
-	// it has to be ready the instant the reader closes anyway.
-	if (hud.expanded && readable(hud.tab)) {
+	// it has to be ready the instant the page closes anyway.
+	if (hud.tab !== undefined) {
 		return (
 			<Box flexDirection="column" width={width} height={frameHeight}>
-				<Reader state={state} hud={hud} width={width} height={bodyHeight} />
+				<Reader state={state} hud={hud} tab={hud.tab} width={width} height={bodyHeight} />
 				<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />
 			</Box>
 		);
 	}
 
+	// One column per child, no siblings on any row. That is what the pixel renderer
+	// needs, and the reason the side panel is gone.
 	return (
 		<Box flexDirection="column" width={width} height={frameHeight}>
-			<Box flexDirection="row" height={bodyHeight}>
-				<Box flexDirection="column" flexGrow={1}>
-					<Viewport
-						source={source}
-						camera={camera}
-						options={composeOptions}
-						columns={mapWidth}
-						rows={mapHeight}
-						{...(minimap ? { minimap } : {})}
-					/>
-					<DialoguePanel
-						width={mapWidth}
-						height={panelHeight}
-						looking={looking}
-						{...(facedNpc ? { nearbyName: facedNpc.name } : {})}
-					/>
-				</Box>
-				<SidePanel
-					hud={hud}
-					width={SIDE_PANEL_WIDTH}
-					height={bodyHeight}
-					summary={summary}
-					{...(placeName ? { placeName } : {})}
-					{...(inside ? {} : { weather })}
-					light={light.label}
-				/>
-			</Box>
+			<TopBar
+				state={state}
+				width={width}
+				summary={summary}
+				{...(placeName ? { placeName } : {})}
+				{...(inside ? {} : { weather })}
+				light={light.label}
+			/>
+			<Viewport
+				source={source}
+				camera={camera}
+				options={composeOptions}
+				columns={mapWidth}
+				rows={mapHeight}
+				{...(minimap ? { minimap } : {})}
+			/>
+			<DialoguePanel
+				width={mapWidth}
+				height={panelHeight}
+				looking={looking}
+				{...(facedNpc ? { nearbyName: facedNpc.name } : {})}
+			/>
 			<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />
 		</Box>
 	);

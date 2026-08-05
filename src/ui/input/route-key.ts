@@ -1,7 +1,5 @@
 import type { Command } from "../../core/rules/commands.js";
-import type { HudAction, HudState } from "../hud-state.js";
-import { LIST_TABS } from "../hud-state.js";
-import type { PanelTab } from "../panels/side-panel.js";
+import type { HudAction, HudState, PanelTab } from "../hud-state.js";
 
 /**
  * What one keypress means.
@@ -44,21 +42,20 @@ export interface RouteContext {
 }
 
 const TAB_KEYS: Readonly<Record<string, PanelTab>> = {
-	m: "map",
-	w: "world",
 	i: "inventory",
 	q: "quests",
 	j: "journal",
+	k: "key",
 };
 
 /**
  * The order below *is* the precedence: a pending confirmation swallows
- * everything, then a card, then a full-frame reader, then a conversation, then the
- * panel-switching keys, then a focused panel, then the world.
+ * everything, then a card, then an open page, then a conversation, then the keys
+ * that open a page, then the world.
  *
  * A card sits above the conversation because it can be raised *by* one — a story
  * beat opens as somebody speaks — and the card is what the player is looking at.
- * The reader sits above it for the same reason: a turn landing asynchronously must
+ * A page sits above it for the same reason: a turn landing asynchronously must
  * not take the arrow keys off somebody who is reading their quest log.
  */
 export function routeKey(input: string, key: KeyFlags, context: RouteContext): Routed {
@@ -93,10 +90,10 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		return undefined;
 	}
 
-	// Reading takes the whole frame, so nothing behind it can be acted on. The panel
+	// A page takes the whole frame, so nothing behind it can be acted on. The page
 	// keys still work: switching what you are reading should not mean leaving.
-	if (hud.expanded) {
-		if (key.escape) return { t: "hud", action: { t: "Collapse" } };
+	if (hud.tab !== undefined) {
+		if (key.escape) return { t: "hud", action: { t: "Close" } };
 		if (key.upArrow) {
 			return { t: "hud", action: { t: "MoveCursor", delta: -1, count: context.listCount } };
 		}
@@ -104,7 +101,14 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 			return { t: "hud", action: { t: "MoveCursor", delta: 1, count: context.listCount } };
 		}
 		const reading = plain ? TAB_KEYS[letter] : undefined;
-		if (reading) return { t: "hud", action: { t: "SelectTab", tab: reading } };
+		// Pressing the key of the page you are already on is how you put it down —
+		// the same press that opened it, which is what everything else on a keyboard
+		// with a toggle does.
+		if (reading) {
+			return reading === hud.tab
+				? { t: "hud", action: { t: "Close" } }
+				: { t: "hud", action: { t: "OpenTab", tab: reading } };
+		}
 		if (letter === "d" && context.canDrop) return { t: "askDrop" };
 		return undefined;
 	}
@@ -117,10 +121,10 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		return undefined;
 	}
 
-	// Switching panes works from anywhere outside a conversation, so the player
+	// Opening a page works from anywhere outside a conversation, so the player
 	// never has to leave one list to reach another.
 	const tab = plain ? TAB_KEYS[letter] : undefined;
-	if (tab) return { t: "hud", action: { t: "SelectTab", tab } };
+	if (tab) return { t: "hud", action: { t: "OpenTab", tab } };
 	if (letter === "s" && plain) {
 		return {
 			t: "hud",
@@ -128,27 +132,6 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		};
 	}
 
-	if (hud.focus && LIST_TABS.has(hud.tab)) {
-		if (key.escape) return { t: "hud", action: { t: "Blur" } };
-		if (key.upArrow) {
-			return { t: "hud", action: { t: "MoveCursor", delta: -1, count: context.listCount } };
-		}
-		if (key.downArrow) {
-			return { t: "hud", action: { t: "MoveCursor", delta: 1, count: context.listCount } };
-		}
-		if (letter === "d" && context.canDrop) return { t: "askDrop" };
-		// The panel is 32 columns wide, so anything written for a human to read is
-		// elided in it. Enter hands the list the whole frame instead.
-		//
-		// Enter and not space: space is the world's look-and-act key, and it stays
-		// swallowed here so a keypress meant for the world cannot reach it from a panel.
-		if (key.return) return { t: "hud", action: { t: "Expand" } };
-		// Deliberately swallowed: while the panel has the arrow keys, a stray
-		// keypress must not walk the player somewhere they cannot see.
-		return undefined;
-	}
-
-	if (key.tab) return { t: "hud", action: { t: "Focus" } };
 	if (key.upArrow) return { t: "command", command: { t: "Move", facing: "up" } };
 	if (key.downArrow) return { t: "command", command: { t: "Move", facing: "down" } };
 	if (key.leftArrow) return { t: "command", command: { t: "Move", facing: "left" } };

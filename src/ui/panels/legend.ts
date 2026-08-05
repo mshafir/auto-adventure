@@ -81,24 +81,3 @@ export function mapLegend(): readonly LegendEntry[] {
 		fromTerrain(T.stoneWall, "wall"),
 	];
 }
-
-/**
- * The minimap key.
- *
- * Its glyphs are chosen in `minimap.tsx` rather than taken from the tile
- * registry — one character stands for a whole 64-tile chunk, so it is a
- * different alphabet — but it is the one people actually ask about, because a
- * `▣` next to a `▪` means nothing until somebody says which is the town.
- */
-export function minimapLegend(): readonly LegendEntry[] {
-	return [
-		{ ch: "@", color: "green", label: "here", bold: true },
-		{ ch: "▣", color: "yellow", label: "town", bold: true },
-		{ ch: "□", color: "yellow", label: "village", bold: true },
-		{ ch: "!", color: "magenta", label: "errand", bold: true },
-		{ ch: "▲", color: "green", label: "wood" },
-		{ ch: "~", color: "blue", label: "water" },
-		{ ch: "^", color: "white", label: "high" },
-		{ ch: "░", color: "gray", label: "open" },
-	];
-}

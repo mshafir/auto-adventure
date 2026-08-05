@@ -19,9 +19,8 @@ import type { PendingConfirm } from "../hud-state.js";
 export type KeyBarMode =
 	| { readonly t: "world" }
 	| { readonly t: "card" }
-	| { readonly t: "reader"; readonly canDrop: boolean }
-	| { readonly t: "dialogue" }
-	| { readonly t: "panel"; readonly canDrop: boolean };
+	| { readonly t: "reader"; readonly canDrop: boolean; readonly hasList: boolean }
+	| { readonly t: "dialogue" };
 
 export interface KeyBarProps {
 	readonly width: number;
@@ -53,7 +52,9 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 			return [{ key: "Space", label: "go on" }];
 		case "reader":
 			return [
-				{ key: "Up/Dn", label: "read" },
+				// The key page has nothing to select, and offering Up/Dn on it would be
+				// a binding that visibly does nothing.
+				...(mode.hasList ? [{ key: "Up/Dn", label: "read" }] : []),
 				...(mode.canDrop ? [{ key: "D", label: "drop" }] : []),
 				{ key: "Esc", label: "back to map" },
 			];
@@ -62,18 +63,10 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 				{ key: "Up/Dn", label: "choose" },
 				{ key: "Space", label: "reply" },
 			];
-		case "panel":
-			return [
-				{ key: "Up/Dn", label: "select" },
-				{ key: "Enter", label: "read in full" },
-				...(mode.canDrop ? [{ key: "D", label: "drop" }] : []),
-				{ key: "Esc", label: "back to map" },
-			];
 		case "world":
 			return [
 				{ key: "Arrows", label: "move" },
 				{ key: "Space", label: "look/act" },
-				{ key: "Tab", label: "use panel" },
 			];
 	}
 }
@@ -106,20 +99,20 @@ function contentFor(mode: KeyBarMode, confirm: PendingConfirm | undefined): BarC
 		};
 	}
 
-	// Switching panes and quitting work from everywhere outside a conversation, so
+	// Opening a page and quitting work from everywhere outside a conversation, so
 	// they sit apart from the keys that change meaning. A conversation swallows
 	// both, and offers the only key that gets you out of it instead.
 	return {
 		left: keys(bindingsFor(mode)),
 		right: keys(
-			// A card swallows the panel keys too, and saying so is better than letting
+			// A card swallows the page keys too, and saying so is better than letting
 			// the player press J and watch nothing happen.
 			mode.t === "card"
 				? []
 				: mode.t === "dialogue"
 					? [{ key: "Esc", label: "leave" }]
 					: [
-							{ key: "MWIQJ", label: "panels" },
+							{ key: "IQJK", label: "pages" },
 							{ key: "S", label: "save+quit" },
 						],
 		),

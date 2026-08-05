@@ -46,6 +46,24 @@ describe("TopBar", () => {
 		expect(lines(120)).toHaveLength(TOP_BAR_ROWS);
 	});
 
+	/*
+	 * Ink trims trailing whitespace off every line it emits, so a bar padded out
+	 * with spaces comes back short — and the app asserts every row of the frame is
+	 * the same width, because one column of disagreement tears the map. Ending on
+	 * the position is what makes the row end on a character.
+	 */
+	it("fills its width exactly, at any width", () => {
+		for (const width of [40, 60, 80, 100, 120, 163]) {
+			const [row] = lines(width, {
+				placeName: "Ash Crest",
+				summary: SUMMARY,
+				weather: WEATHER,
+				light: "dawn",
+			});
+			expect(stringWidth(row ?? ""), `${width} columns`).toBe(width);
+		}
+	});
+
 	it("shows where you are, when it is, and where you are standing", () => {
 		const [row] = lines(120, { placeName: "Ash Crest" });
 		expect(row).toContain("Ash Crest");

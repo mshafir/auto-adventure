@@ -129,8 +129,14 @@ describe("overlayMinimap", () => {
 describe("minimapExtent", () => {
 	it("scales with the map, up to a cap", () => {
 		expect(minimapExtent(200, 60)).toEqual({ width: 13, height: 11 });
-		expect(minimapExtent(90, 30)).toEqual({ width: 13, height: 6 });
-		expect(minimapExtent(60, 30)).toEqual({ width: 8, height: 6 });
+		expect(minimapExtent(90, 30)).toEqual({ width: 13, height: 7 });
+		expect(minimapExtent(60, 30)).toEqual({ width: 8, height: 7 });
+	});
+
+	// 120x34 is the size the screenshots are taken at and about the smallest a
+	// terminal usually is; the minimap has to survive it.
+	it("still fits on a short terminal", () => {
+		expect(minimapExtent(120, 26)).toEqual({ width: 13, height: 5 });
 	});
 
 	it("gives up rather than showing a minimap of two chunks", () => {

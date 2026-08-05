@@ -21,6 +21,7 @@ import { CHUNK, chunkKey } from "../core/world/coords.js";
 import { type MacroSite, macroSite } from "../core/world/macro.js";
 import { GameEngine } from "../engine/engine.js";
 import App from "../ui/app.js";
+import type { PanelTab } from "../ui/hud-state.js";
 import { bindEngine } from "../ui/store.js";
 import { setColorDepth } from "../ui/viewport.js";
 
@@ -362,11 +363,9 @@ async function capture(
 	name: string,
 	title: string,
 	prepare: (engine: GameEngine, site: MacroSite) => void,
-	tab?: "map" | "world" | "inventory" | "quests" | "journal",
+	tab?: PanelTab,
 	cursor?: number,
 	withArc = false,
-	/** Open the full-frame reader, as pressing Enter on a focused list does. */
-	expand = false,
 ) {
 	if (WANTED.size > 0 && !WANTED.has(name)) return;
 	const { engine, site } = buildEngine(withArc);
@@ -376,11 +375,7 @@ async function capture(
 	const stdout = fakeStdout();
 	const stdin = fakeStdin();
 	const instance = render(
-		<App
-			{...(tab ? { initialTab: tab } : {})}
-			{...(cursor ? { initialCursor: cursor } : {})}
-			{...(expand ? { initialExpanded: true } : {})}
-		/>,
+		<App {...(tab ? { initialTab: tab } : {})} {...(cursor ? { initialCursor: cursor } : {})} />,
 		{
 			stdout,
 			stdin,
@@ -436,58 +431,6 @@ async function main() {
 		"quest",
 		"The story so far, and the errand in hand",
 		(engine, site) => {
-			// Discovered, then walked away from, so the quest carries a real bearing
-			// rather than reading "here".
-			engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx, site.my) });
-			engine.dispatch({
-				t: "ApplyEffects",
-				effects: [
-					// Two beats reached: the first finished, the second still in hand. That
-					// contrast is the point of the pane.
-					{ t: "SetFlag", key: "arc:the-short-tally", value: true },
-					{ t: "SetFlag", key: "arc:the-second-weight", value: true },
-					{
-						t: "RecordJournal",
-						entry: {
-							kind: "event",
-							text: "Ilse Marrow keeps her own count, and it is short by a cord a month.",
-							source: "arc:the-short-tally",
-						},
-					},
-					{
-						t: "CreateQuest",
-						id: "tally",
-						name: "Take the tally to Stonewait",
-						description: "Carry Ilse's own count up the high road.",
-						objectives: [{ kind: "reach", target: "Stonewait", done: true }],
-						siteId: site.id,
-					},
-					{ t: "CompleteQuest", id: "tally" },
-					{
-						t: "CreateQuest",
-						id: "timber",
-						name: "Timber for the mill",
-						description: "The miller wants three lengths of sawn timber.",
-						objectives: [
-							{ kind: "have", target: "Timber", quantity: 3, done: false },
-							{ kind: "talk", target: "Sedge", done: false },
-						],
-						siteId: site.id,
-					},
-					{ t: "GrantItem", name: "Timber", description: "Rough-sawn planks.", quantity: 1 },
-					{ t: "Teleport", x: site.site.x + CHUNK * 2, y: site.site.y - CHUNK },
-				],
-			});
-		},
-		"quests",
-		undefined,
-		true,
-	);
-
-	await capture(
-		"reader",
-		"The same quest log, given the whole frame to be read in",
-		(engine, site) => {
 			engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx, site.my) });
 			engine.dispatch({
 				t: "ApplyEffects",
@@ -538,7 +481,6 @@ async function main() {
 		},
 		"quests",
 		undefined,
-		true,
 		true,
 	);
 

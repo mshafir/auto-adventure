@@ -51,12 +51,16 @@ export function TopBar({ state, width, summary, placeName, weather, light }: Top
 	];
 
 	const fixed = stringWidth(place) + stringWidth(time) + stringWidth(day) + stringWidth(at);
-	// Two spaces between each piece, plus at least one before the position.
-	let room = width - fixed - 2 * 2 - 1;
+	// What is left once the pieces that always show, and the two spaces between
+	// each of them, are accounted for. Whatever survives becomes the gap before the
+	// position — so the row ends on a character rather than on padding Ink would
+	// trim, which is what keeps every row of the frame exactly the same width.
+	let room = width - fixed - 2 * 2;
 	const shown: typeof optional = [];
 	for (const piece of optional) {
 		const cost = stringWidth(piece.text) + 2;
-		if (cost > room) break;
+		// One column always held back, so the position never abuts what precedes it.
+		if (cost > room - 1) break;
 		room -= cost;
 		shown.push(piece);
 	}

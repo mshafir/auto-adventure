@@ -259,16 +259,19 @@ const MAX_EXTENT = { width: 13, height: 11 };
 /** Below this it shows too little world to be worth the map it covers. */
 const MIN_EXTENT = { width: 5, height: 5 };
 
-/** Border and margin, both sides. */
-const BOX_CHROME = 4;
+/** Two cells of border and the one cell of margin holding it off the edge. */
+const BOX_CHROME = 3;
 
 /**
  * How many chunks of minimap a map of this size can carry.
  *
- * A third of the map's width and a third of its height, which keeps it legible
- * on a wide terminal without letting it eat the map on a small one. Returns
- * undefined when there is no room worth taking — the caller then draws no
- * minimap at all rather than a two-chunk one.
+ * A third of the map's width and a third of its height, chrome included, which
+ * keeps it legible on a wide terminal without letting it eat the map on a small
+ * one. Returns undefined when there is no room worth taking — the caller then
+ * draws no minimap at all rather than a two-chunk one.
+ *
+ * The thirds are of the rectangle the *map* got, not the terminal, so a tall
+ * dialogue panel shrinks the minimap with it rather than crowding it out.
  *
  * In chunks, not cells, and measured from the terminal rectangle for both
  * renderers: each covers the same fraction of the same screen, so the minimap
