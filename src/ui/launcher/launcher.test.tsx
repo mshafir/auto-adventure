@@ -100,6 +100,17 @@ async function toNew(m: Mounted, hasSaves = true) {
 	await m.ink.type(KEY.enter);
 }
 
+/**
+ * Down to a mode on the New page, which opens with the cursor on the scenarios.
+ *
+ * By name rather than by a count of arrow presses, so reordering the page is one
+ * edit here rather than an edit in every test that walks past a choice.
+ */
+async function toMode(m: Mounted, mode: "briefed" | "unguided" | "wander") {
+	const steps = { briefed: 1, unguided: 2, wander: 3 }[mode];
+	for (let i = 0; i < steps; i++) await m.ink.type(KEY.down);
+}
+
 describe("the title screen", () => {
 	it("names the game, its author, and how it was made", async () => {
 		const { ink } = mount();
@@ -186,14 +197,18 @@ describe("starting a new world", () => {
 		const m = mount();
 		await toNew(m);
 		const text = m.ink.screen();
-		for (const label of ["Briefed", "Unguided", "Without a model", "A written scenario"]) {
+		for (const label of ["Briefed", "Unguided", "Wander", "A written scenario"]) {
 			expect(text, `no option called ${label}`).toContain(label);
 		}
+		// The written scenarios come first: they are the only choice that is finished
+		// before ENTER, and the cursor rests on them when the page opens.
+		expect(text.indexOf("A written scenario")).toBeLessThan(text.indexOf("Briefed"));
+		expect(text).toContain("❯ A written scenario");
 		// The paragraph is the whole reason this is its own page: five words cannot
 		// say that one of these needs a network and the others do not. Matched against
 		// the text with its wrapping collapsed, since a sentence spans several rows.
 		const prose = flowed(text);
-		expect(prose).toContain("No network and no key");
+		expect(prose).toContain("No network or key");
 		expect(prose).toContain("a model writes the places and the people to match");
 		m.ink.unmount();
 	});
@@ -201,6 +216,7 @@ describe("starting a new world", () => {
 	it("asks for a brief before starting a briefed world", async () => {
 		const m = mount();
 		await toNew(m);
+		await toMode(m, "briefed");
 		await m.ink.type(KEY.enter);
 		expect(m.ink.screen()).toContain("What should this world be about?");
 		expect(m.chosen).toHaveLength(0);
@@ -210,6 +226,7 @@ describe("starting a new world", () => {
 	it("carries the typed premise into the choice", async () => {
 		const m = mount();
 		await toNew(m);
+		await toMode(m, "briefed");
 		await m.ink.type(KEY.enter);
 		await m.ink.type("a drowned archipelago");
 		await m.ink.type(KEY.enter);
@@ -223,6 +240,7 @@ describe("starting a new world", () => {
 		// prompted with a blank.
 		const m = mount();
 		await toNew(m);
+		await toMode(m, "briefed");
 		await m.ink.type(KEY.enter);
 		await m.ink.type("   ");
 		await m.ink.type(KEY.enter);
@@ -234,6 +252,7 @@ describe("starting a new world", () => {
 	it("goes back to the modes when the brief is abandoned", async () => {
 		const m = mount();
 		await toNew(m);
+		await toMode(m, "briefed");
 		await m.ink.type(KEY.enter);
 		await m.ink.type(KEY.escape);
 		expect(m.ink.screen()).toContain("Unguided");
@@ -244,7 +263,7 @@ describe("starting a new world", () => {
 	it("starts an unguided world straight away", async () => {
 		const m = mount();
 		await toNew(m);
-		await m.ink.type(KEY.down);
+		await toMode(m, "unguided");
 		await m.ink.type(KEY.enter);
 		expect(m.chosen).toHaveLength(1);
 		expect(m.chosen[0]?.flavour).toBe("live");
@@ -260,8 +279,9 @@ describe("starting a new world", () => {
 		const text = m.ink.screen();
 		expect(text).toContain("NO_AI is set.");
 		// Shown but greyed: hiding it would read as the wrong build rather than a
-		// missing key. Choosing lands on the one that works.
+		// missing key. Moving down skips both of them in one press.
 		expect(text).toContain("Briefed");
+		await m.ink.type(KEY.down);
 		await m.ink.type(KEY.enter);
 		expect(m.chosen[0]?.flavour).toBe("procedural");
 		m.ink.unmount();
@@ -279,7 +299,6 @@ describe("starting a new world", () => {
 describe("the scenarios page", () => {
 	async function toScenarios(m: Mounted) {
 		await toNew(m);
-		for (let i = 0; i < 3; i++) await m.ink.type(KEY.down);
 		await m.ink.type(KEY.enter);
 	}
 
@@ -307,10 +326,10 @@ describe("the scenarios page", () => {
 		const m = mount({ scenarios: [] });
 		await toNew(m);
 		expect(m.ink.screen()).toContain("none installed");
-		for (let i = 0; i < 3; i++) await m.ink.type(KEY.down);
+		// The cursor never lands on it, so the page opens on the choice below instead
+		// and ENTER asks for a brief rather than showing an empty list.
 		await m.ink.type(KEY.enter);
-		// The cursor never lands on it, so ENTER starts the mode above instead.
-		expect(m.chosen[0]?.flavour).toBe("procedural");
+		expect(m.ink.screen()).toContain("What should this world be about?");
 		m.ink.unmount();
 	});
 

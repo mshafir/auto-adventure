@@ -63,6 +63,127 @@ describe("npc placement", () => {
 		}
 	});
 
+	it("never stands anybody in the only way into a building", () => {
+		/*
+		 * The failure this exists for has now shipped three times, wearing a different
+		 * face each time: a porter in a castle arch, a green knight on the single step
+		 * into a cave, and — the one this rule was originally written for — a shopkeeper
+		 * on their own doorstep, in a village where that made every door unusable.
+		 *
+		 * It is invisible from inside the game. Walking into a person is how you talk to
+		 * them, so a person on the sole approach to a door is somebody you talk to
+		 * *instead of* going in, and nothing reports a problem because nothing has gone
+		 * wrong from the engine's point of view. The player concludes the door is broken.
+		 *
+		 * The old guard named the dangerous anchor kinds. That works exactly as long as
+		 * every generator agrees which names are dangerous, and twice they did not — the
+		 * castle called its choke point `gate` and the cave called its step `square`. The
+		 * rule is geometric now, so an anchor kind nobody has invented yet is covered.
+		 */
+		const site = findTown(WORLD);
+		const { chunks, npcs } = populated(WORLD, site);
+		const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+		const standing = new Set(npcs.all().map((npc) => `${npc.x},${npc.y}`));
+
+		const reach = Math.ceil(site.radius / CHUNK) + 1;
+		let doors = 0;
+		for (let dy = -reach; dy <= reach; dy++) {
+			for (let dx = -reach; dx <= reach; dx++) {
+				for (const building of chunks.buildingsIn(site.mx + dx, site.my + dy)) {
+					const { x, y } = building.door;
+					expect(standing.has(`${x},${y}`), `somebody is in the ${building.kind} doorway`).toBe(
+						false,
+					);
+					const ways = [
+						{ x: x + 1, y },
+						{ x: x - 1, y },
+						{ x, y: y + 1 },
+						{ x, y: y - 1 },
+					].filter((way) => view.isPassable(way.x, way.y));
+					if (ways.length === 0) continue;
+					doors++;
+					expect(
+						ways.some((way) => !standing.has(`${way.x},${way.y}`)),
+						`the ${building.kind} at ${x},${y} has ${ways.length} way(s) in and somebody on every one`,
+					).toBe(true);
+				}
+			}
+		}
+		// The assertion above is vacuous if the town built nothing.
+		expect(doors).toBeGreaterThan(0);
+	});
+
+	it("keeps a way in even with a crowd big enough to take every anchor", () => {
+		// Every place kind, and enough people to fill the site. A roster of five leaves
+		// most anchors empty, so a town passing the test above says less than it looks —
+		// this is the version that would have caught the castle and the cave, because it
+		// puts somebody on every anchor the generator emitted and then asks whether the
+		// doors still work.
+		for (const kind of ["town", "village", "fort", "castle", "docks", "cave"] as const) {
+			const at = { x: 320, y: 320 };
+			const world = worldSeed(SEED, { places: [{ at, kind, importance: 4 }] });
+			const site = macroSite(world, Math.floor(at.x / CHUNK), Math.floor(at.y / CHUNK));
+			const base: SiteSpec = fallbackSite(world.seed, site, siteContext(world, site));
+			const crowd: SiteSpec = {
+				...base,
+				npcs: Array.from({ length: 40 }, (_, slot) => ({
+					...(base.npcs[0] ?? {
+						name: "somebody",
+						role: "resident",
+						glyph: "R",
+						appearance: "",
+						persona: "",
+						disposition: 0,
+						placement: "square" as const,
+						knows: [],
+					}),
+					slot,
+					name: `person ${slot}`,
+				})),
+			};
+
+			const chunks = new ChunkManager({
+				world,
+				specFor: (s) => (s.id === site.id ? crowd.settlement : undefined),
+			});
+			const reach = Math.ceil(site.radius / CHUNK) + 1;
+			chunks.prefetch({ cx: site.mx, cy: site.my }, reach);
+			const npcs = new NpcDirectory(chunks, (id) => (id === site.id ? crowd : undefined));
+			npcs.populate([site]);
+
+			const view = createWorldView({ seed: SEED, chunkAt: (cx, cy) => chunks.get(cx, cy) });
+			// Every tile anybody occupies at *any* hour: a schedule that moves the
+			// blacksmith onto the only step at dusk seals the door just as completely as
+			// standing there all day would.
+			const standing = new Set(
+				npcs
+					.all()
+					.flatMap((npc) => Object.values(npc.stations))
+					.filter(Boolean)
+					.map((station) => `${station.x},${station.y}`),
+			);
+
+			for (let dy = -reach; dy <= reach; dy++) {
+				for (let dx = -reach; dx <= reach; dx++) {
+					for (const building of chunks.buildingsIn(site.mx + dx, site.my + dy)) {
+						const { x, y } = building.door;
+						const ways = [
+							{ x: x + 1, y },
+							{ x: x - 1, y },
+							{ x, y: y + 1 },
+							{ x, y: y - 1 },
+						].filter((way) => view.isPassable(way.x, way.y));
+						if (ways.length === 0) continue;
+						expect(
+							ways.some((way) => !standing.has(`${way.x},${way.y}`)),
+							`${kind}: the ${building.kind} at ${x},${y} is sealed by its own townsfolk`,
+						).toBe(true);
+					}
+				}
+			}
+		}
+	});
+
 	it("never stacks two people on one tile", () => {
 		const site = findTown(WORLD);
 		const { npcs } = populated(WORLD, site);

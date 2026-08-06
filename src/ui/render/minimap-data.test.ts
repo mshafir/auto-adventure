@@ -5,6 +5,8 @@ import { createInitialState, type GameState, type Quest } from "../../core/rules
 import { CHUNK, chunkKey } from "../../core/world/coords.js";
 import { isSettlement, macroSite } from "../../core/world/macro.js";
 import { worldSeed } from "../../core/world/recipe.js";
+import { GameEngine } from "../../engine/engine.js";
+import { findSpawn } from "../../engine/spawn.js";
 import { checkGlyph } from "./glyph-safety.js";
 import { minimapCells, minimapGlyphs } from "./minimap-data.js";
 
@@ -46,6 +48,32 @@ describe("minimapCells", () => {
 		expect(rows).toHaveLength(7);
 		expect(rows[0]).toHaveLength(11);
 		expect(rows[3]?.[5]?.ch).toBe("@");
+	});
+
+	it("keeps them at the centre after they walk into a building", () => {
+		// Indoors the player's coordinates are local to the interior grid, so centring on
+		// them put the map over a chunk near the world origin — a stretch of empty fen
+		// nobody had ever walked into, drawn as though it were where you were standing.
+		// The map is at its most useful when you are lost, and going indoors is exactly
+		// when a player gets lost.
+		// Discovered ground around them, or every cell is blank and two wrong answers
+		// compare equal.
+		const outdoors = stateAt(3, -2, { discovered: allSeen(3, -2, 4) });
+		const inside: GameState = {
+			...outdoors,
+			player: {
+				...outdoors.player,
+				x: 5,
+				y: 7,
+				inside: {
+					interiorId: 42,
+					structure: "house",
+					returnX: outdoors.player.x,
+					returnY: outdoors.player.y,
+				},
+			},
+		};
+		expect(minimapCells(inside, 11, 7)).toEqual(minimapCells(outdoors, 11, 7));
 	});
 
 	// Odd in both directions is what centres the player; the alternative is
@@ -110,6 +138,51 @@ describe("minimapCells", () => {
 			5,
 		);
 		expect(withQuest[2]?.[3]?.ch).toBe("!");
+	});
+});
+
+/**
+ * The donut, driven through the real engine rather than through a handwritten set.
+ *
+ * Every other test here hands `minimapCells` a `discovered` list it wrote itself, so
+ * none of them could have caught this: the drawing was right all along and the list
+ * it was given had a hole in it. Two rings are built around a new world — one when it
+ * opens and a wider one on the first step — and only the second was ever recorded, so
+ * the map came up with a dark ring between the player and the country beyond them.
+ */
+describe("a world that has just been opened and walked in", () => {
+	it("has nothing unexplored between the player and the ground around them", () => {
+		const state = createInitialState(WORLD, findSpawn(worldSeed(SEED)));
+		const engine = new GameEngine(state, {
+			// The real runner, in the two cases a step reaches: building a chunk, and
+			// reporting back what the prefetch built. Stubbing these out is what would
+			// hide the bug, since reporting back is exactly where it lived.
+			runEffect: (effect, e) => {
+				if (effect.t === "EnsureChunk") e.getChunks().ensure(effect.cc.cx, effect.cc.cy);
+				if (effect.t === "PrefetchChunks") {
+					for (const key of e.getChunks().prefetch(effect.around, effect.radius)) {
+						e.dispatch({ t: "ChunkReady", key });
+					}
+				}
+			},
+		});
+
+		// One step, whichever direction the ground allows. Twice per direction because
+		// the first press only turns, and a walk that never happened prefetches nothing.
+		const from = { x: state.player.x, y: state.player.y };
+		for (const facing of ["down", "right", "up", "left"] as const) {
+			engine.dispatch({ t: "Move", facing });
+			engine.dispatch({ t: "Move", facing });
+			const now = engine.getState().player;
+			if (now.x !== from.x || now.y !== from.y) break;
+		}
+		expect(engine.getState().player).not.toMatchObject(from);
+
+		const rows = minimapCells(engine.getState(), 5, 5);
+		const blank = rows.flatMap((row, y) =>
+			row.flatMap((cell, x) => (cell.ch === " " ? [`${x},${y}`] : [])),
+		);
+		expect(blank, "chunks were built around the player but drawn as unexplored").toEqual([]);
 	});
 });
 

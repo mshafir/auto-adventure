@@ -45,7 +45,7 @@ export const CardBodySchema = z.object({
 });
 
 /** A lock on a door, or on a gate. The same shape serves both. */
-const LockSchema = z.object({
+export const LockSchema = z.object({
 	opensWhen: ConditionSchema,
 	lockedText: z.string().min(1).max(200),
 });
@@ -118,6 +118,10 @@ export const StoredNpcSpecSchema = z.object({
 	knows: z.array(z.string()),
 	/** What has to be true for this person to be in the world at all. */
 	requires: ConditionSchema.optional(),
+	/** Keep them at their own anchor at every hour, rather than on a schedule. */
+	stays: z.boolean().optional(),
+	/** Stand inside `structureName` rather than outdoors. */
+	indoors: z.boolean().optional(),
 });
 
 export const StoredSiteSpecSchema = z.object({
@@ -139,11 +143,22 @@ const ObjectiveSchema = z.object({
 
 export const BarrierSchema = z.object({
 	id: z.string().min(1).max(64),
-	/** Every tile the gate stands on. A road is rarely one tile wide. */
-	tiles: z
-		.array(z.object({ x: z.number().int(), y: z.number().int() }))
-		.min(1)
-		.max(16),
+	/**
+	 * Where the gate stands: every tile of it, or the name of one the generator makes.
+	 *
+	 * A list, because a road is rarely one tile wide. Or `{ siteId, at: "gate" }`, which
+	 * is the better spelling wherever it applies: a castle's gatehouse is the only choke
+	 * point the generator *guarantees*, and copying its three coordinates into a file by
+	 * hand leaves nothing keeping the two in step — move the castle and the gate is left
+	 * standing in a field, blocking nothing, with no complaint from anywhere.
+	 */
+	tiles: z.union([
+		z
+			.array(z.object({ x: z.number().int(), y: z.number().int() }))
+			.min(1)
+			.max(16),
+		z.object({ siteId: z.number().int(), at: z.literal("gate") }).strict(),
+	]),
 	opensWhen: ConditionSchema,
 	lockedText: z.string().min(1).max(200),
 	opensText: z.string().min(1).max(200).optional(),
@@ -239,12 +254,17 @@ const PlacementSiteSchema = z.union([
 		interiorId: z.number().int(),
 		x: z.number().int().min(0),
 		y: z.number().int().min(0),
+		/** Which storey. Absent is the ground floor. */
+		level: z.number().int().min(0).max(8).optional(),
 	}),
 	z.object({
 		kind: z.literal("site"),
 		siteId: z.number().int(),
-		structure: z.enum(STRUCTURE_KINDS).optional(),
+		/** A building's proper name, or failing that its kind. */
+		structure: z.string().min(1).max(60).optional(),
 		anchor: z.enum(PLACEMENTS).optional(),
+		/** Which storey of it. Absent is the ground floor. */
+		level: z.number().int().min(0).max(8).optional(),
 	}),
 ]);
 
@@ -300,6 +320,8 @@ export const ScenarioBeatSchema = z.object({
 		.optional(),
 	journal: z.string().optional(),
 	card: CardBodySchema.optional(),
+	/** What else the beat does to the world as it opens. */
+	effects: z.array(AuthoredEffectSchema).max(8).optional(),
 });
 
 export const ScenarioArcSchema = z.object({
@@ -332,7 +354,9 @@ export const DialogueNodeSchema = z.object({
 	speech: z.string().max(600),
 	requires: RequiresSchema.optional(),
 	choices: z.array(DialogueChoiceSchema).max(6),
-	actions: z.array(ActionSchema).max(3).optional(),
+	// Four. A hand-over is take, give, warm, and record — and the record is the one
+	// that stops the next hello asking for the thing again, so it must fit.
+	actions: z.array(ActionSchema).max(4).optional(),
 });
 
 export const DialogueTreeSchema = z.object({

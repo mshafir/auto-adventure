@@ -286,7 +286,11 @@ describe("the Warden's Hall and the standard inside it", () => {
 });
 
 describe("somebody the story brings on later", () => {
-	it("is absent before the honest weight, and present after", async () => {
+	it("is absent until the beat he anchors can open, and present after", async () => {
+		// He used to arrive on `arc:the-honest-weight`, two beats before the beat he
+		// anchors could open — so a player who found him early got a conversation with
+		// nothing behind it, which reads as a broken quest rather than as a wait. He now
+		// comes on stage exactly when his scene does.
 		const { session, state, goTo, set, talkTo } = start();
 		goTo(-32, -168);
 		session.engine.getChunks().prefetch({ cx: -1, cy: -3 }, 3);
@@ -296,9 +300,15 @@ describe("somebody the story brings on later", () => {
 		expect(await talkTo(HARROWMERE, 2)).toBeUndefined();
 
 		set("arc:the-honest-weight");
+		expect(
+			session.engine.personById(npcId(HARROWMERE, 2)),
+			"he is on stage two beats early again",
+		).toBeUndefined();
+
+		set("arc:the-weight-in-hand");
 		const vance = session.engine.personById(npcId(HARROWMERE, 2));
 		expect(vance?.name).toBe("Auditor Vance");
-		expect(state().flags["arc:the-honest-weight"]).toBe(true);
+		expect(state().flags["arc:the-weight-in-hand"]).toBe(true);
 		session.dispose();
 	});
 });

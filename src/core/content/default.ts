@@ -104,6 +104,11 @@ export const DEFAULT_PACK: ContentPack = {
 		barn: { count: [0, 1], roles: ["farmhand"] },
 		tower: { count: [1, 2], roles: ["watchman", "signaller"] },
 		ruin: { count: [0, 0], roles: [] },
+		// A hole in a hillside is not somewhere a household lives. Said out loud because
+		// the fall-back for an unlisted kind is `house`, and without this the Green Chapel
+		// — a mound the story calls the least inhabited place in the world — was generating
+		// a weaver and a cooper inside it.
+		cave: { count: [0, 0], roles: [] },
 		house: {
 			count: [1, 3],
 			roles: ["weaver", "cooper", "carpenter", "widow", "child", "labourer", "brewer", "netmaker"],

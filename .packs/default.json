@@ -126,6 +126,10 @@
 			"count": [0, 0],
 			"roles": []
 		},
+		"cave": {
+			"count": [0, 0],
+			"roles": []
+		},
 		"house": {
 			"count": [1, 3],
 			"roles": ["weaver", "cooper", "carpenter", "widow", "child", "labourer", "brewer", "netmaker"]

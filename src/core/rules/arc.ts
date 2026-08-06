@@ -103,6 +103,20 @@ export interface ScenarioBeat {
 		readonly subtitle?: string;
 		readonly sections: readonly CardSection[];
 	};
+	/**
+	 * What else happens when the beat opens.
+	 *
+	 * A beat could set exactly one flag and hand out exactly one errand, so anything
+	 * else it did to the world had to be written as a *trigger* watching for that flag
+	 * — three objects to say "and he takes the girdle back", one of which exists only
+	 * to notice the other. Reaching for a trigger is right when the cause is something
+	 * the player does; it is a workaround when the cause is the beat itself.
+	 *
+	 * Applied through the same effect runner as everything else, so they are as
+	 * re-appliable as the rest of a beat: the flag is still written last, and a beat
+	 * that was interrupted midway is retried whole.
+	 */
+	readonly effects?: readonly DomainEffect[];
 }
 
 export interface ScenarioArc {
@@ -294,6 +308,10 @@ export function beatEffects(beat: ScenarioBeat): DomainEffect[] {
 	if (beat.card) {
 		effects.push({ t: "ShowCard", card: { ...beat.card, id: beatCardId(beat) } });
 	}
+	// Whatever else the beat does to the world. After the card, so the player reads
+	// the scene before the consequence lands in the log; before the flag, so a beat
+	// interrupted midway is retried whole rather than counted as done.
+	if (beat.effects) effects.push(...beat.effects);
 	// Before the beat's own flag, so a fork half-applied after a partial save is
 	// already closed to its siblings when the retry comes round — the reverse order
 	// would leave a window in which both arms were open.

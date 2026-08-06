@@ -43,6 +43,25 @@ export interface Barrier {
 	readonly opensText?: string;
 }
 
+/**
+ * Where a gate stands, as an author writes it.
+ *
+ * A castle's gate is the one choke point the generator *guarantees* — a curtain wall
+ * with exactly one gap in it — and barring it used to mean running a tool, reading
+ * three coordinates and pasting them into a file. Nothing then kept the two in step:
+ * move the castle a tile in the recipe and the barrier is left standing in a field,
+ * where it blocks nothing and reads as scenery. Naming the gate instead of copying it
+ * is the difference between an authored gate that can drift and one that cannot.
+ */
+export type BarrierSpan =
+	| readonly { readonly x: number; readonly y: number }[]
+	| { readonly siteId: number; readonly at: "gate" };
+
+/** A barrier before its span has been resolved against the generated world. */
+export interface AuthoredBarrier extends Omit<Barrier, "tiles"> {
+	readonly tiles: BarrierSpan;
+}
+
 /** The flag recording that a barrier has been opened. */
 export function barrierKey(id: string): string {
 	return `barrier:${id}`;

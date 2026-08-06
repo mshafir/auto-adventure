@@ -63,7 +63,11 @@ function buildTopics(spec: NpcSpec | undefined, site: SiteSpec | undefined): Top
 		topics.push({ choice: `Ask about ${subject(known)}.`, answer: known });
 	}
 	for (const hook of site?.hooks ?? []) {
-		topics.push({ choice: `Ask what troubles the town.`, answer: hook });
+		// Named by what it is about, like everything else here. A fixed label made every
+		// hook the same menu entry, so a town with two of them offered "Ask what troubles
+		// the town." twice — and because a reply is matched back by its text, the second
+		// one was not merely ugly but unreachable: picking either told you about the first.
+		topics.push({ choice: `Ask about ${subject(hook)}.`, answer: hook });
 	}
 	if (site?.description && topics.length < 3) {
 		topics.push({ choice: "Ask about this place.", answer: site.description });
@@ -75,8 +79,17 @@ function buildTopics(spec: NpcSpec | undefined, site: SiteSpec | undefined): Top
 		});
 	}
 
+	// Distinct wording, for the same reason: two facts that compress to the same six
+	// words would collide the same way. First one wins, so the menu never repeats itself.
+	const seen = new Set<string>();
+	const distinct = topics.filter((topic) => {
+		if (seen.has(topic.choice)) return false;
+		seen.add(topic.choice);
+		return true;
+	});
+
 	// Three is enough for a menu; more reads as a list rather than a conversation.
-	return topics.slice(0, 3);
+	return distinct.slice(0, 3);
 }
 
 /** Compress a fact into something short enough to be a menu entry. */

@@ -5,7 +5,7 @@ import { hashString } from "../core/rand/hash.js";
 import { createInitialState } from "../core/rules/state.js";
 import { TFlag } from "../core/tiles/flags.js";
 import { T } from "../core/tiles/terrain.js";
-import { CHUNK, chunkKey } from "../core/world/coords.js";
+import { CHUNK, chunkKey, toChunk } from "../core/world/coords.js";
 import { type WorldSeed, worldSeed } from "../core/world/recipe.js";
 import { ChunkManager } from "./chunk-manager.js";
 import { GameEngine } from "./engine.js";
@@ -206,6 +206,41 @@ describe("engine", () => {
 		engine.dispatch({ t: "Move", facing: "right" });
 		engine.dispatch({ t: "Move", facing: "right" });
 		expect(seen.length).toBeGreaterThan(0);
+	});
+
+	it("counts the chunks it opens the world with as discovered", () => {
+		// The minimap drew a donut without this: the constructor builds the ring around
+		// the player before there is a queue to drain, so it never reported them the way
+		// a step's prefetch does, and the eight chunks touching the player stayed dark
+		// while the ring beyond them — built by the first step — filled in.
+		const state = createInitialState(
+			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
+			findSpawn(worldSeed(SEED)),
+		);
+		expect(state.discovered).toHaveLength(0);
+		const engine = new GameEngine(state, { runEffect: () => undefined });
+		const here = toChunk(state.player.x, state.player.y);
+		const discovered = new Set(engine.getState().discovered);
+		for (let dy = -1; dy <= 1; dy++) {
+			for (let dx = -1; dx <= 1; dx++) {
+				const key = chunkKey(here.cx + dx, here.cy + dy);
+				expect(discovered.has(key), `chunk ${key} was built but not recorded`).toBe(true);
+			}
+		}
+	});
+
+	it("fills the hole in a save that was made before it did", () => {
+		// Which is every save from before the fix. Recording the whole square rather than
+		// only what the prefetch reports as newly built is what makes that possible: on a
+		// reload the chunks are already there, so "newly built" is nothing at all.
+		const state = createInitialState(
+			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
+			findSpawn(worldSeed(SEED)),
+		);
+		const engine = new GameEngine(state, { runEffect: () => undefined });
+		const here = toChunk(state.player.x, state.player.y);
+		engine.hydrate({ ...state, discovered: [chunkKey(here.cx, here.cy)] });
+		expect(engine.getState().discovered).toContain(chunkKey(here.cx + 1, here.cy + 1));
 	});
 });
 

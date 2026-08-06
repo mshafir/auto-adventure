@@ -63,14 +63,25 @@ export type PlacementSite =
 			readonly interiorId: number;
 			readonly x: number;
 			readonly y: number;
+			/**
+			 * Which storey. Absent is the ground floor.
+			 *
+			 * Without this a building with three levels is three grids sharing one id, so
+			 * one placement appeared at the same coordinates on *every* one of them — and
+			 * the only reachable half of a cave was the mouth, because nothing could be put
+			 * anywhere else.
+			 */
+			readonly level?: number;
 	  }
 	| {
 			readonly kind: "site";
 			readonly siteId: number;
-			/** Which structure, by kind — `smithy`, `mill`. */
+			/** Which structure, by name — or failing that by kind: `smithy`, `mill`. */
 			readonly structure?: string;
 			/** Which spot inside it. Defaults to any container in the room. */
 			readonly anchor?: AnchorKind;
+			/** Which storey of it. Absent is the ground floor. */
+			readonly level?: number;
 	  };
 
 /**
@@ -87,13 +98,55 @@ export interface ResolvedPlacement {
 	readonly placement: Placement;
 	/** Absent for a world tile; present for an interior position. */
 	readonly interiorId?: number;
+	/** Which storey of that interior. Absent is the ground floor. */
+	readonly level?: number;
 	readonly x: number;
 	readonly y: number;
 }
 
-/** Key for the position index the probe reads, matching `lootKey`'s two cases. */
-export function placementSlot(interiorId: number | undefined, x: number, y: number): string {
-	return `${interiorId ?? "world"}:${x},${y}`;
+/**
+ * Key for the position index the probe reads, matching `lootKey`'s cases.
+ *
+ * The ground floor keeps the key it always had, exactly as `lootKey` does — a save
+ * records what has been taken under these, so changing one would hand back an item the
+ * player had already picked up. Anything above it is a distinct grid that happens to
+ * share coordinates, and sharing the key meant an item on the ground floor was also
+ * lying at the same spot two storeys down.
+ */
+export function placementSlot(
+	interiorId: number | undefined,
+	x: number,
+	y: number,
+	level = 0,
+): string {
+	const floor = level === 0 ? "" : `:${level}`;
+	return `${interiorId ?? "world"}${floor}:${x},${y}`;
+}
+
+/**
+ * The flag recording that an authored item has been picked up.
+ *
+ * Keyed on the placement's own id rather than on the tile it happens to sit on, which
+ * is a correction of two silent failures and not a tidy-up.
+ *
+ * The first: a placement gated on the story shares its tile with whatever the
+ * generator put there. Under a positional key, a player who searched the shelf in the
+ * Lady's bower *before* she offered the girdle emptied it — and when the girdle
+ * appeared in that shelf a minute later, the flag saying "you have been through this"
+ * was already set. The errand became unfinishable, in a room the quest log was
+ * pointing at, with prose about folded linen where the item should have been.
+ *
+ * The second: a positional key is only stable while the resolver keeps choosing the
+ * same tile. It does not — the axe at Camelot moved when the resolver learned to
+ * prefer a container the player could actually reach — and a save carrying the old
+ * tile's flag then applied it to whatever else landed there.
+ *
+ * The cost is one-time and small: a save that took an authored item under the old key
+ * may offer it once more. An item that comes back is a curiosity; an item that can
+ * never be picked up ends the story.
+ */
+export function takenKey(placementId: string): string {
+	return `taken:${placementId}`;
 }
 
 /**
@@ -108,7 +161,7 @@ export function placementIndex(
 ): Map<string, ResolvedPlacement> {
 	const index = new Map<string, ResolvedPlacement>();
 	for (const entry of resolved) {
-		index.set(placementSlot(entry.interiorId, entry.x, entry.y), entry);
+		index.set(placementSlot(entry.interiorId, entry.x, entry.y, entry.level), entry);
 	}
 	return index;
 }

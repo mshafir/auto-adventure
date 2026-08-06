@@ -11,6 +11,7 @@
  * open happily.
  *
  *   vite-node src/tools/pixel-shot.ts -- --at 4,4 --out /tmp/tiles.png
+ *   vite-node src/tools/pixel-shot.ts -- --at 0,-1 --tiles gramarye --recipe .scenarios/green-chapel.json
  */
 
 import { writeFileSync } from "node:fs";
@@ -19,7 +20,6 @@ import { generateChunk } from "../core/gen/pipeline.js";
 import { hashString } from "../core/rand/hash.js";
 import { createInitialState } from "../core/rules/state.js";
 import { CHUNK, type ChunkCoord, chunkKey } from "../core/world/coords.js";
-import { worldSeed } from "../core/world/recipe.js";
 import { composeScene } from "../ui/render/compose.js";
 import { minimapCells } from "../ui/render/minimap-data.js";
 import { paintMinimap } from "../ui/render/overlay.js";
@@ -27,6 +27,7 @@ import { encodePng } from "../ui/render/png.js";
 import { rasterScene } from "../ui/render/raster.js";
 import { TILE_PX } from "../ui/render/sprite.js";
 import { createWorldTileSource } from "../ui/render/world-source.js";
+import { worldFromArgs } from "./recipe-arg.js";
 
 function parseArgs(argv: readonly string[]) {
 	const args = new Map<string, string>();
@@ -61,7 +62,10 @@ function main() {
 	const out = args.get("out") ?? "tiles.png";
 	const flat = args.has("flat");
 
-	const { chunk } = generateChunk({ world: worldSeed(seed) }, cc);
+	// Takes `--recipe` for the same reason `preview` and `survey` do: a scenario that
+	// says what its world is cannot be looked at through a tool that only knows the seed.
+	const world = worldFromArgs(seed, args.get("recipe"));
+	const { chunk } = generateChunk({ world }, cc);
 	const source = createWorldTileSource({
 		seed,
 		chunkAt: (qx, qy) => (qx === cc.cx && qy === cc.cy ? chunk : undefined),

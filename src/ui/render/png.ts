@@ -42,21 +42,33 @@ function chunkPart(type: string, data: Buffer): Buffer {
 	return Buffer.concat([len, body, crc]);
 }
 
-/** Minimal truecolour PNG. `rgb` is width*height*3, row-major. */
-export function encodePng(width: number, height: number, rgb: Buffer): Buffer {
-	const stride = width * 3;
+/**
+ * Minimal truecolour PNG. `pixels` is width*height*`channels`, row-major.
+ *
+ * Three channels is a screenshot; four is a tile atlas. The alpha path is not
+ * decoration: a decor tile with no transparency is a decor tile with a rectangle of
+ * background painted round it, and {@link decodePng} has always read colour type 6 —
+ * so without this the repo could read an atlas it had no way to write.
+ */
+export function encodePng(
+	width: number,
+	height: number,
+	pixels: Buffer,
+	channels: 3 | 4 = 3,
+): Buffer {
+	const stride = width * channels;
 	// One filter byte per scanline; filter 0 (None) keeps this simple and the
 	// images compress fine anyway because tile art repeats.
 	const raw = Buffer.alloc((stride + 1) * height);
 	for (let y = 0; y < height; y++) {
 		raw[y * (stride + 1)] = 0;
-		rgb.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+		pixels.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
 	}
 	const ihdr = Buffer.alloc(13);
 	ihdr.writeUInt32BE(width, 0);
 	ihdr.writeUInt32BE(height, 4);
 	ihdr[8] = 8; // bit depth
-	ihdr[9] = 2; // colour type: truecolour
+	ihdr[9] = channels === 4 ? 6 : 2; // colour type: truecolour, with alpha or without
 	return Buffer.concat([
 		Buffer.from(SIGNATURE),
 		chunkPart("IHDR", ihdr),

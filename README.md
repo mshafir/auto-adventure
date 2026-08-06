@@ -23,7 +23,7 @@ npm run preview -- --at 0,0 --flat         # ...with shadows and slope shading o
 npm run preview -- --at 0,0 --xscale 1     # ...one column per tile instead of two
 npm run author -- --id thornwick --prompt "..." --duration short   # build a scenario
 npm run survey -- --seed thornwick --duration short                # dump the map, free
-npm run assemble -- --draft drafts/thornwick.json                  # install a written one
+npm run assemble -- --draft drafts/green-chapel.json               # install a written one
 npm run check             # typecheck + lint + tests
 ```
 
@@ -419,9 +419,10 @@ draft, assemble it.
 
 ```
 npm run survey -- --seed thornwick --duration short     # what is actually out there
-$EDITOR drafts/thornwick.json                           # name it and people it
-npm run assemble -- --draft drafts/thornwick.json --check
-npm run assemble -- --draft drafts/thornwick.json
+$EDITOR drafts/green-chapel.json                        # name it and people it
+npm run assemble -- --draft drafts/green-chapel.json --check
+npm run assemble -- --draft drafts/green-chapel.json
+npm run validate -- --scenario green-chapel             # re-check what is installed
 ```
 
 The survey prints every settlement with its position, its building capacity, the
@@ -434,7 +435,19 @@ makes authoring incremental — write the towns that matter, play it, come back.
 The `author-scenario` skill drives exactly this loop from a Claude Code session,
 asking for the pieces the game needs (duration above all, since it sets both the
 number of beats and the size of the world) before it surveys anything.
-`drafts/thornwick-road.json` is a worked example.
+`drafts/green-chapel.json` is the worked example, and it is a complete one: every
+scenario feature the game has is expressible in a draft, so the file assembles to the
+shipped artifact byte for byte and a test asserts that it still does. (`thornwick-road`
+has no draft — its artifact was hand-reconstructed and is authoritative.)
+
+Two scenarios ship. *The Hollow Tithe* is a timber levy on a wet road, and it is the
+worked example for the gameplay vocabulary — a gate, a locked hall, a hidden standard, a
+fork with an ending per arm. *A Blow for a Blow* is Gawain and the Green Knight in about
+fifteen minutes, and it is the worked example for a scenario that **describes its
+world**: a recipe puts Camelot and Hautdesert where the story needs them, cuts the Green
+Chapel into a hillside and finds a shoreline for the ferry, then thickens the wood
+between them and drops the temperature over the dale. It carries its own tile pack too.
+Neither uses a token to play.
 
 Two things make a pre-generated world better than a live one rather than merely
 cheaper. First, nothing arrives late: every spec is in the state the engine starts

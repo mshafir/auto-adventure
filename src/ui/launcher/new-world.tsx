@@ -62,6 +62,20 @@ export function NewWorld({
 	});
 
 	const items: ChoiceItem[] = [
+		// First, because it is the only one that is finished before you press ENTER. The
+		// generated worlds are the interesting machinery and were listed first for that
+		// reason, which is the author's ordering rather than the player's — somebody
+		// opening this menu for the first time wants the thing that already works.
+		{
+			id: "scenarios",
+			label: "A written scenario",
+			detail: scenarios.length === 0 ? "none installed" : `${scenarios.length} to choose from`,
+			body:
+				scenarios.length === 0
+					? "A world authored ahead of time. There are none in .scenarios yet — `npm run author` makes one."
+					: "Authored ahead of time — premise, towns, people and story all written down. Nothing arrives late, and no model runs while you play.",
+			...(scenarios.length === 0 ? { disabled: true } : {}),
+		},
 		live(
 			"briefed",
 			"Briefed",
@@ -74,18 +88,11 @@ export function NewWorld({
 		),
 		{
 			id: "procedural",
-			label: "Without a model",
-			body: "No network and no key. Every place is still named and peopled, and conversations are real dialogue trees rather than a model's replies.",
-		},
-		{
-			id: "scenarios",
-			label: "A written scenario",
-			detail: scenarios.length === 0 ? "none installed" : `${scenarios.length} to choose from`,
-			body:
-				scenarios.length === 0
-					? "A world authored ahead of time. There are none in .scenarios yet — `npm run author` makes one."
-					: "Authored ahead of time — premise, towns, people and story all written down. Nothing arrives late, and no model runs while you play.",
-			...(scenarios.length === 0 ? { disabled: true } : {}),
+			// Named for what you do rather than for what is missing. "Without a model" put
+			// the option in the negative, and the paragraph then had to promise a story to
+			// make the negative sound worth taking — there is no story here, so it does not.
+			label: "Wander",
+			body: "No story and nothing to finish — just country that goes on as far as you walk. No network or key, and every place still named and peopled.",
 		},
 	];
 

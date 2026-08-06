@@ -11,20 +11,25 @@ import { forageAt, forageKey, isForageable, pickedOverMessage } from "../core/ru
 import { type Barrier, barrierIndex, barrierTiles } from "../core/rules/lock.js";
 import { containerContents, emptyMessage, isContainer, lootKey } from "../core/rules/loot.js";
 import { obtainableItems } from "../core/rules/obtainable.js";
-import { placementIndex, placementSlot, type ResolvedPlacement } from "../core/rules/placement.js";
+import {
+	placementIndex,
+	placementSlot,
+	type ResolvedPlacement,
+	takenKey,
+} from "../core/rules/placement.js";
 import { reduce, type WorldProbe } from "../core/rules/reduce.js";
-import type { GameState } from "../core/rules/state.js";
+import { type GameState, worldAnchor } from "../core/rules/state.js";
 import { EMPTY_SURROUNDINGS, type Surroundings } from "../core/rules/surroundings.js";
-import { parseChunkKey, toChunk } from "../core/world/coords.js";
+import { type ChunkKey, chunkKey, parseChunkKey, toChunk } from "../core/world/coords.js";
 import { type MacroSite, regionIdAt, sitesAround } from "../core/world/macro.js";
 import { type WorldSeed, worldSeed } from "../core/world/recipe.js";
-import type { SiteSpec } from "../core/world/spec.js";
+import { npcId as makeNpcId, type SiteSpec } from "../core/world/spec.js";
 import { logger } from "../utils/log.js";
 import { ChunkManager } from "./chunk-manager.js";
-import { InteriorPeople } from "./interior-people.js";
+import { type AuthoredResident, InteriorPeople } from "./interior-people.js";
 import { createInteriorView } from "./interior-view.js";
 import { NpcDirectory, type PlacedNpc } from "./npc-directory.js";
-import { resolvePlacements } from "./placements.js";
+import { approaches, resolvePlacements } from "./placements.js";
 import { createWorldView, type WorldView } from "./world-view.js";
 
 export interface EngineServices {
@@ -45,6 +50,14 @@ export interface EngineServices {
 	/** The flavour tables this world's residents are named and described from. */
 	content?: ContentPack;
 }
+
+/**
+ * Chunks built around the player before the first frame is drawn.
+ *
+ * Deliberately smaller than the radius a step prefetches: this one is paid for
+ * up front, while the world is opening and there is nothing to look at yet.
+ */
+const OPENING_RADIUS = 1;
 
 /**
  * The single writer.
@@ -100,15 +113,21 @@ export class GameEngine {
 		this.chunks.setDeltas(initial.deltas);
 		this.npcs = new NpcDirectory(this.chunks, (siteId) => this.services.siteSpec?.(siteId));
 		this.npcs.setGate((npc) => evaluate(npc.requires, this.state));
-		this.residents = new InteriorPeople(initial.world.seed, services.content);
+		this.residents = new InteriorPeople(
+			initial.world.seed,
+			services.content,
+			(interiorId, level) => this.authoredInside(interiorId, level),
+			(interiorId, level) => this.approachesInside(interiorId, level),
+		);
 		this.view = createWorldView({
 			seed: initial.world.seed,
 			chunkAt: (cx, cy) => this.chunks.get(cx, cy),
 		});
 
 		// The chunk the player stands in must exist before the first frame.
-		const start = toChunk(initial.player.x, initial.player.y);
-		this.chunks.prefetch(start, 1);
+		const start = toChunk(worldAnchor(initial.player).x, worldAnchor(initial.player).y);
+		this.chunks.prefetch(start, OPENING_RADIUS);
+		this.markPrefetched(start, OPENING_RADIUS);
 		this.populateNpcs(start);
 	}
 
@@ -138,6 +157,18 @@ export class GameEngine {
 
 	getState = (): GameState => this.state;
 
+	/**
+	 * Where the player is in the world, which indoors is the doorstep they came in by.
+	 *
+	 * Every chunk-space question goes through here. Asking `player.x/y` directly is
+	 * right only while the player is outdoors, and wrong in a way that looks like
+	 * nothing at all: the interior grid is small and near the origin, so the answer is
+	 * a real chunk somewhere out in the wilderness rather than an error.
+	 */
+	private anchor(): { readonly x: number; readonly y: number } {
+		return worldAnchor(this.state.player);
+	}
+
 	getChunks(): ChunkManager {
 		return this.chunks;
 	}
@@ -162,7 +193,13 @@ export class GameEngine {
 	personAt(x: number, y: number): PlacedNpc | undefined {
 		const inside = this.state.player.inside;
 		if (!inside) return this.npcs.at(x, y);
-		const resident = this.residents.at(inside.interiorId, inside.structure, x, y);
+		const resident = this.residents.at(
+			inside.interiorId,
+			inside.structure,
+			x,
+			y,
+			inside.level ?? 0,
+		);
 		return resident ? this.asPlaced(resident, inside) : undefined;
 	}
 
@@ -174,11 +211,29 @@ export class GameEngine {
 	 * because the panel closes with the step.
 	 */
 	personById(id: string): PlacedNpc | undefined {
+		const inside = this.state.player.inside;
 		if (isResidentId(id)) {
-			const inside = this.state.player.inside;
 			if (!inside) return undefined;
-			const resident = this.residents.byId(inside.interiorId, inside.structure, id);
+			const resident = this.residents.byId(
+				inside.interiorId,
+				inside.structure,
+				id,
+				inside.level ?? 0,
+			);
 			return resident ? this.asPlaced(resident, inside) : undefined;
+		}
+		// A site-slot id belongs to somebody the scenario wrote, and they may be standing
+		// in a room rather than in the street — in which case the outdoor directory has
+		// never heard of them. Asked in this order because the room is the specific case:
+		// the directory is where everyone else is, and it answers for the rest.
+		if (inside) {
+			const resident = this.residents.byId(
+				inside.interiorId,
+				inside.structure,
+				id,
+				inside.level ?? 0,
+			);
+			if (resident) return this.asPlaced(resident, inside);
 		}
 		return this.npcs.byNpcId(id);
 	}
@@ -241,6 +296,33 @@ export class GameEngine {
 	}
 
 	/**
+	 * Record a square of chunks as seen, having just built them.
+	 *
+	 * A step's prefetch goes through the effect runner, which reports every chunk it
+	 * builds back as `ChunkReady` and so gets this for free. Opening a world and
+	 * loading a save do not — they build their chunks directly, before there is a
+	 * queue to drain — and the minimap drew the result as a donut: the ring the first
+	 * step prefetched appeared, and the ring built at open, inside it, stayed dark
+	 * forever, because nothing had ever said it existed.
+	 *
+	 * Marks the whole square rather than only what `prefetch` reports as newly built,
+	 * which is what lets this heal a save that already has the hole in it — on a
+	 * reload the chunks are usually built already and `prefetch` would report none.
+	 */
+	private markPrefetched(cc: { cx: number; cy: number }, radius: number): void {
+		const seen = new Set(this.state.discovered);
+		const fresh: ChunkKey[] = [];
+		for (let dy = -radius; dy <= radius; dy++) {
+			for (let dx = -radius; dx <= radius; dx++) {
+				const key = chunkKey(cc.cx + dx, cc.cy + dy);
+				if (!seen.has(key)) fresh.push(key);
+			}
+		}
+		if (fresh.length === 0) return;
+		this.state = { ...this.state, discovered: [...this.state.discovered, ...fresh] };
+	}
+
+	/**
 	 * Rebuild a settlement after its authored roster arrived.
 	 *
 	 * The patch cache, the chunks that stamped it and the people standing in it
@@ -255,7 +337,7 @@ export class GameEngine {
 			const cc = parseChunkKey(key);
 			this.chunks.ensure(cc.cx, cc.cy);
 		}
-		this.populateNpcs(toChunk(this.state.player.x, this.state.player.y));
+		this.populateNpcs(toChunk(this.anchor().x, this.anchor().y));
 		this.notify();
 	}
 
@@ -344,7 +426,7 @@ export class GameEngine {
 	}
 
 	private siteById(siteId: number): MacroSite | undefined {
-		const cc = toChunk(this.state.player.x, this.state.player.y);
+		const cc = toChunk(this.anchor().x, this.anchor().y);
 		// The player is standing in or beside the site they are talking to someone in,
 		// so a small ring around them always contains it.
 		return sitesAround(this.world, cc.cx, cc.cy, 2).find((s) => s.id === siteId);
@@ -389,8 +471,7 @@ export class GameEngine {
 	private availablePlacements(): ResolvedPlacement[] {
 		return [...this.placements.values()].filter(
 			(entry) =>
-				evaluate(entry.placement.requires, this.state) &&
-				!this.state.flags[lootKey(entry.interiorId, entry.x, entry.y)],
+				evaluate(entry.placement.requires, this.state) && !this.state.flags[takenKey(entry.id)],
 		);
 	}
 
@@ -410,11 +491,13 @@ export class GameEngine {
 			isLoaded: (x, y) => view.isLoaded(x, y),
 			npcAt: (x, y) => {
 				if (!inside) return this.npcs.at(x, y);
-				// Residents live on the ground floor. Upstairs is a different grid that
-				// happens to share coordinates, and the same household standing in the
-				// same spots on every storey reads as a haunting.
-				if ((inside.level ?? 0) !== 0) return undefined;
-				return this.residents.at(inside.interiorId, inside.structure, x, y);
+				// Every storey, not only the ground floor. This used to bail above level 0
+				// because the roster ignored the level and would have answered with the
+				// ground floor's household standing in the same spots on every storey —
+				// but the *renderer* asked a different function that had no such guard, so
+				// upstairs was drawn full of people who could be walked through and could
+				// not be spoken to. Two paths, one of them patched.
+				return this.residents.at(inside.interiorId, inside.structure, x, y, inside.level ?? 0);
 			},
 			doorAt: (x, y) => {
 				if (inside) return undefined;
@@ -469,7 +552,7 @@ export class GameEngine {
 				// Consulted first so a placement inherits the whole of the search path —
 				// the same `lootKey` for having-been-taken, the same notice, and therefore
 				// the same `have` objective resolution — rather than needing its own verb.
-				const placed = this.placementAt(inside?.interiorId, x, y);
+				const placed = this.placementAt(inside?.interiorId, x, y, inside?.level ?? 0);
 				if (placed) return placed;
 
 				// Indoors: the crates the generator furnished the room with.
@@ -522,7 +605,12 @@ export class GameEngine {
 			// After the assignment, because the gate predicate reads `this.state` live,
 			// and before notifying, so the frame the player sees on the step that brought
 			// somebody on already has them standing in it.
-			if (gated) this.npcs.recheckGate();
+			if (gated) {
+				this.npcs.recheckGate();
+				// Somebody authored into a room is gated the same way, and their roster is
+				// cached — so without this they arrive only after the building is evicted.
+				this.residents.clear();
+			}
 			this.notify();
 		}
 		for (const effect of effects) this.queue.push(effect);
@@ -535,13 +623,15 @@ export class GameEngine {
 		this.barriers = barrierIndex(state.barriers);
 		this.placements = this.resolvePlaced(state);
 		this.chunks.setDeltas(state.deltas);
-		const here = toChunk(state.player.x, state.player.y);
-		this.chunks.prefetch(here, 1);
+		const here = toChunk(worldAnchor(state.player).x, worldAnchor(state.player).y);
+		this.chunks.prefetch(here, OPENING_RADIUS);
+		this.markPrefetched(here, OPENING_RADIUS);
 		this.npcs.forgetAll();
 		this.populateNpcs(here);
 		// `populate` re-derives rosters from the specs; the gate has to be asked again
 		// against the loaded state or a save resumed mid-story would show everybody.
 		this.npcs.recheckGate();
+		this.residents.clear();
 		this.notify();
 	}
 
@@ -553,20 +643,35 @@ export class GameEngine {
 	 * millrace beforehand falls through to the ordinary ground and reports what is
 	 * actually there, rather than reporting nothing-yet.
 	 *
-	 * Keyed with `lootKey`, so being taken is recorded by the flag that already exists
-	 * for emptying a container — nothing about placements needs its own persistence.
+	 * Keyed with `takenKey`, which is the placement's own id: sharing the container's
+	 * flag meant a shelf searched before the story put anything in it counted as having
+	 * been through the thing that was not there yet.
 	 */
-	private placementAt(interiorId: number | undefined, x: number, y: number) {
-		const entry = this.placements.get(placementSlot(interiorId, x, y));
+	private placementAt(interiorId: number | undefined, x: number, y: number, level = 0) {
+		const entry = this.placements.get(placementSlot(interiorId, x, y, level));
 		if (!entry) return undefined;
 		if (!evaluate(entry.placement.requires, this.state)) return undefined;
 
 		const item = entry.placement.item;
 		return {
-			key: lootKey(interiorId, x, y),
+			key: takenKey(entry.id),
 			contents: [{ ...item, quantity: item.quantity ?? 1 }],
 			emptyText: entry.placement.emptyText ?? "There is nothing more here.",
 		};
+	}
+
+	/**
+	 * The authored item standing on a tile, for the line that describes what you face.
+	 *
+	 * Public because the one thing the player needs to know about an item lying in the
+	 * open is that it can be picked up, and the faced-tile description is where the game
+	 * says so about everything else — a container, a patch of crops, a door.
+	 */
+	placedAt(x: number, y: number): ResolvedPlacement | undefined {
+		const inside = this.state.player.inside;
+		const entry = this.placements.get(placementSlot(inside?.interiorId, x, y, inside?.level ?? 0));
+		if (!entry) return undefined;
+		return evaluate(entry.placement.requires, this.state) ? entry : undefined;
 	}
 
 	/**
@@ -578,15 +683,79 @@ export class GameEngine {
 	 * cache would be to keep honest.
 	 */
 	markedPlacements(): readonly ResolvedPlacement[] {
-		const interiorId = this.state.player.inside?.interiorId;
+		const inside = this.state.player.inside;
+		const interiorId = inside?.interiorId;
+		const level = inside ? (inside.level ?? 0) : 0;
 		return this.availablePlacements().filter(
-			(entry) => entry.placement.showDecor && entry.interiorId === interiorId,
+			(entry) =>
+				entry.placement.showDecor &&
+				entry.interiorId === interiorId &&
+				// A storey is its own grid, so a mark from the floor below would be drawn
+				// at coordinates that mean something entirely different up here.
+				(entry.level ?? 0) === level,
 		);
+	}
+
+	/**
+	 * The scenario's own people standing in one room.
+	 *
+	 * Everything an author could write stood in the street, because that is where the
+	 * anchors are — so a locked door led to an empty box and a cave with three levels
+	 * under it was scenery. There was already an indoor cast with ids, memory, dialogue
+	 * and rendering; what was missing was a way for a scenario to put somebody into it.
+	 *
+	 * Ground floor only, on purpose: that is the storey the outside door opens onto, so
+	 * it is the one a beat can promise the player will reach. Their id stays the site's
+	 * own `npc:<siteId>:<slot>`, which is what lets a beat anchored to them, a dialogue
+	 * tree written for them and a `talk` objective naming them all work unchanged.
+	 */
+	private authoredInside(interiorId: number, level: number): readonly AuthoredResident[] {
+		if (level !== 0) return [];
+		const building = this.findBuilding(interiorId);
+		if (!building) return [];
+		const site = this.siteAt(building.door.x, building.door.y);
+		if (!site) return [];
+		const spec = this.state.sites[String(site.id)] ?? this.services.siteSpec?.(site.id);
+		if (!spec) return [];
+
+		const here = building.name?.toLowerCase();
+		return (
+			spec.npcs
+				.filter((npc) => npc.indoors)
+				.filter((npc) => !npc.structureName || npc.structureName.toLowerCase() === here)
+				// Gated exactly as an outdoor person is: absent, not standing elsewhere.
+				.filter((npc) => evaluate(npc.requires, this.state))
+				.map((npc) => ({ id: makeNpcId(site.id, npc.slot), spec: npc }))
+		);
+	}
+
+	/**
+	 * One way up to each authored item in a room, kept clear of the household.
+	 *
+	 * Searching is a faced gesture, so an item with every neighbour occupied cannot be
+	 * reached at all — and the shipped scenario's axe sat in a crate against a wall with
+	 * a crate on either side of it, visible, marked, and impossible. The resolver now
+	 * prefers the most approachable container; this stops the filler undoing that.
+	 */
+	private approachesInside(
+		interiorId: number,
+		level: number,
+	): readonly { readonly x: number; readonly y: number }[] {
+		const building = this.findBuilding(interiorId);
+		if (!building) return [];
+		const interior = getInterior(this.state.world.seed, interiorId, building.kind, level);
+		const clear: { x: number; y: number }[] = [];
+		for (const entry of this.placements.values()) {
+			if (entry.interiorId !== interiorId || (entry.level ?? 0) !== level) continue;
+			const way = approaches(interior, entry.x, entry.y)[0];
+			if (way) clear.push(way);
+		}
+		return clear;
 	}
 
 	/** Locate a building by its interior id, searching the resident chunks. */
 	private findBuilding(interiorId: number) {
-		const centre = toChunk(this.state.player.x, this.state.player.y);
+		const centre = toChunk(this.anchor().x, this.anchor().y);
 		for (let dy = -1; dy <= 1; dy++) {
 			for (let dx = -1; dx <= 1; dx++) {
 				const found = this.chunks

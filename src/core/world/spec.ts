@@ -64,6 +64,32 @@ export interface NpcSpec {
 	 * has and is hiding.
 	 */
 	readonly requires?: Condition;
+	/**
+	 * Keep them at their own anchor at every hour, rather than sending them to the
+	 * square in the evening and home at night.
+	 *
+	 * For the two or three people a story actually sends the player to find. Schedules
+	 * are the cheapest thing in the game that makes a village feel inhabited, and they
+	 * are exactly wrong for the lord an errand names: the player arrives at dusk, he is
+	 * elsewhere, and nothing on screen says the game has hours. The alternative was
+	 * turning the clock off for the whole world, which costs every other village its
+	 * evening in order to pin one man.
+	 */
+	readonly stays?: boolean;
+	/**
+	 * Stand inside {@link structureName} rather than outdoors.
+	 *
+	 * Every authored person stood in the street, because that is where the anchors are
+	 * — so a locked door led to an empty box, a cave with three levels under it was
+	 * scenery, and a scene could only ever happen in the open. There was already an
+	 * indoor cast (`InteriorPeople`) with ids, memory, dialogue and rendering; what was
+	 * missing was any way for a *scenario* to put somebody into it.
+	 *
+	 * Their id stays `npc:<siteId>:<slot>`, which is the whole trick: beats, dialogue
+	 * trees and `talk` objectives key exactly as they do for anyone outdoors, and a beat
+	 * that happens in a room needs no new beat machinery at all.
+	 */
+	readonly indoors?: boolean;
 }
 
 export interface SiteSpec {

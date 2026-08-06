@@ -793,7 +793,17 @@ function applyEffects(state: GameState, effects: readonly DomainEffect[]): Reduc
 function applyEffect(state: GameState, effect: DomainEffect): GameState {
 	switch (effect.t) {
 		case "GrantItem":
-			return { ...state, inventory: addItem(state.inventory, effect) };
+			// The three fields, not the effect. Spreading the effect wrote its own `t`
+			// into the inventory entry and then into the save, where an item carried a
+			// field describing the message that produced it.
+			return {
+				...state,
+				inventory: addItem(state.inventory, {
+					name: effect.name,
+					description: effect.description,
+					quantity: effect.quantity,
+				}),
+			};
 		case "TakeItem":
 			return { ...state, inventory: removeItem(state.inventory, effect.name, effect.quantity) };
 		case "AdjustGold":

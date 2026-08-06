@@ -93,6 +93,23 @@ export interface PlayerState {
 	readonly inside?: InsidePlace;
 }
 
+/**
+ * Where the player is *in the world*, whether or not they are standing in it.
+ *
+ * Indoors `player.x/y` are local to the interior grid, so a chunk-space question asked
+ * of them straight — which chunks to keep loaded, which site is this, which building
+ * has this interior id — is answered about a place near the origin instead of about
+ * where the player actually is. Somebody in a bower at (-1,-122) reads as (5,7), and
+ * every one of those questions quietly returns nothing.
+ *
+ * The doorstep is the honest answer: it is the tile they will step back out onto, it is
+ * inside the site they are in, and it is what `placeNameAt` has always been asked.
+ */
+export function worldAnchor(player: PlayerState): { readonly x: number; readonly y: number } {
+	const inside = player.inside;
+	return inside ? { x: inside.returnX, y: inside.returnY } : { x: player.x, y: player.y };
+}
+
 // Re-exported so the several dozen call sites that only ever wanted "what time is
 // it" keep importing it from here, while the clock's own rules live in one file.
 export {

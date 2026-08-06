@@ -1,4 +1,5 @@
 import type { Anchor, BuildingPlacement } from "../core/gen/features/patch.js";
+import { TFlag } from "../core/tiles/flags.js";
 import { CHUNK } from "../core/world/coords.js";
 import type { MacroSite } from "../core/world/macro.js";
 import { type NpcSpec, npcId, type SiteSpec } from "../core/world/spec.js";
@@ -254,14 +255,23 @@ export class NpcDirectory {
 		const buildings = this.buildingsFor(site);
 		// Occupancy is tracked across the whole directory, not per site: two towns
 		// whose halos overlap would otherwise each place someone on the same tile.
+		// The chokes go in with them: they are tiles nobody may stand on, and the
+		// cheapest way to say that is to call them already occupied.
 		const taken = this.occupied();
+		for (const tile of this.chokePoints(buildings)) taken.add(tile);
 		const placed: PlacedNpc[] = [];
 
 		const plaza = anchors.filter(
-			(a) => a.kind === "bench" || a.kind === "stall" || a.kind === "well",
+			(a) =>
+				(a.kind === "bench" || a.kind === "stall" || a.kind === "well") &&
+				!taken.has(`${a.x},${a.y}`),
 		);
 
 		for (const npc of spec.npcs) {
+			// Somebody the scenario put in a room belongs to `InteriorPeople`, not here.
+			// Placing them anyway would draw them twice — once in the street on an anchor
+			// they never asked for, and once inside where they were meant to be.
+			if (npc.indoors) continue;
 			const spot = pickAnchor(npc, anchors, buildings, taken);
 			if (!spot) continue;
 			taken.add(`${spot.x},${spot.y}`);
@@ -279,6 +289,53 @@ export class NpcDirectory {
 			});
 		}
 		return placed;
+	}
+
+	/**
+	 * Tiles that are the only way into somewhere, which nobody may stand on.
+	 *
+	 * Walking into a person is how you talk to them, so a person on the sole approach
+	 * to a door is a person you talk to *instead of* going in — and nothing on screen
+	 * says the way is blocked, because from the game's point of view nothing is wrong.
+	 * The player simply cannot get in, and reads it as the door being broken.
+	 *
+	 * This used to be a rule about anchor *kinds*: `pickAnchor` refused a `doorstep`
+	 * because a doorstep is usually the one tile a door opens onto. Guarding a
+	 * geometric property by name only works while every generator agrees about which
+	 * names are dangerous, and twice they did not — a castle's `gate` anchor was the
+	 * middle tile of its own arch, and a cave's `square` was the single step its mouth
+	 * is entered from. Both looked entirely reasonable, both sealed the only way in,
+	 * and both cost a play-test to find. Asking the geometry instead covers the
+	 * anchors a feature has not been written yet.
+	 *
+	 * Only the *last* approach. A door with two ways up to it can have somebody
+	 * standing at one of them, which is what a shopkeeper outside their own shop is —
+	 * and refusing that would empty the streets to fix something that is not wrong.
+	 */
+	private chokePoints(buildings: readonly BuildingPlacement[]): Set<string> {
+		const sealed = new Set<string>();
+		for (const building of buildings) {
+			const { x, y } = building.door;
+			const ways = [
+				{ x: x + 1, y },
+				{ x: x - 1, y },
+				{ x, y: y + 1 },
+				{ x, y: y - 1 },
+			].filter((way) => this.passable(way.x, way.y));
+			// The door itself, always: standing in a doorway is the same conversation
+			// trap even where the approach is wide.
+			sealed.add(`${x},${y}`);
+			if (ways.length === 1 && ways[0]) sealed.add(`${ways[0].x},${ways[0].y}`);
+		}
+		return sealed;
+	}
+
+	private passable(x: number, y: number): boolean {
+		const chunk = this.chunks.get(Math.floor(x / CHUNK), Math.floor(y / CHUNK));
+		if (!chunk) return false;
+		const local = ((y % CHUNK) + CHUNK) % CHUNK;
+		const column = ((x % CHUNK) + CHUNK) % CHUNK;
+		return ((chunk.flags[local * CHUNK + column] ?? 0) & TFlag.Passable) !== 0;
 	}
 
 	/** Every tile a placed NPC already stands on, at any hour. */
@@ -376,11 +433,15 @@ function glyphFor(npc: NpcSpec): string {
  * last fallback matters — the model's `placement` is advisory, and a settlement
  * small enough to have no square still has yards.
  *
- * Never a doorstep. That tile is the only one a door can be entered from, since
- * the other three neighbours are its own wall, so somebody standing there seals
- * the building. It looked entirely reasonable on screen — a shopkeeper waiting
- * outside their shop — and in one measured village it made every door in the
- * place unusable at every hour of the day.
+ * Doorsteps are allowed again, and that is not a relaxation. `place` marks every
+ * tile that is the *only* way into a building as occupied before anybody is seated,
+ * so the case this used to blanket-ban — somebody sealing a door that has one
+ * approach — is refused on the geometry instead of on the anchor's name. A doorstep
+ * with a second way round it is a shopkeeper standing outside their own shop, which
+ * is what the anchor was for.
+ *
+ * Naming the dangerous kinds is what failed twice: a castle called its choke point
+ * `gate` and a cave called its single step `square`, and neither name was on the list.
  */
 function pickAnchor(
 	npc: NpcSpec,
@@ -401,8 +462,9 @@ function pickAnchor(
 		}
 	}
 
-	// "yard" is what the schema calls standing outside your own building, and it
-	// is now a real anchor rather than an alias for the doorway.
+	// "yard" is what the schema calls standing outside your own building; a doorstep
+	// is the tile the door itself opens onto, and either will do for somebody who asked
+	// to be outside their own front door.
 	const wantedKind = npc.placement === "doorstep" ? "yard" : npc.placement;
 	return anchors.find((a) => a.kind === wantedKind && free(a)) ?? anchors.find(free);
 }
@@ -438,6 +500,22 @@ function stationsFor(
 	plaza: Anchor | undefined,
 ): PlacedNpc["stations"] {
 	const at = { x: work.x, y: work.y };
+
+	// Somebody the story needs found. A schedule is atmosphere, and atmosphere that
+	// moves the one person an errand names is an errand the player cannot finish
+	// without learning the game's hours. The only way to say this used to be turning
+	// the whole world's clock off, which costs a village its evening to pin one lord.
+	if (npc.stays) {
+		return {
+			night: at,
+			dawn: at,
+			morning: at,
+			afternoon: at,
+			dusk: at,
+			evening: at,
+		};
+	}
+
 	const social = plaza ? { x: plaza.x, y: plaza.y } : at;
 	const nocturnal = NIGHT_ROLES.test(npc.role);
 
@@ -469,4 +547,7 @@ const OUTDOOR: ReadonlySet<Anchor["kind"]> = new Set([
 	"bench",
 	"gate",
 	"yard",
+	// A doorstep is standable ground like any other. Whether *this* doorstep can be
+	// stood on is a question about the door behind it, and `chokePoints` answers it.
+	"doorstep",
 ]);

@@ -208,54 +208,120 @@ at. So:
   is how a story gets a real last page instead of a summary. It also answers the
   question a player actually asks — "is that it?" — which nothing else in a scenario
   does.
+- **Write conversations with three or four choices on every node.** One question and
+  one reply is a signpost, not a character, and four of those in a row is what makes a
+  scenario feel thin. Make the choices *different stances* — blunt, courteous, evasive
+  — so the player is deciding who they are playing, and give at least one node per
+  person to pure texture. See *Conversations that are worth having* in
+  `reference/draft-format.md`; it is the section with the most effect on how a
+  scenario actually reads.
+- **Answer the question the player will really have.** If the errand is *find the axe
+  in the keep*, somebody must say **where in the keep**. A nine-by-nine room of
+  identical crates is a search, not a story.
+- **Gate anything handed over in dialogue.** Actions fire every time their node is
+  entered, so an ungated gift can be collected all afternoon.
 - **Beat ids become labels.** `the-short-tally` shows as "The short tally" when a beat
   carries no quest, so name beats as if somebody will read them — because they will.
 
 ## 4. Gating, forks and gates — hand-written, for now
 
-The draft format covers the story spine: places, people, beats, conversations. The
-newer vocabulary — conditions, triggers, locked doors, gates, placed items,
-sub-errands, forks, forked endings, turning the clock off — lives in the **artifact**
-and is not yet derived from a draft. So the workflow is:
-
-1. Write and assemble the draft as above, until it installs clean.
-2. Edit `.scenarios/<id>.json` directly to add the parts below.
-3. Re-validate. The offline pass checks all of it, and errors still mean broken.
+**The draft says all of it.** Conditions, triggers, locked doors, gates, placed items,
+indoor people, sub-errands, forks, forked endings and the clock are all draft fields,
+so there is one file to write and one command to run. Nothing needs hand-editing after
+assembly, and nothing is lost by re-assembling — which used to be the trap: the older
+workflow was assemble once, patch the artifact, then never run the tool again.
 
 `docs/scenarios.md` has the full reference with worked JSON for each; the sections are
 *Conditions*, *Triggers*, *Locked doors, and gates*, *Special items in specific
 places*, *Conditional people*, *Branching, sub-errands and side errands*, and
-*Turning the clock off*. `.scenarios/thornwick-road.json` uses every one of them and
-is the example to copy from.
+*Turning the clock off*. `drafts/green-chapel.json` uses every one of them and is the
+file to copy from.
 
-Four things are worth knowing before you start, because they are the mistakes that
-cost the most time:
+These are the mistakes that cost the most time. Every one of them has actually
+shipped, and none of them looks like a bug from inside the game — the shape they share
+is that the player concludes something is broken while nothing has gone wrong from the
+engine's point of view:
 
 - **A gate needs a choke point.** `barriers[].tiles` must span the whole way through,
   and the validator will tell you how far round the player can walk. On open ground
   there is no way to make a gate work; find a pass first. Most worlds have very few.
 - **A condition on a flag nothing sets is silent at runtime.** The validator refuses
   those, so trust it — but write the setter before the reader and you will not hit it.
-- **A fork's danger is downstream.** Any beat gated on a flag that only one arm sets
-  becomes unreachable on the other arm. Gate downstream beats on the beat *before*
-  the fork, and use the fork's flags only in `arc.endings` and in dialogue.
+- **Do not write `requires` at a fork.** Assembly derives it, and it derives the two
+  cases that are easy to get wrong: an arm waits on the beat *before* the fork rather
+  than on its sibling, and the beat after the fork waits on `{ any: [both arms] }` so
+  that either path rejoins. Writing one by hand is how a story dead-ends on the arm
+  nobody play-tested.
+- **Somebody the errand names should `stay`.** Schedules move people at dusk, which is
+  atmosphere everywhere except on the one person a quest points at. `stays: true` pins
+  them; turning the clock off for the whole world to achieve it is the old way.
 - **A `site` placement is resolved against what got built**, not against the roster
   you asked for. A structure that lost its plot cannot hold anything, so check the
-  assembly warnings for *"X, which was not built"* before placing an item in X.
+  assembly warnings for *"X, which was not built"* before placing an item in X. Name
+  the building rather than its kind — `"structure": "The Lady's Bower"` — and add
+  `"level": 2` to put something on the storey below.
 - **Say out loud that a gated item exists.** If anything is gated on carrying it, some
   errand must ask for it by name or some line the player reads must mention it.
   Obtainable is not findable, and an item the story never names is a dead end with no
   symptom. The validator refuses this, and it is the mistake that has actually shipped.
+- **Gate a gate on the gatekeeper, not on an arc flag.** `beatOpenedBy` fires at the
+  moment of a conversation and only if the beat's requirements hold *then*: talk to
+  people out of order and the beat is silently lost, and everything chained behind it
+  stalls with nothing on screen to explain it. So a barrier's `opensWhen` should read
+  `{ "talked": "npc:<site>:<slot>" }` — the porter you just spoke to — rather than the
+  flag of a beat somebody else was supposed to open. And put `opensOn` on any beat the
+  story cannot proceed without, so it can also open on its own: `opensOn` is checked
+  after every command, so it cannot be missed by talking in the wrong order.
+- **A fork has to change what people *say*.** An ending card per arm is an epilogue,
+  and a fork the scene does not know about is a fork the player experiences as being
+  ignored. The scenario this was learned on told a player who handed the girdle over
+  that he had failed the third test, and then showed him a card congratulating him —
+  and every other check passed. Give the finale two openings, gated on the arms, and
+  branch anybody downstream who would reasonably know. The validator warns when no
+  dialogue condition mentions either arm.
+- **Somebody you gate should come on stage when their scene does.** An NPC whose
+  `requires` is weaker than the beat they anchor stands there for two beats being
+  talkable and doing nothing, which reads exactly like a broken quest. Either gate them
+  on the beat's own condition, or — better, if the early arrival is worth playing —
+  give their tree an opening conditioned on the beat *not* having happened, which sends
+  the player back with a reason. The validator warns; ungated cast are exempt, since
+  they are present by construction.
+- **A hand-over must record itself.** The obvious spelling — an opening gated on
+  `{ "item": "X" }` whose actions take X — works exactly once. Next hello the condition
+  is false, the greeting it was written to replace comes back, and the character asks
+  for the thing they took out of your hands a minute ago. Add a `setFlag` to the same
+  node and give the revisit an opening that reads it. Four actions are allowed on a
+  node for precisely this: take, give, warm, record.
+- **Mark what you promise.** A placement without `showDecor` is invisible, which is
+  right for something hidden in a crate the player would open anyway and wrong for
+  anything a line of dialogue tells them to go and fetch. "Take it afterwards if you
+  have the legs for it" pointed at an unmarked tile two storeys down a cave.
 
-Re-validate with the same command; it reads the installed file:
+Re-validate. This one reads the **installed artifact**, so it is the command that sees
+the hand-written parts — `assemble --check` only ever validates the draft, which by
+definition does not contain them:
 
 ```bash
-npm run assemble -- --draft drafts/<id>.json --check
+npm run validate -- --scenario <id>     # one scenario
+npm run validate                        # every scenario on disk
 ```
 
-If you edited the artifact only, run the scenario's own test instead — the shipped
-one has `src/scenario/thornwick-live.test.ts` as a model for driving a scenario
-through the real engine, and a new scenario is worth the same treatment.
+Then write the scenario's own test. `src/scenario/thornwick-live.test.ts` and
+`src/scenario/green-chapel-live.test.ts` are the two models for driving a scenario
+through the real engine; the second is the one to copy if the scenario carries a
+recipe, because it asserts that the castle, dock and cave the recipe asked for
+actually got built. Each of the three builds *nothing* on ground that does not suit
+it, so a story hung off one is only as safe as that assertion.
+
+**Then play it, and drive the engine for the parts you cannot.** Almost every defect
+this scenario shipped with was invisible to the validator and to the tests, and every
+one of them was found either by walking the story or by driving the real session in a
+test: a person missing from the room the errand pointed at, an item consumed before it
+existed, a gatekeeper standing in his own gate. The pattern that finds them is to write
+the test the way the *player* acts — walk in through the door rather than writing
+`inside` into the state, dispatch `DialogueOpened` rather than setting the beat's flag.
+Two tests asking the same question different ways is how these hide: the one that
+passed asked from outside the building.
 
 ## What the tool writes for you
 

@@ -106,8 +106,21 @@ export function buildCave(world: WorldSeed, site: MacroSite, _spec: SettlementSp
 		interiorId: hash2(site.id, 0),
 		name: "the cave mouth",
 	});
-	anchors.push({ id: "b0:doorstep", kind: "doorstep", x: step.x, y: step.y, building: 0 });
-	anchors.push({ id: "square", kind: "square", x: step.x, y: step.y });
+	// Beside the step, not on it.
+	//
+	// A cave has one tile of approach: the mouth is one tile wide and the rock face
+	// wraps it, so `step` is the only ground a player can walk into it from. Standing
+	// anybody on that tile seals the cave — and seals it invisibly, because walking
+	// into a person is how you talk to them, so every attempt to go in opens a
+	// conversation instead and nothing anywhere says the way is blocked.
+	//
+	// The same mistake as the porter in the castle arch, and it cost the same thing:
+	// the Green Knight tells the player to go down for the whetstone afterwards, then
+	// stands in the doorway they would have to use.
+	const aside = { x: step.x + across.x, y: step.y + across.y };
+	const station = buildable(aside.x, aside.y) ? aside : step;
+	anchors.push({ id: "b0:doorstep", kind: "doorstep", x: station.x, y: station.y, building: 0 });
+	anchors.push({ id: "square", kind: "square", x: station.x, y: station.y });
 
 	// A track down the scree, so the apron connects to whatever is below it.
 	const foot = { x: mouth.x + downhill.x * (APRON + 1), y: mouth.y + downhill.y * (APRON + 1) };

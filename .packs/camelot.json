@@ -1,0 +1,151 @@
+{
+	"id": "camelot",
+
+	"names": {
+		"given": [
+			"Ector",
+			"Ywain",
+			"Lucan",
+			"Bedwyr",
+			"Griflet",
+			"Elyan",
+			"Sagramore",
+			"Brandiles",
+			"Guinglain",
+			"Aglovale",
+			"Enid",
+			"Lynet",
+			"Elaine",
+			"Ragnell",
+			"Blanchefleur",
+			"Morgause",
+			"Iseult",
+			"Nimue",
+			"Hodierne",
+			"Alisoun"
+		],
+		"family": [
+			"of the Ford",
+			"Hautclere",
+			"Bercilak",
+			"Greenway",
+			"Holt",
+			"of the Fens",
+			"Marchmain",
+			"Wintersmith",
+			"Hollybank",
+			"Underwold",
+			"Crowmoor",
+			"Ashthorn",
+			"Fairhand",
+			"Longspur"
+		],
+		"heads": {
+			"green": ["holly", "hazel", "green", "birk", "yew", "brack", "wode", "thorn"],
+			"plain": ["camel", "hall", "wain", "mark", "bell", "ash", "cross", "harrow"],
+			"high": ["scarp", "beacon", "crag", "warden", "grey", "pike", "helm", "stang"],
+			"wet": ["fen", "leat", "mere", "sedge", "drift", "sump", "ree", "wash"],
+			"cold": ["rime", "frost", "hoar", "snow", "winter", "bleak"],
+			"dry": ["heath", "brand", "flint", "waste", "stub"]
+		},
+		"tails": [
+			"desert",
+			"gate",
+			"keep",
+			"chapel",
+			"holt",
+			"march",
+			"mere",
+			"wold",
+			"ford",
+			"cross",
+			"bury",
+			"stead"
+		],
+		"regionTails": ["waste", "marches", "wold", "forest", "fells", "hundred"]
+	},
+
+	"households": {
+		"house": {
+			"count": [1, 3],
+			"roles": ["bondsman", "fowler", "brewster", "widow", "child", "harper", "carter"]
+		},
+		"inn": { "count": [2, 4], "roles": ["cook", "server", "pilgrim", "packman", "harper"] },
+		"tower": { "count": [1, 2], "roles": ["watchman", "porter"] },
+		"barracks": { "count": [2, 4], "roles": ["squire", "sergeant", "bowman", "cook"] },
+		"stable": { "count": [1, 2], "roles": ["groom", "farrier"] },
+		"smithy": { "count": [1, 2], "roles": ["armourer", "striker"] },
+		"temple": { "count": [1, 2], "roles": ["chaplain", "clerk"] },
+		"shrine": { "count": [0, 1], "roles": ["hermit"] },
+		"warehouse": { "count": [1, 2], "roles": ["steward", "porter"] },
+		"shop": { "count": [1, 2], "roles": ["ferryman", "netmaker", "packman"] },
+		"ruin": { "count": [0, 1], "roles": ["hermit"] }
+	},
+
+	"appearance": {
+		"squire": "Sixteen, cold, and holding somebody else's helm as if it were an egg.",
+		"armourer": "Burn-marked to the elbow, and squinting at a rivet you cannot see.",
+		"porter": "Filling the gateway on purpose, with a staff he has not needed yet.",
+		"chaplain": "Ink to the knuckle, and a cloak worn thin across the shoulders.",
+		"harper": "Fingers wrapped against the cold, tuning something that is already in tune.",
+		"pilgrim": "Mud to the thigh, a badge of tin, and the look of somebody counting days.",
+		"ferryman": "Standing in the boat rather than beside it, out of long habit.",
+		"fowler": "Nets over one shoulder, and three birds hanging from a cord.",
+		"hermit": "Barefoot in this weather, which he does not appear to have noticed.",
+		"bondsman": "Working, and not stopping while you talk.",
+		"widow": "Neat, grey and composed, with black worn well past the mourning.",
+		"child": "Small, unbothered, and staring at your axe.",
+		"groom": "Smells of horse and wet straw. Speaks to you as if you were one.",
+		"steward": "A tally-stick in each hand and no patience in either.",
+		"netmaker": "Mending, with the work hooked over one bare toe."
+	},
+
+	"talksAbout": {
+		"squire": "who is riding out, and who is quietly not",
+		"armourer": "what a green axe is worth as metal, which is nothing",
+		"porter": "who has been let in this winter, which is very few",
+		"chaplain": "the year turning, and the vow that turns with it",
+		"harper": "the verses about the Green Knight, which he has been asked not to sing",
+		"pilgrim": "the road north, and how much of it is under water",
+		"ferryman": "the channel, the tide, and what the fen has swallowed lately",
+		"fowler": "the birds going over early, and what that means for the frost",
+		"hermit": "a chapel out in the dale that nobody has consecrated",
+		"steward": "the stores, the winter, and the hunting that will not fill either"
+	},
+
+	"outdoorRoles": {
+		"barracks": { "role": "sergeant", "placement": "gate" },
+		"tower": { "role": "porter", "placement": "gate" },
+		"smithy": { "role": "armourer", "placement": "doorstep" },
+		"stable": { "role": "groom", "placement": "yard" },
+		"inn": { "role": "innkeeper", "placement": "doorstep" },
+		"temple": { "role": "chaplain", "placement": "doorstep" },
+		"shop": { "role": "ferryman", "placement": "doorstep" },
+		"warehouse": { "role": "steward", "placement": "yard" },
+		"shrine": { "role": "hermit", "placement": "doorstep" }
+	},
+
+	"wanderers": [
+		{ "role": "squire", "placement": "well" },
+		{ "role": "harper", "placement": "bench" },
+		{ "role": "pilgrim", "placement": "stall" },
+		{ "role": "packman", "placement": "gate" }
+	],
+
+	"lore": {
+		"title": "A Blow for a Blow",
+		"premise": "A green man rode into the hall at New Year, let a knight take his head off, picked it up and asked for the return blow in a year. The year is up.",
+		"era": "the turning of the year, and the twelfth winter of the Round Table",
+		"tone": "courteous, cold, and quietly frightening",
+		"factions": ["The Round Table", "The House of Hautdesert", "The Waste"],
+		"deities": ["Mary of the Five Joys"]
+	},
+
+	"ambient": [
+		"The frost has not come off the north side of anything today.",
+		"Somewhere behind you a bird goes up out of the reeds, and nothing follows it.",
+		"Your breath is going ahead of you in the cold.",
+		"There is holly in the hedge, and a great deal of it.",
+		"The track has been ridden this winter, but not lately."
+	]
+}

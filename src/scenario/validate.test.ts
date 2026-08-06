@@ -3,6 +3,7 @@ import { demoArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
 import { PLACEMENTS } from "../ai/director/schemas.js";
 import type { ScenarioBeat } from "../core/rules/arc.js";
 import { namesMatch } from "../core/rules/surroundings.js";
+import type { NpcSpec } from "../core/world/spec.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { buildPassability, hasErrors, validateArtifact } from "./validate.js";
 
@@ -409,6 +410,46 @@ describe("placements", () => {
 		).toBe(true);
 	});
 
+	it("refuses one on ground nothing can walk to", () => {
+		// Passable is not reachable. An item on a scrap of shore across deep water passes
+		// every other check here and is found by nobody, and the tile that catches it is
+		// the boundary band's own far side — walkable ground the world encloses.
+		const artifact = demoArtifact();
+		const findings = validateArtifact(
+			demoArtifact({
+				placements: [
+					{
+						id: "marooned",
+						at: { kind: "world", x: artifact.bounds.maxX + 200, y: artifact.spawn.y },
+						item: { name: "A Thing", description: "It is somewhere." },
+					},
+				],
+			}),
+		);
+		// Either it is off the generated block entirely, or it is on ground with no route
+		// to it. Both are the same authoring mistake and both must refuse.
+		expect(findings.some((finding) => finding.severity === "error")).toBe(true);
+	});
+
+	it("notes one so far from the story that finding it is a sweep of the map", () => {
+		const artifact = demoArtifact();
+		const beatSite = Object.values(artifact.sites)[0];
+		if (!beatSite) throw new Error("fixture has no site");
+		const findings = validateArtifact(
+			demoArtifact({
+				placements: [
+					{
+						id: "distant",
+						at: { kind: "world", x: artifact.spawn.x + 90, y: artifact.spawn.y + 90 },
+						item: { name: "A Thing", description: "It is a long way off." },
+					},
+				],
+			}),
+		);
+		const said = findings.map((finding) => finding.message).join("\n");
+		expect(said.includes("sweep of the map") || said.includes("cannot be walked to")).toBe(true);
+	});
+
 	it("refuses two on the same tile, because only one can be found", () => {
 		const artifact = demoArtifact();
 		const at = { kind: "world" as const, x: artifact.spawn.x, y: artifact.spawn.y };
@@ -425,6 +466,95 @@ describe("placements", () => {
 				(finding) => finding.severity === "error" && finding.message.includes("same tile"),
 			),
 		).toBe(true);
+	});
+});
+
+describe("a gate named rather than copied", () => {
+	it("refuses one on a site with no single way in", () => {
+		// A castle's gatehouse is the only choke point the generator guarantees. A town's
+		// streets have as many ways in as the town has edges, so barring "the gate" of one
+		// bars a tile of open road — which is exactly the failure a named span exists to
+		// make impossible, and saying so beats stamping it.
+		const artifact = demoArtifact();
+		const siteId = Number(Object.keys(artifact.sites)[0]);
+		const findings = validateArtifact(
+			demoArtifact({
+				barriers: [
+					{
+						id: "nowhere",
+						tiles: { siteId, at: "gate" },
+						opensWhen: { flag: "arc:whatever" },
+						lockedText: "Shut.",
+					},
+				],
+			}),
+		);
+		expect(
+			findings.some(
+				(finding) =>
+					finding.severity === "error" && finding.message.includes("no single way in to bar"),
+			),
+		).toBe(true);
+	});
+
+	it("refuses one naming a site that is not in this world", () => {
+		const findings = validateArtifact(
+			demoArtifact({
+				barriers: [
+					{
+						id: "lost",
+						tiles: { siteId: 424242, at: "gate" },
+						opensWhen: { flag: "arc:whatever" },
+						lockedText: "Shut.",
+					},
+				],
+			}),
+		);
+		expect(
+			findings.some(
+				(finding) => finding.severity === "error" && finding.message.includes("not in this world"),
+			),
+		).toBe(true);
+	});
+});
+
+describe("what a place actually built", () => {
+	it("reports a named roster that over-ran its plots", () => {
+		const spec = demoSiteSpec(SITE_ID);
+		const findings = validateArtifact(
+			withSite({
+				settlement: {
+					...spec.settlement,
+					structures: Array.from({ length: 24 }, (_, i) => ({
+						kind: "warehouse" as const,
+						size: "large" as const,
+						importance: 5,
+						name: `The ${i}th Store`,
+					})),
+				},
+			}),
+		);
+		expect(findings.some((finding) => finding.message.includes("fitted"))).toBe(true);
+	});
+
+	it("says nothing about a roster nobody named", () => {
+		// A place nobody wrote is filled from the deterministic roster, and telling its
+		// author that a camp asked for two shacks and fitted one is noise they can do
+		// nothing about — noise that drowns the sites the story turns on.
+		const spec = demoSiteSpec(SITE_ID);
+		const findings = validateArtifact(
+			withSite({
+				settlement: {
+					...spec.settlement,
+					structures: Array.from({ length: 24 }, () => ({
+						kind: "warehouse" as const,
+						size: "large" as const,
+						importance: 5,
+					})),
+				},
+			}),
+		);
+		expect(findings.some((finding) => finding.message.includes("fitted"))).toBe(false);
 	});
 });
 
@@ -469,7 +599,14 @@ describe("forks", () => {
 	}
 
 	it("accepts a fork whose downstream does not depend on which arm was taken", () => {
-		expect(forked().some((finding) => finding.message.includes("the-choice"))).toBe(false);
+		// Errors only. The fixture has no dialogue at all, so it also earns the warning
+		// that neither arm changes anything anybody says — which is a different
+		// complaint and has its own test below.
+		expect(
+			forked().some(
+				(finding) => finding.severity === "error" && finding.message.includes("the-choice"),
+			),
+		).toBe(false);
 	});
 
 	it("refuses a beat that only one arm can unlock", () => {
@@ -484,6 +621,75 @@ describe("forks", () => {
 					finding.message.includes("arc:left"),
 			),
 		).toBe(true);
+	});
+
+	it("accepts a beat gated on either arm, which is how a fork rejoins", () => {
+		// A story that forks has to come back together, and `{ any: [armA, armB] }` is
+		// the only spelling that does it: gate on one arm and the other arm dead-ends;
+		// gate on the beat before the fork and the arms can be skipped entirely, so the
+		// arc never counts as finished. Flattening the condition to the flags it names
+		// reported both arms as barred and made the correct spelling the refused one.
+		const findings = forked({
+			requires: { any: [{ flag: "arc:left" }, { flag: "arc:right" }] },
+		});
+		expect(findings.filter((finding) => finding.severity === "error")).toEqual([]);
+	});
+
+	it("notes a fork that changes the ending but nothing anybody says", () => {
+		/*
+		 * The scenario this came from had a real fork — hand the girdle over or keep it
+		 * back — an ending card for each arm, and one finale speech written for the arm
+		 * that kept it. A player who gave it up was told to his face that he had failed,
+		 * and then shown a card congratulating him. Every other check passed: both arms
+		 * open, both endings pick correctly, every flag is written and read.
+		 */
+		const findings = forked();
+		expect(
+			findings.some(
+				(finding) =>
+					finding.severity === "warning" &&
+					finding.message.includes("the-choice") &&
+					finding.message.includes("nothing anybody says"),
+			),
+		).toBe(true);
+	});
+
+	it("says nothing once a line of dialogue knows which arm was taken", () => {
+		const artifact = demoArtifact();
+		const siteId = Number(Object.keys(artifact.sites)[0]);
+		const base = { siteId, npcSlot: 0, order: 1 };
+		const findings = validateArtifact(
+			demoArtifact({
+				arc: {
+					title: "T",
+					premise: "p",
+					beats: [
+						{ ...base, id: "open", order: 0, requires: [], setsFlag: "arc:open" },
+						{ ...base, id: "left", requires: ["arc:open"], setsFlag: "arc:left", branch: "c" },
+						{ ...base, id: "right", requires: ["arc:open"], setsFlag: "arc:right", branch: "c" },
+					],
+				},
+				trees: {
+					[`npc:${siteId}:0`]: {
+						npcId: `npc:${siteId}:0`,
+						entry: ["hello"],
+						nodes: {
+							hello: {
+								id: "hello",
+								speech: "Well?",
+								choices: [
+									{ text: "I gave it up.", goto: null, requires: { flag: "arc:left" } },
+									{ text: "I kept it.", goto: null, requires: { flag: "arc:right" } },
+								],
+							},
+						},
+					},
+				},
+			}),
+		);
+		expect(findings.some((finding) => finding.message.includes("nothing anybody says"))).toBe(
+			false,
+		);
 	});
 
 	it("notes a fork with only one arm, which is not a choice", () => {
@@ -509,6 +715,119 @@ describe("forks", () => {
 			}),
 		);
 		expect(findings.some((finding) => finding.message.includes("only one arm"))).toBe(true);
+	});
+});
+
+describe("a cast that arrives before its scene", () => {
+	function withKnight(tree?: ScenarioArtifact["trees"]) {
+		const spec = demoSiteSpec(SITE_ID);
+		const knight: NpcSpec = { ...(NPC as NpcSpec), slot: 0, requires: { flag: "arc:sworn" } };
+		return validateArtifact(
+			demoArtifact({
+				sites: { [SITE_KEY]: { ...spec, npcs: [knight] } },
+				arc: {
+					title: "T",
+					premise: "p",
+					beats: [
+						{
+							id: "sworn",
+							order: 0,
+							siteId: SITE_ID,
+							npcSlot: 0,
+							requires: [],
+							setsFlag: "arc:sworn",
+						},
+						{
+							id: "chose",
+							order: 1,
+							siteId: SITE_ID,
+							npcSlot: 0,
+							requires: ["arc:sworn"],
+							setsFlag: "arc:chose",
+						},
+						{
+							id: "the-blow",
+							order: 2,
+							siteId: SITE_ID,
+							npcSlot: 0,
+							requires: ["arc:chose"],
+							setsFlag: "arc:the-blow",
+						},
+					],
+				},
+				...(tree ? { trees: tree } : {}),
+			}),
+		);
+	}
+
+	it("notes somebody on stage before the beat they anchor can open", () => {
+		/*
+		 * The Green Knight appeared the moment the covenant was sworn and anchored a beat
+		 * two beats further on. Ride straight for the mound, walk up to him, and the whole
+		 * finale plays at you — after which nothing has happened, no flag has moved, and
+		 * the game offers no hint that anything is missing. It reads exactly like a broken
+		 * quest, and every other check passes: the beat is reachable, the flags are all
+		 * written, the conditions all hold eventually.
+		 */
+		const findings = withKnight();
+		expect(
+			findings.some(
+				(finding) =>
+					finding.severity === "warning" &&
+					finding.message.includes("on stage before beat the-blow") &&
+					finding.message.includes("arc:chose"),
+			),
+			findings.map((f) => f.message).join("\n"),
+		).toBe(true);
+	});
+
+	it("says nothing once their tree has an opening for the wait", () => {
+		// The better of the two fixes: the scene of arriving early is worth writing, and
+		// a node that knows the beat has not happened is what makes it possible.
+		const findings = withKnight({
+			[`npc:${SITE_ID}:0`]: {
+				npcId: `npc:${SITE_ID}:0`,
+				entry: ["not-yet", "mound"],
+				nodes: {
+					"not-yet": {
+						id: "not-yet",
+						speech: "Early, sir. Go back and settle with him first.",
+						choices: [{ text: "I will.", goto: null }],
+						requires: { not: { flag: "arc:chose" } },
+					},
+					mound: { id: "mound", speech: "You came.", choices: [{ text: "Strike.", goto: null }] },
+				},
+			},
+		});
+		expect(findings.some((finding) => finding.message.includes("on stage before"))).toBe(false);
+	});
+
+	it("says nothing about an ungated cast, who are present by construction", () => {
+		// Somebody with no `requires` is permanent scenery and stands there before every
+		// beat in the story. Warning about those would fire on almost every NPC in every
+		// scenario, which is how a validator stops being read.
+		const spec = demoSiteSpec(SITE_ID);
+		const findings = validateArtifact(
+			demoArtifact({
+				sites: { [SITE_KEY]: { ...spec, npcs: [{ ...(NPC as NpcSpec), slot: 0 }] } },
+				arc: {
+					title: "T",
+					premise: "p",
+					beats: [
+						{ id: "one", order: 0, siteId: SITE_ID, npcSlot: 0, requires: [], setsFlag: "arc:one" },
+						{
+							id: "two",
+							order: 1,
+							siteId: SITE_ID,
+							npcSlot: 0,
+							requires: ["arc:one"],
+							setsFlag: "arc:two",
+						},
+					],
+				},
+			}),
+		);
+		expect(findings.some((finding) => finding.message.includes("on stage before"))).toBe(false);
 	});
 });
 

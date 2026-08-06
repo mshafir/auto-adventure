@@ -5,7 +5,7 @@ import { generateSettlement } from "../core/gen/features/settlement.js";
 import { hashString } from "../core/rand/hash.js";
 import { isContainer } from "../core/rules/loot.js";
 import type { Placement } from "../core/rules/placement.js";
-import { placementIndex, placementSlot } from "../core/rules/placement.js";
+import { placementIndex, placementSlot, takenKey } from "../core/rules/placement.js";
 import { createInitialState, type GameState } from "../core/rules/state.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import { siteContext } from "../core/world/context.js";
@@ -176,6 +176,34 @@ describe("placementIndex", () => {
 		expect(index.get(placementSlot(undefined, 3, 4))?.id).toBe("a");
 		expect(index.get(placementSlot(1, 3, 4))?.id).toBe("b");
 	});
+
+	it("keeps the storeys of one building apart", () => {
+		// A building with three levels is three grids that happen to share an id, so a key
+		// on the id alone put one item at the same coordinates on every one of them —
+		// which is also why nothing could be hidden below a cave mouth at all.
+		const index = placementIndex([
+			{
+				id: "ground",
+				placement: placement({ kind: "interior", interiorId: 7, x: 3, y: 4 }),
+				interiorId: 7,
+				x: 3,
+				y: 4,
+			},
+			{
+				id: "deep",
+				placement: placement({ kind: "interior", interiorId: 7, x: 3, y: 4, level: 2 }),
+				interiorId: 7,
+				level: 2,
+				x: 3,
+				y: 4,
+			},
+		]);
+		expect(index.get(placementSlot(7, 3, 4))?.id).toBe("ground");
+		expect(index.get(placementSlot(7, 3, 4, 2))?.id).toBe("deep");
+		// And the ground floor keeps the key it always had, so a save that recorded taking
+		// something still knows it is gone.
+		expect(placementSlot(7, 3, 4, 0)).toBe(placementSlot(7, 3, 4));
+	});
 });
 
 describe("finding a placed item in a running world", () => {
@@ -237,5 +265,44 @@ describe("finding a placed item in a running world", () => {
 		expect(engine.markedPlacements()).toHaveLength(1);
 		engine.dispatch({ t: "Interact" });
 		expect(engine.markedPlacements()).toEqual([]);
+	});
+
+	it("survives the tile having been searched before the story put anything there", () => {
+		/*
+		 * The failure this exists for is silent and unwinnable.
+		 *
+		 * A gated placement sits on a tile the generator already furnished — a shelf, a
+		 * crate, a patch of ground. Search it *before* the condition holds and you get
+		 * whatever the world had there, which is correct. But taking-once used to be
+		 * recorded by the tile's own `lootKey`, so that search also marked the authored
+		 * item as taken. When the story put it there a minute later, the game said "you
+		 * have already been through it" about a thing that had never been there, and the
+		 * errand pointing at that room could not be finished by any means at all.
+		 */
+		const engine = engineWith([
+			placement(
+				{ kind: "world", x: 0, y: 1 },
+				{ requires: { flag: "flood" }, showDecor: true, emptyText: "Only the empty niche." },
+			),
+		]);
+		// Searched early: nothing authored is here yet, and whatever happens must not
+		// count as having taken the ledger.
+		engine.dispatch({ t: "Interact" });
+		expect(engine.getState().inventory.some((item) => item.name === LEDGER.name)).toBe(false);
+
+		engine.dispatch({ t: "ApplyEffects", effects: [{ t: "SetFlag", key: "flood", value: true }] });
+		expect(engine.markedPlacements()).toHaveLength(1);
+		engine.dispatch({ t: "Interact" });
+		expect(engine.getState().inventory.some((item) => item.name === LEDGER.name)).toBe(true);
+	});
+
+	it("is remembered by which placement it is, not by where it turned out to be", () => {
+		// The resolver picks the tile, and it changes its mind when it learns something —
+		// the axe at Camelot moved the day it started preferring a container the player
+		// could reach. A positional flag would have applied the old tile's history to
+		// whatever else landed there.
+		const engine = engineWith([placement({ kind: "world", x: 0, y: 1 })]);
+		engine.dispatch({ t: "Interact" });
+		expect(engine.getState().flags[takenKey("ledger")]).toBe(true);
 	});
 });

@@ -13,6 +13,7 @@ import {
 import { PackOverrideSchema } from "../core/content/schema.js";
 import { hashString } from "../core/rand/hash.js";
 import type { ScenarioArc, ScenarioBeat } from "../core/rules/arc.js";
+import { ConditionSchema } from "../core/rules/condition-schema.js";
 import type { QuestObjective } from "../core/rules/state.js";
 import { resolveName } from "../core/rules/surroundings.js";
 import { normalizeBrief } from "../core/world/brief.js";
@@ -21,7 +22,16 @@ import { WorldRecipeSchema } from "../core/world/recipe-schema.js";
 import type { RegionSpec, SiteSpec } from "../core/world/spec.js";
 import { npcId } from "../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "./artifact.js";
-import { CardBodySchema, ScenarioBriefSchema } from "./schema.js";
+import {
+	AuthoredEffectSchema,
+	BarrierSchema,
+	CardBodySchema,
+	LockSchema,
+	PlacementSchema,
+	ScenarioBriefSchema,
+	TimeOptionsSchema,
+	TriggerSchema,
+} from "./schema.js";
 import { surveyWorld } from "./survey.js";
 
 /**
@@ -40,12 +50,26 @@ import { surveyWorld } from "./survey.js";
  * assemble, play it, come back for the rest.
  */
 
+/**
+ * The parts of the newer vocabulary a draft carries through untouched.
+ *
+ * Everything else in this file is *derived* — beat order, gating flags, quest ids, npc
+ * ids — because those are the things an author can get wrong by writing. Conditions,
+ * triggers, locks, gates, placed items and forks are not like that: there is nothing to
+ * derive them from, and an author writing one has already said the whole of it.
+ *
+ * Before this existed the loop was: assemble once, hand-edit the artifact, then never
+ * re-assemble — because re-running the tool discarded every hand edit without saying
+ * so. A draft that cannot say what the game can do is a draft nobody can keep.
+ */
 const StructureDraftSchema = z.object({
 	kind: z.enum(STRUCTURE_KINDS),
 	size: z.enum(["small", "medium", "large"]),
 	importance: z.number().int().min(1).max(5),
 	name: z.string().max(60).optional(),
 	signText: z.string().max(60).optional(),
+	/** What has to be true to get inside. Absent means the door simply opens. */
+	lock: LockSchema.optional(),
 });
 
 const NpcDraftSchema = z.object({
@@ -61,6 +85,12 @@ const NpcDraftSchema = z.object({
 	placement: z.enum(PLACEMENTS),
 	structureName: z.string().max(60).optional(),
 	knows: z.array(z.string().max(200)).max(6),
+	/** What has to be true for this person to be in the world at all. */
+	requires: ConditionSchema.optional(),
+	/** Keep them at their own anchor at every hour, rather than on a schedule. */
+	stays: z.boolean().optional(),
+	/** Stand inside `structureName` rather than outdoors, on its ground floor. */
+	indoors: z.boolean().optional(),
 });
 
 const SiteDraftSchema = z.object({
@@ -102,13 +132,34 @@ const BeatDraftSchema = z.object({
 			description: z.string().max(240),
 			objective: z
 				.object({
-					kind: z.enum(["have", "reach", "talk", "flag"]),
+					// `quest` names another beat's errand, and is what makes one job with
+					// three parts rather than three unrelated jobs.
+					kind: z.enum(["have", "reach", "talk", "flag", "quest"]),
 					target: z.string().min(1).max(80),
 					quantity: z.number().int().min(1).max(99).optional(),
 				})
 				.optional(),
+			/** The beat whose errand this one is a step of. */
+			parentId: z.string().max(48).optional(),
 		})
 		.optional(),
+	/** A side errand: it opens and journals, but the story can end without it. */
+	optional: z.boolean().optional(),
+	/** A fork this beat is one arm of. Siblings are barred once one is taken. */
+	branch: z.string().max(48).optional(),
+	/** Opens on its own once this is true, rather than on a conversation. */
+	opensOn: ConditionSchema.optional(),
+	/**
+	 * What must already be true, overriding the derived chain.
+	 *
+	 * Rarely needed: {@link derivedRequires} already handles the straight line, side
+	 * errands and both ends of a fork. This is the escape hatch for a beat that waits
+	 * on something the story never wrote a flag for — an item in hand, an errand
+	 * closed, a place stood in.
+	 */
+	requires: ConditionSchema.optional(),
+	/** What else the beat does to the world as it opens. */
+	effects: z.array(AuthoredEffectSchema).max(8).optional(),
 });
 
 const NodeDraftSchema = z.object({
@@ -119,29 +170,64 @@ const NodeDraftSchema = z.object({
 		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case slug"),
 	speech: z.string().min(1).max(600),
 	requiresFlag: z.string().max(64).optional(),
+	/**
+	 * A full condition, where a flag will not do.
+	 *
+	 * The case that forced it: a line that hands something over must not be reachable
+	 * twice, and "not already carrying it" is not a flag anybody set. Without this the
+	 * only way to write a gift was to write one that could be collected all afternoon.
+	 */
+	requires: ConditionSchema.optional(),
 	choices: z
 		.array(
 			z.object({
 				text: z.string().min(1).max(120),
 				goto: z.string().max(48).nullable(),
 				requiresFlag: z.string().max(64).optional(),
+				requires: ConditionSchema.optional(),
 			}),
 		)
 		.max(6),
-	actions: z.array(ActionSchema).max(3).optional(),
+	// Four, not three. A hand-over is take the thing, give the thanks, warm them to
+	// you, and *record that it happened* — and the last of those is not optional
+	// decoration: without it the opening that fired is gated on an item that is now
+	// gone, so the next hello falls back to asking for it again. The cap was quietly
+	// forcing authors to drop the one action that makes the character remember.
+	actions: z.array(ActionSchema).max(4).optional(),
 });
 
 const TreeDraftSchema = z.object({
 	siteId: z.number().int(),
 	npcSlot: z.number().int().min(0),
 	entry: z.string().min(1).max(48),
-	/** Alternative openings, each used once its flag is set. Most specific first. */
+	/**
+	 * Alternative openings, each used once its condition holds. Most specific first.
+	 *
+	 * `flag` is the shorthand and covers almost every case. `when` is for the opening
+	 * that is about something other than the story having moved — coming back with the
+	 * thing you were sent for, which is a question about the player's pack rather than
+	 * about a flag anybody remembered to set.
+	 */
 	entryAfter: z
-		.array(z.object({ node: z.string().max(48), flag: z.string().max(64) }))
+		.array(
+			z
+				.object({
+					node: z.string().max(48),
+					flag: z.string().max(64).optional(),
+					when: ConditionSchema.optional(),
+				})
+				.refine((option) => option.flag !== undefined || option.when !== undefined, {
+					message: "an alternative opening needs a flag or a when",
+				}),
+		)
 		.max(3)
 		.optional(),
 	revisit: z.string().max(48).optional(),
-	nodes: z.array(NodeDraftSchema).min(1).max(12),
+	// Sixteen, not twelve. A conversation with real choices in it fans out fast — a
+	// greeting, three things to ask about, and a couple of answers that lead on is
+	// already eight — and the cap was quietly pushing every tree back towards a
+	// corridor with one question in it.
+	nodes: z.array(NodeDraftSchema).min(1).max(16),
 });
 
 export const ScenarioDraftSchema = z.object({
@@ -186,9 +272,39 @@ export const ScenarioDraftSchema = z.object({
 			 * when nobody writes one, so a scenario always ends rather than stopping.
 			 */
 			ending: CardBodySchema.optional(),
+			/**
+			 * Outcomes to choose between, first match in author order.
+			 *
+			 * What makes a fork worth taking. An entry with no `when` always matches, which
+			 * is how the last one becomes the catch-all.
+			 */
+			endings: z
+				.array(
+					CardBodySchema.extend({
+						id: z.string().min(1).max(64),
+						when: ConditionSchema.optional(),
+					}),
+				)
+				.max(8)
+				.optional(),
 		})
 		.optional(),
 	trees: z.array(TreeDraftSchema).optional(),
+	/** A tile pack directory under `.packs/tiles/`, by name. */
+	tiles: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case letters, digits and dashes only")
+		.optional(),
+	/** Whether this world has a clock. Absent means the ordinary day/night cycle. */
+	time: TimeOptionsSchema.optional(),
+	/** Things that happen because the world became a certain way. */
+	triggers: z.array(TriggerSchema).max(64).optional(),
+	/** Gates across the open world. */
+	barriers: z.array(BarrierSchema).max(32).optional(),
+	/** Particular things in particular places. */
+	placements: z.array(PlacementSchema).max(64).optional(),
 	/**
 	 * A pack in `.packs/`, by name. The usual way to say what a world sounds like.
 	 *
@@ -289,6 +405,7 @@ export function assembleArtifact(
 					importance: structure.importance,
 					...(structure.name ? { name: structure.name } : {}),
 					...(structure.signText ? { signText: structure.signText } : {}),
+					...(structure.lock ? { lock: structure.lock } : {}),
 				})),
 			},
 			npcs: written.npcs.map((npc, slot) => ({
@@ -304,6 +421,9 @@ export function assembleArtifact(
 				placement: npc.placement,
 				...(npc.structureName ? { structureName: npc.structureName } : {}),
 				knows: npc.knows,
+				...(npc.requires ? { requires: npc.requires } : {}),
+				...(npc.stays ? { stays: true } : {}),
+				...(npc.indoors ? { indoors: true } : {}),
 			})),
 			hooks: written.hooks,
 		};
@@ -330,6 +450,15 @@ export function assembleArtifact(
 		regions,
 		sites,
 		...(arc ? { arc } : {}),
+		// Carried through untouched. There is nothing to derive these from — an author
+		// writing a trigger has already said the whole of it — and being unable to write
+		// them in a draft is what forced every scenario into hand-editing its artifact
+		// and then never re-assembling it again.
+		...(draft.tiles ? { tiles: draft.tiles } : {}),
+		...(draft.time ? { time: draft.time } : {}),
+		...(draft.triggers?.length ? { triggers: draft.triggers } : {}),
+		...(draft.barriers?.length ? { barriers: draft.barriers } : {}),
+		...(draft.placements?.length ? { placements: draft.placements } : {}),
 		...(Object.keys(trees).length > 0 ? { trees } : {}),
 		authoredWith: { models: { author: "claude-code" }, calls: 0, at },
 	};
@@ -400,13 +529,12 @@ function lowerArc(
 					},
 				]
 			: [];
-		const previous = draft.beats[order - 1];
 		return {
 			id: raw.id,
 			order,
 			siteId: raw.siteId,
 			npcSlot: raw.npcSlot,
-			requires: previous ? [`arc:${previous.id}`] : [],
+			requires: raw.requires ?? derivedRequires(draft.beats, order),
 			setsFlag: `arc:${raw.id}`,
 			...(raw.quest
 				? {
@@ -415,11 +543,16 @@ function lowerArc(
 							name: raw.quest.name,
 							description: raw.quest.description,
 							objectives,
+							...(raw.quest.parentId ? { parentId: raw.quest.parentId } : {}),
 						},
 					}
 				: {}),
 			...(raw.journal ? { journal: raw.journal } : {}),
 			...(raw.card ? { card: raw.card } : {}),
+			...(raw.optional ? { optional: true } : {}),
+			...(raw.branch ? { branch: raw.branch } : {}),
+			...(raw.opensOn ? { opensOn: raw.opensOn } : {}),
+			...(raw.effects?.length ? { effects: raw.effects } : {}),
 		};
 	});
 	return {
@@ -427,7 +560,53 @@ function lowerArc(
 		premise: draft.premise,
 		beats,
 		...(draft.ending ? { ending: draft.ending } : {}),
+		...(draft.endings?.length ? { endings: draft.endings } : {}),
 	};
+}
+
+/**
+ * What a beat waits on, when nobody said otherwise.
+ *
+ * Three rules, and the last two exist because the naive chain has a trap at each end
+ * of a fork — traps an author is very unlikely to catch by reading, because both look
+ * fine until somebody plays the arm that was not tested.
+ *
+ * 1. Ordinarily: the beat before it.
+ * 2. **Skipping side errands.** Chaining onto an optional beat makes the main story
+ *    wait on an errand the player was explicitly told they could ignore.
+ * 3. **Rejoining a fork with `any`.** A beat after a fork must accept *either* arm.
+ *    Waiting on one arm dead-ends the other; waiting on the beat before the fork lets
+ *    the fork be skipped entirely, which leaves `remaining` above zero forever because
+ *    neither arm was ever barred. `{ any: [...] }` is the only spelling that survives
+ *    both, and deriving it means an author never has to know that.
+ */
+function derivedRequires(
+	beats: readonly z.infer<typeof BeatDraftSchema>[],
+	order: number,
+): ScenarioBeat["requires"] {
+	// An arm of a fork waits on what came *before* the fork, never on its siblings —
+	// they are alternatives, so waiting on one would make the other unreachable and the
+	// fork a corridor.
+	const group = beats[order]?.branch;
+	let index = order - 1;
+	while (index >= 0) {
+		const candidate = beats[index];
+		if (!candidate) break;
+		if (!candidate.optional && !(group !== undefined && candidate.branch === group)) break;
+		index--;
+	}
+
+	const previous = beats[index];
+	if (!previous) return [];
+	if (previous.branch === undefined) return [`arc:${previous.id}`];
+
+	// Every arm of the group that ends here, however many were written and wherever
+	// they sit among the optional beats that were just skipped.
+	const arms = beats
+		.slice(0, index + 1)
+		.filter((beat) => beat.branch === previous.branch)
+		.map((beat) => ({ flag: `arc:${beat.id}` }));
+	return arms.length > 1 ? { any: arms } : (arms[0] ?? []);
 }
 
 function lowerTrees(
@@ -441,11 +620,19 @@ function lowerTrees(
 			nodes[node.id] = {
 				id: node.id,
 				speech: node.speech,
-				...(node.requiresFlag ? { requires: [node.requiresFlag] } : {}),
+				...(node.requires
+					? { requires: node.requires }
+					: node.requiresFlag
+						? { requires: [node.requiresFlag] }
+						: {}),
 				choices: node.choices.map((choice) => ({
 					text: choice.text,
 					goto: choice.goto,
-					...(choice.requiresFlag ? { requires: [choice.requiresFlag] } : {}),
+					...(choice.requires
+						? { requires: choice.requires }
+						: choice.requiresFlag
+							? { requires: [choice.requiresFlag] }
+							: {}),
 				})),
 				...(node.actions?.length ? { actions: node.actions } : {}),
 			};
@@ -458,9 +645,14 @@ function lowerTrees(
 		for (const option of draft.entryAfter ?? []) {
 			const node = nodes[option.node];
 			if (!node) continue;
-			// A draft only ever produces the flag-list spelling, so this stays a list.
-			// A node already carrying a full condition is left alone rather than being
-			// silently widened into an `all` — a draft cannot have written one.
+			if (option.when) {
+				nodes[option.node] = { ...node, requires: option.when };
+				continue;
+			}
+			if (option.flag === undefined) continue;
+			// The flag spelling stays a list, which is what every draft has produced so
+			// far. A node already carrying a full condition is left alone rather than
+			// being silently widened into an `all`.
 			const already = Array.isArray(node.requires) ? node.requires : undefined;
 			if (already === undefined && node.requires !== undefined) continue;
 			if (already?.includes(option.flag)) continue;
@@ -468,14 +660,23 @@ function lowerTrees(
 		}
 
 		// Gated openings first, so the most specific one that qualifies is used.
-		const entry = [...(draft.entryAfter ?? []).map((option) => option.node), draft.entry].filter(
-			(node) => nodes[node],
-		);
+		const gated = (draft.entryAfter ?? []).map((option) => option.node).filter((n) => nodes[n]);
+		const entry = [...gated, draft.entry].filter((node) => nodes[node]);
 		if (entry.length === 0) continue;
+		// The gated openings go in front of `revisit` too, and this is not a nicety:
+		// `openingNode` consults `revisit` first on every meeting after the first, and a
+		// plain revisit node requires nothing, so it always qualifies. A tree with both a
+		// `revisit` and an `entryAfter` therefore *never* reached the alternative opening
+		// — which is the one that carries the fork, the reward, or the scene after the
+		// story moved. Written once, unreadable ever after the first hello.
+		//
+		// Only when there is a revisit node to shadow it: with none, `openingNode` falls
+		// through to `entry`, which already leads with the same gated openings.
+		const hasRevisit = draft.revisit !== undefined && nodes[draft.revisit] !== undefined;
 		trees[id] = {
 			npcId: id,
 			entry,
-			...(draft.revisit && nodes[draft.revisit] ? { revisit: [draft.revisit] } : {}),
+			...(hasRevisit ? { revisit: [...gated, draft.revisit as string] } : {}),
 			nodes,
 		};
 	}

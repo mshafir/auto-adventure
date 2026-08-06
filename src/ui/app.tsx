@@ -7,8 +7,9 @@ import { lightingRuns, weatherRuns } from "../core/rules/clock.js";
 import { facingDelta } from "../core/rules/effects.js";
 import { forageKey, isForageable } from "../core/rules/forage.js";
 import { isContainer, lootKey } from "../core/rules/loot.js";
+import { takenKey } from "../core/rules/placement.js";
 import { questNeeding } from "../core/rules/quests.js";
-import { activeQuests } from "../core/rules/state.js";
+import { activeQuests, worldAnchor } from "../core/rules/state.js";
 import { D, type DecorId, decorDef } from "../core/tiles/decor.js";
 import { TFlag } from "../core/tiles/flags.js";
 import { terrainDef } from "../core/tiles/terrain.js";
@@ -245,15 +246,15 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		[player.x, player.y, fit.width, fit.height],
 	);
 
-	const cc = toChunk(player.x, player.y);
+	// Where the player is *in the world*. Indoors their coordinates are local to the
+	// interior grid, so anything asked in chunk space — which region is this, what is
+	// on the minimap, which way is the errand — has to be asked from the doorway.
+	const outside = worldAnchor(player);
+	const cc = toChunk(outside.x, outside.y);
 	const summary = engine.getChunks().summaryFor(cc.cx, cc.cy);
 	const looking = state.notice ?? describeFaced(engine, view, facedX, facedY, player.x, player.y);
-	// Indoors, the position is interior-local, so the settlement has to be resolved
-	// from the doorway rather than from where the player is standing.
 	const placeName = player.inside
-		? (player.inside.name ??
-			engine.placeNameAt(player.inside.returnX, player.inside.returnY) ??
-			player.inside.structure)
+		? (player.inside.name ?? engine.placeNameAt(outside.x, outside.y) ?? player.inside.structure)
 		: engine.placeNameAt(player.x, player.y);
 	const facedNpc = engine.personAt(facedX, facedY);
 
@@ -444,6 +445,24 @@ function describeFaced(
 			: `The door of ${label}. Walk into it to enter.`;
 	}
 
+	// The authored item first, and before the decor it is sitting in or on.
+	//
+	// Its own line rather than the container's, because the two disagree about the only
+	// thing the player needs: a shelf already searched says "you have been through it"
+	// while the thing the story just put in it is still there waiting. And a placement
+	// lying on open ground has no decor at all to describe, so without this the game
+	// drew a mark on the tile and then said nothing whatsoever about it.
+	const placed = engine.placedAt(x, y);
+	if (placed) {
+		const taken = engine.getState().flags[takenKey(placed.id)];
+		if (!taken) {
+			const decorHere = view.decorAt(x, y);
+			const where = decorHere !== 0 ? `${decorDef(decorHere).describe} ` : "";
+			return `${where}Something is here. SPACE to take it.`;
+		}
+		return placed.placement.emptyText ?? "There is nothing more here.";
+	}
+
 	const decor = view.decorAt(x, y);
 	if (decor !== 0) {
 		const def = decorDef(decor);
@@ -451,8 +470,11 @@ function describeFaced(
 		if (sign) return `${def.describe} It reads "${sign}".`;
 		if (isContainer(decor)) {
 			const inside = engine.getState().player.inside;
+			// The storey too: a chest emptied on the ground floor is not the chest
+			// directly above it, and `lootKey` has always distinguished them.
 			const emptied =
-				inside !== undefined && engine.getState().flags[lootKey(inside.interiorId, x, y)];
+				inside !== undefined &&
+				engine.getState().flags[lootKey(inside.interiorId, x, y, inside.level ?? 0)];
 			return emptied
 				? `${def.describe} You have already been through it.`
 				: `${def.describe} SPACE to search it.`;

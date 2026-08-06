@@ -1,11 +1,13 @@
+import { getInterior } from "../core/gen/features/interior.js";
 import type { AnchorKind } from "../core/gen/features/patch.js";
-import { invalidateFeature } from "../core/gen/features/registry.js";
-import { generateSettlement } from "../core/gen/features/settlement.js";
+import { generateFeature, invalidateFeature } from "../core/gen/features/registry.js";
+import { standingRoom } from "../core/gen/features/residents.js";
 import { generateChunk } from "../core/gen/pipeline.js";
 import { findPath } from "../core/geom/astar.js";
 import { beatNpcId, orderedBeats, type ScenarioBeat } from "../core/rules/arc.js";
 import type { CardSection } from "../core/rules/card.js";
-import { asCondition, itemsRead, npcsRead } from "../core/rules/condition.js";
+import { asCondition, flagsRead, itemsRead, npcsRead } from "../core/rules/condition.js";
+import type { DomainEffect } from "../core/rules/effects.js";
 import type { Barrier } from "../core/rules/lock.js";
 import { obtainableItems } from "../core/rules/obtainable.js";
 import { placementSlot } from "../core/rules/placement.js";
@@ -18,19 +20,13 @@ import { TFlag } from "../core/tiles/flags.js";
 import type { TerrainId } from "../core/tiles/terrain.js";
 import { isWellInside } from "../core/world/bounds.js";
 import { CHUNK, HALO, localIndex, toChunk } from "../core/world/coords.js";
-import {
-	isSettlement,
-	MACRO,
-	type MacroSite,
-	macroSite,
-	maxFeatureRadius,
-} from "../core/world/macro.js";
+import { MACRO, type MacroSite, macroSite, maxFeatureRadius } from "../core/world/macro.js";
 import { type PlaceRecipe, placeKey, type WorldRules } from "../core/world/recipe.js";
 import { npcId } from "../core/world/spec.js";
+import { resolveBarriers } from "../engine/barriers.js";
 import { resolvePlacements } from "../engine/placements.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
-import { flagsWritten, unsatisfiableFlags } from "./flag-sources.js";
-import { planFor } from "./survey.js";
+import { conditionSatisfiable, flagsWritten, unsatisfiableFlags } from "./flag-sources.js";
 
 /**
  * Check authored content against the world it claims to describe.
@@ -70,13 +66,16 @@ export function hasErrors(findings: readonly Finding[]): boolean {
 }
 
 /**
- * Tiles of walking each beat is worth, for the duration estimate.
+ * The two pacing shapes worth remarking on.
  *
- * A guess about the player rather than a fact about the world, which is why the
- * check that uses it produces a warning with the real number in it rather than an
- * error. Treat the estimate as an ordering, not a promise.
+ * Guesses about the player rather than facts about the world, which is why both
+ * produce a warning with the real number in it. A very long single leg is the one
+ * that actually spoils a session — the player walks for four minutes and begins to
+ * suspect the game has lost the thread — and a story that never leaves one place is
+ * the other. Everything between those is a pace, not a mistake.
  */
-const TILES_PER_BEAT = 500;
+const LONG_MARCH = 320;
+const SHORT_STORY = 60;
 
 /**
  * The anchor a placement really resolves to.
@@ -222,30 +221,43 @@ function pathLength(
 }
 
 /**
- * How much walking the story asks for.
+ * How much walking the story asks for, leg by leg.
  *
  * Spawn to the first beat, then beat to beat in order. Stops at the first leg that
  * cannot be walked at all, which is the finding that matters most: a story with an
  * unreachable beat is a story that cannot be finished.
+ *
+ * A *leg* is a journey between two places, which is what a player experiences —
+ * consecutive beats at the same site are one scene, not two walks. Counting beats
+ * instead made a story with four scenes in one castle look like four journeys.
  */
 export function storyWalk(
 	artifact: ScenarioArtifact,
 	grid: PassabilityGrid,
 	sites: Map<number, MacroSite>,
-): { readonly tiles: number; readonly unreachable?: string } {
-	if (!artifact.arc) return { tiles: 0 };
+): {
+	readonly tiles: number;
+	readonly legs: readonly { readonly to: string; readonly tiles: number }[];
+	readonly unreachable?: string;
+} {
+	const legs: { to: string; tiles: number }[] = [];
+	if (!artifact.arc) return { tiles: 0, legs };
 
 	let tiles = 0;
+	let at: number | undefined;
 	let from: { readonly x: number; readonly y: number } = artifact.spawn;
 	for (const beat of orderedBeats(artifact.arc)) {
 		const to = sites.get(beat.siteId)?.site;
-		if (!to) return { tiles, unreachable: beat.id };
+		if (!to) return { tiles, legs, unreachable: beat.id };
+		if (beat.siteId === at) continue;
 		const length = pathLength(grid, from, to);
-		if (length === undefined) return { tiles, unreachable: beat.id };
+		if (length === undefined) return { tiles, legs, unreachable: beat.id };
 		tiles += length;
+		legs.push({ to: artifact.sites[String(beat.siteId)]?.name ?? beat.id, tiles: length });
 		from = to;
+		at = beat.siteId;
 	}
-	return { tiles };
+	return { tiles, legs };
 }
 
 /**
@@ -266,17 +278,19 @@ export function validateArtifact(artifact: ScenarioArtifact): Finding[] {
 	// Settlements first: it drops the patch cache per site, and the passability grid
 	// stamps those same patches, so building the grid first would measure a layout
 	// that is about to be invalidated.
-	findings.push(...checkSettlements(artifact, sites));
+	findings.push(...checkPlaces(artifact, sites));
 	const grid = buildPassability(artifact);
 	const terrainAt = (x: number, y: number) => terrainOf(grid, x, y);
 	findings.push(...checkSpawn(artifact, grid));
 	findings.push(...checkStory(artifact, grid, sites, terrainAt));
 	findings.push(...checkTrees(artifact));
-	findings.push(...checkGates(artifact, grid));
-	findings.push(...checkPlacements(artifact, grid));
+	findings.push(...checkGates(artifact, grid, sites));
+	findings.push(...checkPlacements(artifact, grid, sites));
 	findings.push(...checkConditions(artifact));
 	findings.push(...checkFindability(artifact));
 	findings.push(...checkBranches(artifact));
+	findings.push(...checkEarlyCast(artifact));
+	findings.push(...checkHandovers(artifact));
 	return findings;
 }
 
@@ -492,6 +506,18 @@ function authoredProse(artifact: ScenarioArtifact): string {
 		);
 	};
 
+	/** The words inside a list of effects, wherever the list came from. */
+	const proseIn = (effects: readonly DomainEffect[] | undefined): string[] => {
+		const said: string[] = [];
+		for (const effect of effects ?? []) {
+			if (effect.t === "RecordJournal") said.push(effect.entry.text);
+			if (effect.t === "ShowCard") card(effect.card);
+			if (effect.t === "AdvanceQuest") said.push(effect.note);
+			if (effect.t === "CreateQuest") said.push(effect.name, effect.description);
+		}
+		return said;
+	};
+
 	for (const spec of Object.values(artifact.sites)) {
 		parts.push(spec.description, ...spec.hooks);
 		for (const npc of spec.npcs) parts.push(...npc.knows, npc.persona, npc.appearance);
@@ -502,17 +528,11 @@ function authoredProse(artifact: ScenarioArtifact): string {
 	for (const beat of artifact.arc?.beats ?? []) {
 		parts.push(beat.journal ?? "", beat.quest?.name ?? "", beat.quest?.description ?? "");
 		if (beat.card) card(beat.card);
+		parts.push(...proseIn(beat.effects));
 	}
 	if (artifact.arc?.ending) card(artifact.arc.ending);
 	for (const ending of artifact.arc?.endings ?? []) card(ending);
-	for (const trigger of artifact.triggers ?? []) {
-		for (const effect of trigger.effects) {
-			if (effect.t === "RecordJournal") parts.push(effect.entry.text);
-			if (effect.t === "ShowCard") card(effect.card);
-			if (effect.t === "AdvanceQuest") parts.push(effect.note);
-			if (effect.t === "CreateQuest") parts.push(effect.name, effect.description);
-		}
-	}
+	for (const trigger of artifact.triggers ?? []) parts.push(...proseIn(trigger.effects));
 	for (const barrier of artifact.barriers ?? []) {
 		parts.push(barrier.lockedText, barrier.opensText ?? "");
 	}
@@ -535,9 +555,25 @@ function authoredProse(artifact: ScenarioArtifact): string {
  * is what the tile would be if the gate were not there, which is exactly what tells a
  * gate across a road from a gate embedded in a cliff.
  */
-function checkGates(artifact: ScenarioArtifact, grid: PassabilityGrid): Finding[] {
+function checkGates(
+	artifact: ScenarioArtifact,
+	grid: PassabilityGrid,
+	sites: Map<number, MacroSite>,
+): Finding[] {
 	const findings: Finding[] = [];
-	const barriers = artifact.barriers ?? [];
+	if (!artifact.barriers?.length) return findings;
+
+	// Resolved through the same function the session resolves them with, so a gate this
+	// accepts is one that will really be stamped. A span naming a castle's gate is the
+	// spelling most worth checking here, because it is the one that can go stale
+	// silently: the recipe moves the castle and the gate follows, or it does not exist.
+	const { resolved: barriers, unresolved } = resolveBarriers(artifact.barriers, {
+		world: artifactWorld(artifact),
+		bounds: artifact.bounds,
+	});
+	for (const problem of unresolved) {
+		findings.push(error(`barrier ${problem.id}: ${problem.reason}`));
+	}
 	if (barriers.length === 0) return findings;
 
 	const seen = new Set<string>();
@@ -566,6 +602,44 @@ function checkGates(artifact: ScenarioArtifact, grid: PassabilityGrid): Finding[
 		}
 
 		findings.push(...checkGateBlocks(barrier, grid, shut));
+	}
+
+	findings.push(...checkNobodyStandsOnAGate(artifact, sites, shut));
+	return findings;
+}
+
+/**
+ * Whether anybody is standing in the gateway.
+ *
+ * A gate opens when the player *walks into it*, and walking into a person opens a
+ * conversation before anything else is considered. So somebody standing on a gate tile
+ * makes that tile unbumpable, and if they are on the only tile the road leads to, the
+ * gate can never be opened at all. The symptom is the worst kind: the player talks to
+ * the gatekeeper, the flag is set, the errand advances, and the gate stays shut — so it
+ * reads as "I must be missing a step" rather than as a fault.
+ *
+ * Shipped once, in this scenario: the castle generator put its `gate` anchor on the
+ * middle tile of its own arch, the porter took it, and the road led straight to him.
+ */
+function checkNobodyStandsOnAGate(
+	artifact: ScenarioArtifact,
+	sites: Map<number, MacroSite>,
+	shut: ReadonlySet<string>,
+): Finding[] {
+	const findings: Finding[] = [];
+	for (const spec of Object.values(artifact.sites)) {
+		const site = sites.get(spec.siteId);
+		if (!site) continue;
+		const built = generateFeature(artifactWorld(artifact), site, spec.settlement);
+		if (!built) continue;
+		for (const anchor of built.anchors) {
+			if (!shut.has(`${anchor.x},${anchor.y}`)) continue;
+			findings.push(
+				error(
+					`${spec.name} has a "${anchor.kind}" anchor at ${anchor.x},${anchor.y}, which is a gate tile; anybody standing there is spoken to instead of the gate being opened, and the gate can never be bumped`,
+				),
+			);
+		}
 	}
 	return findings;
 }
@@ -681,7 +755,19 @@ const TRIVIAL_DETOUR = 30;
  * it saves: an item that is quietly nowhere makes a `have` objective naming it
  * impossible to finish, and nothing on screen says why.
  */
-function checkPlacements(artifact: ScenarioArtifact, grid: PassabilityGrid): Finding[] {
+/**
+ * How far a placement is from anywhere the story sends the player.
+ *
+ * Beyond this it is not hidden, it is lost: the search gesture works one tile at a
+ * time, so an item nobody is within sight of is an item found by sweeping the map.
+ */
+const FAR_TO_FETCH = 40;
+
+function checkPlacements(
+	artifact: ScenarioArtifact,
+	grid: PassabilityGrid,
+	sites: Map<number, MacroSite>,
+): Finding[] {
 	const findings: Finding[] = [];
 	const placements = artifact.placements ?? [];
 	if (placements.length === 0) return findings;
@@ -705,7 +791,7 @@ function checkPlacements(artifact: ScenarioArtifact, grid: PassabilityGrid): Fin
 	for (const entry of resolved) {
 		// Two items on one tile is not a crash — the later wins, deterministically — but
 		// one of them is unreachable, which is the same silent failure as being nowhere.
-		const slot = placementSlot(entry.interiorId, entry.x, entry.y);
+		const slot = placementSlot(entry.interiorId, entry.x, entry.y, entry.level);
 		const other = slots.get(slot);
 		if (other) {
 			findings.push(
@@ -719,13 +805,65 @@ function checkPlacements(artifact: ScenarioArtifact, grid: PassabilityGrid): Fin
 		if (entry.interiorId !== undefined) continue;
 		if (!isWellInside(artifact.bounds, entry.x, entry.y)) {
 			findings.push(error(`placement ${entry.id} is inside the boundary band`));
-		} else if (!isPassable(grid, entry.x, entry.y)) {
+			continue;
+		}
+		if (!isPassable(grid, entry.x, entry.y)) {
 			findings.push(
 				error(`placement ${entry.id} is on a tile the player cannot stand next to and search`),
+			);
+			continue;
+		}
+
+		// Passable is not the same as reachable. An item on a marsh island across an
+		// inlet passes every other test here and is found by nobody; the first version of
+		// the shipped scenario had one sixty-two tiles round the water from the person
+		// who asks for it, and nothing said so.
+		const walk = nearestStop(artifact, sites, entry);
+		if (!walk) continue;
+		const distance = pathLength(grid, walk.at, entry);
+		if (distance === undefined) {
+			findings.push(
+				error(
+					`placement ${entry.id} cannot be walked to from ${walk.name}; it is on ground cut off from the rest of the world`,
+				),
+			);
+		} else if (distance > FAR_TO_FETCH) {
+			findings.push(
+				warning(
+					`placement ${entry.id} is ${distance} tiles from ${walk.name}, the nearest place the story sends anybody; that is a sweep of the map rather than a search`,
+				),
 			);
 		}
 	}
 	return findings;
+}
+
+/**
+ * The nearest place the story actually sends the player, for a world placement.
+ *
+ * Beats first, then the spawn, because a beat is somewhere the player is *told* to
+ * stand and the spawn is only where they start. A scenario with no arc still gets the
+ * spawn, which is the only place it can promise anybody will be.
+ */
+function nearestStop(
+	artifact: ScenarioArtifact,
+	sites: Map<number, MacroSite>,
+	at: { readonly x: number; readonly y: number },
+): { readonly at: { readonly x: number; readonly y: number }; readonly name: string } | undefined {
+	let best: { at: { x: number; y: number }; name: string; gap: number } | undefined;
+	for (const beat of artifact.arc?.beats ?? []) {
+		const site = sites.get(beat.siteId);
+		if (!site) continue;
+		const gap = Math.hypot(site.site.x - at.x, site.site.y - at.y);
+		if (best && gap >= best.gap) continue;
+		best = {
+			at: { x: site.site.x, y: site.site.y },
+			name: artifact.sites[String(beat.siteId)]?.name ?? `site ${beat.siteId}`,
+			gap,
+		};
+	}
+	if (best) return { at: best.at, name: best.name };
+	return { at: artifact.spawn, name: "the spawn" };
 }
 
 /**
@@ -831,6 +969,8 @@ function checkBranches(artifact: ScenarioArtifact): Finding[] {
 			continue;
 		}
 
+		findings.push(...checkForkIsSpoken(artifact, group, arms));
+
 		for (const taken of arms) {
 			// What is written once this arm is chosen: everything except the flags only the
 			// arms *not* taken would have set.
@@ -841,14 +981,197 @@ function checkBranches(artifact: ScenarioArtifact): Finding[] {
 			for (const beat of arc.beats) {
 				if (beat.optional) continue;
 				if (beat.branch !== undefined && beat.id !== taken.id) continue;
-				for (const flag of unsatisfiableFlags(beat.requires, available)) {
-					findings.push(
-						error(
-							`if "${taken.id}" is chosen, beat ${beat.id} waits on "${flag}", which only the other arm of "${group}" sets`,
-						),
-					);
+				// Asked as "could this ever open", not "does it mention a barred flag".
+				// `{ any: [armA, armB] }` mentions both and is satisfied by either, and it
+				// is the only correct way to put a beat downstream of a fork.
+				if (conditionSatisfiable(beat.requires, available)) continue;
+				const blocking = unsatisfiableFlags(beat.requires, available);
+				findings.push(
+					error(
+						`if "${taken.id}" is chosen, beat ${beat.id} can never open: it waits on ${blocking
+							.map((flag) => `"${flag}"`)
+							.join(" and ")}, which only the other arm of "${group}" sets`,
+					),
+				);
+			}
+		}
+	}
+	return findings;
+}
+
+/**
+ * Whether taking one arm of a fork changes anything anybody says.
+ *
+ * The scenario that prompted this had a real fork — hand the girdle over or keep it
+ * back — with an ending card for each arm, and every route through the finale ran into
+ * one speech written for the arm that kept it. A player who gave it up was told to his
+ * face that he had failed the third test, and *then* shown a card congratulating him.
+ * Arthur said the same thing a minute later.
+ *
+ * A card is an epilogue. The scene is what the player is actually in, and a fork the
+ * scene does not know about is a fork the player experiences as being ignored. Nothing
+ * else catches it: both arms open, both endings pick correctly, the flags are all
+ * written and all read, and the story is wrong anyway.
+ *
+ * A warning rather than an error. A fork whose consequence is genuinely only in the
+ * epilogue is a legitimate, if thin, thing to write.
+ */
+function checkForkIsSpoken(
+	artifact: ScenarioArtifact,
+	group: string,
+	arms: readonly ScenarioBeat[],
+): Finding[] {
+	// What choosing an arm marks: its own flag, and anything its effects set. Either is
+	// a fair thing for a line of dialogue to be conditioned on.
+	const marks = new Set<string>();
+	for (const arm of arms) {
+		marks.add(arm.setsFlag);
+		for (const effect of arm.effects ?? []) {
+			if (effect.t === "SetFlag") marks.add(effect.key);
+		}
+	}
+
+	for (const tree of Object.values(artifact.trees ?? {})) {
+		for (const node of Object.values(tree.nodes)) {
+			const conditions = [node.requires, ...node.choices.map((choice) => choice.requires)];
+			for (const condition of conditions) {
+				for (const flag of flagsRead(asCondition(condition))) {
+					if (marks.has(flag)) return [];
 				}
 			}
+		}
+	}
+
+	return [
+		warning(
+			`fork "${group}" changes the ending but nothing anybody says: no dialogue node or choice is conditioned on ${[
+				...marks,
+			]
+				.map((flag) => `"${flag}"`)
+				.join(" or ")}, so both arms play the same scene`,
+		),
+	];
+}
+
+/**
+ * Somebody who comes on stage before the beat they anchor can open.
+ *
+ * The Green Knight appeared the moment the covenant was sworn and anchored a beat two
+ * beats further on. A player who rode straight for the mound found him waiting, walked
+ * up, and got the entire finale delivered at them — after which nothing had happened,
+ * no flag had moved, and the game offered no hint that anything was missing. It reads
+ * exactly like a broken quest, and it is invisible from every other check: the beat is
+ * reachable, the flags are all written, the conditions all hold eventually.
+ *
+ * Only for a cast the author *gated*. Somebody with no `requires` is permanent scenery
+ * and is present before every beat by construction — warning about those would fire on
+ * every NPC in every scenario and teach the author to ignore the validator. A `requires`
+ * is a deliberate statement about when somebody should be on stage, and being on stage
+ * earlier than the beat they carry is almost always an oversight in it.
+ *
+ * Satisfied two ways, because both are real fixes: gate them on the beat's own
+ * condition so they simply are not there yet, or give their tree an opening that knows
+ * the beat has not happened and says so — which is the better answer when the scene of
+ * arriving early is worth writing.
+ */
+function checkEarlyCast(artifact: ScenarioArtifact): Finding[] {
+	const findings: Finding[] = [];
+	const arc = artifact.arc;
+	if (!arc) return findings;
+
+	for (const beat of arc.beats) {
+		const spec = artifact.sites[String(beat.siteId)];
+		const npc = spec?.npcs.find((person) => person.slot === beat.npcSlot);
+		if (!spec || !npc?.requires) continue;
+
+		const onStage = flagsRead(asCondition(npc.requires));
+		const needed = [...flagsRead(asCondition(beat.requires))].filter((flag) => !onStage.has(flag));
+		if (needed.length === 0) continue;
+
+		// An opening written for the wait. Any node conditioned on one of the flags the
+		// beat is waiting for can tell the difference between "not yet" and "now", which
+		// is the whole of what the player needs.
+		const tree = artifact.trees?.[beatNpcId(beat)];
+		const knows = Object.values(tree?.nodes ?? {}).some((node) =>
+			[node.requires, ...node.choices.map((choice) => choice.requires)].some((condition) =>
+				[...flagsRead(asCondition(condition))].some((flag) => needed.includes(flag)),
+			),
+		);
+		if (knows) continue;
+
+		findings.push(
+			warning(
+				`${spec.name}: ${npc.name} is on stage before beat ${beat.id} can open — it waits on ${needed
+					.map((flag) => `"${flag}"`)
+					.join(
+						" and ",
+					)}, which nothing about their presence requires. A player who reaches them early gets the scene with nothing behind it; gate them on the same condition, or give their tree an opening that says the time has not come`,
+			),
+		);
+	}
+	return findings;
+}
+
+/**
+ * A hand-over that erases the reason it happened.
+ *
+ * Write the obvious thing — an opening offered when the player is carrying the thing
+ * they were sent for, which takes it and thanks them — and it works exactly once. The
+ * item is gone, so next time the condition is false, and the conversation falls back to
+ * the greeting it was written to replace: the ferryman asks for the mooring iron again,
+ * a minute after taking it out of your hands.
+ *
+ * Nothing else notices. Both nodes are reachable, the item is obtainable, the errand
+ * completes, the flags are all sound. It is only wrong from the player's side, and it
+ * makes the character look like they have forgotten a scene the player just played.
+ *
+ * Openings only, because that is where the damage is: a node reached mid-conversation
+ * is entered once by construction. An opening is re-chosen at every hello.
+ *
+ * Satisfied by the fix: set a flag when the hand-over happens and give the revisit an
+ * opening that reads it. The character then remembers, which is all the player wanted.
+ */
+function checkHandovers(artifact: ScenarioArtifact): Finding[] {
+	const findings: Finding[] = [];
+
+	for (const [key, tree] of Object.entries(artifact.trees ?? {})) {
+		const openings = new Set([...tree.entry, ...(tree.revisit ?? [])]);
+		// Flags any node in this tree is conditioned on, which is what a remembered
+		// hand-over would be recorded as.
+		const remembered = new Set(
+			Object.values(tree.nodes).flatMap((node) =>
+				[node.requires, ...node.choices.map((choice) => choice.requires)].flatMap((condition) => [
+					...flagsRead(asCondition(condition)),
+				]),
+			),
+		);
+
+		for (const id of openings) {
+			const node = tree.nodes[id];
+			if (!node?.requires) continue;
+			const wanted = itemsRead(asCondition(node.requires));
+			if (wanted.size === 0) continue;
+
+			const taken = (node.actions ?? []).filter(
+				(action) => action.kind === "takeItem" && action.item && wanted.has(action.item),
+			);
+			if (taken.length === 0) continue;
+
+			// Already fixed: this node records the hand-over and something reads it.
+			const records = (node.actions ?? []).some(
+				(action) => action.kind === "setFlag" && action.key && remembered.has(action.key),
+			);
+			if (records) continue;
+
+			findings.push(
+				warning(
+					`tree ${key} opens on "${id}" while the player carries ${taken
+						.map((action) => `"${action.item}"`)
+						.join(
+							" and ",
+						)}, and then takes it — so the scene plays once and every later hello falls back to asking for it again. Set a flag here and give the revisit an opening that reads it`,
+				),
+			);
 		}
 	}
 	return findings;
@@ -864,13 +1187,19 @@ function checkSpawn(artifact: ScenarioArtifact, grid: PassabilityGrid): Finding[
 }
 
 /**
- * Run the settlement generator and compare it to what was authored.
+ * Run the generator over every authored place and compare it to what was written.
  *
  * The roster is advisory: the engine decides how many plots there are and where
  * their doors face, so a spec asking for more than fits silently loses the tail.
  * Here that becomes a number somebody can read.
+ *
+ * This used to run only over *settlements* — `hamlet`, `village`, `town`, `fort` —
+ * which quietly exempted the three kinds a recipe exists to place. A castle whose ward
+ * could not hold its chapel, with a named character assigned to that chapel, passed
+ * validation in silence; the only way to find out was to generate the patch by hand.
+ * So it asks the registry instead, and every place kind is measured the same way.
  */
-function checkSettlements(artifact: ScenarioArtifact, sites: Map<number, MacroSite>): Finding[] {
+function checkPlaces(artifact: ScenarioArtifact, sites: Map<number, MacroSite>): Finding[] {
 	const findings: Finding[] = [];
 
 	for (const spec of Object.values(artifact.sites)) {
@@ -881,19 +1210,43 @@ function checkSettlements(artifact: ScenarioArtifact, sites: Map<number, MacroSi
 		}
 		if (!isWellInside(artifact.bounds, site.site.x, site.site.y))
 			findings.push(error(`${spec.name} is inside the boundary band`));
-		if (!isSettlement(site.kind)) continue;
 
-		// `generateSettlement` memoises by `(seed, siteId)`, which is right for a
-		// running game — one town, generated once — but wrong here: validating a
+		// `generateFeature` memoises by `(world, kind, siteId)`, which is right for a
+		// running game — one place, generated once — but wrong here: validating a
 		// re-authored roster for the same site would measure the *previous* layout and
 		// report the old town's anchors. Dropping the entry first makes each check
 		// describe the spec it was actually handed.
 		invalidateFeature(artifactWorld(artifact), site.id);
-		const built = generateSettlement(artifactWorld(artifact), site, spec.settlement);
+		const built = generateFeature(artifactWorld(artifact), site, spec.settlement);
+		if (!built) continue;
 		const names = new Set(
 			built.buildings.map((building) => building.name).filter((name): name is string => !!name),
 		);
 		const anchors = new Set(built.anchors.map((anchor) => anchor.kind));
+
+		// A place that built nothing at all is its own, much louder finding: the three
+		// recipe-placed kinds decline rather than compromise, so an empty patch is a
+		// castle that found no level ground, a dock with no shoreline or a cave with no
+		// hillside — and every person and errand hung off it is hanging off nothing.
+		if (built.buildings.length === 0 && built.anchors.length === 0) {
+			findings.push(
+				error(
+					`${spec.name} is a ${site.kind} that built nothing; the ground at ${site.site.x},${site.site.y} does not suit one, so move it or change its kind`,
+				),
+			);
+			continue;
+		}
+
+		// Beyond here the findings are about *choices*, and only an authored roster has
+		// any. A place nobody wrote is filled from the deterministic roster, and telling
+		// its author that a camp asked for two shacks and fitted one is noise they can do
+		// nothing with — it drowns the four sites the story actually turns on.
+		//
+		// "Somebody named a building here" is the test, because `fallbackSettlementSpec`
+		// never names one and an author almost always does. It is a heuristic, and the
+		// cost of it being wrong is a missing warning about a place whose buildings are
+		// all anonymous — which is a place nothing in the story can refer to anyway.
+		if (!spec.settlement.structures.some((structure) => structure.name)) continue;
 
 		if (built.buildings.length < spec.settlement.structures.length)
 			findings.push(
@@ -903,6 +1256,31 @@ function checkSettlements(artifact: ScenarioArtifact, sites: Map<number, MacroSi
 			);
 
 		for (const npc of spec.npcs) {
+			// Somebody in a room is a different question: they need a building that was
+			// built, and floor inside it to stand on. Both can fail silently — an unbuilt
+			// bower leaves the person nowhere at all rather than somewhere else — so this
+			// one is an error where the outdoor case is a warning.
+			if (npc.indoors) {
+				const room = npc.structureName
+					? built.buildings.find(
+							(building) => building.name?.toLowerCase() === npc.structureName?.toLowerCase(),
+						)
+					: built.buildings[0];
+				if (!room) {
+					findings.push(
+						error(
+							`${spec.name}: ${npc.name} stands inside "${npc.structureName ?? "a building"}", which was not built; they are nowhere`,
+						),
+					);
+				} else if (
+					standingRoom(getInterior(artifact.seed, room.interiorId, room.kind)).length === 0
+				) {
+					findings.push(
+						error(`${spec.name}: the ${room.kind} ${npc.name} stands in has no floor to stand on`),
+					);
+				}
+				continue;
+			}
 			// Placement is advisory and the engine says so: `pickAnchor` treats `yard` as
 			// a `doorstep`, and anything it cannot match falls through to any free
 			// outdoor anchor. So an unbuilt anchor is a placement that will not be
@@ -993,12 +1371,26 @@ function checkStory(
 	if (walk.unreachable) {
 		findings.push(error(`beat ${walk.unreachable} cannot be walked to inside the boundary`));
 	} else {
-		const expected = planFor(artifact.brief.duration).beats * TILES_PER_BEAT;
-		const ratio = walk.tiles / expected;
-		if (ratio < 0.6 || ratio > 1.4)
+		// Judged on the *legs*, not against a budget derived from the duration. Duration
+		// sets two things at once — how long the story is and how big the world is — so
+		// an author writing a tight tale in a roomy map was warned every single time and
+		// could do nothing about it. What is actually worth saying is the two shapes that
+		// play badly: one march so long the player stops believing in it, and a story
+		// that never leaves the room it started in.
+		const longest = walk.legs.reduce((worst, leg) => (leg.tiles > worst.tiles ? leg : worst), {
+			to: "",
+			tiles: 0,
+		});
+		if (longest.tiles > LONG_MARCH)
 			findings.push(
 				warning(
-					`the story is ${walk.tiles} tiles of walking; ${artifact.brief.duration ?? "medium"} expects about ${expected}`,
+					`${longest.tiles} tiles of walking in one stretch, to ${longest.to}; that is a long way with nothing happening`,
+				),
+			);
+		else if (walk.tiles < SHORT_STORY && walk.legs.length > 0)
+			findings.push(
+				warning(
+					`the whole story is ${walk.tiles} tiles of walking across ${walk.legs.length} journey(s); it may read as one scene rather than as a road`,
 				),
 			);
 	}
@@ -1030,6 +1422,34 @@ function checkTrees(artifact: ScenarioArtifact): Finding[] {
 	for (const [key, tree] of Object.entries(trees)) {
 		if (Object.keys(tree.nodes).length < 2)
 			findings.push(warning(`tree ${key} is a single line, not a conversation`));
+
+		/*
+		 * A line that hands something over must not be reachable twice.
+		 *
+		 * Actions fire every time their node is entered, and a conversation can be had as
+		 * often as the player likes — so a gift on an ungated node behind an ungated
+		 * choice is a gift the player can collect all afternoon. The shipped scenario did
+		 * exactly this: Arthur handed out a second shield on the second visit.
+		 *
+		 * The fix an author reaches for is a condition, on the node or on the choice that
+		 * leads to it — `{ not: { item: "..." } }` is the usual one, since "not already
+		 * carrying it" is not a flag anybody sets.
+		 */
+		for (const node of Object.values(tree.nodes)) {
+			const gives = (node.actions ?? []).some(
+				(action) => action.kind === "giveItem" || action.kind === "adjustGold",
+			);
+			if (!gives || node.requires !== undefined) continue;
+			const ways = Object.values(tree.nodes).flatMap((other) =>
+				other.choices.filter((choice) => choice.goto === node.id),
+			);
+			if (ways.length > 0 && ways.every((choice) => choice.requires !== undefined)) continue;
+			findings.push(
+				warning(
+					`tree ${key} node ${node.id} hands something over and nothing stops it happening twice; gate the node or the choice that leads to it, e.g. { "not": { "item": "..." } }`,
+				),
+			);
+		}
 	}
 
 	const without = people.filter((id) => !trees[id]);
@@ -1067,8 +1487,12 @@ function surroundingsFor(
 	const spec = artifact.sites[String(siteId)];
 	if (!site || !spec) return EMPTY_SURROUNDINGS;
 
+	// Through the registry, not `generateSettlement`: a castle asked for its settlement
+	// layout would answer with a town that is not there, and every building name in it
+	// would be a name the player can never walk into.
 	invalidateFeature(artifactWorld(artifact), site.id);
-	const built = generateSettlement(artifactWorld(artifact), site, spec.settlement);
+	const built = generateFeature(artifactWorld(artifact), site, spec.settlement);
+	if (!built) return EMPTY_SURROUNDINGS;
 
 	// Every other authored place, so a `reach` objective may point out of town. The
 	// engine looks two macro cells out; here the bound is the world, since a scenario

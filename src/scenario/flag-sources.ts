@@ -24,6 +24,12 @@ export function flagsWritten(artifact: ScenarioArtifact): Set<string> {
 		// A card records that it has been read, and an author may legitimately gate on
 		// that rather than on the beat's own flag.
 		if (beat.card) written.add(cardKey(beatCardId(beat)));
+		// A beat's own effects are as much a writer as a trigger's are; missing them
+		// would report every flag set by a beat as one nothing sets.
+		for (const effect of beat.effects ?? []) {
+			if (effect.t === "SetFlag") written.add(effect.key);
+			if (effect.t === "ShowCard") written.add(cardKey(effect.card.id));
+		}
 	}
 
 	for (const trigger of artifact.triggers ?? []) {
@@ -94,4 +100,34 @@ export function unsatisfiableFlags(
 ): string[] {
 	const read = flagsRead(asCondition(requires));
 	return [...read].filter((flag) => !written.has(flag) && !isEngineFlag(flag));
+}
+
+/**
+ * Whether a condition could ever hold, given what can be written.
+ *
+ * Different question from {@link unsatisfiableFlags}, and the difference is `any`.
+ * Flattening a condition to the flags it mentions is the right conservative answer to
+ * "does this name a flag nothing sets" — a typo inside an `any` is still a typo. It is
+ * the *wrong* answer to "can this beat ever open", because the one correct way to hang
+ * a beat downstream of a fork is `{ any: [armA, armB] }`, and flattening reports both
+ * arms as unreachable on the arm that was not taken. That made the correct spelling the
+ * only one the validator refused.
+ *
+ * Everything that is not a flag is treated as satisfiable: this exists to reason about
+ * which flags a fork bars, and an item or an hour is not something a fork can bar.
+ */
+export function conditionSatisfiable(
+	requires: readonly string[] | Parameters<typeof asCondition>[0],
+	written: ReadonlySet<string>,
+): boolean {
+	const condition = asCondition(requires);
+	if (condition === undefined) return true;
+	if ("all" in condition)
+		return condition.all.every((inner) => conditionSatisfiable(inner, written));
+	if ("any" in condition)
+		return condition.any.some((inner) => conditionSatisfiable(inner, written));
+	// A `not` over a barred flag is easier to satisfy, not harder.
+	if ("not" in condition) return true;
+	if ("flag" in condition) return written.has(condition.flag) || isEngineFlag(condition.flag);
+	return true;
 }

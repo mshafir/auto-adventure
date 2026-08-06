@@ -56,9 +56,16 @@ export interface Resident {
 	readonly spec: NpcSpec;
 }
 
-/** Ids are namespaced so an interior slot can never collide with a site slot. */
-export function residentId(interiorId: number, slot: number): string {
-	return `npc:in:${interiorId >>> 0}:${slot}`;
+/**
+ * Ids are namespaced so an interior slot can never collide with a site slot.
+ *
+ * The ground floor keeps the id it always had, for the same reason `lootKey` keeps its
+ * key: an id is what a remembered conversation is filed under, and renaming one turns
+ * somebody the player has met into a stranger.
+ */
+export function residentId(interiorId: number, slot: number, level = 0): string {
+	const floor = level === 0 ? "" : `:L${level}`;
+	return `npc:in:${interiorId >>> 0}${floor}:${slot}`;
 }
 
 export function isResidentId(id: string): boolean {
@@ -72,8 +79,25 @@ export function isResidentId(id: string): boolean {
  * pack that lists none at all leaves every building empty rather than crashing, which
  * is a legible way for a bad pack to fail.
  */
+/**
+ * Who lives in a structure of this kind.
+ *
+ * The built-in tables are consulted before the fall-back to `house`, and that order is
+ * the whole point. Falling straight through to `house` turned "this pack says nothing
+ * about caves" into "a weaver, a cooper and a widow live in the mound" — three named
+ * villagers standing in a hole in a hillside that the story treats as the least
+ * inhabited place in the world. The default pack knows a cave and a ruin hold nobody,
+ * so a pack that simply did not think about them inherits that rather than a family.
+ *
+ * `house` remains the last resort, because a kind nobody has an opinion about is more
+ * likely to be somewhere people are than somewhere they are not.
+ */
 function householdFor(pack: ContentPack, kind: StructureKind): Household {
-	return pack.households[kind] ?? pack.households.house ?? { count: [0, 0], roles: [] };
+	return (
+		pack.households[kind] ??
+		DEFAULT_PACK.households[kind] ??
+		pack.households.house ?? { count: [0, 0], roles: [] }
+	);
 }
 
 export function residentsOf(
@@ -82,14 +106,20 @@ export function residentsOf(
 	kind: StructureKind,
 	interior: Interior,
 	pack: ContentPack = DEFAULT_PACK,
+	/** Tiles already spoken for, so a named character is never stood on by filler. */
+	taken: ReadonlySet<string> = new Set(),
 ): readonly Resident[] {
 	const household = householdFor(pack, kind);
-	const rng = rngFor(seed, "residents", interiorId);
+	// A storey of its own, with its own people. The stream name carries the level
+	// rather than the coordinates, so the ground floor's stream is byte-for-byte the
+	// one it has always had and nobody already living there is rearranged.
+	const level = interior.level ?? 0;
+	const rng = rngFor(seed, level === 0 ? "residents" : `residents:${level}`, interiorId);
 	const [low, high] = household.count;
 	const count = low + (high > low ? rng.int(high - low + 1) : 0);
 	if (count === 0 || household.roles.length === 0) return [];
 
-	const spots = standingRoom(interior);
+	const spots = standingRoom(interior).filter((spot) => !taken.has(`${spot.x},${spot.y}`));
 	if (spots.length === 0) return [];
 	const chosen = rng.shuffled(spots).slice(0, Math.min(count, spots.length));
 
@@ -117,7 +147,7 @@ export function residentsOf(
 			knows: [],
 		};
 		return {
-			id: residentId(interiorId, slot),
+			id: residentId(interiorId, slot, level),
 			name: spec.name,
 			role: spec.role,
 			glyph: spec.glyph,
@@ -139,7 +169,7 @@ export function residentsOf(
  * Excludes containers too, so a resident never sits on top of the crate the player
  * was sent to search.
  */
-function standingRoom(interior: Interior): { x: number; y: number }[] {
+export function standingRoom(interior: Interior): { x: number; y: number }[] {
 	const spots: { x: number; y: number }[] = [];
 	for (let y = 1; y < interior.height - 1; y++) {
 		for (let x = 1; x < interior.width - 1; x++) {

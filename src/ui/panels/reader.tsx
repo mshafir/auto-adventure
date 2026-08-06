@@ -2,7 +2,7 @@ import { Text } from "ink";
 import { arcOutline } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { describeObjective, questNeeding, questRows } from "../../core/rules/quests.js";
-import type { GameState, Quest } from "../../core/rules/state.js";
+import { type GameState, type Quest, worldAnchor } from "../../core/rules/state.js";
 import { toChunk } from "../../core/world/coords.js";
 import { type HudState, PANEL_TABS, type PanelTab } from "../hud-state.js";
 import { tileMode } from "../viewport.js";
@@ -253,7 +253,7 @@ function QuestDetail({
 	width: number;
 	rows: number;
 }) {
-	const here = toChunk(state.player.x, state.player.y);
+	const here = toChunk(worldAnchor(state.player).x, worldAnchor(state.player).y);
 	const mark = questMarks(state).find((candidate) => candidate.questId === quest.id);
 	const bearing = mark ? bearingTo(here.cx, here.cy, mark.cx, mark.cy) : undefined;
 

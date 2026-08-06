@@ -45,20 +45,23 @@ if (!existsSync("dist/main.js")) {
 }
 
 /**
- * Answering the front door: ENTER onto the New page, ENTER to start.
+ * Answering the front door: ENTER onto the New page, down to Wander, ENTER to start.
  *
  * Deterministic only because `AUTO_ADVENTURE_HOME` below points somewhere empty.
  * Against the real home directory the title screen would offer Continue as well,
- * the cursor would start there instead, and the same two keypresses would resume
+ * the cursor would start there instead, and the same keypresses would resume
  * somebody's world rather than beginning one — so the capture would depend on who
  * was running it.
  *
- * With `NO_AI=1` the two live modes are shown greyed and the cursor lands on
- * "Without a model", which is the one this wants.
+ * The New page opens on the written scenarios, and `NO_AI=1` greys out the two
+ * live modes between them and Wander — so one press down skips all three and lands
+ * on the generated world this wants. Scenarios are read from the repository rather
+ * than from `AUTO_ADVENTURE_HOME`, which is why the empty home does not remove them.
  */
 const LAUNCHER_KEYS: readonly { readonly at: number; readonly key: string }[] = [
 	{ at: 700, key: "\r" },
-	{ at: 1100, key: "\r" },
+	{ at: 1100, key: "[B" },
+	{ at: 1500, key: "\r" },
 ];
 
 const HOME = "/tmp/auto-adventure-capture";

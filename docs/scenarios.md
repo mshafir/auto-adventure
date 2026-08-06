@@ -270,6 +270,25 @@ can say whether that is the point.
 Gates want choke points, and a world may not have many. Searching for one is worth
 doing before writing the gate rather than after.
 
+**Open a gate on the gatekeeper, not on an arc flag.** `beatOpenedBy` fires at the
+moment of a conversation, and only if the beat's requirements hold *then* — so a player
+who talks to people in an order nobody anticipated loses that beat silently, and a gate
+waiting on its flag stays barred with nothing on screen to explain it. That shipped: a
+porter said the right thing while his gate never opened, because the beat the gate was
+gated on belonged to a knight the player had met too early.
+
+```json
+{ "opensWhen": { "talked": "npc:3839432062:2" } }
+```
+
+`{ "talked": ... }` asks about the conversation itself and cannot be missed. The same
+argument gives any beat the story cannot proceed without an `opensOn`, which is checked
+after every command rather than only during a conversation:
+
+```json
+{ "id": "the-porters-gate", "opensOn": { "visited": "Hautdesert" } }
+```
+
 ## Special items in specific places
 
 The generator already fills every crate and hedgerow, but only with *typical* items.
@@ -291,14 +310,31 @@ generated settlement when the world opens — so an unresolvable one is a findin
 rather than an item that is quietly nowhere.
 
 Implemented inside the existing search gesture rather than beside it: the placement
-index is consulted *before* `containerContents` and `forageAt`, keyed with the same
-`lootKey`. So an authored item inherits the whole path — taking-once persistence, the
-empty message, and `have` objective resolution — without needing its own verb. It also
-means `obtainableItems` has to know about placements, or the validator would refuse a
-fetch quest for the very item the scenario placed to be fetched.
+index is consulted *before* `containerContents` and `forageAt`. So an authored item
+inherits the whole path — the empty message, `have` objective resolution — without
+needing its own verb. It also means `obtainableItems` has to know about placements, or
+the validator would refuse a fetch quest for the very item the scenario placed to be
+fetched.
 
 `requires` is what makes "the body is in the millrace, *after* the flood" expressible:
 searched beforehand, the tile falls through to whatever is really there.
+
+**Taking one is recorded under `taken:<placement id>`, not under the tile.** Sharing
+the container's `lootKey` was a silent, unwinnable bug in both directions. A gated
+placement sits on a tile the generator already furnished, so a player who searched the
+shelf *before* the story put anything in it emptied it — and when the item appeared a
+minute later, the flag saying "you have been through this" was already set. The errand
+became impossible to finish, in a room the quest log was pointing at, with prose about
+folded linen where the item should have been. The other direction: a positional key is
+only stable while the resolver keeps choosing the same tile, and it does not — the axe
+at Camelot moved the day the resolver learned to prefer a container the player could
+actually reach.
+
+**`showDecor` is what makes a promised item findable.** Off by default, which is right
+for something inside a crate the player would open anyway — marking those gives away
+which crate in the warehouse matters. It is wrong for anything a line of dialogue tells
+the player to go and fetch. *"Take it afterwards if you have the legs for it"* pointed
+at an unmarked tile two storeys down a three-level cave.
 
 **An item is not findable just because it is obtainable.** This one cost a real
 playthrough: the shipped scenario gated its third act on carrying the Lead Standard,
@@ -322,6 +358,23 @@ resolvable by id, and not offered to the dialogue layer as somebody who is here.
 Their station is still reserved while they are away, because the gate is applied when
 the roster is *indexed* rather than when it is placed. A courier who arrives in
 chapter two must not find their doorstep taken by whoever was shuffled into it.
+
+**Bring them on when their scene does.** A `requires` weaker than the beat they anchor
+puts somebody on stage early, talkable, with nothing behind them — which reads as a
+broken quest rather than as a wait. The Green Knight appeared when the covenant was
+sworn and anchored a beat two beats later, so a player who rode straight for the mound
+got the entire finale delivered at them and nothing happened.
+
+Two fixes, and the second is usually the better story:
+
+- gate them on the beat's own condition, so they simply are not there yet; or
+- give their tree an opening conditioned on the beat *not* having happened, which turns
+  arriving early into a scene — *"Early, sir. Look at your hands, there is nothing in
+  them."* — and sends the player back with a reason.
+
+`checkEarlyCast` warns about the first case and is silenced by either fix. Ungated cast
+are exempt: somebody with no `requires` is permanent scenery and precedes every beat by
+construction.
 
 ## Branching, sub-errands and side errands
 
@@ -354,11 +407,53 @@ because an author writing "the grim one if the mill burned, otherwise the quiet 
 has already said which comes first. Each ending's card id is its own, so the read-once
 flag is per outcome.
 
+**An ending card is an epilogue, not the scene.** A fork whose only consequence is the
+last page is a fork the player experiences as being ignored, and it fails in a way
+nothing structural catches: both arms open, both endings pick correctly, every flag is
+written and read. The scenario this was learned on had one finale speech, written for
+the arm that kept the girdle, so a player who handed it over was told to his face that
+he had failed the third test — and then shown a card congratulating him. The king said
+the same thing a minute later.
+
+Branch the dialogue too. Two openings on the anchor, gated on the arms:
+
+```json
+"entryAfter": [
+  { "node": "returned-clean", "when": { "all": [{ "flag": "arc:done" }, { "flag": "girdle:given" }] } },
+  { "node": "returned",       "when": { "all": [{ "flag": "arc:done" }, { "flag": "girdle:hidden" }] } }
+]
+```
+
+Mutually exclusive conditions rather than an ordered list of increasingly specific
+ones: `openingNode` takes the first that holds, so a general opening listed before a
+specific one silently shadows it. `checkForkIsSpoken` warns when no dialogue node or
+choice in the whole scenario is conditioned on either arm.
+
 **Beats that open on their own.** `opensOn` lets a beat arrive without anybody
 speaking — walking into the burnt mill, or finding the ledger. Evaluated in the same
 settled pass as triggers, so it lands in the command that made it true rather than on
 the next step. The NPC anchor stays required, because that is what the validator
 checks against and what a later conversation about the beat hangs off.
+
+## The draft says all of it
+
+Everything on this page is a field of `ScenarioDraftSchema`, so a scenario is one file
+and one command. That was not true until recently: the newer vocabulary lived only in
+the artifact, so the loop was *assemble once, hand-patch the JSON, then never
+re-assemble* — because re-running the tool discarded every edit without saying so. A
+scenario that cannot be regenerated from its source is a scenario nobody can change.
+
+`drafts/green-chapel.json` is the proof and the worked example: it assembles to the
+shipped artifact byte for byte, and `green-chapel-live.test.ts` asserts that it still
+does. Two things are still derived rather than written, on purpose — beat order and
+gating flags — and one of those is worth reading about before writing a fork:
+
+**Do not write `requires` at a fork.** Assembly derives it, including the two cases
+that are easy to get wrong. An arm waits on the beat *before* the fork rather than on
+its sibling, or it can never open at all. And the beat after a fork waits on
+`{ any: [both arms] }`, because waiting on one arm dead-ends the other and waiting on
+the pre-fork beat lets the fork be skipped — which leaves `remaining` above zero for
+good, since neither arm was ever barred.
 
 ## Editing a scenario somebody is playing
 
@@ -374,6 +469,18 @@ objectives it was created with, because a quest is state and rewriting one under
 player would un-finish work they had done. So an edit reaches beats not yet opened, and
 an errand already in the log stays as it was — which is worth knowing when the fix *is*
 a changed objective.
+
+### Checking one after you have edited it
+
+```
+npm run validate -- --scenario green-chapel     # one
+npm run validate                                # every scenario on disk
+```
+
+`assemble --check` validates a *draft*; this runs the same offline pass over what is
+**installed**, and exits non-zero on errors so it can gate a commit. Worth having even
+now that a draft can say everything, because an artifact can be hand-edited, produced
+by an older build, or assembled against a generator that has since moved.
 
 ## Turning the clock off
 
@@ -1007,11 +1114,37 @@ Everything else degrades: a missing palette name draws in loud magenta, an atlas
 that is not there falls back to the built-in sprite, and an unparseable manifest logs
 and leaves the game looking ordinary. The player asked to play, not to debug JSON.
 
-There is a worked example in `.packs/tiles/inkwell/`, with all four sprite forms in it.
-Look at it with:
+### The two shipped packs
+
+`.packs/tiles/inkwell/` is the small one: three glyph overrides, three sprites, an
+eleven-colour palette and a three-cell atlas. It is what a pack looks like when it only
+wants to change a few things.
+
+`.packs/tiles/gramarye/` is the exhaustive one, and the one to copy from. It restates
+the *whole* palette, redraws forty-odd terrain and decor glyphs, and supplies sprites in
+all four forms — a dozen shapes, eight densities, ten ink masks and sixteen full-colour
+atlas cells with alpha.
+
+Its atlas is drawn in code:
+
+```
+npm run tiles:emit
+```
+
+Committed art nobody can regenerate is committed art nobody can change. Drawing it means
+the whole set can be shifted half a shade colder by editing one constant, which is what
+actually happens to a tile set, and it keeps the repository free of binaries whose
+provenance is a shrug. `encodePng` grew a four-channel path for it — `decodePng` had read
+colour type 6 all along, so until then the repo could read an atlas it had no way to
+write, and a decor tile with no alpha is a decor tile with a rectangle of background
+painted round it.
+
+Look at either one over any world, including one a scenario describes:
 
 ```
 npm run pixel-shot -- --seed alpha --at -1,-1 --tiles inkwell
+npm run pixel-shot -- --seed 3611560565 --at 0,-1 --tiles gramarye \
+                      --recipe .scenarios/green-chapel.json
 ```
 
 ## Content packs
@@ -1117,6 +1250,31 @@ it just stops being rewritten.
 
 **Any node miss falls through to `cannedTurn`.** The tree is an enrichment over a
 floor that already works, never a cliff.
+
+**An opening is re-chosen at every hello, so it must not erase its own condition.**
+The obvious spelling of a hand-over — an opening gated on `{ "item": "X" }` whose
+actions take X — works exactly once. Next meeting the item is gone, the condition is
+false, and the conversation falls back to the greeting that opening was written to
+replace: the ferryman asks for the mooring iron again, a minute after taking it out of
+the player's hands. Nothing else notices, because nothing else is wrong.
+
+Record the hand-over on the same node and give the revisit an opening that reads it:
+
+```json
+{ "id": "iron-back", "requires": { "item": "Mooring Iron" },
+  "actions": [ { "kind": "takeItem", "item": "Mooring Iron", "quantity": 1 },
+               { "kind": "giveItem", "item": "Fen Charm" },
+               { "kind": "adjustDisposition", "quantity": 15 },
+               { "kind": "setFlag", "key": "iron:returned", "value": "true" } ] }
+```
+
+Four actions are allowed on a node for exactly this shape — take, give, warm, record —
+and the cap used to be three, which quietly forced the record out. `checkHandovers`
+warns about an opening that takes what it is gated on, and is silenced by a `setFlag`
+some other node reads.
+
+Mid-conversation nodes are exempt: they are entered once by construction. It is only
+openings that are asked again.
 
 The honest limitation: a baked tree cannot react to arbitrary player state the
 way a live call can. `requires` variants and a revisit node cover the cases worth

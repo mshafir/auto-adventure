@@ -203,6 +203,9 @@ judgement:
 
 ## Rules the assembler enforces
 
+- A node or a choice may carry `requiresFlag` (shorthand) or `requires` (a full
+  condition). Choices are filtered by it before they are shown; a `goto` is **not**
+  checked, so gate the choice, not only the destination.
 - `goto` must name a node in the same tree, or be `null` to end. A dangling one ends
   the conversation at runtime, which reads as a character with nothing to say — so
   it is rejected.
@@ -240,6 +243,37 @@ judgement:
   nothing answers to is reported rather than silently kept.
 - The first beat opens with nothing done, and each later one waits on its
   predecessor. That is automatic — you cannot get it wrong by writing.
+
+## Conversations that are worth having
+
+A tree with one question in it is a tree the player reads once and never opens again,
+and four of those in a row is what makes a scenario feel thin. The engine gives every
+node up to four visible choices and sixteen nodes per tree; use them.
+
+- **Three or four choices on every node**, and make them *different stances* rather
+  than different phrasings — blunt, courteous, evasive, curious. The choice list is
+  where the player gets to decide who they are playing, and it is the only place.
+- **Every conversation should leave the player knowing where to go and which way it
+  lies.** Not "went north" — "north out of the meadow, keep the water on your left as
+  far as Holm Ferry, then it is fen for a day". A beat's errand puts a bearing on the
+  map; the dialogue is what makes the bearing mean something.
+- **Answer the question the player will actually have.** If an errand says *find the
+  axe in the keep*, somebody should say **where in the keep** — "in the barrels along
+  the north side". An errand whose target is a nine-by-nine room full of identical
+  crates is a search, not a story.
+- **Give at least one node per person that is pure texture** — what they think of the
+  weather, the lord, the road. It costs four lines and it is the difference between a
+  character and a signpost.
+- **`revisit` should re-state the errand**, not say "still here". It is the node the
+  player hits when they have forgotten what they were doing, which is most of the time.
+- **Let people know things about each other.** The porter knows the lord is loud; the
+  ferryman knows who has been asking about green men. Cross-references are what make a
+  cast feel like a place rather than a queue.
+- **Gate anything that is handed over.** Actions fire every time their node is
+  entered, so an ungated `giveItem` behind an ungated choice can be collected all
+  afternoon — the shipped scenario handed out a second shield on the second visit.
+  Put `"requires": { "not": { "item": "Pentangle Shield" } }` on the choice that leads
+  to it, or on the node. Validation warns about this one by name.
 
 ## Actions
 

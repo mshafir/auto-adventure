@@ -817,7 +817,7 @@
 						"A weight in the hand is evidence. A story about a weight is not."
 					],
 					"requires": {
-						"flag": "arc:the-honest-weight"
+						"flag": "arc:the-weight-in-hand"
 					}
 				}
 			],
@@ -1343,7 +1343,7 @@
 		"npc:2150566345:0": {
 			"npcId": "npc:2150566345:0",
 			"entry": ["hello-after", "hello"],
-			"revisit": ["again"],
+			"revisit": ["hello-after", "again"],
 			"nodes": {
 				"hello": {
 					"id": "hello",
@@ -1355,11 +1355,23 @@
 						},
 						{
 							"text": "What is wrong with the tally here?",
-							"goto": "tally"
+							"goto": "tally",
+							"requires": {
+								"not": {
+									"item": "Cord House tally"
+								}
+							}
 						},
 						{
 							"text": "Just a bed, thanks.",
 							"goto": null
+						},
+						{
+							"text": "What is wrong with the tally here?",
+							"goto": "tally-again",
+							"requires": {
+								"item": "Cord House tally"
+							}
 						}
 					]
 				},
@@ -1369,11 +1381,23 @@
 					"choices": [
 						{
 							"text": "And the tally?",
-							"goto": "tally"
+							"goto": "tally",
+							"requires": {
+								"not": {
+									"item": "Cord House tally"
+								}
+							}
 						},
 						{
 							"text": "That is enough to go on.",
 							"goto": null
+						},
+						{
+							"text": "And the tally?",
+							"goto": "tally-again",
+							"requires": {
+								"item": "Cord House tally"
+							}
 						}
 					]
 				},
@@ -1399,7 +1423,12 @@
 							"key": null,
 							"value": null
 						}
-					]
+					],
+					"requires": {
+						"not": {
+							"item": "Cord House tally"
+						}
+					}
 				},
 				"hello-after": {
 					"id": "hello-after",
@@ -1429,13 +1458,23 @@
 							"goto": "warden"
 						}
 					]
+				},
+				"tally-again": {
+					"id": "tally-again",
+					"speech": "You have my count in your hand already, sir. Take it up the road to Stonewait and see whose face changes; I am not walking it for you.",
+					"choices": [
+						{
+							"text": "North to Stonewait, then.",
+							"goto": null
+						}
+					]
 				}
 			}
 		},
 		"npc:2528282773:0": {
 			"npcId": "npc:2528282773:0",
 			"entry": ["hello-tally", "hello"],
-			"revisit": ["again"],
+			"revisit": ["hello-tally", "again"],
 			"nodes": {
 				"hello": {
 					"id": "hello",

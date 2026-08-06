@@ -113,7 +113,13 @@ export function buildCastle(world: WorldSeed, site: MacroSite, spec: SettlementS
 	for (const tile of gate.tiles) {
 		if (buildable(tile.x, tile.y)) patchWrite(patch, tile.x, tile.y, T.cobbleRoad);
 	}
-	anchors.push({ id: "gate:castle", kind: "gate", x: gate.centre.x, y: gate.centre.y });
+	// Beside the road, not on it and not in the arch. Walking into somebody opens a
+	// conversation before anything else is considered, so a gatekeeper standing in the
+	// way is a gatekeeper you talk to *instead of* reaching the gate — and a barred one
+	// can then never be bumped, so it never opens. The story stalls with nothing on
+	// screen to say why, and the apparent fix is "talk to him again", forever.
+	const station = buildable(gate.beside.x, gate.beside.y) ? gate.beside : gate.outside;
+	anchors.push({ id: "gate:castle", kind: "gate", x: station.x, y: station.y });
 	// A banner either side of the arch, so the entrance reads as the entrance.
 	for (const post of gate.flanks) {
 		if (buildable(post.x, post.y)) patchDecor(patch, post.x, post.y, D.banner);
@@ -250,6 +256,15 @@ interface Gate {
 	readonly flanks: readonly Vec2[];
 	/** One tile outside the wall, where the approach road starts. */
 	readonly outside: Vec2;
+	/**
+	 * Beside the approach road, just outside the wall.
+	 *
+	 * Where a gatekeeper goes. Not on the road and not in the arch: walking into
+	 * somebody opens a conversation before anything else is considered, so a person
+	 * anywhere on the way in is a person the player talks to instead of reaching the
+	 * gate — which, for a *barred* gate, means it can never be opened at all.
+	 */
+	readonly beside: Vec2;
 }
 
 /** The gap in the curtain wall, centred on the side the approach comes from. */
@@ -264,6 +279,7 @@ function gateSpan(yard: Rect, approach: Vec2): Gate {
 	let centre: Vec2;
 	let flanks: Vec2[];
 	let outside: Vec2;
+	let beside: Vec2;
 
 	if (approach.x !== 0) {
 		const wallX = approach.x > 0 ? right : yard.x;
@@ -274,6 +290,7 @@ function gateSpan(yard: Rect, approach: Vec2): Gate {
 			{ x: wallX, y: midY + reach + 1 },
 		];
 		outside = { x: wallX + approach.x, y: midY };
+		beside = { x: outside.x, y: outside.y + reach + 1 };
 	} else {
 		const wallY = approach.y > 0 ? bottom : yard.y;
 		centre = { x: midX, y: wallY };
@@ -283,9 +300,10 @@ function gateSpan(yard: Rect, approach: Vec2): Gate {
 			{ x: midX + reach + 1, y: wallY },
 		];
 		outside = { x: midX, y: wallY + approach.y };
+		beside = { x: outside.x + reach + 1, y: outside.y };
 	}
 
-	return { tiles, centre, flanks, outside };
+	return { tiles, centre, flanks, outside, beside };
 }
 
 /** A plot for the keep, against the wall opposite the gate. */

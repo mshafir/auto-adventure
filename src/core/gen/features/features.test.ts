@@ -104,6 +104,27 @@ describe("a castle", () => {
 	const { world, site } = placed("castle", { x: 320, y: 320 }, 4);
 	const patch = build(world, site);
 
+	it("stands its gatekeeper beside the way in, not on it", () => {
+		/*
+		 * Walking into somebody opens a conversation before anything else is considered,
+		 * so a person on the gate — or on the one tile of road that leads to it — is a
+		 * person the player talks to *instead of* reaching the gate. For a barred gate
+		 * that is fatal: it can never be bumped, so it never opens, and the symptom is a
+		 * gatekeeper who says the right thing while the gate stays shut for good.
+		 */
+		const anchor = patch.anchors.find((entry) => entry.kind === "gate");
+		expect(anchor, "a castle with no gate anchor has nowhere to put a gatekeeper").toBeDefined();
+		if (!anchor) return;
+		const span = castleGateTiles(world, site);
+		for (const tile of span) {
+			expect({ x: anchor.x, y: anchor.y }).not.toEqual({ x: tile.x, y: tile.y });
+		}
+		// And off the approach itself: the tile directly outside the middle of the arch
+		// is the one the road runs through.
+		const middle = span[1] as { x: number; y: number };
+		expect(Math.abs(anchor.x - middle.x) + Math.abs(anchor.y - middle.y)).toBeGreaterThan(1);
+	});
+
 	it("has one way in, and barring it seals the castle", () => {
 		// The property the whole feature exists for, tested the way a scenario uses it:
 		// put a gate across the span the generator reports, and the courtyard becomes
@@ -247,6 +268,33 @@ describe("a cave", () => {
 		expect(step).toBeDefined();
 		const i = (step as { y: number }).y - patch.bounds.y;
 		expect(i).toBeGreaterThanOrEqual(0);
+	});
+
+	it("stands its people beside the mouth, never in it", () => {
+		/*
+		 * A cave has one tile of approach. The mouth is one tile wide and the rock face
+		 * wraps around it, so the step downhill is the only ground the player can walk
+		 * into it from — and walking into a person is how you talk to them, so anybody
+		 * standing on that step seals the cave with nothing on screen to say so. It cost
+		 * exactly that: the Green Knight told the player to go down for the whetstone
+		 * afterwards, and then stood in the doorway they would have had to use.
+		 */
+		const mouth = patch.buildings.find((building) => building.kind === "cave");
+		expect(mouth).toBeDefined();
+		if (!mouth) return;
+		for (const anchor of patch.anchors) {
+			expect({ x: anchor.x, y: anchor.y }, `${anchor.id} stands in the cave mouth`).not.toEqual({
+				x: mouth.door.x,
+				y: mouth.door.y,
+			});
+		}
+
+		// And off the step itself, which is the tile the mouth is actually entered from.
+		const doorstep = patch.anchors.find((anchor) => anchor.kind === "doorstep");
+		expect(doorstep).toBeDefined();
+		if (!doorstep) return;
+		const gap = Math.abs(doorstep.x - mouth.door.x) + Math.abs(doorstep.y - mouth.door.y);
+		expect(gap, "the doorstep anchor is the only way in").toBeGreaterThan(1);
 	});
 
 	it("builds nothing on flat ground", () => {

@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { type GameState, SAVE_VERSION } from "../core/rules/state.js";
+import { type GameState, SAVE_VERSION, worldAnchor } from "../core/rules/state.js";
 import { logger } from "../utils/log.js";
 import { migrateSave } from "./migrate.js";
 
@@ -88,7 +88,7 @@ export function listSaves(): SaveSummary[] {
 			worldId,
 			name: state.world.name,
 			seed: state.world.seed,
-			at: { x: state.player.x, y: state.player.y },
+			at: worldAnchor(state.player),
 			day: state.time.day,
 			...(state.world.scenarioId ? { scenarioId: state.world.scenarioId } : {}),
 			playedAt: statSync(path).mtimeMs,

@@ -9,18 +9,24 @@ import { orderedBeats } from "./core/rules/arc.js";
 import { cardSeen } from "./core/rules/card.js";
 import { type OpeningInput, openingCard } from "./core/rules/opening.js";
 import { bearingTo, compassWords } from "./core/rules/quest-map.js";
-import { createInitialState, type GameState, timeFromTick } from "./core/rules/state.js";
+import {
+	createInitialState,
+	type GameState,
+	timeFromTick,
+	worldAnchor,
+} from "./core/rules/state.js";
 import { biomeDef } from "./core/world/biome.js";
 import type { ScenarioBrief } from "./core/world/brief.js";
 import { toChunk } from "./core/world/coords.js";
 import { regionIdAt, sitesAround } from "./core/world/macro.js";
 import { worldSeed } from "./core/world/recipe.js";
 import type { SpecSource } from "./core/world/spec.js";
+import { resolveBarriers } from "./engine/barriers.js";
 import { createEffectRunner } from "./engine/effect-runner.js";
 import { GameEngine } from "./engine/engine.js";
 import { findSpawn } from "./engine/spawn.js";
 import { SaveRepository } from "./persist/save-repo.js";
-import type { ScenarioArtifact } from "./scenario/artifact.js";
+import { artifactWorld, type ScenarioArtifact } from "./scenario/artifact.js";
 import { type Flavour, type LaunchChoice, usesLiveModel } from "./scenario/scenario.js";
 import { logger } from "./utils/log.js";
 
@@ -219,7 +225,7 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 
 	// Kick the director once so the place the player wakes up in has a name before
 	// they take their first step.
-	director.request(toChunk(state.player.x, state.player.y));
+	director.request(toChunk(worldAnchor(state.player).x, worldAnchor(state.player).y));
 
 	// With no model the lore and the region are already known, so the card is
 	// complete now. With one, `getLore()` would answer with the deterministic
@@ -266,16 +272,15 @@ function firstStop(state: GameState): OpeningInput["start"] {
 
 	// The site's position is not in the spec — `macroSite` is the only authority — so
 	// the footprint around the player is swept for the matching id.
-	const cc = toChunk(state.player.x, state.player.y);
+	const here = worldAnchor(state.player);
+	const cc = toChunk(here.x, here.y);
 	const site = sitesAround(
 		worldSeed(state.world.seed, state.world.recipe),
 		cc.cx,
 		cc.cy,
 		SITE_SEARCH_HALO,
 	).find((candidate) => candidate.id === beat.siteId);
-	const bearing = site
-		? bearingTo(state.player.x, state.player.y, site.site.x, site.site.y)
-		: undefined;
+	const bearing = site ? bearingTo(here.x, here.y, site.site.x, site.site.y) : undefined;
 
 	return {
 		place: spec.name,
@@ -412,6 +417,16 @@ function scenarioClock(artifact: ScenarioArtifact, state: GameState): Partial<Ga
 }
 
 function scenarioRules(artifact: ScenarioArtifact): Partial<GameState> {
+	const { resolved: barriers, unresolved } = resolveBarriers(artifact.barriers, {
+		world: artifactWorld(artifact),
+		bounds: artifact.bounds,
+	});
+	for (const problem of unresolved) {
+		// Logged rather than thrown: a scenario with one bad gate is a scenario that
+		// still plays, and refusing to open the world over it helps nobody. The offline
+		// pass reports the same thing as an error, where it can be fixed.
+		logger.warn(`scenario ${artifact.id}: gate ${problem.id} is nowhere — ${problem.reason}`);
+	}
 	return {
 		// The arc too, and for the same reason the rest are here: without this an edit to
 		// the story only ever reached a *new* world, so fixing a scenario somebody was
@@ -424,7 +439,11 @@ function scenarioRules(artifact: ScenarioArtifact): Partial<GameState> {
 		// an errand already in the log stays as it was.
 		...(artifact.arc ? { arc: artifact.arc } : {}),
 		...(artifact.triggers?.length ? { triggers: artifact.triggers } : {}),
-		...(artifact.barriers?.length ? { barriers: artifact.barriers } : {}),
+		// Gates resolve here rather than in the engine, because the *generator* stamps
+		// them: `barrierTiles` feeds `ChunkManager`, so by the time a chunk is built the
+		// span has to be definite. A span that names a castle's gate instead of copying
+		// it is therefore resolved at the one point where the artifact becomes state.
+		...(barriers.length ? { barriers } : {}),
 		...(artifact.placements?.length ? { placements: artifact.placements } : {}),
 	};
 }

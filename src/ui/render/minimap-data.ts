@@ -14,7 +14,7 @@
  * source of truth, no React in either path.
  */
 import { questChunks } from "../../core/rules/quest-map.js";
-import type { GameState } from "../../core/rules/state.js";
+import { type GameState, worldAnchor } from "../../core/rules/state.js";
 import { biomeAt } from "../../core/world/context.js";
 import { CHUNK, chunkKey, toChunk } from "../../core/world/coords.js";
 import { isSettlement, macroSite } from "../../core/world/macro.js";
@@ -135,7 +135,7 @@ function cellFor(mark: Mark): MiniCell {
  * overflowed the frame it is composited into would paint outside the map.
  */
 export function minimapCells(state: GameState, width: number, height: number): MiniCell[][] {
-	const here = toChunk(state.player.x, state.player.y);
+	const here = toChunk(worldAnchor(state.player).x, worldAnchor(state.player).y);
 	const seen = new Set(state.discovered);
 	const errands = questChunks(state);
 

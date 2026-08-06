@@ -59,6 +59,47 @@ function stepOnto(engine: GameEngine, to: { x: number; y: number }) {
 	if (engine.getState().player.y === to.y + 1) engine.dispatch({ t: "Move", facing: "up" });
 }
 
+describe("people on an upper floor", () => {
+	it("can be walked into and spoken to, like anybody downstairs", () => {
+		/*
+		 * Two code paths asked "who is standing here" and only one of them knew about
+		 * storeys. The renderer used `personAt`, which took the level; the reducer's probe
+		 * had an early return above the ground floor left over from when residents were
+		 * ground-floor-only. So the upper rooms of a keep were drawn full of people the
+		 * player walked straight through and could not talk to.
+		 */
+		const { engine, levels } = inside("tower", 9876);
+		const upper = levels[1];
+		expect(upper, "the tower has no upper floor").toBeDefined();
+		if (!upper) return;
+
+		const people = engine.getResidents().in(9876, "tower", 1);
+		expect(people.length, "nobody lives upstairs in this tower").toBeGreaterThan(0);
+		const person = people[0] as (typeof people)[number];
+
+		engine.dispatch({
+			t: "ApplyEffects",
+			effects: [{ t: "Teleport", x: person.x, y: person.y + 1 }],
+		});
+		// Put the player on the storey the person is on.
+		const state = engine.getState();
+		engine.hydrate({
+			...state,
+			player: {
+				...state.player,
+				inside: { ...(state.player.inside as NonNullable<typeof state.player.inside>), level: 1 },
+			},
+		});
+
+		expect(engine.personAt(person.x, person.y)?.name).toBe(person.name);
+		engine.dispatch({ t: "Move", facing: "up" });
+		engine.dispatch({ t: "Move", facing: "up" });
+		// Walking into somebody opens a conversation rather than moving.
+		expect(engine.getState().dialogue?.npcName).toBe(person.name);
+		expect(engine.getState().player.y).toBe(person.y + 1);
+	});
+});
+
 describe("climbing a tower", () => {
 	it("goes up, and the stairs come out where the generator put them", () => {
 		const { engine, levels } = inside("tower");

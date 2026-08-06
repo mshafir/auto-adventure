@@ -160,6 +160,106 @@ describe("the arc a draft describes", () => {
 		expect(arc?.beats[0]?.setsFlag).toBe("arc:first");
 	});
 
+	it("chains past a side errand rather than through it", () => {
+		// Chaining onto an optional beat makes the main story wait on an errand the
+		// player was explicitly told they could ignore, which is a dead end nothing
+		// reports and nothing on screen explains.
+		const arc = assembleArtifact(
+			draft({
+				sites: [siteDraft(SITE_ID, 2)],
+				arc: {
+					title: "T",
+					premise: "p",
+					beats: [
+						{ id: "first", siteId: SITE_ID, npcSlot: 0 },
+						{ id: "aside", siteId: SITE_ID, npcSlot: 1, optional: true },
+						{ id: "third", siteId: SITE_ID, npcSlot: 0 },
+					],
+				},
+			}),
+			AT,
+		).arc;
+		expect(arc?.beats[1]?.requires).toEqual(["arc:first"]);
+		expect(arc?.beats[2]?.requires).toEqual(["arc:first"]);
+	});
+
+	it("forks without the arms waiting on each other, and rejoins on either", () => {
+		// Both ends of a fork are traps in the naive chain. An arm that waits on its
+		// sibling can never open, so the fork is a corridor; a beat after the fork that
+		// waits on one arm dead-ends the other, and one that waits on the beat *before*
+		// the fork lets the fork be skipped — which leaves `remaining` above zero for
+		// good, because the arms are then never barred. `{ any: [...] }` is the one
+		// spelling that survives both, and deriving it means nobody has to know that.
+		const arc = assembleArtifact(
+			draft({
+				sites: [siteDraft(SITE_ID, 2)],
+				arc: {
+					title: "T",
+					premise: "p",
+					beats: [
+						{ id: "open", siteId: SITE_ID, npcSlot: 0 },
+						{ id: "left", siteId: SITE_ID, npcSlot: 1, branch: "choice" },
+						{ id: "right", siteId: SITE_ID, npcSlot: 1, branch: "choice" },
+						{ id: "after", siteId: SITE_ID, npcSlot: 0 },
+					],
+				},
+			}),
+			AT,
+		).arc;
+		expect(arc?.beats[1]?.requires).toEqual(["arc:open"]);
+		expect(arc?.beats[2]?.requires).toEqual(["arc:open"]);
+		expect(arc?.beats[3]?.requires).toEqual({
+			any: [{ flag: "arc:left" }, { flag: "arc:right" }],
+		});
+	});
+
+	it("carries the newer vocabulary through untouched", () => {
+		// None of this can be derived — an author writing a trigger has already said the
+		// whole of it — and being unable to write it in a draft is what forced every
+		// scenario into hand-editing its artifact and then never re-assembling again.
+		const assembled = assembleArtifact(
+			draft({
+				sites: [siteDraft(SITE_ID, 2)],
+				tiles: "gramarye",
+				time: { enabled: false },
+				triggers: [
+					{
+						id: "seen",
+						when: { visited: "Thornwick" },
+						effects: [{ t: "SetFlag", key: "saw:it", value: true }],
+					},
+				],
+				placements: [
+					{
+						id: "thing",
+						at: { kind: "world", x: 0, y: 0 },
+						item: { name: "A Thing", description: "." },
+					},
+				],
+				arc: {
+					title: "T",
+					premise: "p",
+					beats: [
+						{
+							id: "only",
+							siteId: SITE_ID,
+							npcSlot: 0,
+							effects: [{ t: "AdjustGold", amount: 5 }],
+						},
+					],
+					endings: [{ id: "end", title: "Done", sections: [{ heading: "So", body: "It ends." }] }],
+				},
+			}),
+			AT,
+		);
+		expect(assembled.tiles).toBe("gramarye");
+		expect(assembled.time).toEqual({ enabled: false });
+		expect(assembled.triggers?.[0]?.id).toBe("seen");
+		expect(assembled.placements?.[0]?.id).toBe("thing");
+		expect(assembled.arc?.endings?.[0]?.id).toBe("end");
+		expect(assembled.arc?.beats[0]?.effects).toEqual([{ t: "AdjustGold", amount: 5 }]);
+	});
+
 	it("gives a quest the beat's id, so nothing has to invent one", () => {
 		const arc = assembleArtifact(withArc(), AT).arc;
 		expect(arc?.beats[1]?.quest?.id).toBe("second");
@@ -310,6 +410,22 @@ describe("the trees a draft describes", () => {
 
 		expect(openingNode(tree, state({}), undefined)?.id).toBe("hello");
 		expect(openingNode(tree, state({ "arc:first": true }), undefined)?.id).toBe("later");
+	});
+
+	it("lets a gated opening win over the plain revisit", () => {
+		// The bug this pins is the mirror of the one above, and worse, because it hides
+		// after the first hello rather than before it: `openingNode` tries `revisit`
+		// first on every later meeting, and a plain revisit node requires nothing, so it
+		// always qualified. Every alternative opening — the reward for the errand, the
+		// fork in the story — was written and then never reachable again.
+		const tree = assembleArtifact(withTree("hello"), AT).trees?.[npcId(SITE_ID, 0)];
+		if (!tree) throw new Error("no tree");
+		expect(tree.revisit).toEqual(["later", "hello"]);
+
+		const state = (flags: Record<string, boolean>) => ({ flags }) as unknown as GameState;
+		const met = { totalTurns: 4 } as unknown as Parameters<typeof openingNode>[2];
+		expect(openingNode(tree, state({}), met)?.id).toBe("hello");
+		expect(openingNode(tree, state({ "arc:first": true }), met)?.id).toBe("later");
 	});
 
 	it("drops a revisit that names no node, rather than dangling", () => {

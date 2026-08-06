@@ -2,7 +2,7 @@ import type { DialogueTree } from "../ai/dialogue/tree.js";
 import type { PackOverride } from "../core/content/pack.js";
 import type { ScenarioArc } from "../core/rules/arc.js";
 import type { TimeOptions } from "../core/rules/clock.js";
-import type { Barrier } from "../core/rules/lock.js";
+import type { AuthoredBarrier } from "../core/rules/lock.js";
 import type { Placement } from "../core/rules/placement.js";
 import type { Trigger } from "../core/rules/trigger.js";
 import type { WorldBounds } from "../core/world/bounds.js";
@@ -112,7 +112,7 @@ export interface ScenarioArtifact {
 	 */
 	readonly triggers?: readonly Trigger[];
 	/** Gates across the world, and what opens them. */
-	readonly barriers?: readonly Barrier[];
+	readonly barriers?: readonly AuthoredBarrier[];
 	/** Particular things in particular places. */
 	readonly placements?: readonly Placement[];
 	/**
