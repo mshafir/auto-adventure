@@ -16,16 +16,18 @@ function context(overrides: Partial<RouteContext> = {}): RouteContext {
 const NONE: KeyFlags = {};
 
 describe("zooming the map", () => {
+	const zoomable = () => context({ canZoom: true });
+
 	it("takes both halves of the key, so shift does not have to be held", () => {
 		// `+` and `=` are the same physical key and only one of them needs shift.
 		for (const input of ["+", "="]) {
-			expect(routeKey(input, NONE, context()), input).toEqual({
+			expect(routeKey(input, NONE, zoomable()), input).toEqual({
 				t: "hud",
 				action: { t: "StepZoom", delta: 1 },
 			});
 		}
 		for (const input of ["-", "_"]) {
-			expect(routeKey(input, NONE, context()), input).toEqual({
+			expect(routeKey(input, NONE, zoomable()), input).toEqual({
 				t: "hud",
 				action: { t: "StepZoom", delta: -1 },
 			});
@@ -33,7 +35,16 @@ describe("zooming the map", () => {
 	});
 
 	it("is not a modified key", () => {
-		expect(routeKey("+", { ctrl: true }, context())).toBeUndefined();
+		expect(routeKey("+", { ctrl: true }, zoomable())).toBeUndefined();
+	});
+
+	it("is not bound at all where the map is drawn in glyphs", () => {
+		// A glyph is whatever size the player's font is, so zooming could only take
+		// world away and give nothing back. Leaving the key live would spend a render
+		// on a frame identical to the one already on screen.
+		for (const input of ["+", "=", "-", "_"]) {
+			expect(routeKey(input, NONE, context({ canZoom: false })), input).toBeUndefined();
+		}
 	});
 });
 

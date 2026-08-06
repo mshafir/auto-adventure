@@ -144,18 +144,36 @@ describe("the glyph renderer", () => {
 		}
 	});
 
-	it("stops at the same cap the pixel renderer does", () => {
-		const fit = mapFit({ mode: "glyph", columns: 400, rows: 100, cell: CELL, env: ENV });
-		expect(fit.width).toBe(72);
-		expect(fit.height).toBe(32);
-		expect(fit.indent).toBeGreaterThan(0);
+	it("keeps filling the window, however large it gets", () => {
+		/*
+		 * The cap is a pixel-mode idea and does not belong here. Everything it is for
+		 * — the megapixels a frame costs, the budget that shrinks tiles, the zoom that
+		 * buys size back — is about pixels. A glyph tile is two columns and one row
+		 * whatever happens, so a cap shows less world at exactly the same size and
+		 * spends the rest of the terminal on margins.
+		 *
+		 * This was shipped capped for one commit. On a 300x90 window it drew a
+		 * 144-column island twenty-five rows down an otherwise empty screen, and the
+		 * report it earned was "it doesn't render at all".
+		 */
+		const fit = mapFit({ mode: "glyph", columns: 300, rows: 90, cell: CELL, env: ENV });
+		expect(fit.width).toBe(150);
+		expect(fit.height).toBe(90);
+		expect(fit.indent).toBe(0);
+	});
+
+	it("grows with the window rather than stopping somewhere", () => {
+		const small = mapFit({ mode: "glyph", columns: 120, rows: 30, cell: CELL, env: ENV });
+		const large = mapFit({ mode: "glyph", columns: 300, rows: 90, cell: CELL, env: ENV });
+		expect(large.width).toBeGreaterThan(small.width);
+		expect(large.height).toBeGreaterThan(small.height);
 	});
 });
 
 describe("FOV", () => {
-	it("overrides the cap", () => {
+	it("caps the pixel renderer", () => {
 		const fit = mapFit({
-			mode: "glyph",
+			mode: "kitty",
 			columns: 400,
 			rows: 100,
 			cell: CELL,
@@ -164,9 +182,23 @@ describe("FOV", () => {
 		expect({ width: fit.width, height: fit.height }).toEqual({ width: 40, height: 20 });
 	});
 
+	it("is honoured by the glyph renderer too, when it is asked for by name", () => {
+		// Only the *default* cap is pixel-mode. Somebody who sets `FOV` has said what
+		// they want, and silently ignoring them in half the modes is its own bug.
+		const fit = mapFit({
+			mode: "glyph",
+			columns: 400,
+			rows: 100,
+			cell: CELL,
+			env: { FOV: "40x20" },
+		});
+		expect({ width: fit.width, height: fit.height }).toEqual({ width: 40, height: 20 });
+		expect(fit.indent).toBeGreaterThan(0);
+	});
+
 	it("falls back rather than failing on nonsense", () => {
 		for (const FOV of ["banana", "4x4", "40", "40x"]) {
-			const fit = mapFit({ mode: "glyph", columns: 400, rows: 100, cell: CELL, env: { FOV } });
+			const fit = mapFit({ mode: "kitty", columns: 400, rows: 100, cell: CELL, env: { FOV } });
 			expect({ width: fit.width, height: fit.height }, FOV).toEqual({ width: 72, height: 32 });
 		}
 	});

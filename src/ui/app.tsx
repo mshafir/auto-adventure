@@ -109,6 +109,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		hud,
 		hudDispatch,
 		listCount,
+		canZoom: tileMode() === "kitty",
 		// Dropping destroys the item — the world has no ground layer to pick it
 		// back up from — so this only ever raises the question.
 		...(held
@@ -366,7 +367,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 				}
 			: state.dialogue
 				? { t: "dialogue" }
-				: { t: "world" };
+				: { t: "world", canZoom: tileMode() === "kitty" };
 
 	// A card takes the whole frame rather than overlaying the map. Everything above
 	// is still computed, which costs a frame's worth of work nobody sees — but the

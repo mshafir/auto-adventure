@@ -18,11 +18,20 @@
  * `mode.ts` holds the pixel count down by shrinking the tiles, so what is left is
  * drawn at half resolution and scaled back up: smaller *and* softer.
  *
- * So the map stops growing. Past the cap it draws the same amount of world at the
- * same tile size whatever the window is, and the cells it does not need are left
- * blank around it — which is the ordinary answer, and the one that keeps a frame's
- * cost fixed instead of quadratic in the window's area. Wanting the picture bigger
- * is what zoom is for, and zoom now has keys on it.
+ * So the pixel map stops growing. Past the cap it draws the same amount of world
+ * at the same tile size whatever the window is, and the cells it does not need are
+ * left blank around it — which is the ordinary answer, and the one that keeps a
+ * frame's cost fixed instead of quadratic in the window's area. Wanting the picture
+ * bigger is what zoom is for, and zoom now has keys on it.
+ *
+ * **The glyph map keeps filling the window**, and the asymmetry is the whole point
+ * rather than an oversight. Every reason above is about pixels: the megapixels a
+ * frame costs, the budget that shrinks tiles to fit it, the zoom that buys size
+ * back. A glyph tile is two columns and one row and there is no bigger to trade up
+ * to, so capping it there shows less world at exactly the same size and spends the
+ * rest of the terminal on margins. Applying the cap to both was tried, and on a
+ * 300x90 window it left a 144-column island twenty-five rows down an empty screen —
+ * which does not look like a layout decision, it looks like nothing rendered.
  */
 import { MAX_PLACEHOLDER_INDEX } from "./kitty.js";
 import type { CellSize, TileMode } from "./mode.js";
@@ -30,7 +39,7 @@ import { tilePixels } from "./mode.js";
 import { TILE_WIDTH, tilesAcross } from "./scale.js";
 
 /**
- * The most world the map will show, in tiles, at zoom 1.
+ * The most world the map will show, in tiles, at zoom 1 — **in pixel mode only**.
  *
  * Chosen so that nothing changes for the windows people actually play in — a
  * 163-column terminal fits 81 tiles across today and this asks for 72 — while a
@@ -39,16 +48,32 @@ import { TILE_WIDTH, tilesAcross } from "./scale.js";
  * rows run out long before the columns do and a tight cap here would letterbox the
  * common case for no reason.
  *
- * `FOV=WxH` overrides it, for a player who would rather see more and smaller.
+ * `FOV=WxH` overrides it, for a player who would rather see more and smaller — and
+ * an explicit `FOV` is honoured in *both* modes, because somebody who asks for a
+ * bounded view has said what they want.
  */
 const BASE_FOV = { width: 72, height: 32 };
 
-function baseFov(env: NodeJS.ProcessEnv): { width: number; height: number } {
+/**
+ * No cap at all, which is the right answer for glyphs.
+ *
+ * Everything the cap is for belongs to the pixel renderer: the megapixels a frame
+ * costs, the budget that shrinks tiles to stay inside it, and the zoom that trades
+ * world for size. A glyph tile is two columns and one row *always* — there is no
+ * bigger to trade up to — so capping the field of view there buys nothing and
+ * spends the window on margins. On a 300x90 terminal that left a 144-column island
+ * twenty-five rows down an otherwise empty screen, which reads as the map having
+ * failed to draw rather than as a layout decision. It was one.
+ */
+const UNCAPPED = { width: Number.POSITIVE_INFINITY, height: Number.POSITIVE_INFINITY };
+
+/** An explicit `FOV`, or nothing — the default differs by renderer. */
+function askedFov(env: NodeJS.ProcessEnv): { width: number; height: number } | undefined {
 	const match = /^(\d+)x(\d+)$/.exec(env.FOV?.trim() ?? "");
-	if (!match) return BASE_FOV;
+	if (!match) return undefined;
 	const width = Number(match[1]);
 	const height = Number(match[2]);
-	return width >= 8 && height >= 6 ? { width, height } : BASE_FOV;
+	return width >= 8 && height >= 6 ? { width, height } : undefined;
 }
 
 export interface MapFit {
@@ -85,7 +110,7 @@ export function mapFit(options: FitOptions): MapFit {
 	const { mode, columns, rows, cell } = options;
 	const env = options.env ?? process.env;
 	const zoom = mode === "kitty" ? (options.zoom ?? 1) : 1;
-	const base = baseFov(env);
+	const base = askedFov(env) ?? (mode === "kitty" ? BASE_FOV : UNCAPPED);
 	// Zooming in is showing less world, which is the same statement as drawing it
 	// larger — the rectangle on screen does not change, only what is inside it.
 	const cap = {

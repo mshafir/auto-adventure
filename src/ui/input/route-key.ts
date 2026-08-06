@@ -39,6 +39,13 @@ export interface RouteContext {
 	readonly listCount: number;
 	/** Whether there is something selected that could be dropped. */
 	readonly canDrop: boolean;
+	/**
+	 * Whether zooming means anything, which is to say whether the map is drawn in
+	 * pixels. A glyph is whatever size the player's font is, so there `+` and `-`
+	 * could only take world away and give nothing back — and a key that quietly
+	 * does nothing is indistinguishable from a game that has stopped responding.
+	 */
+	readonly canZoom?: boolean;
 }
 
 /**
@@ -138,14 +145,17 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 	 *
 	 * `=` as well as `+` because they are the same physical key and only one of them
 	 * needs shift; `_` alongside `-` for the same reason. Bound only out here on the
-	 * map: inside a conversation or a list there is nothing being drawn in tiles, and
-	 * a key that silently does nothing is worse than one that is not bound.
+	 * map, and only where the map is drawn in pixels: inside a conversation or a
+	 * list there is nothing being drawn in tiles at all, and in glyph mode a tile is
+	 * always two columns and one row.
 	 */
-	if (plain && (input === "+" || input === "=")) {
-		return { t: "hud", action: { t: "StepZoom", delta: 1 } };
-	}
-	if (plain && (input === "-" || input === "_")) {
-		return { t: "hud", action: { t: "StepZoom", delta: -1 } };
+	if (context.canZoom !== false) {
+		if (plain && (input === "+" || input === "=")) {
+			return { t: "hud", action: { t: "StepZoom", delta: 1 } };
+		}
+		if (plain && (input === "-" || input === "_")) {
+			return { t: "hud", action: { t: "StepZoom", delta: -1 } };
+		}
 	}
 
 	if (isMenuKey(letter, key, plain)) return { t: "hud", action: { t: "OpenMenu" } };

@@ -10,6 +10,8 @@ export interface InputHandlers {
 	readonly hudDispatch: (action: HudAction) => void;
 	/** How long the focused pane's list is, so the cursor cannot run off it. */
 	readonly listCount: number;
+	/** Whether the map is drawn in pixels, and so whether zoom means anything. */
+	readonly canZoom: boolean;
 	/** Ask to drop whatever the inventory cursor is on. Absent when it cannot. */
 	readonly onDrop?: () => void;
 	/** Save and leave. Called only once the confirmation has been answered. */
@@ -30,6 +32,7 @@ export function useGameInput({
 	hud,
 	hudDispatch,
 	listCount,
+	canZoom,
 	onDrop,
 	onQuit,
 }: InputHandlers): void {
@@ -43,6 +46,7 @@ export function useGameInput({
 			hud,
 			listCount,
 			canDrop: onDrop !== undefined,
+			canZoom,
 		});
 		if (!routed) return;
 		// Answering a question always takes the question down, whichever way it was

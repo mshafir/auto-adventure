@@ -103,7 +103,7 @@ All variables are optional.
 | `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
 | `TILE_MODE` | `auto` | `auto` asks the terminal whether it does graphics and uses pixels if it says yes. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
 | `ZOOM` | `1` | Where zoom starts in kitty mode; `+` and `-` take it from there. Above 1 is bigger tiles and less world on screen, below is the reverse. |
-| `FOV` | `72x32` | `WxH` — the most world the map will show, in tiles. Past it the map stops growing and centres in the window rather than filling it. |
+| `FOV` | `72x32` in pixel mode, uncapped in glyph mode | `WxH` — the most world the map will show, in tiles. Past it the map stops growing and centres in the window rather than filling it. Set explicitly it applies to both renderers; the default only to pixels, where there is a tile size to trade for. |
 | `DEAD_ZONE` | `0.4` | How far in from each edge of the map the player may walk before the view scrolls. `0.49` pins them dead centre, which scrolls the world on every single step. |
 | `FRAME_MS` | `33` | Shortest gap between two frames. Changes arriving closer together than this are drawn once. `0` renders on every change. |
 | `CHUNK_SLICE` | `1` | Chunks built per turn of the event loop while the ground ahead is being filled in. |
@@ -227,10 +227,11 @@ choosing a reply, or reading a list.
 
 `+` and `-` zoom the map in pixel mode, through a short list of steps rather than
 by a factor — so zooming back out lands exactly where zooming in started. Zoom is
-how you ask for a bigger picture, because the map no longer takes a bigger window
-as a request for one: past `FOV` tiles it stops growing and centres itself in the
-window instead. A glyph is whatever size your font is, so the keys do nothing in
-that mode rather than taking world away for nothing in return.
+how you ask for a bigger picture, because the pixel map no longer takes a bigger
+window as a request for one: past `FOV` tiles it stops growing and centres itself
+in the window instead. A glyph is whatever size your font is, so there is nothing
+to zoom: the keys are not bound in that mode, the bar does not offer them, and the
+glyph map goes on filling the window however large it is.
 
 `M` or `TAB` opens the menu: what you are carrying, the errands, the journal and
 the map key. Left and right walk the tabs, down hands the arrow keys to the list
@@ -315,11 +316,20 @@ decided everything above it, and in the wrong direction twice over:
 
 A bigger screen showed *more* world at *lower* resolution — a person walking a
 road filled a third of a laptop window and was a speck on a monitor, and the tile
-art nobody could make out was being paid for in full. So the map stops at `FOV`
-tiles and centres in whatever is left over. Every window past the cap now draws
-the same 72x32 tiles at the same size, sharp, for a fixed 3.3 megapixels: 20ms a
-frame against 30ms before, and against however much a 240-column window felt like
-asking for. Bigger tiles are `+`, not a bigger terminal.
+art nobody could make out was being paid for in full. So the pixel map stops at
+`FOV` tiles and centres in whatever is left over. Every window past the cap now
+draws the same 72x32 tiles at the same size, sharp, for a fixed 3.3 megapixels:
+20ms a frame against 30ms before, and against however much a 240-column window
+felt like asking for. Bigger tiles are `+`, not a bigger terminal.
+
+None of that reasoning applies to glyphs, and the cap does not either. Every line
+of it is about pixels — the megapixels a frame costs, the budget that shrinks
+tiles to fit, the zoom that buys size back — whereas a glyph tile is two columns
+and one row and there is no bigger to trade up to. Capping it there shows less
+world at exactly the same size and spends the rest of the terminal on margins; on
+a 300x90 window that was a 144-column island twenty-five rows down an otherwise
+empty screen, which does not read as a layout decision. The glyph map fills the
+window, as it always has.
 
 Frames are also coalesced. One costs about 20ms and a terminal's key repeat is
 faster than that, so a render per keystroke — each starting inside the stdin

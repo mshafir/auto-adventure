@@ -17,7 +17,8 @@ import type { PendingConfirm } from "../hud-state.js";
  * calculation and the terminal's would tear every line below it.
  */
 export type KeyBarMode =
-	| { readonly t: "world" }
+	/** `canZoom` is false for glyphs, where there is no tile size to change. */
+	| { readonly t: "world"; readonly canZoom: boolean }
 	| { readonly t: "card" }
 	/** The menu. `inList` decides what up and down are doing right now. */
 	| {
@@ -80,8 +81,9 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 				{ key: "M", label: "menu" },
 				// Last, because it is the only one here that is about the window rather
 				// than about the world — and the only one a player would never guess is
-				// available at all.
-				{ key: "+/-", label: "zoom" },
+				// available at all. Absent entirely where it would do nothing: a bar
+				// offering a key that is not live is worse than one that stays quiet.
+				...(mode.canZoom ? [{ key: "+/-", label: "zoom" }] : []),
 			];
 	}
 }
