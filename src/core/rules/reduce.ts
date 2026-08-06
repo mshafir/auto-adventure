@@ -357,8 +357,13 @@ function step(state: GameState, command: Command, world: WorldProbe): Reduction 
 		}
 		case "Tick":
 			return { state: { ...state, time: advanceTime(state, command.amount) }, effects: [] };
-		case "ChunkReady":
-			return { state: markDiscovered(state, command.key), effects: [] };
+		case "ChunkReady": {
+			// Folded rather than mapped, so a batch in which nothing is new returns the
+			// state it was given and costs no render at all.
+			let next = state;
+			for (const key of command.keys) next = markDiscovered(next, key);
+			return { state: next, effects: [] };
+		}
 		case "Error":
 			return {
 				state,

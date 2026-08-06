@@ -80,6 +80,33 @@ export interface HudState {
 	readonly inList: boolean;
 	readonly cursor: number;
 	readonly confirm?: PendingConfirm;
+	/**
+	 * How big the map is drawn: above 1 for bigger tiles and less world.
+	 *
+	 * Interface state rather than world state, so it stays out of the save file —
+	 * the size of somebody's terminal is not a fact about the world, and a save
+	 * carried to another machine should not bring one window's zoom with it.
+	 */
+	readonly zoom: number;
+}
+
+/**
+ * The steps zoom moves through, rather than a multiplier applied repeatedly.
+ *
+ * A factor compounds into unrepeatable values — three presses of 1.25 is 1.953 —
+ * and every distinct value is a distinct tile size, which is a distinct set of
+ * sprite bitmaps to draw and cache. A short list of round numbers keeps the cache
+ * warm and makes zooming out land back exactly where zooming in started.
+ */
+export const ZOOM_STEPS: readonly number[] = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+
+/** The step at or below a starting value, so `ZOOM=1.4` begins somewhere real. */
+export function nearestZoom(value: number): number {
+	let best = ZOOM_STEPS[0] as number;
+	for (const step of ZOOM_STEPS) {
+		if (Math.abs(step - value) < Math.abs(best - value)) best = step;
+	}
+	return best;
 }
 
 export type HudAction =
@@ -93,27 +120,32 @@ export type HudAction =
 	/** `count` is the current list length, so a stale cursor cannot outlive it. */
 	| { readonly t: "MoveCursor"; readonly delta: number; readonly count: number }
 	| { readonly t: "Ask"; readonly confirm: PendingConfirm }
-	| { readonly t: "Dismiss" };
+	| { readonly t: "Dismiss" }
+	/** Step along {@link ZOOM_STEPS}. Clamps at both ends rather than wrapping. */
+	| { readonly t: "StepZoom"; readonly delta: number };
 
 /**
  * Opening on a tab puts the interface in the state opening the menu and stepping
  * there would. Only the screenshot tool and the tests start anywhere but the
  * map, and a shot of the inventory should show it as the player would meet it.
  */
-export function initialHud(tab?: PanelTab): HudState {
-	return { ...(tab ? { tab } : {}), inList: false, cursor: 0 };
+export function initialHud(tab?: PanelTab, zoom = 1): HudState {
+	return { ...(tab ? { tab } : {}), inList: false, cursor: 0, zoom: nearestZoom(zoom) };
 }
 
 export function hudReducer(state: HudState, action: HudAction): HudState {
 	switch (action.t) {
 		case "OpenMenu":
-			return { tab: action.tab ?? PANEL_TABS[0], inList: false, cursor: 0 };
+			return { tab: action.tab ?? PANEL_TABS[0], inList: false, cursor: 0, zoom: state.zoom };
 		case "CloseMenu":
 			if (state.tab === undefined && !state.confirm) return state;
 			// The cursor goes with the menu. Keeping it would mean the next tab
 			// opened — which may be a different list entirely — started somewhere in
 			// the middle for no reason the player could see.
-			return { inList: false, cursor: 0 };
+			//
+			// Zoom does not: it is how the player has chosen to look at the map, and
+			// opening the inventory is not a decision to stop looking at it that way.
+			return { inList: false, cursor: 0, zoom: state.zoom };
 		case "StepTab": {
 			if (state.tab === undefined) return state;
 			const at = PANEL_TABS.indexOf(state.tab);
@@ -133,6 +165,16 @@ export function hudReducer(state: HudState, action: HudAction): HudState {
 			return { ...state, confirm: action.confirm };
 		case "Dismiss":
 			return withoutConfirm(state);
+		case "StepZoom": {
+			const at = ZOOM_STEPS.indexOf(state.zoom);
+			// An unrecognised zoom — set by hand through the environment — steps from
+			// the nearest rung rather than from nowhere.
+			const from = at >= 0 ? at : ZOOM_STEPS.indexOf(nearestZoom(state.zoom));
+			const next = ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, from + action.delta))];
+			// Identity when it did not move, so pressing `+` at full zoom does not
+			// re-render the map to draw exactly what is already there.
+			return next === undefined || next === state.zoom ? state : { ...state, zoom: next };
+		}
 	}
 }
 

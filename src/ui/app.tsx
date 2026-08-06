@@ -1,5 +1,5 @@
 import { Box, useApp, useStdout } from "ink";
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { CONFIG } from "../config.js";
 import { resolveTileTheme } from "../content/tiles.js";
 import { computeFov, lightAt } from "../core/geom/fov.js";
@@ -26,17 +26,17 @@ import { DialoguePanel, panelHeightFor } from "./panels/dialogue-panel.js";
 import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
 import { Reader } from "./panels/reader.js";
 import { TOP_BAR_ROWS, TopBar } from "./panels/top-bar.js";
+import type { Camera } from "./render/compose.js";
+import { mapFit } from "./render/fit.js";
 import { PLAYER_GLYPH } from "./render/glyphs.js";
-import { MAX_PLACEHOLDER_INDEX } from "./render/kitty.js";
 import { lightFor, NEUTRAL_LIGHT } from "./render/lighting.js";
 import { minimapCells } from "./render/minimap-data.js";
-import { cellPixels, renderTilePixels, tilePixels } from "./render/mode.js";
+import { cellPixels, envZoom, renderTilePixels } from "./render/mode.js";
 import { minimapExtent } from "./render/overlay.js";
 import { PAL } from "./render/palette.js";
-import { tileFit } from "./render/raster.js";
 import { tileSourceFrom } from "./render/world-source.js";
 import { getEngine, useGameState } from "./store.js";
-import { cameraCenteredOn, tileMode, tilesAcross, Viewport } from "./viewport.js";
+import { cameraFollowing, tileMode, Viewport } from "./viewport.js";
 
 /** How far a lamp carries indoors. */
 const INTERIOR_SIGHT = 9;
@@ -80,7 +80,8 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	const { width, height } = useTerminalSize();
 	const { exit } = useApp();
 	const [hud, hudDispatch] = useReducer(hudReducer, initialTab, (tab) => ({
-		...initialHud(tab),
+		// `ZOOM` is where zoom starts; the keys take it from there.
+		...initialHud(tab, envZoom()),
 		cursor: initialCursor,
 	}));
 
@@ -196,55 +197,74 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	// The key bar is one unbordered row along the bottom of the whole frame, so
 	// everything above it gets one row less.
 	const bodyHeight = Math.max(8, frameHeight - 1);
-	// The map owns every column of its rows, and it has to: Ink cuts a row of
-	// kitty placeholders in half the moment anything shares the screen line with
-	// it, then composites the neighbour into the gap.
-	const mapWidth = Math.max(20, width);
 	// The conversation panel has two fixed sizes; the map takes whatever is left,
 	// so the total is constant either way.
 	const panelHeight = panelHeightFor(state.dialogue !== undefined);
-	/*
-	 * How many rows the map may have, and in pixel mode there is a ceiling on it.
-	 *
-	 * Every placeholder row is anchored by a combining mark from a fixed table, and
-	 * the table here holds 64 of the protocol's 297 — a deliberate limit, because the
-	 * entries cannot be computed and a wrong one silently draws the wrong slice of
-	 * the image. Past the end `diacritic` throws, which on a window taller than about
-	 * seventy-five rows took the whole game down rather than drawing a shorter map.
-	 *
-	 * So the map stops at the table and the leftover rows go under it. A band of
-	 * empty terminal is a poor look; a crash on a big monitor is worse.
-	 */
-	const wanted = Math.max(6, bodyHeight - panelHeight - TOP_BAR_ROWS);
-	const mapHeight = tileMode() === "kitty" ? Math.min(wanted, MAX_PLACEHOLDER_INDEX) : wanted;
-	// The camera is measured in tiles and the layout in terminal cells, and how
-	// many cells a tile takes depends on the renderer: TILE_WIDTH columns and one
-	// row for glyphs, and whatever its pixel size works out to for the image
-	// renderer, which is not bound to the character grid. Centring on the player
-	// in tile space is what keeps them in the middle either way.
-	const fit =
-		tileMode() === "kitty"
-			? tileFit(mapWidth, mapHeight, cellPixels(), tilePixels())
-			: { width: tilesAcross(mapWidth), height: mapHeight };
+	// What the map *may* have. What it takes is `fit`, which stops well short of
+	// this on a large window — see `fit.ts` for why filling the screen made the
+	// game worse the bigger the screen got.
+	const roomForMap = {
+		columns: Math.max(20, width),
+		rows: Math.max(6, bodyHeight - panelHeight - TOP_BAR_ROWS),
+	};
+	const fit = mapFit({
+		mode: tileMode(),
+		columns: roomForMap.columns,
+		rows: roomForMap.rows,
+		cell: cellPixels(),
+		zoom: hud.zoom,
+	});
+	// The map still owns every column of the rows it draws on, and it has to: Ink
+	// cuts a row of kitty placeholders in half the moment anything shares the screen
+	// line with it. The blank cells beside it are part of its own rows, not a
+	// sibling — which is what `indent` is.
+	const mapWidth = fit.columns;
+	const mapHeight = fit.rows;
 
 	// Logged because a screenshot cannot tell you what the game *thought* the
 	// terminal was, and a disagreement between the two is exactly the kind of
 	// bug that looks like a rendering fault.
 	useEffect(() => {
 		const cell = cellPixels();
-		const tilePx = renderTilePixels(fit.width, fit.height);
-		const megapixels = ((fit.width * tilePx * (fit.height * tilePx)) / 1_000_000).toFixed(1);
+		const drawn = renderTilePixels(fit.width, fit.height, process.env, cell, fit.tilePx);
+		const megapixels = ((fit.width * drawn * (fit.height * drawn)) / 1_000_000).toFixed(1);
 		logger.info(
-			`layout: terminal ${width}x${height} cells, map ${mapWidth}x${mapHeight}, ` +
-				`cell ${cell.width}x${cell.height}px, tile ${tilePixels()}px` +
-				`${tilePx === tilePixels() ? "" : ` (drawn at ${tilePx}px)`}, ` +
+			`layout: terminal ${width}x${height} cells, map ${mapWidth}x${mapHeight} ` +
+				`at +${fit.indent}, cell ${cell.width}x${cell.height}px, tile ${fit.tilePx}px` +
+				`${drawn === fit.tilePx ? "" : ` (drawn at ${drawn}px)`}, zoom ${hud.zoom}, ` +
 				`camera ${fit.width}x${fit.height} tiles, frame ${megapixels}MP`,
 		);
-	}, [width, height, mapWidth, mapHeight, fit.width, fit.height]);
-	const camera = useMemo(
-		() => cameraCenteredOn([player.x, player.y], fit.width, fit.height),
-		[player.x, player.y, fit.width, fit.height],
-	);
+	}, [width, height, mapWidth, mapHeight, fit.width, fit.height, fit.indent, fit.tilePx, hud.zoom]);
+	/*
+	 * The camera follows rather than being recomputed from scratch, so it needs the
+	 * frame before it — which is what the ref holds.
+	 *
+	 * Only a camera describing *the same coordinate space* may be followed. Indoors
+	 * the player's coordinates are local to the interior grid, so a camera from the
+	 * street outside names entirely different ground; carrying it across the doorway
+	 * would put the player wherever the arithmetic happened to land. `space` keys
+	 * that, and a change to it is a fresh centred camera.
+	 *
+	 * Written during render, which is safe here only because `cameraFollowing` is
+	 * idempotent: running it again on its own answer returns that answer. A rule that
+	 * crept a tile per call would drift sideways under React's double render.
+	 */
+	const cameraRef = useRef<Camera | undefined>(undefined);
+	const spaceRef = useRef<string | undefined>(undefined);
+	const space = player.inside
+		? `in:${player.inside.interiorId}:${player.inside.level ?? 0}`
+		: "world";
+	const camera = useMemo(() => {
+		const held = spaceRef.current === space ? cameraRef.current : undefined;
+		const next = cameraFollowing(held, [player.x, player.y], fit.width, fit.height);
+		spaceRef.current = space;
+		// The previous object when nothing moved, not an equal new one: the viewport
+		// memoises its whole frame on the camera's identity, so a fresh object for a
+		// camera that stayed put would re-rasterise and re-upload the same image.
+		const settled = held && next.x === held.x && next.y === held.y ? held : next;
+		cameraRef.current = settled;
+		return settled;
+	}, [player.x, player.y, fit.width, fit.height, space]);
 
 	// Where the player is *in the world*. Indoors their coordinates are local to the
 	// interior grid, so anything asked in chunk space — which region is this, what is
@@ -385,12 +405,20 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 				{...(inside ? {} : { weather })}
 				light={light.label}
 			/>
+			{/*
+			 * Half the slack above the map and half below, so a window taller than the
+			 * map wants letterboxes it rather than pinning it to the top with a band of
+			 * empty terminal underneath.
+			 */}
+			<Box flexGrow={1} />
 			<Viewport
 				source={source}
 				camera={camera}
 				options={composeOptions}
 				columns={mapWidth}
 				rows={mapHeight}
+				indent={fit.indent}
+				tilePx={fit.tilePx}
 				{...(minimap ? { minimap } : {})}
 			/>
 			{/*

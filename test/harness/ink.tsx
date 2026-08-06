@@ -88,7 +88,39 @@ export const KEY = {
 	backspace: "\u007F",
 } as const;
 
-const settleOnce = () => new Promise((resolve) => setTimeout(resolve, 10));
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+/** Consecutive quiet turns that count as settled. */
+const QUIET_TURNS = 3;
+/** And a ceiling, so a tree that repaints forever fails rather than hangs. */
+const MAX_TURNS = 60;
+
+/**
+ * Wait for Ink to stop emitting, rather than for a fixed slice of wall clock.
+ *
+ * This was `setTimeout(10)`, which is a bet on how busy the machine is. React 18
+ * batches a state change made from a stdin handler and flushes it on its own
+ * scheduler, so under a full parallel test run that flush can land *after* the ten
+ * milliseconds — and the test then reads the frame from before the keypress and
+ * reports that the key did nothing. Seen once as "the strip does not offer
+ * Carrying" from a suite that passes on its own.
+ *
+ * Quiet is at least {@link QUIET_TURNS} turns with no new frame, so this never
+ * returns sooner than the fixed wait it replaces.
+ */
+async function settleFrames(frames: readonly string[]): Promise<void> {
+	let quiet = 0;
+	let seen = frames.length;
+	for (let turn = 0; turn < MAX_TURNS && quiet < QUIET_TURNS; turn++) {
+		await tick();
+		if (frames.length === seen) {
+			quiet += 1;
+		} else {
+			quiet = 0;
+			seen = frames.length;
+		}
+	}
+}
 
 export interface RenderInkOptions {
 	readonly columns?: number;
@@ -114,7 +146,7 @@ export function renderInk(tree: ReactElement, options: RenderInkOptions = {}): I
 	});
 
 	const settle = async () => {
-		await settleOnce();
+		await settleFrames(stdout.frames);
 	};
 
 	return {

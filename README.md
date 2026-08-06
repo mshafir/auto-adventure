@@ -102,7 +102,11 @@ All variables are optional.
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
 | `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
 | `TILE_MODE` | `auto` | `auto` asks the terminal whether it does graphics and uses pixels if it says yes. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
-| `ZOOM` | `1` | Scales the tiles in kitty mode. Above 1 is bigger tiles and less world on screen; below is the reverse. |
+| `ZOOM` | `1` | Where zoom starts in kitty mode; `+` and `-` take it from there. Above 1 is bigger tiles and less world on screen, below is the reverse. |
+| `FOV` | `72x32` | `WxH` — the most world the map will show, in tiles. Past it the map stops growing and centres in the window rather than filling it. |
+| `DEAD_ZONE` | `0.4` | How far in from each edge of the map the player may walk before the view scrolls. `0.49` pins them dead centre, which scrolls the world on every single step. |
+| `FRAME_MS` | `33` | Shortest gap between two frames. Changes arriving closer together than this are drawn once. `0` renders on every change. |
+| `CHUNK_SLICE` | `1` | Chunks built per turn of the event loop while the ground ahead is being filled in. |
 | `TILE_PX` | derived | Pixels per tile edge, pinned. Left alone it is derived from the terminal's cell so pixel mode shows the same field of view as glyph mode. |
 | `KITTY_DEFLATE` | `1` | zlib level for the frame. Raise it to trade CPU for bytes on a slow link. |
 | `CELL_PX` | measured | `WxH` override for a terminal that will not answer `CSI 16 t` with its cell size. |
@@ -209,9 +213,24 @@ crops, forest floor, marsh, reeds and bramble each give up their own things.
 Conversations are choice-only — up/down to pick, `SPACE` to answer, `ESC` to
 leave.
 
+The view follows rather than being pinned to you. There is a dead zone in the
+middle of the map — `DEAD_ZONE` sets how big — and inside it walking moves you and
+nothing else; the world only scrolls once you reach its edge. A centred camera
+slides the entire scene by a tile on every single step with the player nailed to
+the middle, which reads as the ground moving rather than as you moving. The trade
+is that a sustained walk leaves you slightly ahead of centre and so shows a little
+less ground in front of you.
+
 The bar along the bottom always says which keys are live, because they change:
 the arrow keys mean three different things depending on whether you are walking,
 choosing a reply, or reading a list.
+
+`+` and `-` zoom the map in pixel mode, through a short list of steps rather than
+by a factor — so zooming back out lands exactly where zooming in started. Zoom is
+how you ask for a bigger picture, because the map no longer takes a bigger window
+as a request for one: past `FOV` tiles it stops growing and centres itself in the
+window instead. A glyph is whatever size your font is, so the keys do nothing in
+that mode rather than taking world away for nothing in return.
 
 `M` or `TAB` opens the menu: what you are carrying, the errands, the journal and
 the map key. Left and right walk the tabs, down hands the arrow keys to the list
@@ -275,15 +294,46 @@ that shows as flicker: the image and the frame that displays it have to reach
 the terminal inside a single synchronized update, or every step is presented
 twice.
 
-A frame is drawn at the map's own screen resolution, so a large window decides
-its size rather than anything the game chooses — and that gets out of hand fast.
-At 163x70 cells with a 19x42 cell it came to eight megapixels: 24MB of raw RGB,
-sent again on every keypress for the terminal to inflate and turn into a fresh
-texture. Hold a direction key and that is hundreds of megabytes a second, and it
-took Ghostty down. So a frame is capped at four megapixels — where a 37-row
-window already sat, so ordinary sizes are untouched — and past that the tiles are
-*drawn* smaller and the terminal scales the image back into the same cells.
-`FRAME_PIXELS` moves the cap; the log line says when one is being scaled.
+A frame used to be drawn at the map's own screen resolution, so a large window
+decided its size rather than anything the game chose — and that got out of hand
+fast. At 163x70 cells with a 19x42 cell it came to eight megapixels: 24MB of raw
+RGB, sent again on every keypress for the terminal to inflate and turn into a
+fresh texture. Hold a direction key and that is hundreds of megabytes a second,
+and it took Ghostty down. A frame is therefore capped at four megapixels
+(`FRAME_PIXELS`), past which the tiles are *drawn* smaller and the terminal scales
+the image back into the same cells.
+
+That cap was a floor under the damage rather than a fix, because the window still
+decided everything above it, and in the wrong direction twice over:
+
+```
+100x30 cells -> camera  50x26 tiles, tile drawn 38px (full)
+163x37 cells -> camera  81x34 tiles, tile drawn 38px (full)
+200x64 cells -> camera 100x64 tiles, tile drawn 25px
+240x80 cells -> camera 120x70 tiles, tile drawn 21px   <- 55%, upscaled back
+```
+
+A bigger screen showed *more* world at *lower* resolution — a person walking a
+road filled a third of a laptop window and was a speck on a monitor, and the tile
+art nobody could make out was being paid for in full. So the map stops at `FOV`
+tiles and centres in whatever is left over. Every window past the cap now draws
+the same 72x32 tiles at the same size, sharp, for a fixed 3.3 megapixels: 20ms a
+frame against 30ms before, and against however much a 240-column window felt like
+asking for. Bigger tiles are `+`, not a bigger terminal.
+
+Frames are also coalesced. One costs about 20ms and a terminal's key repeat is
+faster than that, so a render per keystroke — each starting inside the stdin
+handler that delivered the key — left the display steadily behind the player's
+fingers and still moving after they let go. `FRAME_MS` is the shortest gap between
+two frames; every keystroke still reaches the engine immediately and in order, and
+what is dropped is only the intermediate pictures.
+
+The other thing that felt like the renderer was not the renderer at all.
+Generating a chunk costs about 28ms, and a step used to prefetch a 5x5 square of
+them inside its own dispatch — free while they were all cached, and about 140ms of
+dead process the moment the player crossed a chunk seam. The ring is now built one
+chunk per turn of the event loop (`CHUNK_SLICE`), nearest first, so the total work
+is unchanged and the longest pause it can cause is one chunk rather than five.
 
 If it still flickers on your terminal, the next levers are the payload —
 `KITTY_DEFLATE=6` roughly halves the bytes for more CPU, `ZOOM=0.8` reduces both,

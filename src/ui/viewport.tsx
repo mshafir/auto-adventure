@@ -1,6 +1,7 @@
 import { Box, Text, useStdout } from "ink";
 import { useEffect, useMemo } from "react";
 import { encodeScene } from "./render/ansi.js";
+import { cameraCenteredOn, cameraFollowing } from "./render/camera.js";
 import { type ColorDepth, detectColorDepth } from "./render/color.js";
 import {
 	type Camera,
@@ -21,7 +22,7 @@ import { rasterScene } from "./render/raster.js";
 import { expandScene, TILE_WIDTH, tilesAcross } from "./render/scale.js";
 import { queueGraphics } from "./render/sync-output.js";
 
-export { TILE_WIDTH, tilesAcross };
+export { cameraCenteredOn, cameraFollowing, TILE_WIDTH, tilesAcross };
 
 let cachedDepth: ColorDepth | undefined;
 let cachedMode: TileMode | undefined;
@@ -61,6 +62,25 @@ export interface ViewportProps {
 	readonly columns: number;
 	readonly rows: number;
 	/**
+	 * Blank cells to the map's left.
+	 *
+	 * The map stops growing past a cap, so on a wide window it no longer fills the
+	 * row it is on, and a picture pinned to the left edge of a very wide terminal
+	 * reads as a layout that broke. Padded into the rows themselves rather than by
+	 * laying the map out inside a wider box: Ink cuts a row of kitty placeholders in
+	 * half the moment anything shares the screen line with it, and a leading run of
+	 * ordinary spaces in the same string is not sharing it.
+	 */
+	readonly indent?: number;
+	/**
+	 * Pixels per tile, decided by the layout because only it knows the zoom.
+	 *
+	 * Still capped here against the frame budget — that is about how many tiles
+	 * there are, which is also the layout's business but has to be applied where the
+	 * image is actually made.
+	 */
+	readonly tilePx?: number;
+	/**
 	 * The minimap, composited into the corner of the frame.
 	 *
 	 * Passed in rather than read from the store because it is *data*, and both
@@ -84,7 +104,7 @@ export function Viewport(props: ViewportProps) {
 	return tileMode() === "kitty" ? <KittyViewport {...props} /> : <GlyphViewport {...props} />;
 }
 
-function GlyphViewport({ source, camera, options, minimap }: ViewportProps) {
+function GlyphViewport({ source, camera, options, minimap, indent = 0 }: ViewportProps) {
 	const depth = colorDepth();
 	const rows = useMemo(() => {
 		// The camera is in tiles; expansion to columns happens after compositing,
@@ -94,8 +114,12 @@ function GlyphViewport({ source, camera, options, minimap }: ViewportProps) {
 		const cells = expandScene(composeScene(source, camera, options), TILE_WIDTH, camera);
 		// After expansion, not before: the minimap is one character per chunk and
 		// widening it 2:1 would stretch it the way the map needs and it does not.
-		return encodeScene(minimap ? overlayMinimap(cells, minimap) : cells, depth);
-	}, [source, camera, options, depth, minimap]);
+		const encoded = encodeScene(minimap ? overlayMinimap(cells, minimap) : cells, depth);
+		// Prefixed rather than laid out, and before any styling: a leading run of
+		// plain spaces cannot inherit the first cell's background and paint a bar
+		// down the side of the map.
+		return indent > 0 ? encoded.map((row) => " ".repeat(indent) + row) : encoded;
+	}, [source, camera, options, depth, minimap, indent]);
 
 	return (
 		<Box flexDirection="column" flexShrink={0}>
@@ -144,6 +168,8 @@ function KittyViewport({
 	columns,
 	rows: maxRows,
 	minimap,
+	indent = 0,
+	tilePx: wantedPx,
 }: ViewportProps) {
 	const { write } = useStdout();
 
@@ -158,7 +184,10 @@ function KittyViewport({
 		// megapixels and 24MB of raw RGB, sent again on every keypress, which is what
 		// killed the terminal. Past the cap the tiles are *drawn* smaller and the
 		// terminal scales the image back into the same cells.
-		const tilePx = renderTilePixels(camera.width, camera.height);
+		const tilePx =
+			wantedPx === undefined
+				? renderTilePixels(camera.width, camera.height)
+				: renderTilePixels(camera.width, camera.height, process.env, cellPixels(), wantedPx);
 		const frame = rasterScene(composeScene(source, camera, options), {
 			tilePx,
 			...(options?.theme ? { sprites: options.theme.sprites } : {}),
@@ -191,8 +220,11 @@ function KittyViewport({
 				rows: maxRows,
 			}),
 		);
-		return placeholderRows(columns, maxRows);
-	}, [source, camera, options, columns, maxRows, minimap]);
+		const placeholders = placeholderRows(columns, maxRows);
+		// Plain spaces ahead of the image id sequence, so nothing in the pad inherits
+		// the placeholder styling — the fg there is the image id, not a colour.
+		return indent > 0 ? placeholders.map((row) => " ".repeat(indent) + row) : placeholders;
+	}, [source, camera, options, columns, maxRows, minimap, indent, wantedPx]);
 
 	// Leave nothing behind in the terminal when the map goes away.
 	useEffect(() => () => write(deleteFrame()), [write]);
@@ -213,7 +245,7 @@ function KittyViewport({
 		 * see `PLACEHOLDER_LAYOUT_SLACK` for why fixing the measurement is the right
 		 * end of this rather than fixing the emission.
 		 */
-		<Box flexDirection="column" flexShrink={0} width={columns + PLACEHOLDER_LAYOUT_SLACK}>
+		<Box flexDirection="column" flexShrink={0} width={indent + columns + PLACEHOLDER_LAYOUT_SLACK}>
 			{rows.map((row, i) => (
 				/*
 				 * No `wrap="truncate"` here, and it must not come back. A placeholder
@@ -232,18 +264,4 @@ function KittyViewport({
 			))}
 		</Box>
 	);
-}
-
-/** Centre the camera on a world position, which is correct for an open world. */
-export function cameraCenteredOn(
-	position: readonly [number, number],
-	width: number,
-	height: number,
-): Camera {
-	return {
-		x: position[0] - Math.floor(width / 2),
-		y: position[1] - Math.floor(height / 2),
-		width,
-		height,
-	};
 }

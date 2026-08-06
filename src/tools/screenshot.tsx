@@ -417,11 +417,13 @@ async function main() {
 		// Walked here rather than dropped here. Without some ground behind them the
 		// minimap in the corner is an empty box, which reads as a panel that failed
 		// to load rather than as a map still to be filled in.
+		const walked: string[] = [];
 		for (let dy = -4; dy <= 4; dy++) {
 			for (let dx = -6; dx <= 6; dx++) {
-				engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx + dx, site.my + dy) });
+				walked.push(chunkKey(site.mx + dx, site.my + dy));
 			}
 		}
+		engine.dispatch({ t: "ChunkReady", keys: walked });
 	});
 
 	await capture("conversation", "Talking to somebody", (engine) => {
@@ -442,7 +444,7 @@ async function main() {
 		"quest",
 		"The story so far, and the errand in hand",
 		(engine, site) => {
-			engine.dispatch({ t: "ChunkReady", key: chunkKey(site.mx, site.my) });
+			engine.dispatch({ t: "ChunkReady", keys: [chunkKey(site.mx, site.my)] });
 			engine.dispatch({
 				t: "ApplyEffects",
 				effects: [

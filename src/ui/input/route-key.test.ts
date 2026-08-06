@@ -15,6 +15,28 @@ function context(overrides: Partial<RouteContext> = {}): RouteContext {
 
 const NONE: KeyFlags = {};
 
+describe("zooming the map", () => {
+	it("takes both halves of the key, so shift does not have to be held", () => {
+		// `+` and `=` are the same physical key and only one of them needs shift.
+		for (const input of ["+", "="]) {
+			expect(routeKey(input, NONE, context()), input).toEqual({
+				t: "hud",
+				action: { t: "StepZoom", delta: 1 },
+			});
+		}
+		for (const input of ["-", "_"]) {
+			expect(routeKey(input, NONE, context()), input).toEqual({
+				t: "hud",
+				action: { t: "StepZoom", delta: -1 },
+			});
+		}
+	});
+
+	it("is not a modified key", () => {
+		expect(routeKey("+", { ctrl: true }, context())).toBeUndefined();
+	});
+});
+
 describe("walking about", () => {
 	it("moves on the arrow keys and acts on space", () => {
 		expect(routeKey("", { upArrow: true }, context())).toEqual({
@@ -75,7 +97,7 @@ describe("a conversation", () => {
 
 describe("a question that cannot be undone", () => {
 	const asking = (confirm: NonNullable<HudState["confirm"]>): RouteContext =>
-		context({ hud: { tab: "inventory", inList: true, cursor: 0, confirm } });
+		context({ hud: { tab: "inventory", inList: true, cursor: 0, zoom: 1, confirm } });
 
 	const dropTimber = asking({
 		action: { t: "drop", name: "Timber", quantity: 3 },
@@ -262,6 +284,14 @@ describe("the menu over the map", () => {
 			t: "command",
 			command: { t: "DropItem", name: "Timber", quantity: 1 },
 		});
+	});
+
+	it("leaves zoom to the map, where there is something drawn in tiles", () => {
+		// A key that silently does nothing is worse than one that is not bound: the
+		// player cannot tell it apart from the game having stopped responding.
+		expect(routeKey("+", NONE, context({ inDialogue: true }))).toBeUndefined();
+		expect(routeKey("-", NONE, context({ hud: inList() }))).toBeUndefined();
+		expect(routeKey("+", NONE, context({ onCard: true }))).toBeUndefined();
 	});
 
 	it("outranks a conversation, so a turn landing cannot steal the arrows", () => {

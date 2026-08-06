@@ -78,6 +78,10 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 				{ key: "Arrows", label: "move" },
 				{ key: "Space", label: "look/act" },
 				{ key: "M", label: "menu" },
+				// Last, because it is the only one here that is about the window rather
+				// than about the world — and the only one a player would never guess is
+				// available at all.
+				{ key: "+/-", label: "zoom" },
 			];
 	}
 }

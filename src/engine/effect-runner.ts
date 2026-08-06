@@ -1,6 +1,7 @@
 import type { Effect } from "../core/rules/effects.js";
 import type { SaveRepository } from "../persist/save-repo.js";
 import { logger } from "../utils/log.js";
+import { ChunkQueue, type Defer } from "./chunk-queue.js";
 import type { EngineServices, GameEngine } from "./engine.js";
 
 export interface RunnerDeps {
@@ -17,6 +18,13 @@ export interface RunnerDeps {
 	readonly specFor?: EngineServices["specFor"];
 	readonly siteSpec?: EngineServices["siteSpec"];
 	readonly content?: EngineServices["content"];
+	/**
+	 * How the background chunk builder gets its slices of time.
+	 *
+	 * Defaults to the event loop. A test passes a synchronous one so that a world it
+	 * has just walked across is fully built by the time it asserts on it.
+	 */
+	readonly defer?: Defer;
 }
 
 /**
@@ -28,6 +36,9 @@ export interface RunnerDeps {
  * can write state directly.
  */
 export function createEffectRunner(deps: RunnerDeps): EngineServices {
+	// One per session, because it is the ring around one player.
+	const chunks = new ChunkQueue(deps.defer);
+
 	return {
 		...(deps.specFor ? { specFor: deps.specFor } : {}),
 		...(deps.siteSpec ? { siteSpec: deps.siteSpec } : {}),
@@ -38,13 +49,12 @@ export function createEffectRunner(deps: RunnerDeps): EngineServices {
 					engine.getChunks().ensure(effect.cc.cx, effect.cc.cy);
 					return;
 
-				case "PrefetchChunks": {
-					const built = engine.getChunks().prefetch(effect.around, effect.radius);
-					// Newly-built chunks may carry anchors that people belong at.
-					if (built.length > 0) engine.populateNpcs(effect.around);
-					for (const key of built) engine.dispatch({ t: "ChunkReady", key });
+				// Lookahead, not what the frame needs: the chunks the camera can see are
+				// built before the world opens and kept warm from here, so this is allowed
+				// to take its time. See `chunk-queue.ts` for why it must.
+				case "PrefetchChunks":
+					chunks.want(engine, effect.around, effect.radius);
 					return;
-				}
 
 				case "RequestSpecs":
 					deps.requestSpecs?.(effect.around);

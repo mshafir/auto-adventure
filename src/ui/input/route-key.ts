@@ -133,6 +133,21 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		return undefined;
 	}
 
+	/*
+	 * Zoom, on the keys every other program puts it on.
+	 *
+	 * `=` as well as `+` because they are the same physical key and only one of them
+	 * needs shift; `_` alongside `-` for the same reason. Bound only out here on the
+	 * map: inside a conversation or a list there is nothing being drawn in tiles, and
+	 * a key that silently does nothing is worse than one that is not bound.
+	 */
+	if (plain && (input === "+" || input === "=")) {
+		return { t: "hud", action: { t: "StepZoom", delta: 1 } };
+	}
+	if (plain && (input === "-" || input === "_")) {
+		return { t: "hud", action: { t: "StepZoom", delta: -1 } };
+	}
+
 	if (isMenuKey(letter, key, plain)) return { t: "hud", action: { t: "OpenMenu" } };
 	if (letter === "s" && plain) {
 		return {

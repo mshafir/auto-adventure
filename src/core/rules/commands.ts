@@ -31,7 +31,14 @@ export type Command =
 	| { readonly t: "CloseDialogue" }
 	/** Put the card away and give the player the world back. */
 	| { readonly t: "DismissCard" }
-	| { readonly t: "ChunkReady"; readonly key: ChunkKey }
+	/**
+	 * Ground that has just been built, and so is now known.
+	 *
+	 * Plural because they arrive in batches and each one that discovers new ground
+	 * is a state change — which is a render and a re-uploaded frame. One command for
+	 * the batch is one render for the batch.
+	 */
+	| { readonly t: "ChunkReady"; readonly keys: readonly ChunkKey[] }
 	| {
 			readonly t: "DialogueOpened";
 			readonly npcId: string;

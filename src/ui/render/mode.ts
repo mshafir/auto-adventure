@@ -306,16 +306,26 @@ function fromAreaReply(reply: string, stdout: NodeJS.WriteStream): CellSize | un
  * columns. That is the same field of view, at forty-odd pixels a tile instead of
  * one character.
  *
- * `ZOOM` scales it — above 1 for bigger tiles and less world, below for more.
+ * `ZOOM` scales it — above 1 for bigger tiles and less world, below for more —
+ * and is the starting point for the zoom keys, which pass their own factor in.
  * `TILE_PX` still pins an exact size for experiments.
  */
-export function tilePixels(env: NodeJS.ProcessEnv = process.env, cell = cellPixels(env)): number {
+export function tilePixels(
+	env: NodeJS.ProcessEnv = process.env,
+	cell = cellPixels(env),
+	zoom?: number,
+): number {
 	const pinned = Number(env.TILE_PX);
 	if (Number.isFinite(pinned) && pinned >= 4) return Math.trunc(pinned);
 
-	const zoom = Number(env.ZOOM);
-	const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+	const scale = zoom ?? envZoom(env);
 	return Math.max(4, Math.round(cell.width * TILE_WIDTH * scale));
+}
+
+/** Where zoom starts, before the player has touched a key. */
+export function envZoom(env: NodeJS.ProcessEnv = process.env): number {
+	const zoom = Number(env.ZOOM);
+	return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
 }
 
 /**
@@ -363,8 +373,12 @@ export function renderTilePixels(
 	tilesHigh: number,
 	env: NodeJS.ProcessEnv = process.env,
 	cell = cellPixels(env),
+	/**
+	 * How big a tile wants to be. Passed in by the layout, which has already
+	 * applied the player's zoom and is the only thing that knows it.
+	 */
+	wanted = tilePixels(env, cell),
 ): number {
-	const wanted = tilePixels(env, cell);
 	const tiles = Math.max(1, tilesWide * tilesHigh);
 	// Area scales with the square of the tile size, so the cap does too.
 	const affordable = Math.floor(Math.sqrt(frameBudget(env) / tiles));

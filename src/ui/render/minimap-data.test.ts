@@ -5,6 +5,7 @@ import { createInitialState, type GameState, type Quest } from "../../core/rules
 import { CHUNK, chunkKey } from "../../core/world/coords.js";
 import { isSettlement, macroSite } from "../../core/world/macro.js";
 import { worldSeed } from "../../core/world/recipe.js";
+import { ChunkQueue } from "../../engine/chunk-queue.js";
 import { GameEngine } from "../../engine/engine.js";
 import { findSpawn } from "../../engine/spawn.js";
 import { checkGlyph } from "./glyph-safety.js";
@@ -153,17 +154,18 @@ describe("minimapCells", () => {
 describe("a world that has just been opened and walked in", () => {
 	it("has nothing unexplored between the player and the ground around them", () => {
 		const state = createInitialState(WORLD, findSpawn(worldSeed(SEED)));
+		// The real queue, handed a scheduler that runs its slices on the spot rather
+		// than on the event loop, so the ring is built by the time this asserts.
+		const queue = new ChunkQueue((task) => {
+			task();
+		});
 		const engine = new GameEngine(state, {
 			// The real runner, in the two cases a step reaches: building a chunk, and
-			// reporting back what the prefetch built. Stubbing these out is what would
+			// asking for the ring around the player. Stubbing these out is what would
 			// hide the bug, since reporting back is exactly where it lived.
 			runEffect: (effect, e) => {
 				if (effect.t === "EnsureChunk") e.getChunks().ensure(effect.cc.cx, effect.cc.cy);
-				if (effect.t === "PrefetchChunks") {
-					for (const key of e.getChunks().prefetch(effect.around, effect.radius)) {
-						e.dispatch({ t: "ChunkReady", key });
-					}
-				}
+				if (effect.t === "PrefetchChunks") queue.want(e, effect.around, effect.radius);
 			},
 		});
 

@@ -5,7 +5,9 @@ import {
 	hudReducer,
 	initialHud,
 	listWindow,
+	nearestZoom,
 	PANEL_TABS,
+	ZOOM_STEPS,
 } from "./hud-state.js";
 
 describe("the menu", () => {
@@ -73,8 +75,10 @@ describe("the cursor", () => {
 		// Wrapping a five-item list means one press past the bottom is the top,
 		// which reads as the list having jumped.
 		const at = (cursor: number, delta: number) =>
-			hudReducer({ tab: "inventory", inList: true, cursor }, { t: "MoveCursor", delta, count: 5 })
-				.cursor;
+			hudReducer(
+				{ tab: "inventory", inList: true, cursor, zoom: 1 },
+				{ t: "MoveCursor", delta, count: 5 },
+			).cursor;
 		expect(at(0, -1)).toBe(0);
 		expect(at(4, 1)).toBe(4);
 		expect(at(2, 1)).toBe(3);
@@ -128,7 +132,7 @@ describe("hud state", () => {
 		// mid-action load permanently locked in the previous design; this type
 		// exists to keep that separation visible.
 		const state: HudState = initialHud();
-		expect(Object.keys(state).sort()).toEqual(["cursor", "inList"]);
+		expect(Object.keys(state).sort()).toEqual(["cursor", "inList", "zoom"]);
 	});
 
 	/*
@@ -138,6 +142,55 @@ describe("hud state", () => {
 	 * taking the frame, and this is what says so.
 	 */
 	it("says what has the keys in two fields, where there were four", () => {
-		expect(initialHud("quests")).toEqual({ tab: "quests", inList: false, cursor: 0 });
+		expect(initialHud("quests")).toEqual({ tab: "quests", inList: false, cursor: 0, zoom: 1 });
+	});
+});
+
+describe("zoom", () => {
+	const step = (from: number, delta: number) =>
+		hudReducer({ ...initialHud(), zoom: from }, { t: "StepZoom", delta }).zoom;
+
+	it("moves through the rungs rather than compounding a factor", () => {
+		// Three presses of a 1.25 multiplier is 1.953, which is a tile size no other
+		// route to it will ever produce — so every press is a fresh set of sprite
+		// bitmaps to draw and cache, and zooming back out never lands where it started.
+		expect(step(1, 1)).toBe(1.25);
+		expect(step(1.25, -1)).toBe(1);
+		expect(ZOOM_STEPS).toContain(step(step(1, 1), 1));
+	});
+
+	it("stops at both ends instead of wrapping", () => {
+		// Wrapping would take a press past maximum straight to the smallest tiles the
+		// game can draw, which reads as the map having fallen over.
+		const smallest = ZOOM_STEPS[0] as number;
+		const largest = ZOOM_STEPS[ZOOM_STEPS.length - 1] as number;
+		expect(step(smallest, -1)).toBe(smallest);
+		expect(step(largest, 1)).toBe(largest);
+	});
+
+	it("gives back the same state when it did not move", () => {
+		// Identity, because the map is memoised on it: a press at full zoom must not
+		// re-rasterise and re-upload a frame identical to the one on screen.
+		const at = { ...initialHud(), zoom: ZOOM_STEPS[0] as number };
+		expect(hudReducer(at, { t: "StepZoom", delta: -1 })).toBe(at);
+	});
+
+	it("steps from the nearest rung when it started somewhere between them", () => {
+		// `ZOOM=1.4` is a thing somebody will set, and it must not leave the keys dead.
+		expect(step(1.4, 1)).toBe(2);
+		expect(step(1.4, -1)).toBe(1.25);
+	});
+
+	it("survives opening and closing the menu", () => {
+		// How the player has chosen to look at the map is not a decision they revoked
+		// by glancing at their inventory.
+		const zoomed = hudReducer(initialHud(), { t: "StepZoom", delta: 1 });
+		const opened = hudReducer(zoomed, { t: "OpenMenu" });
+		expect(hudReducer(opened, { t: "CloseMenu" }).zoom).toBe(zoomed.zoom);
+	});
+
+	it("starts from the environment, snapped to a rung", () => {
+		expect(initialHud(undefined, 2).zoom).toBe(2);
+		expect(initialHud(undefined, 1.4).zoom).toBe(nearestZoom(1.4));
 	});
 });

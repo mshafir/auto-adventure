@@ -896,6 +896,32 @@ describe("what the journal remembers", () => {
 	});
 });
 
+describe("ground reported as built", () => {
+	it("records a whole batch in one state change", () => {
+		// The reason the command is plural. Each new chunk used to arrive as its own
+		// command, and each one that found new ground was a state change — which
+		// upstream is a full re-render and a re-uploaded frame.
+		const state = makeState({ discovered: [] });
+		const { state: after } = run(state, [{ t: "ChunkReady", keys: ["0,0", "1,0", "0,1"] }]);
+		expect(after.discovered).toEqual(["0,0", "1,0", "0,1"]);
+	});
+
+	it("returns the state it was given when none of it is new", () => {
+		// Identity, not equality: the engine only notifies when the state object
+		// changes, so this is what makes a batch of already-known ground cost nothing
+		// rather than costing a render that draws the same frame again.
+		const state = makeState({ discovered: ["0,0", "1,0"] });
+		const { state: after } = run(state, [{ t: "ChunkReady", keys: ["0,0", "1,0"] }]);
+		expect(after).toBe(state);
+	});
+
+	it("keeps only what is new out of a mixed batch", () => {
+		const state = makeState({ discovered: ["0,0"] });
+		const { state: after } = run(state, [{ t: "ChunkReady", keys: ["0,0", "2,2"] }]);
+		expect(after.discovered).toEqual(["0,0", "2,2"]);
+	});
+});
+
 describe("two cards raised in one turn", () => {
 	const card = (id: string, title: string) => ({
 		id,

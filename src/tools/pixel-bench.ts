@@ -32,10 +32,29 @@ const passes = Number(arg("passes", "20"));
 const DEFLATE_LEVEL = Number(arg("level", "1"));
 
 const seed = hashString("bench");
-const { chunk } = generateChunk({ world: worldSeed(seed) }, { cx: 0, cy: 0 });
+const world = worldSeed(seed);
+
+/*
+ * Every chunk the camera reaches, not just the one at the origin.
+ *
+ * Handing back `undefined` for the rest looks harmless and quietly invalidates the
+ * measurement: ungenerated ground composites to one uniform cell, and a uniform
+ * cell rasterises from the tile cache on the first hit. A camera wider than the
+ * single 64x64 chunk was therefore half empty, and the *larger* geometry timed
+ * faster than the smaller one — 33ms for 4.7 megapixels against 59ms for 3.3.
+ * Measured, and it is exactly the kind of wrong number this tool exists to prevent.
+ */
+const chunks = new Map<string, ReturnType<typeof generateChunk>["chunk"]>();
 const source = createWorldTileSource({
 	seed,
-	chunkAt: (qx, qy) => (qx === 0 && qy === 0 ? chunk : undefined),
+	chunkAt: (qx, qy) => {
+		const key = `${qx},${qy}`;
+		const held = chunks.get(key);
+		if (held) return held;
+		const { chunk } = generateChunk({ world }, { cx: qx, cy: qy });
+		chunks.set(key, chunk);
+		return chunk;
+	},
 });
 
 const fit = tileFit(columns, rows, { width: cellW, height: cellH }, tilePx);

@@ -20,6 +20,20 @@ const ALT_SCREEN_ON = "\u001B[?1049h";
 const ALT_SCREEN_OFF = "\u001B[?1049l";
 const CURSOR_SHOW = "\u001B[?25h";
 
+/**
+ * The shortest gap between two frames, in milliseconds.
+ *
+ * Thirty-three is thirty frames a second, against the twenty-odd milliseconds a
+ * frame costs to draw — so a held key still leaves the process most of its time
+ * for reading the keyboard and building ground. `FRAME_MS=0` renders on every
+ * change, which is the old behaviour and the way to tell whether this is the thing
+ * making something feel wrong.
+ */
+const FRAME_MS = (() => {
+	const raw = Number(process.env.FRAME_MS);
+	return Number.isFinite(raw) && raw >= 0 ? raw : 33;
+})();
+
 function enterAltScreen(): () => void {
 	process.stdout.write(ALT_SCREEN_ON);
 	let restored = false;
@@ -89,7 +103,9 @@ async function startGame() {
 	if (!choice) return;
 
 	const session = buildSession(choice, { saveDebounceMs: CONFIG.saveDebounceMs });
-	bindEngine(session.engine);
+	// Only the real game coalesces frames. A test or a screenshot dispatches and
+	// then reads the frame, and a delayed one would be the frame from before.
+	bindEngine(session.engine, { frameMs: FRAME_MS });
 
 	await chooseRenderer();
 
