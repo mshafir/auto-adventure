@@ -11,7 +11,12 @@ import {
 	probeTerminal,
 	resolveTileMode,
 } from "./ui/render/mode.js";
-import { endSynchronizedOutput, withSynchronizedOutput } from "./ui/render/sync-output.js";
+import { multiplexer } from "./ui/render/multiplexer.js";
+import {
+	endSynchronizedOutput,
+	syncOutputEnabled,
+	withSynchronizedOutput,
+} from "./ui/render/sync-output.js";
 import { bindEngine } from "./ui/store.js";
 import { setTileMode } from "./ui/viewport.js";
 import { logger } from "./utils/log.js";
@@ -110,6 +115,15 @@ async function chooseRenderer(): Promise<void> {
 	// is provably the one the renderer used.
 	setTileMode(mode.mode);
 	logger.info(`renderer: ${mode.mode} — ${mode.because}`);
+	// The two escapes that an ordinary TUI does not use, and so the two most likely
+	// answers to "it does not render at all". Written down at startup because a
+	// player who sees nothing has nothing else to report.
+	const mux = multiplexer();
+	logger.info(
+		`terminal quirks: multiplexer ${mux?.name ?? "none"}, ` +
+			`synchronized output ${syncOutputEnabled() ? "on" : "off"}, ` +
+			`alternate screen ${ALT_SCREEN ? "on" : "off"}`,
+	);
 }
 
 async function startGame() {

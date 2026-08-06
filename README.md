@@ -98,7 +98,8 @@ All variables are optional.
 | `MODEL_BIBLE` | `google/gemini-2.5-flash` | The world premise, once per world. |
 | `AUTO_ADVENTURE_HOME` | `~/.auto-adventure` | Where saves live. |
 | `LOG_FILE`, `LOG_LEVEL` | `log.txt`, `info` | The TUI owns stdout, so logs go to a file. |
-| `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Only needed if your terminal prints the escape instead of honouring it — or holds a frame it was told to buffer and never presents it, which looks like nothing rendering at all. |
+| `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Off automatically inside a multiplexer not known to follow it. |
+| `SYNC_OUTPUT` | — | Force bracketing back on where it was turned off for you. `NO_SYNC_OUTPUT` still wins. |
 | `NO_ALT_SCREEN` | `0` | Draw in the terminal's own scrollback rather than on a screen of its own. The other half of the "nothing renders" bisect. |
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
 | `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
@@ -285,7 +286,17 @@ down, so inside a herdr pane `TERM_PROGRAM` still reads `ghostty` — and a grap
 query sent into the pane reaches Ghostty, which answers truthfully about *itself*.
 The game would then hold an `OK` from a terminal it is not talking to. No amount
 of asking gets round that; only knowing the name does. `TILE_MODE=kitty` forces
-past it for a multiplexer that really does implement the protocol. Sprites are
+past it for a multiplexer that really does implement the protocol.
+
+The same list decides whether frames are bracketed in DEC 2026, and that came from
+a report of the map not drawing *at all* inside herdr — in glyph mode, where there
+are no graphics escapes involved. The game leans on exactly two things an ordinary
+TUI does not: the alternate screen buffer, and a synchronized update around every
+write. Turning off either one fixed it, so neither is unsupported on its own; it
+is the pair that parser cannot follow. Bracketing is the half worth giving up,
+being an optimisation against flicker rather than something the game needs to be
+usable — where the alternate screen is what stops it painting over your scrollback
+and hands your shell back on exit. `SYNC_OUTPUT=1` puts it back. Sprites are
 procedures over the unit square rather than a bitmap, so tile size is a free
 choice; both renderers consume the same composed scene, so lighting, field of
 view, autotiling and the minimap overlay are shared and cannot drift apart.

@@ -16,15 +16,37 @@
  * the specified behaviour; `NO_SYNC_OUTPUT=1` opts out for anything that does
  * not. Supported by kitty, WezTerm, Alacritty, iTerm2, foot, contour, Ghostty,
  * Windows Terminal, xterm.js (so VS Code) and tmux 3.4+.
+ *
+ * "Ignore what you do not implement" holds for terminals and turns out not to
+ * hold for everything in between them — see {@link syncOutputEnabled}.
  */
+import { multiplexer } from "./multiplexer.js";
+
 const BEGIN_SYNC = "\u001B[?2026h";
 const END_SYNC = "\u001B[?2026l";
 
-export function syncOutputEnabled(): boolean {
-	if (process.env.NO_SYNC_OUTPUT === "1" || process.env.NO_SYNC_OUTPUT === "true") return false;
+/**
+ * Whether frames go out bracketed.
+ *
+ * Off inside a multiplexer that is not known to follow it, and that is a real
+ * behaviour change rather than caution for its own sake. Inside herdr the map did
+ * not draw at all, and turning off *either* the alternate screen buffer or this
+ * fixed it — so neither escape is unsupported on its own; it is the pair this
+ * parser cannot follow. Between the two, bracketing is the one to give up: it only
+ * hides the gap between Ink erasing a frame and writing the next, whereas dropping
+ * the alternate screen means painting over the player's scrollback and not giving
+ * their shell back afterwards.
+ *
+ * `SYNC_OUTPUT=1` forces it back on, for a multiplexer that gains support after
+ * this list was written. `NO_SYNC_OUTPUT=1` wins over both.
+ */
+export function syncOutputEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+	if (env.NO_SYNC_OUTPUT === "1" || env.NO_SYNC_OUTPUT === "true") return false;
 	// Nothing to synchronise when the output is not a terminal, and the markers
 	// would otherwise end up in redirected output.
-	return process.stdout.isTTY === true;
+	if (process.stdout.isTTY !== true) return false;
+	if (env.SYNC_OUTPUT === "1" || env.SYNC_OUTPUT === "true") return true;
+	return multiplexer(env)?.synchronizedOutput !== false;
 }
 
 let pendingGraphics = "";
@@ -75,8 +97,11 @@ export function flushGraphics(): string {
  * anything else through `useStdout()`. Methods are bound to the real stream so
  * that `this` is never the proxy.
  */
-export function withSynchronizedOutput(stream: NodeJS.WriteStream): NodeJS.WriteStream {
-	const bracket = syncOutputEnabled();
+export function withSynchronizedOutput(
+	stream: NodeJS.WriteStream,
+	env: NodeJS.ProcessEnv = process.env,
+): NodeJS.WriteStream {
+	const bracket = syncOutputEnabled(env);
 
 	// Wrapped even when the brackets are off, because the graphics queue still has
 	// to be flushed into the frame. Turning synchronisation off should cost the

@@ -26,6 +26,7 @@
  * where it already is.
  */
 import { deflateSync } from "node:zlib";
+import { multiplexer } from "./multiplexer.js";
 
 /**
  * A fixed image id, deleted and re-uploaded every frame so exactly one image
@@ -407,25 +408,15 @@ export function detectKittyGraphics(env: NodeJS.ProcessEnv = process.env): boole
  * Under tmux an unhandled APC sequence is printed rather than eaten, which
  * fills the map with base64.
  *
- * This has to be a list of names and cannot be a capability question, which is
- * the uncomfortable part. A multiplexer runs the game on a pty of its own and
- * hands down the *outer* terminal's environment, so `TERM_PROGRAM` still says
- * whatever the window it eventually draws into says — and a graphics query sent
- * into one is answered by that outer terminal, truthfully, about itself. The game
- * then has an `OK` from a terminal it is not actually talking to.
- *
- * Measured inside herdr, which is where this was found: `TERM_PROGRAM=ghostty`
- * and `TERM=xterm-256color`, so {@link detectKittyGraphics} said yes and nothing
- * contradicted it. Asking harder cannot help; only knowing the name can.
+ * Which multiplexer, and why it cannot be asked instead of recognised, is in
+ * `multiplexer.ts`. Measured inside herdr, which is where this was found:
+ * `TERM_PROGRAM=ghostty` and `TERM=xterm-256color`, so {@link detectKittyGraphics}
+ * said yes and nothing contradicted it.
  *
  * `TILE_MODE=kitty` forces past this, for a multiplexer that does implement the
  * protocol — which is the right shape for the escape hatch, because being wrong
  * here is a mess on screen rather than a crash.
  */
 export function graphicsBlockedByMultiplexer(env: NodeJS.ProcessEnv = process.env): boolean {
-	if (env.TMUX) return true;
-	if ((env.TERM ?? "").startsWith("screen")) return true;
-	// herdr: a tmux-like multiplexer that runs each agent in its own pane.
-	if (env.HERDR_ENV || env.HERDR_PANE_ID) return true;
-	return false;
+	return multiplexer(env) !== undefined;
 }
