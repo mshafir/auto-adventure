@@ -11,6 +11,7 @@ import {
 	graphicsBlockedByMultiplexer,
 	graphicsQuery,
 	graphicsSupported,
+	multiplexerPrintsUnknownEscapes,
 } from "./kitty.js";
 import { TILE_WIDTH } from "./scale.js";
 
@@ -85,9 +86,28 @@ export function resolveTileMode(env: NodeJS.ProcessEnv = process.env): ModeReaso
 	}
 
 	if (probedGraphics !== undefined) {
-		return probedGraphics
-			? { mode: "kitty", because: "the terminal answered the graphics query" }
-			: { mode: "glyph", because: "the terminal did not answer the graphics query" };
+		if (!probedGraphics) {
+			return { mode: "glyph", because: "the terminal did not answer the graphics query" };
+		}
+		// Answering the graphics query is necessary and not sufficient, which took a
+		// blank map in a herdr pane to learn. It answered `OK` — a real reply
+		// carrying our own image id — while answering neither size query and drawing
+		// nothing, because it composites its panes itself.
+		//
+		// So the cell size is required too, and not as a proxy for honesty. Pixel
+		// mode is laid out from it: the camera's size in tiles comes from dividing
+		// the map area by the cell, and the assumed 8x16 is wrong on every terminal
+		// this has ever been measured on — 19x42 on the one in front of me. Drawing
+		// a pixel viewport from a guess puts the player off toward an edge. A
+		// terminal that will show an image but will not say how big a cell is can
+		// still have pixels, by being told: `CELL_PX=WxH`.
+		if (!cellSizeIsKnown(env)) {
+			return {
+				mode: "glyph",
+				because: "the terminal answered the graphics query but would not say its cell size",
+			};
+		}
+		return { mode: "kitty", because: "the terminal answered the graphics query" };
 	}
 
 	if (!detectKittyGraphics(env)) {
@@ -248,12 +268,17 @@ export async function measureCellPixels(
  * nothing a measurement would change, and on a stream that is not a terminal there
  * is nobody to answer.
  *
- * `{ graphics: false }` is the multiplexer case, and the distinction matters. tmux
- * passes the size queries through happily but *prints* an unhandled APC sequence
- * instead of swallowing it, so a graphics query there would spray its own escape
- * across the screen to learn something the mode resolution ignores anyway. The cell
- * size is still worth having, because `TILE_MODE=kitty` under tmux is a thing
- * people try.
+ * `{ graphics: false }` is for a multiplexer that *prints* an APC it does not
+ * understand — tmux passes the size queries through happily and then sprays the
+ * graphics query across the screen, to learn something the mode resolution
+ * ignores anyway. The cell size is still worth having, because `TILE_MODE=kitty`
+ * under tmux is a thing people try.
+ *
+ * A multiplexer that swallows the escape quietly is still asked, even though it
+ * is on the blocked list and the answer cannot win it pixel mode. The answer is
+ * the diagnosis: herdr replying `OK` while showing nothing is what identified it,
+ * and a tool that reports "not asked" would have hidden the one fact that
+ * mattered.
  */
 export function probePlan(
 	env: NodeJS.ProcessEnv = process.env,
@@ -263,7 +288,7 @@ export function probePlan(
 	const requested = env.TILE_MODE?.trim().toLowerCase();
 	if (requested === "glyph" || requested === "glyphs") return undefined;
 	if (!stdin.isTTY || !stdout.isTTY) return undefined;
-	return graphicsBlockedByMultiplexer(env) ? { graphics: false } : {};
+	return multiplexerPrintsUnknownEscapes(env) ? { graphics: false } : {};
 }
 
 /** `CSI 6 ; <height> ; <width> t` — the cell size, asked for directly. */
@@ -378,16 +403,28 @@ export function renderTilePixels(
  * assumption. Synchronous because the renderer needs it during layout.
  */
 export function cellPixels(env: NodeJS.ProcessEnv = process.env): CellSize {
+	return pinnedCellPixels(env) ?? measured ?? ASSUMED_CELL;
+}
+
+/** `CELL_PX=WxH`, if it is set and means anything. */
+function pinnedCellPixels(env: NodeJS.ProcessEnv): CellSize | undefined {
 	const match = /^(\d+)x(\d+)$/.exec(env.CELL_PX?.trim() ?? "");
-	if (match) {
-		return { width: Number(match[1]), height: Number(match[2]) };
-	}
-	return measured ?? ASSUMED_CELL;
+	return match ? { width: Number(match[1]), height: Number(match[2]) } : undefined;
 }
 
 /** Did the terminal actually answer, or are we guessing? */
 export function cellPixelsWereMeasured(): boolean {
 	return measured !== undefined;
+}
+
+/**
+ * Is the cell size known, rather than assumed?
+ *
+ * The question pixel mode turns on, because the camera is sized from it — a
+ * measurement or an explicit `CELL_PX` will do, and the fallback will not.
+ */
+export function cellSizeIsKnown(env: NodeJS.ProcessEnv = process.env): boolean {
+	return pinnedCellPixels(env) !== undefined || measured !== undefined;
 }
 
 /** Test seam, and how the startup path installs what it measured. */

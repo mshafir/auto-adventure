@@ -20,6 +20,7 @@ import {
 	placeholderRows,
 	transmitFrame,
 } from "../ui/render/kitty.js";
+import { probePlan, probeTerminal, resolveTileMode } from "../ui/render/mode.js";
 
 const ESC = "\u001B";
 
@@ -89,7 +90,7 @@ function testPattern(width: number, height: number, noisy: boolean): Buffer {
 	return rgb;
 }
 
-function main() {
+async function main() {
 	const args = parseArgs(process.argv.slice(2));
 	const columns = Number(args.get("columns") ?? 40);
 	const rows = Number(args.get("rows") ?? 16);
@@ -116,9 +117,21 @@ function main() {
 	});
 	const chunks = escapes.split(`${ESC}_G`).length - 1;
 
+	// The same probe the game runs, before anything is drawn. This tool used to
+	// report only the environment guess below, and that cost two debugging rounds:
+	// it said "kitty graphics detected: true" in a pane that answers the query and
+	// draws nothing, which reads as confirmation when it is hearsay.
+	const plan = probePlan();
+	const probe = plan ? await probeTerminal(process.stdin, process.stdout, plan) : undefined;
+	const mode = resolveTileMode();
+
 	const out = process.stdout;
 	out.write(`terminal: TERM=${process.env.TERM} TERM_PROGRAM=${process.env.TERM_PROGRAM}\n`);
-	out.write(`kitty graphics detected: ${detectKittyGraphics()}\n`);
+	out.write(
+		`graphics query: ${probe === undefined || plan?.graphics === false ? "not asked" : probe.graphics ? "answered OK" : "no answer"}\n`,
+	);
+	out.write(`the game would draw: ${mode.mode} — ${mode.because}\n`);
+	out.write(`guessed from the environment: ${detectKittyGraphics()}\n`);
 	out.write(`multiplexer in the way: ${graphicsBlockedByMultiplexer()}\n`);
 	out.write(
 		`placement: ${explicit ? "every cell named" : "row anchor, then continuation (what the game emits)"}\n`,
@@ -174,4 +187,4 @@ function main() {
 	void deleteFrame;
 }
 
-main();
+void main();

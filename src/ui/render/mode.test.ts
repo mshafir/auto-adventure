@@ -289,6 +289,16 @@ describe("probePlan", () => {
 		expect(probePlan({ TMUX: "/tmp/x" }, stdin(true), stdout(true))).toEqual({ graphics: false });
 	});
 
+	/*
+	 * Blocked from pixel mode, but still asked. herdr swallows the escape rather
+	 * than printing it, so the question is free — and its answer is the diagnosis:
+	 * a genuine `OK` from something that then draws nothing is what identified it,
+	 * and a tool reporting "not asked" would have hidden the one fact that mattered.
+	 */
+	it("still asks a multiplexer that swallows escapes quietly", () => {
+		expect(probePlan({ HERDR_PANE_ID: "w2:p6" }, stdin(true), stdout(true))).toEqual({});
+	});
+
 	it("asks nothing when glyphs are forced or there is nobody to answer", () => {
 		expect(probePlan({ TILE_MODE: "glyph" }, stdin(true), stdout(true))).toBeUndefined();
 		expect(probePlan({}, stdin(false), stdout(true))).toBeUndefined();
@@ -451,9 +461,46 @@ describe("resolveTileMode", () => {
 		 */
 		it("takes the terminal's own answer over the list of known names", () => {
 			setGraphicsProbe(true);
+			setCellPixels({ width: 19, height: 42 });
 			const answered = resolveTileMode({ TERM: "xterm-256color" });
 			expect(answered.mode).toBe("kitty");
 			expect(answered.because).toContain("answered");
+		});
+
+		/*
+		 * A yes is necessary and not sufficient, which a blank map in a herdr pane
+		 * is what taught. It answered the graphics query with a real `OK` carrying
+		 * our own image id, answered neither size query, and drew nothing — it
+		 * composites its panes itself, and image cells do not survive that.
+		 *
+		 * Requiring the cell size is not a lie detector bolted on afterwards: the
+		 * camera's size in tiles comes from dividing the map area by the cell, so a
+		 * pixel viewport laid out from the assumed 8x16 is the wrong shape and puts
+		 * the player off toward an edge. Not knowing it is reason enough on its own.
+		 */
+		it("wants a cell size as well as a yes, since the camera is laid out from it", () => {
+			setGraphicsProbe(true);
+			const guessing = resolveTileMode({ TERM: "xterm-256color" });
+			expect(guessing.mode).toBe("glyph");
+			expect(guessing.because).toContain("cell size");
+
+			// Told rather than measured is still knowing.
+			expect(resolveTileMode({ CELL_PX: "19x42" }).mode).toBe("kitty");
+			// And a forced mode still overrides the lot.
+			expect(resolveTileMode({ TILE_MODE: "kitty" }).mode).toBe("kitty");
+		});
+
+		/*
+		 * Named, not probed, and the two directions of evidence are different: a
+		 * multiplexer sets its own variables, so seeing one means being inside it,
+		 * while TERM_PROGRAM is inherited *through* it and proves nothing.
+		 */
+		it("does not let a herdr pane talk its way into pixels", () => {
+			setGraphicsProbe(true);
+			setCellPixels({ width: 19, height: 42 });
+			const herdr = { HERDR_PANE_ID: "w2:p6", TERM_PROGRAM: "ghostty" };
+			expect(resolveTileMode(herdr).mode).toBe("glyph");
+			expect(resolveTileMode(herdr).because).toContain("multiplexer");
 		});
 
 		/*

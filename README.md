@@ -101,7 +101,7 @@ All variables are optional.
 | `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Only needed if your terminal prints the escape instead of honouring it. |
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
 | `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
-| `TILE_MODE` | `auto` | `auto` asks the terminal whether it does graphics and uses pixels if it says yes. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
+| `TILE_MODE` | `auto` | `auto` asks the terminal whether it does graphics, and uses pixels if it says yes *and* reports its cell size. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
 | `ZOOM` | `1` | Scales the tiles in kitty mode. Above 1 is bigger tiles and less world on screen; below is the reverse. |
 | `TILE_PX` | derived | Pixels per tile edge, pinned. Left alone it is derived from the terminal's cell so pixel mode shows the same field of view as glyph mode. |
 | `KITTY_DEFLATE` | `1` | zlib level for the frame. Raise it to trade CPU for bytes on a slow link. |
@@ -243,19 +243,37 @@ npm run kitty-geometry      # what the game asked, and what came back
 ```
 
 Left to itself the game **asks**: a one-pixel graphics query goes out with the
-cell-size queries in the window before Ink takes stdin, and a terminal that
-answers `OK` gets pixels. That replaced a list of terminal names, which was wrong
-in the quiet direction — a capable terminal nobody had added to the list got
-glyphs and no explanation. The trade is worth stating: a terminal that implements
-the protocol but drops the reply now gets glyphs where the list would have given
-it pixels, and `TILE_MODE=kitty` is the way back.
+cell-size queries in the window before Ink takes stdin. That replaced a list of
+terminal names, which was wrong in the quiet direction — a capable terminal
+nobody had added to the list got glyphs and no explanation. The trade is worth
+stating: a terminal that implements the protocol but drops the reply now gets
+glyphs where the list would have given it pixels, and `TILE_MODE=kitty` is the
+way back.
 
-`TILE_MODE` overrides in both directions and without a check, because a terminal
-that supports the protocol but will not say so is something the player is better
-placed to know than we are. Under tmux the query is not sent at all — a
-multiplexer *prints* an APC sequence it does not understand rather than eating
-it — and glyphs are the permanent floor rather than a fallback that might one day
-be dropped. Sprites are
+A yes is necessary and not sufficient, and the second half of that rule was paid
+for. A herdr pane answers the graphics query with a real `OK` — the game's own
+image id echoed back — and then draws nothing, because it composites its panes
+itself and image cells do not survive that. Asking politely got a yes that was
+true about the protocol and false about the screen, and the map came up blank.
+So pixel mode also requires the terminal to say **how big a cell is**, which is
+not a lie detector bolted on afterwards: the camera's size in tiles comes from
+dividing the map area by the cell, so a viewport laid out from the assumed 8x16
+is the wrong shape and leaves the player off toward an edge. `CELL_PX=WxH` says
+it by hand where the terminal will not.
+
+Multiplexers are named rather than probed, and those names are evidence in a way
+`TERM_PROGRAM` is not: a multiplexer sets its own variables, so seeing one means
+being *inside* it, while `TERM_PROGRAM` is inherited straight *through* it —
+which is how a herdr pane came to describe itself as Ghostty. Under tmux the
+query is not even sent, since it *prints* an APC sequence it does not understand
+rather than eating it; herdr swallows it quietly, so it is still asked and the
+answer still reported, because a tool saying "not asked" would have hidden the
+one fact that identified this.
+
+`TILE_MODE` overrides all of it in both directions and without a check, because a
+terminal that supports the protocol but will not say so is something the player
+is better placed to know than we are. Glyphs are the permanent floor rather than
+a fallback that might one day be dropped. Sprites are
 procedures over the unit square rather than a bitmap, so tile size is a free
 choice; both renderers consume the same composed scene, so lighting, field of
 view, autotiling and the minimap overlay are shared and cannot drift apart.

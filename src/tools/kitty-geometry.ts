@@ -11,6 +11,7 @@
 import {
 	cellPixels,
 	cellPixelsWereMeasured,
+	cellSizeIsKnown,
 	lastCellReply,
 	probePlan,
 	probeTerminal,
@@ -65,7 +66,9 @@ async function main() {
 				: plan.graphics === false
 					? "not asked (a multiplexer is in the way)"
 					: probe?.graphics
-						? "the terminal answered OK"
+						? cellSizeIsKnown()
+							? "the terminal answered OK"
+							: "answered OK, but said no cell size — so glyphs anyway, see above"
 						: "no answer — this terminal gets glyphs"
 		}`,
 		`query reply     ${lastCellReply() || "(nothing came back)"}`,

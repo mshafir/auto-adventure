@@ -404,9 +404,35 @@ export function detectKittyGraphics(env: NodeJS.ProcessEnv = process.env): boole
 
 /**
  * Multiplexers pass most escapes through but not this one, or not reliably.
- * Under tmux an unhandled APC sequence is printed rather than eaten, which
- * fills the map with base64.
+ *
+ * Named rather than probed, and these names are trustworthy in a way
+ * `TERM_PROGRAM` is not: a multiplexer sets its own variables, so seeing one
+ * means the process is *inside* it. `TERM_PROGRAM` travels the other way — it is
+ * inherited from whatever launched the multiplexer, which is exactly how a
+ * herdr pane came to describe itself as Ghostty.
+ *
+ * herdr is on this list for a reason worth writing down, because it is not the
+ * tmux reason. It answers the graphics query with a genuine `OK` — our own image
+ * id echoed back — and then draws nothing, because it composites its panes
+ * itself and image cells do not survive that. Asking it politely gets a yes that
+ * is true about the protocol and false about the screen. The day it composites
+ * images, this line comes off the list.
  */
 export function graphicsBlockedByMultiplexer(env: NodeJS.ProcessEnv = process.env): boolean {
+	if (env.HERDR_PANE_ID || env.HERDR_ENV) return true;
+	return Boolean(env.TMUX) || (env.TERM ?? "").startsWith("screen");
+}
+
+/**
+ * Which multiplexers *print* an escape they do not understand.
+ *
+ * A narrower question than {@link graphicsBlockedByMultiplexer}, and the reason
+ * it is asked separately: tmux spraying a raw APC across the screen is a good
+ * reason not to send one at all, while herdr swallows it quietly. Somewhere that
+ * cannot show the image but can be asked about it is still worth asking, because
+ * the answer is what tells the next person debugging a blank map whether the
+ * escapes are reaching anything.
+ */
+export function multiplexerPrintsUnknownEscapes(env: NodeJS.ProcessEnv = process.env): boolean {
 	return Boolean(env.TMUX) || (env.TERM ?? "").startsWith("screen");
 }
