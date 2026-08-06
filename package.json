@@ -62,6 +62,10 @@
 		".scenarios",
 		"assets"
 	],
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	},
 	"dependencies": {
 		"ai": "^5.0.226",
 		"dotenv-flow": "^4.1.0",

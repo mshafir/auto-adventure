@@ -1,12 +1,22 @@
 name: publish
 
-# Publishing happens here rather than from a laptop, so the only place the npm
-# token ever exists is the repository secret NPM_TOKEN. Nothing in the working
-# tree, and no shell history, needs to hold it.
+# Publishing happens here rather than from a laptop, and the goal is that it needs
+# no long-lived credential at all.
 #
-# The trigger is a published GitHub release, which makes the release notes and
-# the npm version the same act. `workflow_dispatch` is the escape hatch for
-# re-running a publish that failed after the release was already made.
+# npm revoked classic tokens in December 2025, and granular tokens that can write
+# are now capped at 90 days — a token in this pipeline is a thing that expires on a
+# date nobody remembers, mid-release. Trusted publishing (OIDC) replaces it: npm is
+# told to trust *this workflow in this repository*, and the registry accepts a
+# short-lived token GitHub mints per run. Nothing is stored anywhere.
+#
+# The one thing OIDC cannot do is create a package. A trusted publisher can only be
+# configured against a package that already exists, so the first publish uses the
+# NPM_TOKEN secret below and every publish after it uses nothing. See the note on
+# that step for the cutover.
+#
+# The trigger is a published GitHub release, which makes the release notes and the
+# npm version the same act. `workflow_dispatch` is the escape hatch for re-running
+# a publish that failed after the release was already made.
 on:
   release:
     types: [published]
@@ -14,22 +24,28 @@ on:
 
 permissions:
   contents: read
-  # Lets npm attach a provenance attestation: proof the tarball was built by
-  # this workflow from this commit. Requires a public repository, which this is.
+  # Lets GitHub mint the OIDC token that trusted publishing exchanges with npm, and
+  # the one the provenance attestation is signed with. Required for both.
   id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
+          # Trusted publishing needs Node 22.14 or newer; `22` resolves to the
+          # latest 22.x, which is well past it.
           node-version: 22
-          # Writes the registry line the publish step's NODE_AUTH_TOKEN slots into.
           registry-url: https://registry.npmjs.org
           cache: npm
+
+      # Node 22 bundles npm 10, and trusted publishing landed in npm 11.5.1. This
+      # step is what makes OIDC available at all — without it the publish falls back
+      # to looking for a token and fails once the secret is gone.
+      - run: npm install -g npm@latest
 
       - run: npm ci
 
@@ -45,8 +61,14 @@ jobs:
             exit 1
           fi
 
-      # `prepublishOnly` runs typecheck + lint + tests and `prepack` runs the
-      # build, so this one line is the whole gate as well as the publish.
-      - run: npm publish --provenance --access public
+      # `prepublishOnly` runs typecheck + lint + tests and `prepack` runs the build,
+      # so this one line is the whole gate as well as the publish. Access and
+      # provenance live in `publishConfig`, so the command is identical whether it
+      # authenticates with the token or with OIDC.
+      #
+      # CUTOVER: once trusted publishing is configured for this package on npmjs.com,
+      # delete the two `env:` lines below and the NPM_TOKEN repository secret. They
+      # are the only remaining long-lived credential in the release path.
+      - run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
