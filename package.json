@@ -1,6 +1,6 @@
 {
 	"name": "auto-adventure",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "A terminal RPG on an infinite, seamless, procedurally generated world, with an LLM as its author rather than its renderer.",
 	"license": "MIT",
 	"author": "Michael Shafir",
