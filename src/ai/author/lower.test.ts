@@ -161,6 +161,32 @@ describe("forks", () => {
 		expect(byId.get("tell")?.branch).toBe("who");
 	});
 
+	it("does not let one arm be a step of the other", () => {
+		// Shipped in a generated world and it stopped the story dead at the choice: the
+		// model made both arms of a fork `partOf` each other's sibling, so whichever the
+		// player picked waited on a flag only the arm they did *not* pick would set.
+		// Both arms then reported "can never open", which is a fork with no way through.
+		const { arc } = lower([
+			beat({ id: "before" }),
+			beat({ id: "tell", branch: "who" }),
+			beat({ id: "hide", branch: "who", partOf: "tell" }),
+		]);
+		const byId = new Map(arc.beats.map((b) => [b.id, b]));
+		expect(byId.get("hide")?.requires).toEqual(["arc:before"]);
+		expect(byId.get("hide")?.quest?.parentId).toBeUndefined();
+	});
+
+	it("still lets a step of an arm be a step of that arm", () => {
+		// The rule is about *siblings*, not about arms generally. Something that genuinely
+		// follows on from one arm is a legitimate shape and must survive.
+		const { arc } = lower([
+			beat({ id: "tell", branch: "who" }),
+			beat({ id: "after-telling", partOf: "tell" }),
+		]);
+		const byId = new Map(arc.beats.map((b) => [b.id, b]));
+		expect(byId.get("after-telling")?.requires).toEqual(["arc:tell"]);
+	});
+
 	it("keeps only the endings that name an arm it actually wrote", () => {
 		const { arc } = lower(
 			[beat({ id: "tell", branch: "who" }), beat({ id: "hide", branch: "who" })],

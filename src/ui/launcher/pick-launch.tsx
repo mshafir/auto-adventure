@@ -1,14 +1,12 @@
 import { render } from "ink";
-import { AuthoringStopped, authorScenario } from "../../ai/author/author.js";
 import { logTelemetry } from "../../ai/telemetry.js";
-import { CONFIG, hasGatewayKey, resolveSeed } from "../../config.js";
+import { CONFIG, hasGatewayKey } from "../../config.js";
 import { listPacks } from "../../content/load.js";
 import { listTilePacks } from "../../content/tiles.js";
 import { deleteSave, listSaves } from "../../persist/save-repo.js";
-import type { ScenarioArtifact } from "../../scenario/artifact.js";
-import { listScenarios, loadScenario, verifyArtifact, writeScenario } from "../../scenario/repo.js";
+import { type GenerationOutcome, generateScenario } from "../../scenario/generate.js";
+import { listScenarios, loadScenario } from "../../scenario/repo.js";
 import type { GenerateRequest, LaunchChoice } from "../../scenario/scenario.js";
-import { hasErrors, validateArtifact } from "../../scenario/validate.js";
 import { logger } from "../../utils/log.js";
 import { detectColorDepth } from "../render/color.js";
 import { GenerateProgress } from "./generate-progress.js";
@@ -91,15 +89,10 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
  * because a component that has to survive being unmounted mid-`await` is a component that
  * will eventually be unmounted mid-`await`.
  *
- * The result lands in `.scenarios` before the game starts, so the world can be played
- * again exactly. That is the whole difference between this and a live world: the same
- * authoring either way, but here it is kept.
+ * Everything that decides anything lives in `generateScenario`; this draws it. The result
+ * lands in `.scenarios` before the game starts, so the world can be played again exactly.
  */
 async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice | undefined> {
-	const id = freeScenarioId(request.brief.premise);
-	// From the id, so the same name always names the same country — the rule the CLI
-	// already follows, and what makes a run reproducible from its filename alone.
-	const seed = resolveSeed(id);
 	const startedAt = Date.now();
 	const stop = new AbortController();
 
@@ -107,6 +100,8 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	let calls = 0;
 	let title: string | undefined;
 	let stopping = false;
+	let outcome: GenerationOutcome | undefined;
+	let dismiss: (() => void) | undefined;
 
 	const columns = process.stdout.columns ?? 80;
 	const rows = Math.max(12, (process.stdout.rows ?? 24) - 1);
@@ -123,6 +118,9 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 			startedAt={startedAt}
 			stopping={stopping}
 			{...(failure ? { failure } : {})}
+			{...(outcome?.findings.length ? { findings: outcome.findings } : {})}
+			{...(outcome?.path ? { path: outcome.path } : {})}
+			onDismiss={() => dismiss?.()}
 			onStop={() => {
 				if (stopping) return;
 				stopping = true;
@@ -135,107 +133,45 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	const instance = render(view(), { exitOnCtrlC: true });
 	const draw = () => instance.rerender(view());
 
-	logger.info(`generating scenario "${id}" seed ${seed}, ${request.brief.duration ?? "medium"}`);
+	outcome = await generateScenario(request, {
+		signal: stop.signal,
+		onProgress: (message) => {
+			lines.push(message);
+			// `calls` is not reported per-message, so it is inferred from the lore line
+			// onward the same way the CLI's summary does — close enough for a progress
+			// display and not worth threading a counter through five passes for.
+			calls = lines.length;
+			if (!title && message.startsWith("lore: ")) title = message.slice("lore: ".length);
+			draw();
+		},
+	});
+	calls = outcome.calls;
 
-	let artifact: ScenarioArtifact | undefined;
-	try {
-		const result = await authorScenario({
-			id,
-			brief: request.brief,
-			seed,
-			signal: stop.signal,
-			onProgress: (message) => {
-				lines.push(message);
-				// `calls` is not reported per-message, so it is inferred from the lore line
-				// onward the same way the CLI's summary does — close enough for a progress
-				// display and not worth threading a counter through five passes for.
-				calls = lines.length;
-				if (!title && message.startsWith("lore: ")) title = message.slice("lore: ".length);
-				draw();
-			},
-		});
-		calls = result.calls;
-		artifact = {
-			...result.artifact,
-			...(request.tiles ? { tiles: request.tiles } : {}),
-			...(request.pack ? { pack: request.pack } : {}),
-			// Written only when it differs from the default, so an ordinary world's artifact
-			// stays the shape every hand-written one already has.
-			...(request.dayAndNight ? {} : { time: { enabled: false } }),
-			...(request.liveInGame ? { liveInGame: true } : {}),
-		};
-	} catch (error) {
-		if (error instanceof AuthoringStopped) {
-			lines.push("stopped. nothing was written.");
-		} else {
-			logger.error("generating a scenario failed", error);
-			lines.push(`failed: ${error instanceof Error ? error.message : String(error)}`);
-		}
-		instance.rerender(view("Nothing was kept. Press ESC to go back to the shell."));
+	if (!outcome.choice) {
+		lines.push(outcome.stopped ? "stopped. nothing was written." : `failed: ${outcome.failure}`);
+		instance.rerender(view("Nothing was kept. Press Ctrl-C to go back to the shell."));
 		await instance.waitUntilExit();
 		logTelemetry();
 		return undefined;
 	}
 
-	// Validated but not gated on. A finding here is a fault in *our* authoring passes, not
-	// in something a player did, and refusing to start after four paid minutes would turn a
-	// blemish into a total loss. Logged in full so it is still findable, and a scenario with
-	// a warning in it is a playable scenario.
-	for (const problem of verifyArtifact(artifact)) logger.warn(`generated ${id}: ${problem}`);
-	const findings = validateArtifact(artifact);
-	for (const finding of findings) {
-		logger.warn(`generated ${id}: ${finding.severity} ${finding.message}`);
+	// Read before played, when there is anything to read. The screen this replaces filed
+	// the findings in the log and told the player it had done so, which is the same as not
+	// telling them: the log is a file they have no reason to know about.
+	if (outcome.findings.length > 0) {
+		await new Promise<void>((resolve) => {
+			dismiss = resolve;
+			draw();
+		});
 	}
-	if (hasErrors(findings)) lines.push("finished, with faults noted in the log.");
 
-	const path = writeScenario(artifact);
-	logger.info(`wrote ${path} after ${calls} model calls`);
-	lines.push(`kept in ${path}`);
-	draw();
 	instance.unmount();
-	await instance.waitUntilExit();
 	logTelemetry();
-
-	return {
-		worldId: id,
-		seed: artifact.seed,
-		flavour: "prebuilt",
-		scenario: artifact,
-		...(request.liveInGame ? { liveInGame: true } : {}),
-	};
+	// The last thing before the world opens, so that a run which dies between here and the
+	// first frame says where it got to rather than simply ending.
+	logger.info(`starting the generated world "${outcome.choice.worldId}"`);
+	return outcome.choice;
 }
-
-/**
- * A filename nothing else has taken, from what the player asked for.
- *
- * The premise makes a far better name than a counter does — `.scenarios` is a directory a
- * person reads — but two worlds asked for in the same words must not overwrite each other,
- * so a taken slug gets a number. Falls back to a fixed stem when there is no premise,
- * which is the unguided case.
- */
-function freeScenarioId(premise: string | undefined): string {
-	const taken = new Set(listScenarios().map((scenario) => scenario.id));
-	const stem = slug(premise) || "a-world";
-	if (!taken.has(stem)) return stem;
-	for (let n = 2; ; n++) {
-		const candidate = `${stem}-${n}`;
-		if (!taken.has(candidate)) return candidate;
-	}
-}
-
-/** The scenario id rules, which are also the filename rules: lower-case, digits, dashes. */
-function slug(text: string | undefined): string {
-	return (text ?? "")
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.split("-")
-		.slice(0, 5)
-		.join("-")
-		.slice(0, 48)
-		.replace(/-+$/g, "");
-}
-
 /**
  * Why a live world is not being offered.
  *

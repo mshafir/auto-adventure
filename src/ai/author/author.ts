@@ -435,6 +435,8 @@ export function lowerArc(
 	sites: readonly { readonly entry: { site: { id: number } }; readonly spec: SiteSpec }[],
 ): { arc: ScenarioArc; placements: Placement[] } | undefined {
 	const seen = new Set<string>();
+	/** Which fork each beat written so far belongs to, for the sibling check below. */
+	const branchOf = (id: string) => beats.find((beat) => beat.id === id)?.branch;
 	// Mutable while it is being assembled: a parent's objectives are not knowable until
 	// its steps have been read, and a `ScenarioBeat` is readonly by the time it ships.
 	const beats: (Omit<ScenarioBeat, "quest"> & { quest?: ScenarioBeat["quest"] })[] = [];
@@ -484,8 +486,21 @@ export function lowerArc(
 		}
 
 		// A step is only a step if its parent is a beat already written and is not itself.
-		const parent =
+		//
+		// And never a sibling arm of the same fork. The model reliably conflates "these are
+		// alternatives" with "this follows that", and writing both makes each arm wait on a
+		// flag only the *other* arm sets — so whichever the player picks, the beat they
+		// picked can never open and the story stops at the choice. Dropping the parent
+		// leaves the arm waiting on whatever came before the fork, which is what an arm
+		// should wait on.
+		const named =
 			raw.partOf && seen.has(raw.partOf) && raw.partOf !== raw.id ? raw.partOf : undefined;
+		const sibling =
+			named !== undefined && raw.branch !== undefined && branchOf(named) === raw.branch;
+		if (sibling) {
+			logger.debug(`arc: ${raw.id} is an arm of ${raw.branch}, not a step of ${named}`);
+		}
+		const parent = sibling ? undefined : named;
 
 		beats.push({
 			id: raw.id,
