@@ -34,7 +34,21 @@ const FRAME_MS = (() => {
 	return Number.isFinite(raw) && raw >= 0 ? raw : 33;
 })();
 
+/**
+ * Draw in the terminal's own scrollback instead of on a screen of our own.
+ *
+ * An escape hatch, and it exists to make one particular failure bisectable. "The
+ * game does not render at all" is reported from inside multiplexers and remote
+ * shells, and there are only two escapes the game leans on that an ordinary TUI
+ * does not: the alternate screen buffer, and DEC 2026 synchronized updates on
+ * every write. Between `NO_ALT_SCREEN=1` and `NO_SYNC_OUTPUT=1` a player can say
+ * which of them their terminal choked on in two runs, rather than us guessing at
+ * an emulator we cannot install.
+ */
+const ALT_SCREEN = process.env.NO_ALT_SCREEN !== "1" && process.env.NO_ALT_SCREEN !== "true";
+
 function enterAltScreen(): () => void {
+	if (!ALT_SCREEN) return () => {};
 	process.stdout.write(ALT_SCREEN_ON);
 	let restored = false;
 	return () => {

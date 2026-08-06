@@ -98,7 +98,8 @@ All variables are optional.
 | `MODEL_BIBLE` | `google/gemini-2.5-flash` | The world premise, once per world. |
 | `AUTO_ADVENTURE_HOME` | `~/.auto-adventure` | Where saves live. |
 | `LOG_FILE`, `LOG_LEVEL` | `log.txt`, `info` | The TUI owns stdout, so logs go to a file. |
-| `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Only needed if your terminal prints the escape instead of honouring it. |
+| `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Only needed if your terminal prints the escape instead of honouring it — or holds a frame it was told to buffer and never presents it, which looks like nothing rendering at all. |
+| `NO_ALT_SCREEN` | `0` | Draw in the terminal's own scrollback rather than on a screen of its own. The other half of the "nothing renders" bisect. |
 | `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
 | `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
 | `TILE_MODE` | `auto` | `auto` asks the terminal whether it does graphics and uses pixels if it says yes. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
@@ -272,10 +273,19 @@ it pixels, and `TILE_MODE=kitty` is the way back.
 
 `TILE_MODE` overrides in both directions and without a check, because a terminal
 that supports the protocol but will not say so is something the player is better
-placed to know than we are. Under tmux the query is not sent at all — a
-multiplexer *prints* an APC sequence it does not understand rather than eating
-it — and glyphs are the permanent floor rather than a fallback that might one day
-be dropped. Sprites are
+placed to know than we are. Inside a multiplexer the query is not sent at all —
+one *prints* an APC sequence it does not understand rather than eating it — and
+glyphs are the permanent floor rather than a fallback that might one day be
+dropped.
+
+Multiplexers have to be recognised by name (`TMUX`, `screen`, `herdr`) rather than
+by asking, and that is worth explaining because it looks like a shortcut. A
+multiplexer runs the game on a pty of its own and passes the environment straight
+down, so inside a herdr pane `TERM_PROGRAM` still reads `ghostty` — and a graphics
+query sent into the pane reaches Ghostty, which answers truthfully about *itself*.
+The game would then hold an `OK` from a terminal it is not talking to. No amount
+of asking gets round that; only knowing the name does. `TILE_MODE=kitty` forces
+past it for a multiplexer that really does implement the protocol. Sprites are
 procedures over the unit square rather than a bitmap, so tile size is a free
 choice; both renderers consume the same composed scene, so lighting, field of
 view, autotiling and the minimap overlay are shared and cannot drift apart.

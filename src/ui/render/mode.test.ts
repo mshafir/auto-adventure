@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { QUERY_IMAGE_ID } from "./kitty.js";
+import { detectKittyGraphics, graphicsBlockedByMultiplexer, QUERY_IMAGE_ID } from "./kitty.js";
 import {
 	cellPixels,
 	cellPixelsWereMeasured,
@@ -287,6 +287,31 @@ describe("probePlan", () => {
 		// resolution ignores anyway. The cell size is still worth having, because
 		// TILE_MODE=kitty under tmux is a thing people try.
 		expect(probePlan({ TMUX: "/tmp/x" }, stdin(true), stdout(true))).toEqual({ graphics: false });
+	});
+
+	it("skips it under herdr too, which hands down the outer terminal's name", () => {
+		/*
+		 * The case that made the list-of-names approach unavoidable. herdr runs the
+		 * game on a pty of its own and passes the environment straight down, so inside
+		 * a pane `TERM_PROGRAM` still reads `ghostty` and `TERM` reads
+		 * `xterm-256color` — measured, not supposed. `detectKittyGraphics` therefore
+		 * says yes, and asking the terminal does not help either: the query reaches
+		 * Ghostty, which answers truthfully about *itself*, and the game ends up with
+		 * an OK from a terminal it is not talking to.
+		 */
+		const herdr = { TERM: "xterm-256color", TERM_PROGRAM: "ghostty", HERDR_ENV: "1" };
+		expect(detectKittyGraphics(herdr)).toBe(true);
+		expect(graphicsBlockedByMultiplexer(herdr)).toBe(true);
+		expect(probePlan(herdr, stdin(true), stdout(true))).toEqual({ graphics: false });
+		expect(resolveTileMode(herdr).mode).toBe("glyph");
+		expect(resolveTileMode(herdr).because).toContain("multiplexer");
+	});
+
+	it("still lets a player force pixels inside one", () => {
+		// Being wrong about a multiplexer is a mess on screen rather than a crash, so
+		// the override is the right shape for a mux that does implement the protocol.
+		const herdr = { TERM_PROGRAM: "ghostty", HERDR_PANE_ID: "w2:p2", TILE_MODE: "kitty" };
+		expect(resolveTileMode(herdr).mode).toBe("kitty");
 	});
 
 	it("asks nothing when glyphs are forced or there is nobody to answer", () => {
