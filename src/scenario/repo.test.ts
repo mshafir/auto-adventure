@@ -53,6 +53,33 @@ describe("writeScenario and readScenarioFile", () => {
 		expect(loadScenario("drowned-archipelago")?.title).toBe("The Drowned Archipelago");
 	});
 
+	/**
+	 * The settings a generated world is asked for before it exists.
+	 *
+	 * All three are decided on the config page and then have to survive being written to
+	 * disk and read back, because the file is the only record: a generated scenario is
+	 * replayed from `.scenarios`, not from whatever the player answered that day.
+	 */
+	it("keeps the clock, the look and the improvise flag a generated world was given", () => {
+		const path = writeScenario({
+			...artifact(),
+			time: { enabled: false },
+			tiles: "gramarye",
+			liveInGame: true,
+		});
+		const read = readScenarioFile(path);
+		expect(read?.time).toEqual({ enabled: false });
+		expect(read?.tiles).toBe("gramarye");
+		expect(read?.liveInGame).toBe(true);
+	});
+
+	it("treats a world that said nothing about improvising as one that does not", () => {
+		// Which is every hand-written scenario. `prebuilt` meant "never calls a model"
+		// before this existed, and it has to go on meaning that where nobody said otherwise.
+		const read = readScenarioFile(writeScenario(artifact()));
+		expect(read?.liveInGame).toBeUndefined();
+	});
+
 	it("returns undefined for a file that is not there", () => {
 		expect(readScenarioFile(scenarioPath("nothing"))).toBeUndefined();
 		expect(loadScenario("nothing")).toBeUndefined();

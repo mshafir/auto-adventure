@@ -409,6 +409,8 @@ export const ScenarioArtifactSchema = z.object({
 	placements: z.array(PlacementSchema).max(64).optional(),
 	/** Whether this world has a clock. Absent means the ordinary day/night cycle. */
 	time: TimeOptionsSchema.optional(),
+	/** Whether a model may improvise for anyone with no written tree. Absent means no. */
+	liveInGame: z.boolean().optional(),
 	trees: z.record(z.string(), DialogueTreeSchema).optional(),
 	authoredWith: z.object({
 		models: z.record(z.string(), z.string()),

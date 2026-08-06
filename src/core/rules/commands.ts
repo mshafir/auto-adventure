@@ -51,6 +51,16 @@ export type Command =
 			readonly text: string;
 			readonly choices?: readonly string[];
 	  }
+	/**
+	 * The reply so far, while it is still arriving.
+	 *
+	 * Cosmetic and idempotent: it replaces the preview text and changes nothing else, so
+	 * dropping every one of these would leave the conversation identical. `DialogueTurn`
+	 * remains the only commit point — that is what keeps effects, memory and quest
+	 * actions off a half-finished sentence, and it is why this carries no choices and no
+	 * actions even though the model is streaming them too.
+	 */
+	| { readonly t: "DialogueStreaming"; readonly npcId: string; readonly text: string }
 	| { readonly t: "ApplyEffects"; readonly effects: readonly DomainEffect[] }
 	// The director reports what it learned by dispatching, like everything else
 	// asynchronous; it has no path to the state that does not go through here.

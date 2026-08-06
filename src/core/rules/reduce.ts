@@ -12,6 +12,7 @@ import { arcEndEffects, arcOutline, beatEffects, beatsOpenedByState } from "./ar
 import { cardKey, cardSeen, tidyCard } from "./card.js";
 import type { Command } from "./commands.js";
 import { evaluate } from "./condition.js";
+import { withCachedTurn } from "./dialogue-cache.js";
 import { type DomainEffect, type Effect, facingDelta, type Reduction } from "./effects.js";
 import { type Barrier, barrierKey, barrierOpen, type Lock } from "./lock.js";
 import type { LootItem } from "./loot.js";
@@ -331,6 +332,8 @@ function step(state: GameState, command: Command, world: WorldProbe): Reduction 
 			};
 		case "DialogueTurn":
 			return receiveDialogueTurn(state, command);
+		case "DialogueStreaming":
+			return { state: previewDialogue(state, command.npcId, command.text), effects: [] };
 		case "ApplyEffects":
 			return applyEffects(state, command.effects);
 		case "LoreLearned":
@@ -757,6 +760,21 @@ function confirm(state: GameState): Reduction {
 	};
 }
 
+/**
+ * Show the reply so far, without making it part of the conversation.
+ *
+ * Guarded the same way `receiveDialogueTurn` is, and for the same reason: a stream still
+ * arriving for somebody the player has walked away from must not reopen their panel. Also
+ * ignored once the turn is no longer pending, so a late chunk cannot paint a preview over
+ * a reply that has already landed.
+ */
+function previewDialogue(state: GameState, npcId: string, text: string): GameState {
+	const dialogue = state.dialogue;
+	if (!dialogue || dialogue.npcId !== npcId || !dialogue.pending) return state;
+	if (dialogue.preview === text) return state;
+	return { ...state, dialogue: { ...dialogue, preview: text } };
+}
+
 function receiveDialogueTurn(
 	state: GameState,
 	command: Extract<Command, { t: "DialogueTurn" }>,
@@ -767,11 +785,15 @@ function receiveDialogueTurn(
 	if (!dialogue || dialogue.npcId !== command.npcId) return { state, effects: [] };
 
 	const lines = [...dialogue.lines, { speaker: command.speaker, text: command.text }];
+	// `preview` is dropped rather than cleared to the empty string: the committed line is
+	// the same sentence finished, so leaving a stale copy of it in the state would show
+	// the reply twice for one frame.
+	const { preview: _preview, ...rest } = dialogue;
 	return {
 		state: {
 			...state,
 			dialogue: {
-				...dialogue,
+				...rest,
 				lines,
 				cursor: Math.max(0, lines.length - 1),
 				choices: command.choices,
@@ -929,6 +951,12 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 				totalTurns: record.totalTurns + 1,
 				lastSeenTick: state.time.tick,
 			}));
+
+		case "RememberTurn":
+			return {
+				...state,
+				dialogueCache: withCachedTurn(state.dialogueCache, effect.key, effect.turn),
+			};
 
 		case "SetNpcNode":
 			return withNpc(state, effect.npcId, (record) => ({ ...record, node: effect.node }));

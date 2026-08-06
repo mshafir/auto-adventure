@@ -133,8 +133,12 @@ What is worth reaching for, in rough order of how often it helps:
 
 Three kinds of place are weighted at zero by default and only appear if you ask:
 `castle`, `docks` and `cave`. Each declines rather than compromising — a dock inland,
-a cave on flat ground and a castle with nowhere level to stand all build *nothing* —
-so put them where the survey says the ground suits them, and check with `preview`.
+a cave on flat ground and a castle with nowhere level to stand all build *nothing*.
+
+The survey drops the ones that declined, so a weight is safe to raise: you get however
+many the ground allowed, and `npm run author` prints what it dropped. A `places` entry is
+the one that still needs care, because it names a coordinate and gets no second chance —
+put those where the survey says the ground suits them, and check with `preview`.
 
 Full reference in `docs/scenarios.md` under "The recipe".
 

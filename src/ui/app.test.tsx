@@ -154,6 +154,115 @@ describe("the game screen", () => {
 		// The panel is choice-driven, so the offered replies must be on screen.
 		expect(text).toContain("SPACE");
 	});
+
+	/**
+	 * The panel has to say it is working on every turn, not only the opening one.
+	 *
+	 * The old condition was `pending && !line`, which is true exactly once: before the
+	 * first reply arrives there is nothing else to draw. From the second turn on, `line`
+	 * is the answer the player just picked, so the indicator was suppressed and the panel
+	 * showed the player's own words with an empty space under them and a motionless "..."
+	 * in the footer — indistinguishable from a conversation that had finished.
+	 */
+	function frameWhileThinking(turns: number): string {
+		const { engine, target } = engineBesideSomeone();
+		bindEngine(engine);
+		engine.dispatch({ t: "DialogueOpened", npcId: target.id, npcName: target.name });
+		for (let i = 0; i < turns; i++) {
+			engine.dispatch({
+				t: "DialogueTurn",
+				npcId: target.id,
+				speaker: target.name,
+				text: `Reply ${i}.`,
+				choices: ["Ask again", "Say nothing"],
+			});
+			// Answering is what puts the panel back into `pending` with a line on screen.
+			engine.dispatch({ t: "Confirm" });
+		}
+		expect(engine.getState().dialogue?.pending).toBe(true);
+		const { lastFrame, unmount } = renderInk(<App />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		return text;
+	}
+
+	it("says who it is waiting for on the first turn and on every turn after", () => {
+		const { engine, target } = engineBesideSomeone();
+		bindEngine(engine);
+		// The opening turn: pending with nothing on screen yet, which always worked.
+		engine.dispatch({ t: "DialogueOpened", npcId: target.id, npcName: target.name });
+		const { lastFrame, unmount } = renderInk(<App />);
+		const opening = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(opening).toContain("is thinking");
+
+		// The turn that was broken, and the one after it.
+		expect(frameWhileThinking(1), "no indicator on the second turn").toContain("is thinking");
+		expect(frameWhileThinking(3), "no indicator on the fourth turn").toContain("is thinking");
+	});
+
+	it("keeps what the player just said on screen while it waits", () => {
+		// Drawn under the answer rather than instead of it: replacing the line would
+		// mean the player's own words vanish the instant they commit to them.
+		const text = frameWhileThinking(1);
+		expect(text).toContain("Ask again");
+		expect(text).toContain("is thinking");
+	});
+
+	it("shows the reply as it streams, in place of what the player said", () => {
+		// The preview takes the line's rows rather than adding its own, so that when the
+		// turn commits the text simply stops growing instead of jumping to a new position.
+		const { engine, target } = engineBesideSomeone();
+		bindEngine(engine);
+		engine.dispatch({ t: "DialogueOpened", npcId: target.id, npcName: target.name });
+		engine.dispatch({
+			t: "DialogueTurn",
+			npcId: target.id,
+			speaker: target.name,
+			text: "Well?",
+			choices: ["I need the ledger", "Nothing"],
+		});
+		engine.dispatch({ t: "Confirm" });
+		engine.dispatch({ t: "DialogueStreaming", npcId: target.id, text: "The ledger is" });
+
+		const { lastFrame, unmount } = renderInk(<App />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("The ledger is");
+		expect(text).not.toContain("I need the ledger");
+		// Still working, and still says so: the first token is not the last.
+		expect(text).toContain("is thinking");
+	});
+
+	it("stops saying it is thinking once the reply lands", () => {
+		const { engine, target } = engineBesideSomeone();
+		bindEngine(engine);
+		engine.dispatch({ t: "DialogueOpened", npcId: target.id, npcName: target.name });
+		engine.dispatch({ t: "DialogueStreaming", npcId: target.id, text: "Half a sen" });
+		engine.dispatch({
+			t: "DialogueTurn",
+			npcId: target.id,
+			speaker: target.name,
+			text: "Half a sentence, finished.",
+		});
+
+		const { lastFrame, unmount } = renderInk(<App />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("Half a sentence, finished.");
+		expect(text).not.toContain("is thinking");
+		// The preview is dropped on commit, not left beside the line it became.
+		expect(engine.getState().dialogue?.preview).toBeUndefined();
+	});
+
+	it("does not grow the frame while it is waiting", () => {
+		// The indicator lives in the choices' rows, which are empty precisely while it
+		// shows. If that stops being true the panel gets taller than `panelHeightFor`
+		// claims and Ink starts clearing the screen on every keypress.
+		const rows = process.stdout.rows || 24;
+		const height = frameWhileThinking(1).split("\n").length;
+		expect(height, `frame is ${height} lines in a ${rows}-row terminal`).toBeLessThan(rows);
+	});
 });
 
 describe("the key bar", () => {

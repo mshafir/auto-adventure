@@ -108,10 +108,42 @@ export function recipeFor(shape: WorldShapeResponse): WorldRecipe | undefined {
 		}
 	}
 
+	// Castles, caves and docks, which the default world has none of. Left out of the
+	// `density` scaling above on purpose: these are landmarks rather than places people
+	// live, so "a crowded world" should mean more hamlets, not more castles.
+	//
+	// The numbers are small because the roll is per *macro cell* and the map has a great
+	// many of them — 1.2% of habitable cells is already a couple of castles in a short
+	// world, which is the most a story can actually use. They also decline rather than
+	// compromise on unsuitable ground, so the number asked for is an upper bound and the
+	// number that appears is usually lower.
+	const landmark: Record<string, number> = { none: 0, few: 0.4, some: 1.2 };
+	for (const [kind, level] of [
+		["castle", shape.strongholds],
+		["cave", shape.caves],
+		["docks", shape.harbours],
+	] as const) {
+		const percent = landmark[level] ?? 0;
+		if (percent > 0) weights[kind] = percent;
+	}
+
+	// Caves are the one of the three that belongs on wild ground as much as settled: a
+	// cave mouth on a steep hillside nobody lives near is the normal case, and leaving it
+	// out of the wild ladder is what would make caves appear only beside farmland.
+	const wildWeights: Record<string, number> = {};
+	if ((landmark[shape.caves] ?? 0) > 0) wildWeights.cave = landmark[shape.caves] as number;
+
 	const recipe: WorldRecipe = {
 		...(Object.keys(climate).length > 0 ? { climate } : {}),
 		...(Object.keys(biomes).length > 0 ? { biomes } : {}),
-		...(Object.keys(weights).length > 0 ? { sites: { weights } } : {}),
+		...(Object.keys(weights).length > 0 || Object.keys(wildWeights).length > 0
+			? {
+					sites: {
+						...(Object.keys(weights).length > 0 ? { weights } : {}),
+						...(Object.keys(wildWeights).length > 0 ? { wildWeights } : {}),
+					},
+				}
+			: {}),
 	};
 	return Object.keys(recipe).length > 0 ? recipe : undefined;
 }

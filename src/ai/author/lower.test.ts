@@ -3,7 +3,7 @@ import { arcOutline, orderedBeats } from "../../core/rules/arc.js";
 import type { GameState } from "../../core/rules/state.js";
 import type { SiteSpec } from "../../core/world/spec.js";
 import { lowerArc } from "./author.js";
-import type { ArcResponse } from "./schemas.js";
+import type { ArcResponse, WorldShapeResponse } from "./schemas.js";
 import { recipeFor } from "./shape.js";
 
 /**
@@ -24,6 +24,16 @@ const SITES = [0, 1, 2].map((i) => ({
 			{ slot: 0, name: `A${i}` },
 			{ slot: 1, name: `B${i}` },
 		],
+		// A roster, because where a hidden thing can go depends on what was actually asked
+		// for here. The mill is the prominent one, so it is where anything unhousable lands.
+		settlement: {
+			name: `Place ${i}`,
+			walled: false,
+			structures: [
+				{ kind: "mill", size: "large", importance: 5 },
+				{ kind: "temple", size: "medium", importance: 3 },
+			],
+		},
 	} as unknown as SiteSpec,
 }));
 
@@ -190,6 +200,32 @@ describe("things hidden", () => {
 		});
 	});
 
+	it("hides it somewhere the settlement actually has", () => {
+		// The model picks `where` from a closed list of building kinds, which stops it
+		// inventing a vault and does not stop it naming a barracks at a village that has
+		// none. The placement then fails to resolve, the item is nowhere, and the beat
+		// still asks the player to be carrying it — a step nobody can finish.
+		const { placements } = lower([
+			beat({
+				id: "the-ledger",
+				siteIndex: 2,
+				find: { item: "Ledger", description: "Water-stained.", where: "barracks" },
+			}),
+		]);
+		expect(placements[0]?.at).toMatchObject({ structure: "mill" });
+	});
+
+	it("leaves a hiding place the settlement does have alone", () => {
+		const { placements } = lower([
+			beat({
+				id: "the-ledger",
+				siteIndex: 2,
+				find: { item: "Ledger", description: "Water-stained.", where: "temple" },
+			}),
+		]);
+		expect(placements[0]?.at).toMatchObject({ structure: "temple" });
+	});
+
 	it("gives a beat with only a hidden thing an errand of its own", () => {
 		const { arc } = lower([
 			beat({ id: "x", find: { item: "Lead Weight", description: "d", where: "mill" } }),
@@ -215,58 +251,78 @@ describe("what it refuses to build", () => {
 });
 
 describe("the shape of the world", () => {
+	/** An unremarkable world, which every test here varies one setting of. */
+	const shape = (overrides: Partial<WorldShapeResponse> = {}): WorldShapeResponse => ({
+		sea: "ordinary",
+		climate: "temperate",
+		wet: "ordinary",
+		settled: "ordinary",
+		woods: "ordinary",
+		strongholds: "none",
+		caves: "none",
+		harbours: "none",
+		why: "",
+		...overrides,
+	});
+
 	it("leaves an ordinary world exactly as it was", () => {
-		expect(
-			recipeFor({
-				sea: "ordinary",
-				climate: "temperate",
-				wet: "ordinary",
-				settled: "ordinary",
-				woods: "ordinary",
-				why: "",
-			}),
-		).toBeUndefined();
+		expect(recipeFor(shape())).toBeUndefined();
 	});
 
 	it("raises the shore with the sea, so a coast still has a beach", () => {
-		const recipe = recipeFor({
-			sea: "drowned",
-			climate: "temperate",
-			wet: "ordinary",
-			settled: "ordinary",
-			woods: "ordinary",
-			why: "",
-		});
+		const recipe = recipeFor(shape({ sea: "drowned" }));
 		expect(recipe?.climate?.seaLevel).toBeDefined();
 		expect(recipe?.climate?.shoreLevel).toBeGreaterThan(recipe?.climate?.seaLevel as number);
 	});
 
 	it("scales the whole settlement mix rather than one kind of it", () => {
-		const recipe = recipeFor({
-			sea: "ordinary",
-			climate: "temperate",
-			wet: "ordinary",
-			settled: "sparse",
-			woods: "ordinary",
-			why: "",
-		});
+		const recipe = recipeFor(shape({ settled: "sparse" }));
 		const weights = recipe?.sites?.weights ?? {};
 		expect(weights.town).toBeCloseTo(0.9, 5);
 		expect(weights.hamlet).toBeCloseTo(2.7, 5);
 	});
 
 	it("keeps every scatter density a probability", () => {
-		const recipe = recipeFor({
-			sea: "ordinary",
-			climate: "temperate",
-			wet: "ordinary",
-			settled: "ordinary",
-			woods: "overgrown",
-			why: "",
-		});
+		const recipe = recipeFor(shape({ woods: "overgrown" }));
 		for (const biome of Object.values(recipe?.biomes ?? {})) {
 			expect(biome.scatterDensity).toBeLessThanOrEqual(1);
 			expect(biome.scatterDensity).toBeGreaterThan(0);
 		}
+	});
+
+	// The three kinds the default world has none of. Asking for them is the whole
+	// difference between a generated map of farmland and one with somewhere to go.
+	it("puts castles, caves and harbours on the map when they are asked for", () => {
+		const weights =
+			recipeFor(shape({ strongholds: "some", caves: "few", harbours: "few" }))?.sites?.weights ??
+			{};
+		expect(weights.castle).toBeGreaterThan(0);
+		expect(weights.cave).toBeGreaterThan(0);
+		expect(weights.docks).toBeGreaterThan(0);
+		// "some" is more than "few", or the two words mean the same thing.
+		expect(weights.castle).toBeGreaterThan(weights.cave as number);
+	});
+
+	it("leaves them off the map when they are not", () => {
+		const weights = recipeFor(shape({ settled: "sparse" }))?.sites?.weights ?? {};
+		expect(weights.castle).toBeUndefined();
+		expect(weights.cave).toBeUndefined();
+		expect(weights.docks).toBeUndefined();
+	});
+
+	// A cave mouth on a hillside nobody lives near is the normal case, so caves have to
+	// reach the wild ladder too — the settled one only covers habitable ground.
+	it("lets caves appear on ground too wild to live on", () => {
+		const sites = recipeFor(shape({ caves: "some" }))?.sites;
+		expect(sites?.wildWeights?.cave).toBeGreaterThan(0);
+		expect(sites?.wildWeights?.castle).toBeUndefined();
+	});
+
+	// The settlement knob scales places people live. A crowded world means more hamlets,
+	// not more castles, and conflating the two made "crowded" quietly mean "fortified".
+	it("does not let the settlement density drag the landmarks with it", () => {
+		const crowded = recipeFor(shape({ settled: "crowded", strongholds: "few" }));
+		const sparse = recipeFor(shape({ settled: "sparse", strongholds: "few" }));
+		expect(crowded?.sites?.weights?.castle).toBe(sparse?.sites?.weights?.castle);
 	});
 });

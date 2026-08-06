@@ -127,7 +127,9 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 				}
 			: briefed;
 
-	const live = usesLiveModel(choice.flavour);
+	// The world's own answer wins over the launch's, so a resumed save keeps what it was
+	// generated with rather than picking up whatever this invocation happens to allow.
+	const live = usesLiveModel(choice.flavour, state.world.liveInGame ?? choice.liveInGame);
 	if (!live) logger.info(`director disabled (${choice.flavour}); world names are procedural`);
 	else if (!hasGatewayKey())
 		logger.warn("AI_GATEWAY_API_KEY is not set; falling back to procedural names");
@@ -369,6 +371,7 @@ function newScenarioWorld(
 				: {}),
 			scenarioId: artifact.id,
 			...(artifact.time ? { time: artifact.time } : {}),
+			...(artifact.liveInGame ? { liveInGame: true } : {}),
 		},
 		artifact.spawn,
 		brief,

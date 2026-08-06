@@ -1,6 +1,7 @@
 import { MODELS } from "../../config.js";
 import { beatEffects, beatOpenedBy } from "../../core/rules/arc.js";
 import { weatherRuns } from "../../core/rules/clock.js";
+import { cachedTurn, turnKey } from "../../core/rules/dialogue-cache.js";
 import type { DomainEffect } from "../../core/rules/effects.js";
 import { type NpcRecord, needsSummary, SUMMARY_BATCH } from "../../core/rules/npc.js";
 import { type StockItem, shopStock, tradeKind } from "../../core/rules/shop.js";
@@ -12,7 +13,7 @@ import { weatherAt } from "../../core/world/weather.js";
 import type { GameEngine } from "../../engine/engine.js";
 import type { PlacedNpc } from "../../engine/npc-directory.js";
 import { logger } from "../../utils/log.js";
-import { aiAvailable, structured } from "../client.js";
+import { aiAvailable, streamed, structured } from "../client.js";
 import { mapActions } from "./actions.js";
 import { cannedTurn } from "./canned.js";
 import { dialoguePrompt, dialogueSystem, SUMMARY_SYSTEM, summaryPrompt } from "./persona.js";
@@ -115,10 +116,23 @@ export function createDialogueService(deps: DialogueDeps) {
 				})
 			: undefined;
 
+		// A remembered reply is read whether or not a model is available, and that
+		// asymmetry with *writing* is deliberate. Once these words exist they are content
+		// this world owns, exactly like an authored tree — so a world played once with a
+		// key and then opened without one keeps the conversations it already paid for
+		// rather than falling back to the canned menu. Only generating needs a model.
+		//
+		// A scripted turn still wins: an author's words outrank a model's, and a written
+		// tree is already the same every time, so there would be nothing to remember.
+		const key = scripted?.turn ? undefined : turnKey(state, npcId);
+		const remembered = key ? cachedTurn(state, key) : undefined;
+		if (remembered) logger.debug(`dialogue: replaying a remembered reply from ${record.name}`);
+
 		const turn =
 			scripted?.turn ??
+			remembered ??
 			(enabled
-				? await generateTurn(state, record, placed, site, stock, choice, surroundings)
+				? await generateTurn(state, record, placed, site, stock, choice, surroundings, engine)
 				: cannedTurn(record, placed.spec, site, choice));
 
 		// A node that closed with `goto: null` said its piece on the previous line, so
@@ -130,6 +144,26 @@ export function createDialogueService(deps: DialogueDeps) {
 
 		const effects: DomainEffect[] = [
 			{ t: "RecordTurn", npcId, turn: { role: "npc", text: turn.speech } },
+			// Written only when a model actually wrote it. A replayed turn is already in the
+			// cache, and re-storing it would refresh its eviction stamp on every reading —
+			// which would slowly turn a "drop what has not been revisited" rule into its
+			// opposite. A canned turn is a pure function of the state and gains nothing from
+			// being remembered, so caching it would only be a way to pin a stale one.
+			...(key && !remembered && enabled
+				? [
+						{
+							t: "RememberTurn" as const,
+							key,
+							turn: {
+								speech: turn.speech,
+								choices: turn.choices,
+								actions: turn.actions,
+								endsConversation: turn.endsConversation,
+								at: state.time.tick,
+							},
+						},
+					]
+				: []),
 			...(scripted?.effects ?? []),
 			...mapActions(turn.actions, {
 				state: engine.getState(),
@@ -166,6 +200,7 @@ export function createDialogueService(deps: DialogueDeps) {
 		stock: StockItem[] | undefined,
 		choice: string | undefined,
 		surroundings: Surroundings,
+		engine: GameEngine,
 	) {
 		const region = deps.regionSpec(placed.regionId);
 		const input = {
@@ -184,13 +219,23 @@ export function createDialogueService(deps: DialogueDeps) {
 				: {}),
 		};
 
-		const response = await structured({
+		// Streamed rather than awaited whole, so the line appears as it is written instead
+		// of arriving all at once after a pause. The preview is cosmetic — the resolved
+		// object below is still the only thing that becomes a turn — so a stream that
+		// fails halfway leaves a partial sentence on screen that the fallback then
+		// replaces, rather than a conversation in a bad state.
+		const response = await streamed({
 			kind: "dialogue",
 			model: MODELS.dialogue,
 			schema: DialogueTurnSchema,
 			system: dialogueSystem(input),
 			prompt: dialoguePrompt(input, choice),
 			temperature: 0.85,
+			onPartial: (partial) => {
+				if (typeof partial.speech === "string" && partial.speech.length > 0) {
+					engine.dispatch({ t: "DialogueStreaming", npcId: placed.id, text: partial.speech });
+				}
+			},
 		});
 
 		// A failed call must not end the conversation with an error message; the

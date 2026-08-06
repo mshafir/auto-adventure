@@ -94,7 +94,7 @@ export function arcPrompt(input: {
 
 export const SHAPE_SYSTEM =
 	"You choose what kind of country a story happens in. You are given a brief and nothing " +
-	"else. Answer with the five settings and one sentence saying why. Do not write prose, " +
+	"else. Answer with the settings and one sentence saying why. Do not write prose, " +
 	"do not name places, and do not describe a plot.";
 
 /**
@@ -102,7 +102,7 @@ export const SHAPE_SYSTEM =
  *
  * The one authoring decision that has to be made *first*: the survey runs against a
  * world, so the world has to be chosen before there is anything to survey. Deliberately
- * five coarse settings rather than a recipe — a model handed `seaLevel` will write
+ * coarse settings rather than a recipe — a model handed `seaLevel` will write
  * `0.9` and drown the map, and it has no coordinates to place anything against yet.
  */
 export function shapePrompt(brief: ScenarioBrief): string {
@@ -114,6 +114,13 @@ export function shapePrompt(brief: ScenarioBrief): string {
 		"Pick the country this belongs in. An archipelago tale needs water; a story about a",
 		"road through nowhere needs the map to be mostly empty. When the brief does not care,",
 		"say 'ordinary' — an ordinary world is a good world and there is no prize for exotica.",
+		"",
+		"Castles, caves and harbours are the exception to that: the default world has none of",
+		"any of them, so leaving all three at 'none' gives a map of villages and farmland and",
+		"nothing to walk towards. Ask for what the story needs somewhere to happen in — a siege",
+		"needs a stronghold, a smuggling tale needs a harbour, something buried needs a cave.",
+		"'few' is two or three across the whole world, which is usually enough. Do not ask for",
+		"harbours in a landlocked world; there is no shore for them and they will not be built.",
 	]
 		.filter((line) => line !== "")
 		.join("\n");

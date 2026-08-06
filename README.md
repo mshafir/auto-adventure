@@ -77,45 +77,126 @@ Both `.env` and `.env.local` are git-ignored. `.env.local` is also skipped when
 `NODE_ENV=test`, which is what stops the test suite from picking up a key and
 quietly making live calls.
 
-All variables are optional.
+All variables are optional. The game runs with none of them set.
+
+### The model
+
+Everything here is optional in the strongest sense: with no key at all the game
+is fully playable — every place is named, every building is entered, and every
+conversation is a real dialogue tree. See
+[Playing without a model](#playing-without-a-model).
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `AI_GATEWAY_API_KEY` | — | Vercel AI Gateway key. Absent means the deterministic path. |
 | `NO_AI` | `0` | Force the deterministic path even with a key. |
-| `WORLD_SEED` | `auto-adventure` | A word or a number. |
-| `WORLD_NAME` | `default` | Save slot. |
-| `SCENARIO_PROMPT` | — | Freeform brief: what this world is about. |
+| `MODEL_DIRECTOR` | `google/gemini-2.5-flash-lite` | Region and site specs. High volume, never read directly. |
+| `MODEL_DIALOGUE` | `google/gemini-2.5-flash` | What NPCs say, and the authored conversation trees. |
+| `MODEL_SUMMARY` | `google/gemini-2.5-flash-lite` | Rolling NPC memory. |
+| `MODEL_BIBLE` | `google/gemini-2.5-flash` | The world premise and the story's plot, once per world. |
+
+Models are provider-prefixed strings routed through the gateway, so pointing a
+call type at a different provider is a variable rather than a code change. Calls
+cost tokens, so they are counted: `src/ai/telemetry.ts` reports calls, tokens and
+latency per call type into the log on exit.
+
+### Which world, and what it is about
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `WORLD_SEED` | `auto-adventure` | A word or a number. The whole world is a pure function of it. |
+| `WORLD_NAME` | `default` | Save slot. Setting it explicitly **skips the launcher** and opens that slot. |
+| `SCENARIO_PROMPT` | — | Freeform brief: what this world is about. The main knob. |
 | `SCENARIO_SETTING` | — | Refines the brief. |
 | `SCENARIO_STORYLINE` | — | The story wanted from it. |
 | `SCENARIO_TONE` | — | Refines the brief. |
 | `SCENARIO_PROTAGONIST` | — | Who the player is. |
 | `SCENARIO_AVOID` | — | Genres, tropes or subjects to keep out. |
-| `SCENARIO_DURATION` | — | `short`, `medium` or `long`. Only means something when authoring. |
-| `MODEL_DIRECTOR` | `google/gemini-2.5-flash-lite` | Region and site specs. |
-| `MODEL_DIALOGUE` | `google/gemini-2.5-flash` | What NPCs say. |
-| `MODEL_SUMMARY` | `google/gemini-2.5-flash-lite` | Rolling NPC memory. |
-| `MODEL_BIBLE` | `google/gemini-2.5-flash` | The world premise, once per world. |
+| `SCENARIO_DURATION` | — | `short`, `medium` or `long`. Only means something when a scenario is generated. |
+
+A brief is *intent*, never geometry: nothing here can move a coastline or place a
+town. It reaches the prompts that name and populate what the engine already
+built, which is why an unsatisfiable brief gives a differently-flavoured world
+rather than a broken one.
+
+### What things are called, and where they live
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CONTENT_PACK` | — | A flavour pack: a shipped name (`thornwick`) or a path (`./my-pack.json`). Names, households, trades and ambient lines. Steers a **new** world only — a save keeps the pack it was made with, because adopting another would rename everybody already met while keeping their memories. |
+| `TILE_PACK` | — | A directory under `.packs/tiles/`, or a path to one. Chooses how the map *looks*; the world is identical either way. |
 | `AUTO_ADVENTURE_HOME` | `~/.auto-adventure` | Where saves live. |
-| `LOG_FILE`, `LOG_LEVEL` | `log.txt`, `info` | The TUI owns stdout, so logs go to a file. |
+| `AUTO_ADVENTURE_PACKS` | `./.packs` | Where content and tile packs are read from. |
+| `AUTO_ADVENTURE_SCENARIOS` | `./.scenarios` | Where pre-generated scenarios are read from, and where a generated one is written. |
+| `LOG_FILE`, `LOG_LEVEL` | `log.txt`, `info` | The TUI owns stdout, so logs go to a file. `debug` is what to reach for when something silently did not happen. |
+| `SAVE_DEBOUNCE_MS` | `2000` | How long a change waits before it is written. Checkpoints and quitting flush immediately regardless. |
+
+Packs and scenarios live in the repository rather than under your home directory
+because they are *source*: a pack decides what the people in a world are called,
+and a change to one belongs in a diff where it can be read.
+
+### How the map is drawn
+
+The map draws as **glyphs** by default and as **pixels** on terminals that
+implement the kitty graphics protocol. They draw the same layout from the same
+state — the choice is about fidelity, not about what the game is. The one place
+they differ is how much world fits: a glyph tile is always two columns by one row,
+so there is no size to trade and the view is uncapped, where pixel mode caps at
+`FOV` and lets `ZOOM` trade world for detail.
+
+`TILE_MODE` is the one to know:
+
+| Value | What happens |
+|---|---|
+| `auto` (default) | The game **asks the terminal**. A one-pixel graphics query goes out alongside the cell-size query, in the window before Ink takes stdin, and a terminal that answers gets pixels. Silence means glyphs. |
+| `kitty` or `pixel` | Pixels, with **no capability check**. The escape hatch for a terminal that implements the protocol but will not say so — and for one that has not shipped yet. In a terminal that genuinely cannot, this produces a mess rather than a crash, which is the accepted trade. |
+| `glyph` or `glyphs` | Glyphs, whatever the terminal can do. |
+
+Asking replaced a hard-coded list of terminal names, which was wrong in the quiet
+direction: a capable terminal nobody had added got glyphs and no explanation. Two
+things still override the answer. Inside a **multiplexer** the query is not sent
+at all — tmux, screen and herdr are recognised by name, because a multiplexer
+passes the environment straight down and a query sent into a pane is answered by
+the terminal *behind* it, truthfully and about the wrong program. And when stdout
+is not a TTY — a pipe, a golden test, a screenshot — glyphs win, because none of
+those can show an image. Glyphs are the permanent floor, not a fallback that
+might one day be dropped. [Renderers](#renderers) goes into why.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TILE_MODE` | `auto` | As above. |
+| `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
+| `ZOOM` | `1` | Where zoom starts in pixel mode; `+` and `-` take it from there. Above 1 is bigger tiles and less world on screen, below is the reverse. |
+| `FOV` | `72x32` in pixel mode, uncapped in glyph mode | `WxH` — the most world the map will show, in tiles. Past it the map stops growing and centres in the window rather than filling it. Set explicitly it applies to **both** renderers; the default only to pixels, where there is a tile size to trade for. |
+| `TILE_PX` | derived | Pixels per tile edge, pinned. Left alone it is derived from the terminal's cell so pixel mode shows the same field of view as glyph mode. |
+| `CELL_PX` | measured | `WxH` override for a terminal that will not answer `CSI 16 t` with its cell size. A wrong cell size is not cosmetic: it decides how many tiles fit, so a bad guess centres the player for a viewport of the wrong shape. |
+| `KITTY_DEFLATE` | `1` | zlib level for the frame. Raise it to trade CPU for bytes on a slow link. |
+| `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
+| `NO_COLOR`, `FORCE_COLOR` | — | The usual conventions, honoured. Set means no colour at all; `FORCE_COLOR` is `0`–`3` for none, 16, 256 and truecolor. Otherwise the depth comes from `COLORTERM` and `TERM`. |
+
+Everything else the renderer reads — `TERM`, `TERM_PROGRAM`, `TMUX`,
+`KITTY_WINDOW_ID` and friends — is set *by* your terminal rather than by you, and
+is only ever used to work out what it is. There is nothing to configure there.
+
+### Pacing, and the escape hatches
+
+The first four exist because a terminal is a much slower display than it looks.
+The last three exist to make "it does not render at all" bisectable in two runs,
+rather than guessing at an emulator we cannot install.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `FRAME_MS` | `33` | Shortest gap between two frames — thirty a second, against the ~20ms a frame costs to draw. Changes arriving closer together are drawn once. `0` renders on every change, which is the way to tell whether this is what feels wrong. |
+| `FRAME_PIXELS` | `4000000` | The most pixels one pixel-mode frame may be. Past it tiles are drawn smaller and the terminal scales them back up into the same cells — the camera is unaffected, so the same world is on screen at a slightly lower resolution. Uncapped, a 163x70 window asked for 8 megapixels and 24MB of raw RGB *per keypress*. |
+| `CHUNK_SLICE` | `1` | Chunks built per turn of the event loop while the ground ahead is filled in. One chunk is already ~28ms, and the point is to stay interruptible. |
+| `DEAD_ZONE` | `0.4` | How far in from each edge the player may walk before the view scrolls. Smaller means the world holds still more often but shows less ground ahead once you are moving; `0.49` is a centred camera, which scrolls on every single step. |
 | `NO_SYNC_OUTPUT` | `0` | Stop bracketing frames in DEC mode 2026. Off automatically inside a multiplexer not known to follow it. |
 | `SYNC_OUTPUT` | — | Force bracketing back on where it was turned off for you. `NO_SYNC_OUTPUT` still wins. |
 | `NO_ALT_SCREEN` | `0` | Draw in the terminal's own scrollback rather than on a screen of its own. The other half of the "nothing renders" bisect. |
-| `NO_RELIEF` | `0` | Turn off slope shading. Costs about 14KB a frame, so worth trying if the display flickers over a slow link. |
-| `TILE_WIDTH` | `2` | Terminal columns per world tile. `2` makes tiles square; `1` shows twice as much world, stretched 2:1 vertically. Glyph mode only. |
-| `TILE_MODE` | `auto` | `auto` asks the terminal whether it does graphics and uses pixels if it says yes. `glyph` and `kitty` force it either way, capability check included. See [Renderers](#renderers). |
-| `ZOOM` | `1` | Where zoom starts in kitty mode; `+` and `-` take it from there. Above 1 is bigger tiles and less world on screen, below is the reverse. |
-| `FOV` | `72x32` in pixel mode, uncapped in glyph mode | `WxH` — the most world the map will show, in tiles. Past it the map stops growing and centres in the window rather than filling it. Set explicitly it applies to both renderers; the default only to pixels, where there is a tile size to trade for. |
-| `DEAD_ZONE` | `0.4` | How far in from each edge of the map the player may walk before the view scrolls. `0.49` pins them dead centre, which scrolls the world on every single step. |
-| `FRAME_MS` | `33` | Shortest gap between two frames. Changes arriving closer together than this are drawn once. `0` renders on every change. |
-| `CHUNK_SLICE` | `1` | Chunks built per turn of the event loop while the ground ahead is being filled in. |
-| `TILE_PX` | derived | Pixels per tile edge, pinned. Left alone it is derived from the terminal's cell so pixel mode shows the same field of view as glyph mode. |
-| `KITTY_DEFLATE` | `1` | zlib level for the frame. Raise it to trade CPU for bytes on a slow link. |
-| `CELL_PX` | measured | `WxH` override for a terminal that will not answer `CSI 16 t` with its cell size. |
-| `CONTENT_PACK` | — | A flavour pack: a shipped name (`thornwick`) or a path (`./my-pack.json`). Steers a new world only; a save keeps the pack it was made with. |
 
-Model calls cost tokens, so they are counted: `src/ai/telemetry.ts` reports
-calls, tokens and latency per call type into the log on exit.
+The game leans on exactly two escapes an ordinary TUI does not: the alternate
+screen buffer, and a synchronized update around every write. If nothing draws,
+turn off one and then the other — whichever fixes it names the culprit.
 
 ## What it looks like
 
@@ -396,12 +477,25 @@ Every page here takes the whole screen inside a border, the way the game's own
 reader and card screens do, so the front door looks like the same piece of
 software as the thing behind it.
 
-**New world** explains the four ways to start one — briefed, unguided, without a
-model, or a written scenario — with a paragraph each rather than five words,
-because whether a model runs decides whether the world costs money, needs a
-network, and says things nobody wrote. An option that is unavailable is shown
-greyed with the reason, not hidden: a player who has heard the game writes its
-own worlds and cannot find the option concludes they have the wrong build.
+**New world** offers the scenarios already written, and under a rule, one way to
+have another written. That used to be four choices — briefed, unguided, without a
+model, or a written scenario — which was four points on one axis pretending to be
+four kinds of thing. The axis is how much of the world is decided before you walk
+into it, and the far end is the only end worth being at: a world with a plotted
+story, named people and written conversations beats one that invents them as you
+arrive, and it costs a wait rather than a compromise.
+
+**Generate a New Scenario** asks six questions first — length, an optional
+premise, the tile pack, the content pack, whether the clock runs, and whether a
+model may improvise for anyone with no written conversation — and says what the
+answer will cost in model calls and minutes before anything is spent. Then it runs
+the same authoring passes `npm run author` does, showing each as it lands, and
+writes the result to `.scenarios/`. From that point it is an ordinary pre-built
+scenario: it appears on this page next time, and replays exactly.
+
+An option that is unavailable is shown greyed with the reason, not hidden: a
+player who has heard the game writes its own worlds and cannot find the option
+concludes they have the wrong build.
 
 **Continue** is a grid of cards, as many across and down as the terminal allows,
 scrolling by whole rows when there are more worlds than fit. Each says how far in
@@ -550,9 +644,24 @@ See `docs/scenarios.md` for the design.
 
 ## Playing without a model
 
-`NO_AI=1` is a supported way to play, not a degraded mode. Every place still gets
-a name, every settlement still gets people with roles and things to tell you, and
+There are two ways, and the better one is a **written scenario**. A pre-generated
+scenario is a whole world — country, towns, people, plot and conversations — that
+was paid for once and now runs entirely offline. The ones in `.scenarios/` need no
+key and make no calls, so with no key at all the launcher still opens straight onto
+a playable story.
+
+The other is an endless generated world with no story in it:
+
+```bash
+NO_AI=1 npm start
+```
+
+That is a supported way to play, not a degraded mode. Every place still gets a
+name, every settlement still gets people with roles and things to tell you, and
 conversations are real dialogue trees built from what those people know. What is
-missing is a story tying it together — which is what the model is for.
+missing is a story tying it together — which is what the model is for, and why the
+launcher no longer offers this as a menu entry: given the choice between a world
+with a plot and one without, there was no reason to put them side by side. The
+variable is still the way in for anyone who wants the endless version.
 
 `NO_AI=1` ignores the brief, because nothing reads it: there is no model to steer.

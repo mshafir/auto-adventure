@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cappedInt, cappedList, cappedText } from "../limits.js";
 
 /**
  * What the director is allowed to say.
@@ -37,62 +38,62 @@ export const STRUCTURE_KINDS = [
 export const PLACEMENTS = ["square", "well", "stall", "bench", "gate", "doorstep", "yard"] as const;
 
 export const WorldLoreSchema = z.object({
-	title: z.string().max(60).describe("Name of this world. Two or three words."),
-	premise: z.string().max(400).describe("What has just happened here, in two sentences."),
-	era: z.string().max(80),
-	tone: z.string().max(80).describe("e.g. 'wry and weatherbeaten', 'quiet folk-horror'"),
-	factions: z.array(z.string().max(60)).min(2).max(4),
-	deities: z.array(z.string().max(60)).max(3),
+	title: cappedText(60).describe("Name of this world. Two or three words."),
+	premise: cappedText(400).describe("What has just happened here, in two sentences."),
+	era: cappedText(80),
+	tone: cappedText(80).describe("e.g. 'wry and weatherbeaten', 'quiet folk-horror'"),
+	factions: z
+		.array(cappedText(60))
+		.min(2)
+		.transform((v) => v.slice(0, 4)),
+	deities: cappedList(cappedText(60), 3),
 });
 
 export const RegionSpecSchema = z.object({
-	name: z.string().max(60).describe("Region name, without a leading 'the'."),
-	blurb: z.string().max(300),
-	tone: z.string().max(80),
-	culture: z.string().max(160).describe("How people here live, in one clause."),
-	factionName: z.string().max(60).nullable(),
-	lore: z.array(z.string().max(200)).max(4),
-	ambient: z
-		.array(z.string().max(120))
-		.max(5)
-		.describe("Second-person sensory lines shown as the player travels."),
+	name: cappedText(60).describe("Region name, without a leading 'the'."),
+	blurb: cappedText(300),
+	tone: cappedText(80),
+	culture: cappedText(160).describe("How people here live, in one clause."),
+	factionName: cappedText(60).nullable(),
+	lore: cappedList(cappedText(200), 4),
+	ambient: cappedList(cappedText(120), 5).describe(
+		"Second-person sensory lines shown as the player travels.",
+	),
 });
 
 export const StructureSpecSchema = z.object({
 	kind: z.enum(STRUCTURE_KINDS),
-	name: z.string().max(60).nullable().describe("Proper name, e.g. 'The Drowned Lamp'."),
-	signText: z
-		.string()
-		.max(60)
+	name: cappedText(60).nullable().describe("Proper name, e.g. 'The Drowned Lamp'."),
+	signText: cappedText(60)
 		.nullable()
 		.describe("Words painted on the board outside. Only for shops and inns."),
 	size: z.enum(["small", "medium", "large"]),
-	importance: z.number().int().min(1).max(5),
+	importance: cappedInt(1, 5),
 });
 
 export const NpcSpecSchema = z.object({
-	name: z.string().max(60),
-	role: z.string().max(40).describe("e.g. 'blacksmith', 'toll clerk', 'wandering priest'"),
+	name: cappedText(60),
+	role: cappedText(40).describe("e.g. 'blacksmith', 'toll clerk', 'wandering priest'"),
 	glyph: z
 		.string()
 		.regex(/^[A-Za-z]$/)
 		.describe("One letter, usually the first letter of the role."),
-	appearance: z.string().max(200),
-	persona: z.string().max(300).describe("How they speak and what they want."),
-	disposition: z.number().int().min(-40).max(60),
+	appearance: cappedText(200),
+	persona: cappedText(300).describe("How they speak and what they want."),
+	disposition: cappedInt(-40, 60),
 	placement: z.enum(PLACEMENTS),
-	structureName: z.string().max(60).nullable(),
-	knows: z.array(z.string().max(160)).max(4).describe("Things this NPC can tell the player."),
+	structureName: cappedText(60).nullable(),
+	knows: cappedList(cappedText(160), 4).describe("Things this NPC can tell the player."),
 });
 
 export const SiteSpecSchema = z.object({
-	name: z.string().max(60),
-	shortName: z.string().max(24),
-	description: z.string().max(400),
+	name: cappedText(60),
+	shortName: cappedText(24),
+	description: cappedText(400),
 	walled: z.boolean(),
-	structures: z.array(StructureSpecSchema).max(16),
-	npcs: z.array(NpcSpecSchema).max(6),
-	hooks: z.array(z.string().max(200)).max(2),
+	structures: cappedList(StructureSpecSchema, 16),
+	npcs: cappedList(NpcSpecSchema, 6),
+	hooks: cappedList(cappedText(200), 2),
 });
 
 export type WorldLoreResponse = z.infer<typeof WorldLoreSchema>;

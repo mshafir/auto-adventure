@@ -648,6 +648,17 @@ barred nothing.
 They are weighted at zero by default, so they only appear where a recipe asks for
 them — by weight, for a world of castles, or by `places`, for one in particular.
 
+**The survey drops the ones that declined**, so nothing downstream ever writes a roster
+for a castle that found no level ground. That is why raising a weight is safe: the number
+you ask for is an upper bound, and the number you get is however many the ground allowed.
+`surveyWorld` reports the shortfall as `declined`, and `npm run author` prints it — a
+recipe asking for six harbours in a landlocked world says so rather than quietly
+producing a smaller world than you asked for.
+
+The generated path asks for these too. The shape pass (`src/ai/author/shape.ts`) turns
+`strongholds` / `caves` / `harbours` — three coarse words a model picks — into weights,
+so a world generated from a premise about a siege gets somewhere to lay one.
+
 **A castle's gate is a choke point the scenario can bar.** The generator emits it as a
 `gate` anchor and leaves it open, because a barred gate needs a condition to open it
 and something to say when it will not, and inventing either is not the generator's

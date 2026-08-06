@@ -7,3 +7,4 @@ maps
 state.json
 *.raw
 .claude/worktrees
+.tokensave

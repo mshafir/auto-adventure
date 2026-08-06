@@ -124,6 +124,21 @@ export interface ScenarioArtifact {
 	 */
 	readonly time?: TimeOptions;
 	/**
+	 * Whether a model may improvise during play, for anyone with no written tree.
+	 *
+	 * Absent means no, which is what "prebuilt" meant when it was the only kind of
+	 * authored world: nothing arrives late, nothing costs anything, and the same
+	 * playthrough happens twice. A scenario generated with this asked for is still
+	 * prebuilt in every other sense — the map, the towns, the people and the plot are all
+	 * decided before the first frame — and merely allows a conversation nobody wrote to
+	 * happen rather than falling back to the canned menu.
+	 *
+	 * On the artifact rather than only on the launch, so the answer survives a reload: a
+	 * world generated to improvise should not fall silent because it was reopened, and one
+	 * generated not to should not start spending money because a key turned up.
+	 */
+	readonly liveInGame?: boolean;
+	/**
 	 * Authored conversations, keyed by `npcId(siteId, slot)`.
 	 *
 	 * Not persisted into the save, unlike the arc. These are static content that

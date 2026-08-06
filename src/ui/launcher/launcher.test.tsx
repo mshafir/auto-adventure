@@ -3,7 +3,7 @@ import { type InkHarness, KEY, renderInk } from "../../../test/harness/ink.js";
 import { hashString } from "../../core/rand/hash.js";
 import type { SaveSummary } from "../../persist/save-repo.js";
 import type { ScenarioSummary } from "../../scenario/repo.js";
-import type { LaunchChoice } from "../../scenario/scenario.js";
+import type { GenerateRequest, LaunchChoice } from "../../scenario/scenario.js";
 import { Launcher } from "./launcher.js";
 
 const NOW = Date.parse("2026-08-05T12:00:00.000Z");
@@ -42,6 +42,8 @@ function manySaves(count: number): SaveSummary[] {
 interface Mounted {
 	readonly ink: InkHarness;
 	readonly chosen: LaunchChoice[];
+	/** Worlds asked to be written, which is not the same as worlds chosen. */
+	readonly requested: GenerateRequest[];
 	readonly quits: number[];
 	readonly deleted: string[];
 }
@@ -52,11 +54,14 @@ function mount(
 		scenarios?: ScenarioSummary[];
 		canUseModel?: boolean;
 		unavailableNote?: string;
+		tilePacks?: string[];
+		contentPacks?: string[];
 		columns?: number;
 		rows?: number;
 	} = {},
 ): Mounted {
 	const chosen: LaunchChoice[] = [];
+	const requested: GenerateRequest[] = [];
 	const quits: number[] = [];
 	const deleted: string[] = [];
 	const saves = options.saves ?? [SAVE];
@@ -67,9 +72,12 @@ function mount(
 			canUseModel={options.canUseModel ?? true}
 			{...(options.unavailableNote ? { unavailableNote: options.unavailableNote } : {})}
 			context={{ saves, baseWorldId: "default", noAi: false }}
+			tilePacks={options.tilePacks ?? []}
+			contentPacks={options.contentPacks ?? []}
 			now={NOW}
 			onChoose={(choice) => chosen.push(choice)}
 			onDelete={(worldId) => deleted.push(worldId)}
+			onGenerate={(request) => requested.push(request)}
 			onQuit={() => quits.push(1)}
 		/>,
 		{
@@ -77,7 +85,7 @@ function mount(
 			...(options.rows !== undefined ? { rows: options.rows } : {}),
 		},
 	);
-	return { ink, chosen, quits, deleted };
+	return { ink, chosen, requested, quits, deleted };
 }
 
 /**
@@ -101,14 +109,35 @@ async function toNew(m: Mounted, hasSaves = true) {
 }
 
 /**
- * Down to a mode on the New page, which opens with the cursor on the scenarios.
+ * Onto the Generate row, which sits under every installed scenario.
  *
- * By name rather than by a count of arrow presses, so reordering the page is one
- * edit here rather than an edit in every test that walks past a choice.
+ * Counted from the scenarios rather than written as a fixed number of presses, so a test
+ * that changes the fixture list does not silently start pressing ENTER on a scenario.
  */
-async function toMode(m: Mounted, mode: "briefed" | "unguided" | "wander") {
-	const steps = { briefed: 1, unguided: 2, wander: 3 }[mode];
-	for (let i = 0; i < steps; i++) await m.ink.type(KEY.down);
+async function toGenerate(m: Mounted, scenarios = 1) {
+	for (let i = 0; i < scenarios; i++) await m.ink.type(KEY.down);
+}
+
+/** From the title screen all the way to the config page. */
+async function toConfig(m: Mounted, scenarios = 1) {
+	await toNew(m);
+	await toGenerate(m, scenarios);
+	await m.ink.type(KEY.enter);
+}
+
+/**
+ * Down until the cursor is on the row with this label.
+ *
+ * By what is on screen rather than by a count of presses, because the cursor skips
+ * rows it cannot land on — a page with no packs installed has two fewer stops than one
+ * with them, and a fixed count silently ends up pressing ENTER on the wrong setting.
+ */
+async function toRow(m: Mounted, label: string) {
+	for (let i = 0; i < 12; i++) {
+		if (m.ink.screen().includes(`❯ ${label}`)) return;
+		await m.ink.type(KEY.down);
+	}
+	throw new Error(`never reached a row called "${label}"`);
 }
 
 describe("the title screen", () => {
@@ -192,98 +221,76 @@ describe("the title screen", () => {
 	});
 });
 
-describe("starting a new world", () => {
-	it("explains each way of starting one, rather than naming it", async () => {
+describe("choosing where a world comes from", () => {
+	it("offers the finished scenarios first, and the cursor starts on one", async () => {
 		const m = mount();
 		await toNew(m);
 		const text = m.ink.screen();
-		for (const label of ["Briefed", "Unguided", "Wander", "A written scenario"]) {
-			expect(text, `no option called ${label}`).toContain(label);
-		}
-		// The written scenarios come first: they are the only choice that is finished
-		// before ENTER, and the cursor rests on them when the page opens.
-		expect(text.indexOf("A written scenario")).toBeLessThan(text.indexOf("Briefed"));
-		expect(text).toContain("❯ A written scenario");
-		// The paragraph is the whole reason this is its own page: five words cannot
-		// say that one of these needs a network and the others do not. Matched against
-		// the text with its wrapping collapsed, since a sentence spans several rows.
-		const prose = flowed(text);
-		expect(prose).toContain("No network or key");
-		expect(prose).toContain("a model writes the places and the people to match");
+		expect(text).toContain("The Drowned Archipelago");
+		expect(text).toContain("Generate a New Scenario");
+		// Finished first, because it is the only kind that is ready before ENTER.
+		expect(text.indexOf("The Drowned Archipelago")).toBeLessThan(
+			text.indexOf("Generate a New Scenario"),
+		);
+		expect(text).toContain("❯ The Drowned Archipelago");
 		m.ink.unmount();
 	});
 
-	it("asks for a brief before starting a briefed world", async () => {
+	it("gives a scenario its blurb and its size, on the page it is chosen from", async () => {
+		// These used to be on a page of their own, which meant "New" showed four ways of
+		// generating and hid the things that were already written behind one of them.
 		const m = mount();
 		await toNew(m);
-		await toMode(m, "briefed");
-		await m.ink.type(KEY.enter);
-		expect(m.ink.screen()).toContain("What should this world be about?");
-		expect(m.chosen).toHaveLength(0);
+		const text = m.ink.screen();
+		expect(text).toContain("Debt-collectors and rope.");
+		expect(text).toContain("13 places");
 		m.ink.unmount();
 	});
 
-	it("carries the typed premise into the choice", async () => {
+	it("begins the chosen scenario as a prebuilt world", async () => {
 		const m = mount();
 		await toNew(m);
-		await toMode(m, "briefed");
-		await m.ink.type(KEY.enter);
-		await m.ink.type("a drowned archipelago");
 		await m.ink.type(KEY.enter);
 		expect(m.chosen).toHaveLength(1);
-		expect(m.chosen[0]?.brief?.premise).toBe("a drowned archipelago");
+		expect(m.chosen[0]?.flavour).toBe("prebuilt");
+		expect(m.chosen[0]?.worldId).toBe("drowned-archipelago");
 		m.ink.unmount();
 	});
 
-	it("treats an empty brief as no brief", async () => {
-		// Whitespace is not an instruction. The world should be unguided rather than
-		// prompted with a blank.
-		const m = mount();
-		await toNew(m);
-		await toMode(m, "briefed");
-		await m.ink.type(KEY.enter);
-		await m.ink.type("   ");
-		await m.ink.type(KEY.enter);
-		expect(m.chosen).toHaveLength(1);
-		expect(m.chosen[0]?.brief).toBeUndefined();
-		m.ink.unmount();
+	it("separates generating from the shelf it sits under", async () => {
+		// A rule, so two unlike kinds of choice look unlike. With nothing above it there is
+		// nothing to separate, and drawing one anyway reads as a heading for a list of one.
+		const withShelf = mount();
+		await toNew(withShelf);
+		expect(flowed(withShelf.ink.screen())).toContain("OR HAVE ONE WRITTEN");
+		withShelf.ink.unmount();
+
+		const empty = mount({ scenarios: [] });
+		await toNew(empty);
+		expect(flowed(empty.ink.screen())).not.toContain("OR HAVE ONE WRITTEN");
+		empty.ink.unmount();
 	});
 
-	it("goes back to the modes when the brief is abandoned", async () => {
-		const m = mount();
-		await toNew(m);
-		await toMode(m, "briefed");
-		await m.ink.type(KEY.enter);
-		await m.ink.type(KEY.escape);
-		expect(m.ink.screen()).toContain("Unguided");
-		expect(m.chosen).toHaveLength(0);
-		m.ink.unmount();
-	});
-
-	it("starts an unguided world straight away", async () => {
-		const m = mount();
-		await toNew(m);
-		await toMode(m, "unguided");
-		await m.ink.type(KEY.enter);
-		expect(m.chosen).toHaveLength(1);
-		expect(m.chosen[0]?.flavour).toBe("live");
-		expect(m.chosen[0]?.brief).toBeUndefined();
-		m.ink.unmount();
-	});
-
-	it("says why the live options are missing, in the caller's words", async () => {
-		// The reason differs — a missing key or a deliberate NO_AI — and giving the
-		// wrong one is worse than giving none, so the launcher does not guess.
+	it("says generating is not on offer, in the caller's words", async () => {
+		// The reason differs — a missing key or a deliberate NO_AI — and giving the wrong
+		// one is worse than giving none, so the launcher does not guess.
 		const m = mount({ canUseModel: false, unavailableNote: "NO_AI is set." });
 		await toNew(m);
-		const text = m.ink.screen();
-		expect(text).toContain("NO_AI is set.");
-		// Shown but greyed: hiding it would read as the wrong build rather than a
-		// missing key. Moving down skips both of them in one press.
-		expect(text).toContain("Briefed");
-		await m.ink.type(KEY.down);
+		expect(m.ink.screen()).toContain("NO_AI is set.");
+		// Shown but greyed rather than hidden, so it does not read as the wrong build. The
+		// cursor cannot reach it, so pressing down and ENTER still takes the scenario.
+		await toGenerate(m);
 		await m.ink.type(KEY.enter);
-		expect(m.chosen[0]?.flavour).toBe("procedural");
+		expect(m.chosen[0]?.flavour).toBe("prebuilt");
+		m.ink.unmount();
+	});
+
+	it("has nothing to offer but generating when nothing is installed", async () => {
+		const m = mount({ scenarios: [] });
+		await toNew(m);
+		const text = m.ink.screen();
+		expect(text).toContain("❯ Generate a New Scenario");
+		expect(text).not.toContain("The Drowned Archipelago");
 		m.ink.unmount();
 	});
 
@@ -296,48 +303,200 @@ describe("starting a new world", () => {
 	});
 });
 
-describe("the scenarios page", () => {
-	async function toScenarios(m: Mounted) {
-		await toNew(m);
-		await m.ink.type(KEY.enter);
-	}
-
-	it("gives a scenario its title and the blurb somebody wrote for it", async () => {
+describe("configuring a world to be written", () => {
+	it("shows every setting with its current value", async () => {
 		const m = mount();
-		await toScenarios(m);
+		await toConfig(m);
 		const text = m.ink.screen();
-		expect(text).toContain("The Drowned Archipelago");
-		expect(text).toContain("Debt-collectors and rope.");
-		expect(text).toContain("13 places");
+		for (const label of [
+			"Length",
+			"Premise",
+			"Look",
+			"Names and trades",
+			"Day and night",
+			"Improvise while playing",
+			"Write this world",
+		]) {
+			expect(text, `no setting called ${label}`).toContain(label);
+		}
+		// Defaults, visible rather than implied: a settings page whose values are hidden
+		// until you touch them is a page nobody can check before spending four minutes.
+		expect(text).toContain("medium");
+		expect(text).toContain("let the model choose");
 		m.ink.unmount();
 	});
 
-	it("begins the chosen scenario as a prebuilt world", async () => {
+	it("says roughly what it will cost before anything is spent", async () => {
 		const m = mount();
-		await toScenarios(m);
-		await m.ink.type(KEY.enter);
-		expect(m.chosen).toHaveLength(1);
-		expect(m.chosen[0]?.flavour).toBe("prebuilt");
-		expect(m.chosen[0]?.worldId).toBe("drowned-archipelago");
+		await toConfig(m);
+		// On a line of its own rather than in a paragraph, so it is readable wherever the
+		// cursor happens to be — which on a 24-row terminal is the only way it is readable
+		// at all, because only the selected row gets a paragraph.
+		const prose = flowed(m.ink.screen());
+		expect(prose).toContain("~60 model calls");
+		expect(prose).toContain("cannot be paused");
 		m.ink.unmount();
 	});
 
-	it("cannot be opened when there are none installed", async () => {
-		const m = mount({ scenarios: [] });
-		await toNew(m);
-		expect(m.ink.screen()).toContain("none installed");
-		// The cursor never lands on it, so the page opens on the choice below instead
-		// and ENTER asks for a brief rather than showing an empty list.
-		await m.ink.type(KEY.enter);
-		expect(m.ink.screen()).toContain("What should this world be about?");
-		m.ink.unmount();
-	});
-
-	it("goes back to the modes on Esc", async () => {
+	it("costs more for a longer world, and says so", async () => {
 		const m = mount();
-		await toScenarios(m);
+		await toConfig(m);
+		await m.ink.type(KEY.right);
+		const longer = flowed(m.ink.screen());
+		expect(longer).toContain("long");
+		expect(longer).toContain("~120 model calls");
+		expect(longer).not.toContain("~60 model calls");
+		m.ink.unmount();
+	});
+
+	it("cycles a setting with either arrow, and wraps at both ends", async () => {
+		const m = mount();
+		await toConfig(m);
+		await m.ink.type(KEY.left);
+		expect(m.ink.screen()).toContain("short");
+		await m.ink.type(KEY.left);
+		expect(m.ink.screen()).toContain("long");
+		m.ink.unmount();
+	});
+
+	it("also cycles on ENTER, so the arrows need not be discovered", async () => {
+		const m = mount();
+		await toConfig(m);
+		await m.ink.type(KEY.enter);
+		expect(m.ink.screen()).toContain("long");
+		m.ink.unmount();
+	});
+
+	it("turns the clock off and on", async () => {
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Day and night");
+		expect(m.ink.screen()).toContain("on");
+		await m.ink.type(KEY.right);
+		expect(m.ink.screen()).toContain("off");
+		m.ink.unmount();
+	});
+
+	it("takes a premise and shows it back", async () => {
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Premise");
+		await m.ink.type(KEY.enter);
+		expect(m.ink.screen()).toContain("ENTER to keep it");
+		await m.ink.type("a drowned archipelago");
+		await m.ink.type(KEY.enter);
+		const text = m.ink.screen();
+		expect(text).toContain("a drowned archipelago");
+		// And the cursor is still where it was. The list used to be unmounted to show the
+		// field, which took its cursor with it and sent the player back to the top.
+		expect(text).toContain("❯ Premise");
+		m.ink.unmount();
+	});
+
+	it("keeps the settings readable while the premise is being typed", async () => {
+		// The field takes the footer's rows rather than the whole page, so the length and
+		// the packs you already chose are still on screen while you write.
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Premise");
+		await m.ink.type(KEY.enter);
+		const text = m.ink.screen();
+		expect(text).toContain("Length");
+		expect(text).toContain("Write this world");
+		expect(text).toContain("ESC to drop it");
+		m.ink.unmount();
+	});
+
+	it("does not move the cursor while the premise is being typed", async () => {
+		// Both the list and the field are mounted, so a stray arrow key must reach only
+		// one of them. `isActive` is what makes that true.
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Premise");
+		await m.ink.type(KEY.enter);
+		await m.ink.type(KEY.down);
+		await m.ink.type(KEY.enter);
+		expect(m.ink.screen()).toContain("❯ Premise");
+		m.ink.unmount();
+	});
+
+	it("keeps a premise typed and then abandoned out of the request", async () => {
+		// ESC out of the field is "never mind", so what it leaves behind must not be
+		// treated as an instruction.
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Premise");
+		await m.ink.type(KEY.enter);
+		await m.ink.type("   ");
 		await m.ink.type(KEY.escape);
-		expect(m.ink.screen()).toContain("Unguided");
+		await toRow(m, "Write this world");
+		await m.ink.type(KEY.enter);
+		expect(m.requested).toHaveLength(1);
+		expect(m.requested[0]?.brief.premise).toBeUndefined();
+		m.ink.unmount();
+	});
+
+	it("reports what was asked for, rather than a choice there is nothing to choose yet", async () => {
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Write this world");
+		await m.ink.type(KEY.enter);
+		expect(m.requested).toHaveLength(1);
+		expect(m.requested[0]?.brief.duration).toBe("medium");
+		expect(m.requested[0]?.dayAndNight).toBe(true);
+		expect(m.requested[0]?.liveInGame).toBe(true);
+		// No world exists, so there is nothing a LaunchChoice could honestly describe.
+		expect(m.chosen).toHaveLength(0);
+		m.ink.unmount();
+	});
+
+	it("carries the settings it was given into the request", async () => {
+		const m = mount({ tilePacks: ["gramarye"], contentPacks: ["camelot"] });
+		await toConfig(m);
+		await m.ink.type(KEY.right); // length → long
+		await toRow(m, "Look");
+		await m.ink.type(KEY.right); // look → gramarye
+		await toRow(m, "Names and trades");
+		await m.ink.type(KEY.right); // names → camelot
+		await toRow(m, "Day and night");
+		await m.ink.type(KEY.right); // day and night → off
+		await toRow(m, "Improvise while playing");
+		await m.ink.type(KEY.right); // improvise → off
+		await toRow(m, "Write this world");
+		await m.ink.type(KEY.enter);
+
+		expect(m.requested).toHaveLength(1);
+		expect(m.requested[0]).toMatchObject({
+			tiles: "gramarye",
+			pack: "camelot",
+			dayAndNight: false,
+			liveInGame: false,
+		});
+		expect(m.requested[0]?.brief.duration).toBe("long");
+		m.ink.unmount();
+	});
+
+	it("cannot pick a pack that is not installed", async () => {
+		// Greyed rather than absent, so the row still explains what it would have done.
+		const m = mount();
+		await toConfig(m);
+		const text = m.ink.screen();
+		expect(text).toContain("Look");
+		expect(text).toContain("the default");
+		// The cursor skips both pack rows, so four downs from Length lands past them.
+		await toRow(m, "Write this world");
+		await m.ink.type(KEY.enter);
+		expect(m.requested[0]?.tiles).toBeUndefined();
+		expect(m.requested[0]?.pack).toBeUndefined();
+		m.ink.unmount();
+	});
+
+	it("goes back to the shelf on Esc", async () => {
+		const m = mount();
+		await toConfig(m);
+		await m.ink.type(KEY.escape);
+		expect(m.ink.screen()).toContain("The Drowned Archipelago");
+		expect(m.requested).toHaveLength(0);
 		m.ink.unmount();
 	});
 });

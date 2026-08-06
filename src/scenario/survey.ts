@@ -1,3 +1,9 @@
+import { fallbackSettlementSpec } from "../core/gen/features/fallback-spec.js";
+import {
+	featureKindFor,
+	generateFeature,
+	invalidateFeature,
+} from "../core/gen/features/registry.js";
 import { type BoundaryStyle, isWellInside, type WorldBounds } from "../core/world/bounds.js";
 import type { Duration } from "../core/world/brief.js";
 import type { RegionContext } from "../core/world/context.js";
@@ -65,6 +71,43 @@ export interface Survey {
 	readonly regions: readonly RegionContext[];
 	/** How far the boundary had to move to avoid cutting a settlement in half. */
 	readonly boundaryAdjustment: number;
+	/**
+	 * Sites the roll produced and the generator then refused to build, by kind.
+	 *
+	 * Reported rather than merely dropped so that a recipe asking for six castles in a
+	 * world with no level ground says so. Without this the only symptom is a world with
+	 * fewer places than asked for, which reads as the weights not working.
+	 */
+	readonly declined: Readonly<Record<string, number>>;
+}
+
+/**
+ * Whether the generator will actually build something here.
+ *
+ * `castle`, `cave` and `docks` decline rather than compromise — a castle with no level
+ * ground, a cave with no hillside and a dock with no shoreline each build *nothing* and
+ * leave the wilderness as it was. That is the right call for the map and a trap for
+ * everything downstream of this survey: the site pass would name the place, the arc pass
+ * would set a beat there, and the result is a named castle, with people in it, standing
+ * in an empty field.
+ *
+ * `validate.ts` already catches exactly this and calls it an error for a human to fix.
+ * Filtering here is what makes it not happen in the first place, which matters now that
+ * a world can be generated with nobody watching.
+ *
+ * Built with the deterministic roster because the authored one does not exist yet, and
+ * dropped again afterwards: `generateFeature` memoises by `(world, kind, siteId)`, so
+ * leaving this patch in the cache would mean the real spec is never stamped. The same
+ * precaution `checkPlaces` takes, for the same reason.
+ */
+function buildsSomething(world: WorldSeed, site: MacroSite): boolean {
+	if (!featureKindFor(site.kind)) return true;
+	try {
+		const patch = generateFeature(world, site, fallbackSettlementSpec(world.seed, site));
+		return !patch || patch.buildings.length > 0 || patch.anchors.length > 0;
+	} finally {
+		invalidateFeature(world, site.id);
+	}
 }
 
 /** How thick to make the band. Enough to read as landform, not as a line. */
@@ -196,8 +239,14 @@ export function surveyWorld(world: WorldSeed, duration: Duration | undefined): S
 	const style = styleForEdge(world, spawn, radiusTiles);
 	const { bounds, adjustment } = solveBounds(world, spawn, radiusTiles, style);
 
+	const declined: Record<string, number> = {};
 	const sites = sitesWithin(world, bounds)
 		.filter((site) => isWellInside(bounds, site.site.x, site.site.y))
+		.filter((site) => {
+			if (buildsSomething(world, site)) return true;
+			declined[site.kind] = (declined[site.kind] ?? 0) + 1;
+			return false;
+		})
 		.map((site) => ({
 			site,
 			context: siteContext(world, site),
@@ -212,7 +261,7 @@ export function surveyWorld(world: WorldSeed, duration: Duration | undefined): S
 		return regionContext(world, id, at);
 	});
 
-	return { world, spawn, bounds, sites, regions, boundaryAdjustment: adjustment };
+	return { world, spawn, bounds, sites, regions, boundaryAdjustment: adjustment, declined };
 }
 
 /** The settlements a story can actually be hung on. */

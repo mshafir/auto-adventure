@@ -21,6 +21,16 @@ const FACING_ARROW: Readonly<Record<Facing, string>> = {
 	right: "→",
 };
 
+/**
+ * What the panel says while a reply is being composed.
+ *
+ * Named rather than a bare "...", because who is thinking is the useful part: in a room
+ * with three people in it, a wait with no name on it reads as the game having hung.
+ */
+function waitingFor(name: string): string {
+	return `${name} is thinking...`;
+}
+
 /** Replies offered at once. The schema caps the model at this too. */
 const MAX_CHOICES = 4;
 /** Lines of speech shown before the rest is cut. */
@@ -112,10 +122,16 @@ export function DialoguePanel({ looking, facing, nearbyName, width, height }: Di
 	const record = state.npcs[dialogue.npcId];
 	const choices = dialogue.choices?.slice(0, MAX_CHOICES) ?? [];
 
+	// A reply that is still streaming takes the line's place rather than sitting under it.
+	// It is the same sentence the committed line will be, in the same voice and the same
+	// rows, so when the turn lands the text stops growing and nothing moves — whereas
+	// showing both would put the answer on screen twice and then jump.
+	const streaming = dialogue.pending ? dialogue.preview : undefined;
+	const spoken = streaming ?? line?.text;
+	const asPlayer = !streaming && line?.speaker === "You";
+
 	// The player's own words are prefixed, so they get a narrower budget.
-	const speech = line
-		? wrapToLines(line.text, inner - (line.speaker === "You" ? 5 : 0), MAX_SPEECH_LINES)
-		: [];
+	const speech = spoken ? wrapToLines(spoken, inner - (asPlayer ? 5 : 0), MAX_SPEECH_LINES) : [];
 
 	return (
 		<Frame height={height} borderColor="cyan">
@@ -131,18 +147,29 @@ export function DialoguePanel({ looking, facing, nearbyName, width, height }: Di
 				)}
 			</Text>
 
-			{dialogue.pending && !line ? (
-				<Text color="gray">
-					<Spinner type="dots" /> ...
+			{speech.map((text, index) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: wrapped lines are positional
+				<Text key={index} wrap="truncate">
+					{index === 0 && asPlayer && <Text color="green">You: </Text>}
+					{text}
 				</Text>
-			) : (
-				speech.map((text, index) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: wrapped lines are positional
-					<Text key={index} wrap="truncate">
-						{index === 0 && line?.speaker === "You" && <Text color="green">You: </Text>}
-						{text}
-					</Text>
-				))
+			))}
+
+			{/* Shown on every turn a reply is being composed, not just the first.
+			    This used to be `pending && !line`, which meant it appeared once — on the
+			    opening turn, when there was nothing else to draw — and never again: from
+			    the second turn on, `line` is the answer the player just gave, so the
+			    condition was false and the panel sat there looking finished while a call
+			    was in flight. Drawn under the line rather than instead of it, because
+			    what the player just said is worth keeping on screen while they wait.
+
+			    In the choices' rows, which are empty exactly while this is showing, so
+			    the panel's fixed height is unaffected. */}
+			{dialogue.pending && (
+				<Text color="gray" wrap="truncate">
+					<Spinner type="dots" />
+					{` ${clampLine(waitingFor(dialogue.npcName), inner - 2)}`}
+				</Text>
 			)}
 
 			{showChoices &&
@@ -158,13 +185,20 @@ export function DialoguePanel({ looking, facing, nearbyName, width, height }: Di
 				))}
 
 			<Box flexGrow={1} />
-			<Text color="gray" wrap="truncate">
-				{showChoices
-					? "UP/DOWN to choose, SPACE to answer, ESC to leave."
-					: dialogue.pending
-						? "..."
+			{/* A moving spinner rather than the three dots this used to print. A static
+			    ellipsis is indistinguishable from a conversation that has stopped, which is
+			    the one thing the footer must never be ambiguous about. */}
+			{dialogue.pending ? (
+				<Text color="gray" wrap="truncate">
+					<Spinner type="dots" /> ESC to leave.
+				</Text>
+			) : (
+				<Text color="gray" wrap="truncate">
+					{showChoices
+						? "UP/DOWN to choose, SPACE to answer, ESC to leave."
 						: "SPACE to continue, ESC to leave."}
-			</Text>
+				</Text>
+			)}
 		</Frame>
 	);
 }

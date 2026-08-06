@@ -1,5 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
+import { Rule } from "../panels/primitives.js";
 import { wrapToLines } from "../render/text.js";
 
 /**
@@ -34,6 +35,24 @@ export interface ChoiceItem {
 	 * version, rather than a missing key.
 	 */
 	readonly disabled?: boolean;
+	/**
+	 * The row's own colour, used when the cursor is elsewhere.
+	 *
+	 * An Ink colour name rather than a hex string, so the row degrades with the
+	 * terminal instead of asking what the terminal can do — this list is drawn before
+	 * anything has been established about it. The cursor still overrides it: what is
+	 * selected has to be unmistakable, and a list where every row is a different colour
+	 * has no spare colour left to mean "here".
+	 */
+	readonly accent?: string;
+	/**
+	 * A labelled rule drawn above this row, separating it from what came before.
+	 *
+	 * Grouping without nesting. The alternative was a list of lists, which buys nothing
+	 * — the cursor still walks straight through — and costs the one thing this screen
+	 * needs, which is for two unlike kinds of choice to look unlike.
+	 */
+	readonly rule?: string;
 }
 
 export interface ChooserProps {
@@ -59,6 +78,17 @@ export interface ChooserProps {
 	 * nothing else needs one — which is why this is a callback rather than a table.
 	 */
 	readonly onKey?: (input: string, item: ChoiceItem | undefined) => boolean;
+	/**
+	 * Left or right on the row under the cursor: `-1` or `1`.
+	 *
+	 * Its own hook rather than something read out of `onKey`, for the same reason
+	 * `onChoose` is: a list where the horizontal arrows change the row's *value* is a
+	 * settings page, and a settings page is a shape worth naming. `h` and `l` come here
+	 * too, mirroring the `j` and `k` that already move the cursor.
+	 *
+	 * A row with no value to change simply does not implement it.
+	 */
+	readonly onCycle?: (item: ChoiceItem | undefined, step: -1 | 1) => void;
 	readonly isActive?: boolean;
 }
 
@@ -69,6 +99,7 @@ export function Chooser({
 	onChoose,
 	onBack,
 	onKey,
+	onCycle,
 	isActive = true,
 }: ChooserProps) {
 	const [cursor, setCursor] = useState(() => firstEnabled(items));
@@ -86,6 +117,16 @@ export function Chooser({
 			}
 			if (key.downArrow || input === "j") {
 				setCursor((at) => step(items, at, 1));
+				return;
+			}
+			// Swallowed whether or not anybody is listening, so that a page with no
+			// settings on it does not scroll its terminal when somebody presses right.
+			if (key.leftArrow || input === "h") {
+				onCycle?.(items[cursor], -1);
+				return;
+			}
+			if (key.rightArrow || input === "l") {
+				onCycle?.(items[cursor], 1);
 				return;
 			}
 			if (!key.return && input !== " ") return;
@@ -133,13 +174,20 @@ interface BodyBudget {
  */
 function bodyBudget(items: readonly ChoiceItem[], height: number): BodyBudget {
 	const explained = items.filter((item) => item.body).length;
+	// Separators are chrome and are never dropped: a rule costs one row whether or not
+	// there is room for the paragraphs, so it comes off the budget before they are shared
+	// out rather than being the thing that overflows the frame.
+	const rules = items.filter((item) => item.rule).length;
 	if (explained === 0) return { mode: "all", rows: 0 };
 
 	// One row per label, and one blank under each body.
-	const spare = height - items.length - explained;
+	const spare = height - items.length - explained - rules;
 	const each = Math.floor(spare / explained);
 	if (each >= 1) return { mode: "all", rows: Math.min(BODY_ROWS, each) };
-	return { mode: "selected", rows: Math.max(0, Math.min(BODY_ROWS, height - items.length - 1)) };
+	return {
+		mode: "selected",
+		rows: Math.max(0, Math.min(BODY_ROWS, height - items.length - rules - 1)),
+	};
 }
 
 /** Room the body has once the four columns of indent are taken off. */
@@ -156,7 +204,7 @@ function Row({
 	rows: number;
 	selected: boolean;
 }) {
-	const color = item.disabled ? "gray" : selected ? "cyan" : undefined;
+	const color = item.disabled ? "gray" : selected ? "cyan" : item.accent;
 	// Wrapped rather than truncated. A paragraph is the whole reason a choice has a
 	// body — cutting it mid-sentence puts back exactly the problem the old one-line
 	// list had.
@@ -165,6 +213,7 @@ function Row({
 
 	return (
 		<Box flexDirection="column" marginBottom={body.length > 0 ? 1 : 0}>
+			{item.rule ? <Rule width={width} label={item.rule} /> : null}
 			<Text color={color} wrap="truncate">
 				{selected ? "❯ " : "  "}
 				{item.label}

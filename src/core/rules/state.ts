@@ -7,6 +7,7 @@ import type { RegionSpec, SiteSpec, SpecSource, WorldLore } from "../world/spec.
 import type { ScenarioArc } from "./arc.js";
 import type { Card } from "./card.js";
 import { startTick, type TimeOptions, timeFromTick, type WorldTime } from "./clock.js";
+import type { CachedTurn } from "./dialogue-cache.js";
 import type { Barrier } from "./lock.js";
 import type { NpcRecord } from "./npc.js";
 import type { Placement } from "./placement.js";
@@ -60,6 +61,14 @@ export interface WorldMeta {
 	 * derived from the tick, so a save that lost this setting would start deriving one.
 	 */
 	readonly time?: TimeOptions;
+	/**
+	 * Whether a model may improvise conversation for this world during play.
+	 *
+	 * Here for the same reason `time` is: it is part of what the world is, and it has to
+	 * survive a reload whether or not the artifact it came from is still on disk. Without
+	 * it a scenario generated to improvise would fall silent the second time it was opened.
+	 */
+	readonly liveInGame?: boolean;
 }
 
 /**
@@ -215,6 +224,16 @@ export interface DialogueState {
 	readonly choices?: readonly string[];
 	readonly choiceIndex: number;
 	readonly pending: boolean;
+	/**
+	 * The reply as far as it has streamed, shown but not yet part of the conversation.
+	 *
+	 * Deliberately not a `line`: a line is something that was said, and this is a sentence
+	 * still being formed. Keeping it separate means nothing downstream of `lines` — the
+	 * NPC's memory, the summariser, the cursor the player scrolls — can ever see a
+	 * half-finished one, and clearing it needs no bookkeeping because the turn that
+	 * commits overwrites it.
+	 */
+	readonly preview?: string;
 }
 
 export interface GameState {
@@ -225,6 +244,15 @@ export interface GameState {
 	readonly inventory: readonly InventoryItem[];
 	readonly quests: readonly Quest[];
 	readonly flags: Readonly<Record<string, string | number | boolean>>;
+	/**
+	 * Replies a model has already written, so the same moment reads the same way twice.
+	 *
+	 * Optional, and absent on every save made before it existed — nothing needs migrating,
+	 * because an empty cache is indistinguishable from a cold one. See
+	 * `dialogue-cache.ts` for what the key is conditioned on and, more importantly, what
+	 * it deliberately is not.
+	 */
+	readonly dialogueCache?: Readonly<Record<string, CachedTurn>>;
 	readonly journal: readonly JournalEntry[];
 	readonly deltas: Readonly<Record<ChunkKey, ChunkDelta>>;
 	readonly discovered: readonly ChunkKey[];

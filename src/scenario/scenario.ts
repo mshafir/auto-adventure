@@ -21,9 +21,17 @@ export function isFlavour(value: string): value is Flavour {
 	return value === "procedural" || value === "live" || value === "prebuilt";
 }
 
-/** Whether this flavour is allowed to talk to a model while the game is running. */
-export function usesLiveModel(flavour: Flavour): boolean {
-	return flavour === "live";
+/**
+ * Whether a world is allowed to talk to a model while it is being played.
+ *
+ * Two inputs rather than one, because `prebuilt` used to mean both "authored ahead of
+ * time" and "never calls a model", and those have come apart. A generated scenario is
+ * prebuilt — its towns, people and story are all written down before the first frame —
+ * and may still be asked to improvise a conversation with somebody the author never
+ * wrote a tree for. The artifact decides, so the answer survives a save and a reload.
+ */
+export function usesLiveModel(flavour: Flavour, liveInGame?: boolean): boolean {
+	return flavour === "live" || liveInGame === true;
 }
 
 /**
@@ -59,4 +67,32 @@ export interface LaunchChoice {
 	 * generate a different world under the same name.
 	 */
 	readonly mustExist?: boolean;
+	/**
+	 * Let a model improvise during play, even for a world that was authored in advance.
+	 *
+	 * Persisted onto `world` so a resumed save keeps the answer: a scenario generated with
+	 * live dialogue asked for should not fall silent because it was reopened, and one
+	 * generated without it should not start spending money because a key turned up.
+	 */
+	readonly liveInGame?: boolean;
+}
+
+/**
+ * What the player asked a new scenario to be, before there is one.
+ *
+ * The launcher's config page fills this in and `pickLaunch` spends it. Separate from
+ * `LaunchChoice` because it describes a world that does not exist yet — there is no seed
+ * to resume, no slot to write to and no artifact to read, and every field here stops
+ * mattering the moment generation finishes and a real `LaunchChoice` exists.
+ */
+export interface GenerateRequest {
+	readonly brief: ScenarioBrief;
+	/** A directory under `.packs/tiles/`. Absent means the built-in look. */
+	readonly tiles?: string;
+	/** A pack under `.packs/`. Absent means the built-in tables. */
+	readonly pack?: string;
+	/** Whether the hour advances, the sky changes and people keep to a routine. */
+	readonly dayAndNight: boolean;
+	/** Whether a model runs during play, for conversations nobody wrote a tree for. */
+	readonly liveInGame: boolean;
 }

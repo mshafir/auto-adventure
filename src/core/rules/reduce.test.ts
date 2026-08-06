@@ -256,6 +256,74 @@ describe("interaction and dialogue", () => {
 		});
 		expect(run(base, [{ t: "CloseDialogue" }]).state.dialogue).toBeUndefined();
 	});
+
+	/**
+	 * A reply arriving a word at a time, and what must not follow from that.
+	 *
+	 * The preview is cosmetic, and the test of that is that dropping every one of these
+	 * commands leaves the conversation identical — so none of them may reach `lines`, the
+	 * cursor, the choices, or anybody's memory.
+	 */
+	describe("a streaming reply", () => {
+		const waiting = () =>
+			makeState({
+				dialogue: {
+					npcId: "npc:1",
+					npcName: "Bram",
+					lines: [{ speaker: "You", text: "Well?" }],
+					cursor: 0,
+					choiceIndex: 0,
+					pending: true,
+				},
+			});
+
+		it("shows the partial reply without making it a line", () => {
+			const { state } = run(waiting(), [
+				{ t: "DialogueStreaming", npcId: "npc:1", text: "The ledger" },
+				{ t: "DialogueStreaming", npcId: "npc:1", text: "The ledger is gone." },
+			]);
+			expect(state.dialogue?.preview).toBe("The ledger is gone.");
+			expect(state.dialogue?.lines).toHaveLength(1);
+			expect(state.dialogue?.pending).toBe(true);
+		});
+
+		it("drops the preview when the turn commits", () => {
+			const { state } = run(waiting(), [
+				{ t: "DialogueStreaming", npcId: "npc:1", text: "The ledger" },
+				{ t: "DialogueTurn", npcId: "npc:1", speaker: "Bram", text: "The ledger is gone." },
+			]);
+			expect(state.dialogue?.preview).toBeUndefined();
+			expect(state.dialogue?.lines.at(-1)?.text).toBe("The ledger is gone.");
+		});
+
+		it("ignores a chunk for somebody else's conversation", () => {
+			// A stream outliving the panel it was opened from must not paint into whatever
+			// conversation replaced it.
+			const { state } = run(waiting(), [
+				{ t: "DialogueStreaming", npcId: "npc:2", text: "Wrong mouth" },
+			]);
+			expect(state.dialogue?.preview).toBeUndefined();
+		});
+
+		it("ignores a chunk that arrives after the reply already landed", () => {
+			const { state } = run(waiting(), [
+				{ t: "DialogueTurn", npcId: "npc:1", speaker: "Bram", text: "Gone." },
+				{ t: "DialogueStreaming", npcId: "npc:1", text: "Gone, I sa" },
+			]);
+			expect(state.dialogue?.preview).toBeUndefined();
+			expect(state.dialogue?.lines.at(-1)?.text).toBe("Gone.");
+		});
+
+		it("changes nothing when the text has not moved on", () => {
+			// Identity matters: the panel subscribes by reference, so re-emitting the same
+			// preview must not be a new state object and a wasted re-render.
+			const before = run(waiting(), [
+				{ t: "DialogueStreaming", npcId: "npc:1", text: "Same" },
+			]).state;
+			const after = run(before, [{ t: "DialogueStreaming", npcId: "npc:1", text: "Same" }]).state;
+			expect(after).toBe(before);
+		});
+	});
 });
 
 describe("domain effects", () => {

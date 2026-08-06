@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { fallbackSettlementSpec } from "../core/gen/features/fallback-spec.js";
+import { generateFeature, invalidateFeature } from "../core/gen/features/registry.js";
 import { hashString } from "../core/rand/hash.js";
 import { isBoundary, isWellInside } from "../core/world/bounds.js";
 import { CHUNK } from "../core/world/coords.js";
@@ -158,6 +160,73 @@ describe("surveyWorld", () => {
 			const story = storySites(survey);
 			expect(story.length).toBeGreaterThan(0);
 			for (const entry of story) expect(isSettlement(entry.site.kind)).toBe(true);
+		}
+	});
+});
+
+/**
+ * The three kinds that refuse unsuitable ground, and what the survey owes them.
+ *
+ * `castle`, `cave` and `docks` build *nothing* rather than compromise — an empty patch
+ * on ground with no level square, no hillside or no shoreline. Every later authoring
+ * pass takes the survey's site list as a list of real places, so a declined site that
+ * survives this far becomes a named castle with people posted to it standing in an
+ * empty field. `validate.ts` calls that an error; a world generated with nobody watching
+ * has no one to read it.
+ */
+describe("a world with landmarks asked for", () => {
+	/** Weights high enough that some cells are certain to roll onto bad ground. */
+	const LANDMARKS = {
+		sites: { weights: { castle: 4, cave: 4, docks: 4 }, wildWeights: { cave: 4 } },
+	};
+
+	it("reports every site it dropped, so a fruitless recipe is visible", () => {
+		// Some seed in this set declines something: caves want a hillside and docks want a
+		// shore, and at this weight the roll finds ground that has neither.
+		const surveys = SEEDS.map((seed) => surveyWorld(worldSeed(seed, LANDMARKS), "medium"));
+		const dropped = surveys.reduce(
+			(total, survey) => total + Object.values(survey.declined).reduce((a, b) => a + b, 0),
+			0,
+		);
+		expect(dropped, "no seed declined anything; the filter is untested").toBeGreaterThan(0);
+	});
+
+	it("keeps nothing that the generator would refuse to build", () => {
+		for (const seed of SEEDS) {
+			const survey = surveyWorld(worldSeed(seed, LANDMARKS), "medium");
+			for (const entry of survey.sites) {
+				// Rebuilt here rather than trusting the survey's own answer, so this fails if
+				// the filter is removed rather than merely agreeing with itself.
+				invalidateFeature(survey.world, entry.site.id);
+				const patch = generateFeature(
+					survey.world,
+					entry.site,
+					fallbackSettlementSpec(seed, entry.site),
+				);
+				invalidateFeature(survey.world, entry.site.id);
+				if (!patch) continue;
+				expect(
+					patch.buildings.length + patch.anchors.length,
+					`${entry.site.kind} at ${entry.site.site.x},${entry.site.site.y} builds nothing`,
+				).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	it("still finds the settlements, having filtered the landmarks", () => {
+		// The filter must not be able to empty the world: a survey with no settlement in it
+		// is a scenario with nowhere to put a story.
+		for (const seed of SEEDS) {
+			const survey = surveyWorld(worldSeed(seed, LANDMARKS), "medium");
+			expect(storySites(survey).length).toBeGreaterThan(0);
+		}
+	});
+
+	it("leaves a default world with nothing to decline", () => {
+		// Nothing in the default ladder can refuse its ground, so the filter should be
+		// invisible on every world that existed before landmarks were askable.
+		for (const seed of SEEDS) {
+			expect(surveyWorld(worldSeed(seed), "medium").declined).toEqual({});
 		}
 	});
 });

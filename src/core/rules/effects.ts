@@ -1,5 +1,6 @@
 import type { ChunkCoord } from "../world/coords.js";
 import type { Card } from "./card.js";
+import type { CachedTurn } from "./dialogue-cache.js";
 import type { NpcTurn } from "./npc.js";
 import type { Facing, JournalEntry, QuestObjective } from "./state.js";
 
@@ -58,6 +59,14 @@ export type DomainEffect =
 	  }
 	/** Append one exchange to an NPC's verbatim history. */
 	| { readonly t: "RecordTurn"; readonly npcId: string; readonly turn: NpcTurn }
+	/**
+	 * Keep a generated reply so the same moment never costs a second call.
+	 *
+	 * Separate from `RecordTurn`, which is what the *NPC* remembers and is folded into a
+	 * summary as it ages. This is what the *world* remembers, verbatim and unfolded,
+	 * because a reply that has been paraphrased is no longer the same reply.
+	 */
+	| { readonly t: "RememberTurn"; readonly key: string; readonly turn: CachedTurn }
 	// Where a scripted conversation has got to. Its own effect rather than a flag so
 	// the cursor lives with the rest of what an NPC remembers.
 	| { readonly t: "SetNpcNode"; readonly npcId: string; readonly node: string }

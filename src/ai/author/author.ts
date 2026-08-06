@@ -59,9 +59,44 @@ export interface AuthorOptions {
 	/** Skip asking a model what kind of country this is; use the default world. */
 	readonly skipShape?: boolean;
 	readonly onProgress?: (message: string) => void;
+	/**
+	 * The caller giving up part-way.
+	 *
+	 * Checked between passes and passed to every call, so aborting stops the in-flight
+	 * requests as well as the ones not yet made. There is nothing to resume from — a
+	 * half-authored world is not a world — so this throws {@link AuthoringStopped} rather
+	 * than returning a partial artifact and letting a caller mistake it for a finished one.
+	 */
+	readonly signal?: AbortSignal;
+}
+
+/** Thrown when {@link AuthorOptions.signal} aborts. Nothing was written. */
+export class AuthoringStopped extends Error {
+	constructor(pass: string) {
+		super(`authoring stopped during ${pass}`);
+		this.name = "AuthoringStopped";
+	}
 }
 
 const DEFAULT_CONCURRENCY = 4;
+
+/**
+ * How long the arc pass may take before it is given up on.
+ *
+ * Generous, because nothing is waiting on it: this is offline authoring, the player is
+ * already watching a progress screen, and the alternative to waiting two minutes is a
+ * world with no story in it.
+ */
+const ARC_TIMEOUT_MS = 120_000;
+
+/**
+ * The kinds the default world has none of, so worth reporting when one appears.
+ *
+ * A world of hamlets and farmland is what the generator produces left alone. These
+ * three are what the shape pass can add, and whether they landed is the one thing about
+ * the map that a reader of the progress log cannot infer from the site count.
+ */
+const LANDMARK_KINDS = ["castle", "cave", "docks"] as const;
 
 /** Run tasks with a ceiling on how many are in flight. */
 async function pooled<T, R>(
@@ -90,6 +125,13 @@ export interface AuthorResult {
 export async function authorScenario(options: AuthorOptions): Promise<AuthorResult> {
 	const say = options.onProgress ?? (() => undefined);
 	const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+	const signal = options.signal;
+	/** Between passes, where stopping leaves nothing half-built. */
+	const stopIfAsked = (pass: string) => {
+		if (signal?.aborted) throw new AuthoringStopped(pass);
+	};
+	/** Spread into every call, so aborting reaches the requests already in flight. */
+	const abortable = signal ? { signal } : {};
 	let calls = 0;
 
 	// --- pass 0: what kind of country --------------------------------------
@@ -105,6 +147,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			system: SHAPE_SYSTEM,
 			prompt: shapePrompt(options.brief),
 			temperature: 0.8,
+			...abortable,
 		});
 		if (shape) {
 			calls++;
@@ -125,6 +168,23 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	if (survey.boundaryAdjustment !== 0)
 		say(`moved the boundary ${survey.boundaryAdjustment} tiles to avoid cutting a town in half`);
 
+	// What the ground refused, and what it allowed. Both are worth saying out loud: a
+	// recipe asking for six harbours in a landlocked world produces neither an error nor
+	// a harbour, and without this the only symptom is a world that feels thinner than
+	// the brief asked for.
+	const declined = Object.entries(survey.declined);
+	if (declined.length > 0) {
+		say(
+			`the ground suited none of ${declined
+				.map(([kind, count]) => `${count} ${kind}${count === 1 ? "" : "s"}`)
+				.join(", ")}`,
+		);
+	}
+	const landmarks = LANDMARK_KINDS.filter((kind) =>
+		survey.sites.some((entry) => entry.site.kind === kind),
+	);
+	if (landmarks.length > 0) say(`the map has ${landmarks.join(", ")} on it`);
+
 	// --- pass 1: lore --------------------------------------------------------
 	const lore =
 		(await structured({
@@ -134,9 +194,11 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			system: LORE_SYSTEM,
 			prompt: lorePrompt(options.brief),
 			temperature: 1,
+			...abortable,
 		})) ?? fallbackLore();
 	calls++;
 	say(`lore: ${lore.title}`);
+	stopIfAsked("the lore");
 
 	// --- pass 2: regions -----------------------------------------------------
 	const regions: Record<string, RegionSpec> = {};
@@ -148,6 +210,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			system: REGION_SYSTEM,
 			prompt: regionPrompt(lore, context, options.brief),
 			temperature: 0.9,
+			...abortable,
 		});
 		calls++;
 		const id = String(context.regionId);
@@ -165,6 +228,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			: fallbackRegion(options.seed, context);
 	});
 	say(`named ${Object.keys(regions).length} regions`);
+	stopIfAsked("the regions");
 
 	// --- pass 3: sites -------------------------------------------------------
 	const sites: Record<string, SiteSpec> = {};
@@ -178,6 +242,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 					system: SITE_SYSTEM,
 					prompt: sitePrompt(lore, region, entry.context, options.brief),
 					temperature: 0.9,
+					...abortable,
 				})
 			: undefined;
 		calls++;
@@ -215,6 +280,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			: fallbackSite(options.seed, entry.site, entry.context);
 	});
 	say(`populated ${Object.keys(sites).length} places`);
+	stopIfAsked("the places");
 
 	// --- pass 4: the arc -----------------------------------------------------
 	const storyable = settlements
@@ -227,10 +293,12 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		lore,
 		beats: Math.min(planFor(options.brief.duration).beats, storyable.length),
 		sites: storyable,
+		...abortable,
 	});
 	const arc = plotted?.arc;
 	if (arc) calls++;
 	say(arc ? `plotted ${arc.beats.length} beats` : "no story could be plotted");
+	stopIfAsked("the plot");
 	if (plotted?.placements.length) say(`hid ${plotted.placements.length} things to find`);
 
 	// --- pass 5: dialogue ----------------------------------------------------
@@ -257,12 +325,16 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 						}
 					: {}),
 				availableFlags: (arc?.beats ?? []).map((candidate) => candidate.setsFlag),
+				...abortable,
 			});
 			calls++;
 			if (tree) trees[id] = tree;
 		});
 		say(`wrote ${Object.keys(trees).length} conversations`);
 	}
+	// Last check, before anything is assembled. Past here the artifact exists and is
+	// worth keeping: stopping would throw away a finished world to save nothing.
+	stopIfAsked("the conversations");
 
 	const artifact: ScenarioArtifact = {
 		artifactVersion: ARTIFACT_VERSION,
@@ -301,6 +373,7 @@ async function plotArc(input: {
 	readonly lore: WorldLore;
 	readonly beats: number;
 	readonly sites: readonly { readonly entry: { site: { id: number } }; readonly spec: SiteSpec }[];
+	readonly signal?: AbortSignal;
 }): Promise<{ arc: ScenarioArc; placements: Placement[] } | undefined> {
 	if (input.sites.length === 0 || input.beats === 0) return undefined;
 
@@ -317,6 +390,14 @@ async function plotArc(input: {
 			sites: input.sites as any,
 		}),
 		temperature: 0.9,
+		// The one call that legitimately needs longer than the default twenty seconds. It
+		// is shown every settlement and every person in the world and asked to plot a whole
+		// story across them, so it is by far the largest prompt and the largest answer —
+		// and it was timing out, which is a silent catastrophe rather than a slow pass:
+		// a world whose arc call fails has no story at all, and every later pass carries on
+		// as though that were the intended shape.
+		timeoutMs: ARC_TIMEOUT_MS,
+		...(input.signal ? { signal: input.signal } : {}),
 	});
 	if (!response) return undefined;
 	return lowerArc(response, input.sites);
@@ -329,6 +410,26 @@ async function plotArc(input: {
  * authoring pass does to a story happens here — the sequencing, the sub-errands, the
  * hidden items — and none of it is worth trusting on the strength of having read it.
  */
+/**
+ * A building at this settlement that the thing can actually be hidden in.
+ *
+ * The model chooses `where` from the closed list of structure kinds, which stops it
+ * inventing a "vault" and does not stop it choosing a barracks at a settlement that has
+ * no barracks. That combination is worse than it sounds: the placement fails to resolve,
+ * the item is nowhere, and the beat carries an objective to be holding it — so the story
+ * stops dead at a step no player can complete, silently, with a warning in a log nobody
+ * is reading.
+ *
+ * Falls back to the settlement's most prominent building rather than dropping the item,
+ * because *where* a thing is hidden is flavour and *that* it can be found is the story.
+ */
+function hidingPlace(wanted: string, spec: SiteSpec): string {
+	const built = spec.settlement.structures;
+	if (built.some((structure) => structure.kind === wanted)) return wanted;
+	const fallback = [...built].sort((a, b) => b.importance - a.importance)[0];
+	return fallback?.kind ?? wanted;
+}
+
 export function lowerArc(
 	response: ArcResponse,
 	sites: readonly { readonly entry: { site: { id: number } }; readonly spec: SiteSpec }[],
@@ -371,7 +472,11 @@ export function lowerArc(
 		if (raw.find) {
 			placements.push({
 				id: `find:${raw.id}`,
-				at: { kind: "site", siteId: chosen.entry.site.id, structure: raw.find.where },
+				at: {
+					kind: "site",
+					siteId: chosen.entry.site.id,
+					structure: hidingPlace(raw.find.where, chosen.spec),
+				},
 				item: { name: raw.find.item, description: raw.find.description },
 				showDecor: true,
 			});
@@ -464,6 +569,7 @@ async function writeTree(input: {
 		readonly questName?: string;
 	};
 	readonly availableFlags: readonly string[];
+	readonly signal?: AbortSignal;
 }): Promise<DialogueTree | undefined> {
 	const response = await structured({
 		kind: "dialogue",
@@ -478,6 +584,7 @@ async function writeTree(input: {
 			availableFlags: input.availableFlags,
 		}),
 		temperature: 0.85,
+		...(input.signal ? { signal: input.signal } : {}),
 	});
 	if (!response) return undefined;
 
