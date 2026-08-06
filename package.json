@@ -1,11 +1,33 @@
 {
 	"name": "auto-adventure",
-	"version": "0.0.0",
+	"version": "0.1.0",
+	"description": "A terminal RPG on an infinite, seamless, procedurally generated world, with an LLM as its author rather than its renderer.",
 	"license": "MIT",
-	"bin": "dist/main.js",
+	"author": "Michael Shafir",
+	"homepage": "https://github.com/mshafir/auto-adventure#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mshafir/auto-adventure.git"
+	},
+	"bugs": "https://github.com/mshafir/auto-adventure/issues",
+	"keywords": [
+		"game",
+		"rpg",
+		"terminal",
+		"tui",
+		"cli",
+		"ink",
+		"roguelike",
+		"procedural-generation",
+		"llm",
+		"ai"
+	],
+	"bin": {
+		"auto-adventure": "dist/main.js"
+	},
 	"type": "module",
 	"engines": {
-		"node": ">=16"
+		"node": ">=18"
 	},
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
@@ -29,10 +51,16 @@
 		"author": "vite-node src/tools/author.ts --",
 		"survey": "vite-node src/tools/survey.ts --",
 		"assemble": "vite-node src/tools/assemble.ts --",
-		"pack:emit": "vite-node src/tools/emit-pack.ts"
+		"pack:emit": "vite-node src/tools/emit-pack.ts",
+		"prepack": "npm run build",
+		"prepublishOnly": "npm run check"
 	},
+	"//files": "The three data directories are runtime content, not development leftovers: `paths.ts` resolves them relative to the installed package, and without them a fresh `npx` run has no shipped scenario to play, no name packs and no title screen.",
 	"files": [
-		"dist"
+		"dist",
+		".packs",
+		".scenarios",
+		"assets"
 	],
 	"dependencies": {
 		"ai": "^5.0.226",

@@ -2,5 +2,7 @@
 	"$schema": "https://json.schemastore.org/tsconfig",
 	"extends": "./tsconfig.json",
 	"include": ["src"],
-	"exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "test"]
+	// `src/tools/` is run with `vite-node` straight from source, so compiling it
+	// only ships scripts that import devDependencies a player will not have.
+	"exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/tools", "test"]
 }

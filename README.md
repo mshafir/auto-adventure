@@ -6,6 +6,12 @@ LLM as its author rather than its renderer.
 ![A recording of the game being played](docs/screens/play.gif)
 
 ```
+npx auto-adventure        # play it without cloning anything
+```
+
+From a clone:
+
+```
 npm install
 npm start                 # pick a world, or start one
 WORLD_NAME=hollowmoor npm start   # skip the menu, open that slot

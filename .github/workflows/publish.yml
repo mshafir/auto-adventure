@@ -1,0 +1,52 @@
+name: publish
+
+# Publishing happens here rather than from a laptop, so the only place the npm
+# token ever exists is the repository secret NPM_TOKEN. Nothing in the working
+# tree, and no shell history, needs to hold it.
+#
+# The trigger is a published GitHub release, which makes the release notes and
+# the npm version the same act. `workflow_dispatch` is the escape hatch for
+# re-running a publish that failed after the release was already made.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Lets npm attach a provenance attestation: proof the tarball was built by
+  # this workflow from this commit. Requires a public repository, which this is.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # Writes the registry line the publish step's NODE_AUTH_TOKEN slots into.
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+
+      # A release tagged v0.2.0 that publishes 0.1.0 is the kind of mistake that
+      # cannot be undone on npm — a version number is spent once. Fail first.
+      - name: Tag must match package.json version
+        if: github.event_name == 'release'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "release tag $GITHUB_REF_NAME does not match package.json version $pkg" >&2
+            exit 1
+          fi
+
+      # `prepublishOnly` runs typecheck + lint + tests and `prepack` runs the
+      # build, so this one line is the whole gate as well as the publish.
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
