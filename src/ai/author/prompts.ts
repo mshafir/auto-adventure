@@ -43,6 +43,18 @@ function siteLine(index: number, entry: SurveyedSite, spec: SiteSpec): string {
 	].join("\n");
 }
 
+/**
+ * How many side errands a story of this length should carry.
+ *
+ * About one per three beats, floored at one. Fewer than that and the map is scenery
+ * between conversations; many more and the main line stops being findable among them.
+ * The count is asked for explicitly because a range was ignored: every generated arc came
+ * back with none at all while `optional` sat in the schema, documented and unused.
+ */
+function optionalWanted(beats: number): number {
+	return Math.max(1, Math.round(beats / 3));
+}
+
 export function arcPrompt(input: {
 	readonly brief: ScenarioBrief;
 	readonly lore: WorldLore;
@@ -72,20 +84,31 @@ export function arcPrompt(input: {
 		"",
 		"The last beat should end the story, not open another door.",
 		"",
-		"Four things you may use, none of them required. Use at most one fork, and use each",
-		"only where it makes the story better than a straight line would:",
+		// Both of these were available before and neither was ever used: every generated
+		// world came back with zero side errands and zero hidden things, because "you may"
+		// reads as "you need not" and the straight line is always the easier thing to write.
+		// A story of nothing but main beats is a story of walking between conversations.
+		`Two of these are required. ${optionalWanted(input.beats)} of those ${input.beats} beats must`,
+		"be side errands marked optional, and at least one beat must hide something to find:",
 		"",
-		"  optional  A side errand. The story can finish with it still open, so this is where",
-		"            a piece of the world that is worth finding but not on the way belongs.",
+		"  optional  A side errand, off the main line. The story can finish with it still open,",
+		"            so this is where a piece of the world that is worth finding but not on the",
+		"            way belongs. It is what makes the map worth leaving the road for.",
+		"  find      Something hidden. Name it, say which kind of building at that settlement",
+		"            it is in, and the player has to go and get it before the beat closes.",
+		"            A story where nothing is ever searched for is a story with no objects in it.",
+		"",
+		"Two more you may use, neither required, and only where they make the story better",
+		"than a straight line would. Use at most one fork:",
+		"",
 		"  partOf    Give a beat the id of an earlier one, and it becomes a step of it: the",
 		"            earlier errand cannot close until this one does. Two or three steps under",
-		"            one job reads far better than three unrelated jobs.",
+		"            one job reads far better than three unrelated jobs. Never point an arm of",
+		"            a fork at its own sibling — each arm follows what came before the fork.",
 		"  branch    Two beats with the same branch name are alternatives. Taking one bars the",
 		"            other for good. Use it for a decision the player should not be able to",
 		"            take back — who to tell, which side to take — and write an ending for",
 		"            each arm.",
-		"  find      Something hidden. Name it, say which kind of building at that settlement",
-		"            it is in, and the player has to go and get it before the beat closes.",
 		"",
 		"If you use a branch, write one ending per arm: name the branch group and the beat, and",
 		"say what the world looks like afterwards. Otherwise write no endings at all.",
@@ -126,6 +149,64 @@ export function shapePrompt(brief: ScenarioBrief): string {
 		.join("\n");
 }
 
+export const REACTIONS_SYSTEM =
+	`You decide how a world answers the story going through it. ${HOUSE_STYLE} ` +
+	"You are given a story that is already plotted and a map that already exists. You may " +
+	"not add a beat, a person or a place. Everything you write hangs off a beat that has " +
+	"already been written, chosen by its number in the list.";
+
+/**
+ * Ask what the world does about the story, once the story exists.
+ *
+ * The pass that fills the two holes measured against the hand-written scenarios, where
+ * generated worlds scored zero on both: a generated world could not *react* to anything
+ * the player did and could not gate anything, so it played as a map with a conversation
+ * on it. Both were available in the artifact format the whole time and no pass had ever
+ * been asked to produce one.
+ *
+ * Deliberately last. A trigger is a consequence, and a consequence needs a cause to hang
+ * off — asking for these before the arc exists would mean inventing the flag they watch
+ * for, which is the one thing that makes a condition unsatisfiable.
+ */
+export function reactionsPrompt(input: {
+	readonly lore: WorldLore;
+	readonly beats: readonly { readonly id: string; readonly summary: string }[];
+	readonly castles: readonly { readonly name: string; readonly description: string }[];
+}): string {
+	return [
+		`World: ${input.lore.title}. ${input.lore.premise}`,
+		`Tone: ${input.lore.tone}.`,
+		"",
+		"The story, in order:",
+		...input.beats.map((beat, index) => `  [${index}] ${beat.id} — ${beat.summary}`),
+		"",
+		"Write between one and four things the world does after one of those beats. Each is",
+		"the world noticing: news travelling, a door standing open that was shut, weather",
+		"turning, somebody leaving. Give the beat's number, and either a journal line, a full",
+		"screen, or both — anything with neither is dropped.",
+		"",
+		"These are not beats. Nothing here asks the player to do anything, nothing here opens",
+		"a task, and the story does not wait on any of them. They are what the player notices",
+		"has changed while they were away.",
+		"",
+		input.castles.length > 0
+			? [
+					"There are gates in this world that can be barred:",
+					...input.castles.map(
+						(castle, index) => `  [${index}] ${castle.name} — ${castle.description}`,
+					),
+					"",
+					"You may bar one. Say which, which beat opens it, and what the player is told while",
+					"it stays shut. Nothing the story needs is behind a gate, so this is a place that",
+					"becomes available rather than a wall across the plot — bar it only if the story",
+					"gives a reason for it to open.",
+				].join("\n")
+			: "There are no gates in this world to bar, so write no barriers.",
+	]
+		.filter((line) => line !== "")
+		.join("\n");
+}
+
 export const TREE_SYSTEM =
 	`You write dialogue for one character in a small terminal roguelike. ${HOUSE_STYLE} ` +
 	"Conversations are choice-only: the player picks from what you offer, so every reply " +
@@ -142,6 +223,15 @@ export function treePrompt(input: {
 	};
 	/** Flags earlier beats set, which a reply may be gated on. */
 	readonly availableFlags: readonly string[];
+	/**
+	 * Flags a reply *must* be gated on, for a second attempt at a conversation.
+	 *
+	 * The repair pass's one lever. A fork the scene does not know about is a fork the
+	 * player experiences as being ignored — they make the decision, and then everybody
+	 * says the same thing either way — and the only fix is prose that knows which way it
+	 * went. Asking for a flag to be used is far more reliable than asking again and hoping.
+	 */
+	readonly insist?: readonly string[];
 }): string {
 	const { npc, site } = input;
 	return [
@@ -166,9 +256,17 @@ export function treePrompt(input: {
 					.join("\n")
 			: "This person is not part of the main story. Give them something local and true to say.",
 		"",
-		input.availableFlags.length > 0
-			? `You may hide a reply behind one of these story flags, so it only appears later: ${input.availableFlags.join(", ")}.`
-			: "",
+		input.insist && input.insist.length > 0
+			? [
+					`This character must have something to say once the player has taken one path rather`,
+					`than another. Write an alternative opening hidden behind ${input.insist.join(" or ")},`,
+					"and make it a line that only makes sense if that is what happened — an acknowledgement,",
+					"a reproach, a change of manner. Without it the decision plays out identically either",
+					"way, which reads as the choice not having mattered.",
+				].join("\n")
+			: input.availableFlags.length > 0
+				? `You may hide a reply behind one of these story flags, so it only appears later: ${input.availableFlags.join(", ")}.`
+				: "",
 		"",
 		"Write between two and six nodes. One must be reachable and end the conversation. Every",
 		"'goto' must name a node you have written, or be null to end. Give the player a way out of",

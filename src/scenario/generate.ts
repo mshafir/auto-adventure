@@ -2,9 +2,9 @@ import { AuthoringStopped, type AuthorResult, authorScenario } from "../ai/autho
 import { resolveSeed } from "../config.js";
 import { logger } from "../utils/log.js";
 import type { ScenarioArtifact } from "./artifact.js";
-import { listScenarios, verifyArtifact, writeScenario } from "./repo.js";
+import { listScenarios, writeScenario } from "./repo.js";
 import type { GenerateRequest, LaunchChoice } from "./scenario.js";
-import { type Finding, validateArtifact } from "./validate.js";
+import type { Finding } from "./validate.js";
 
 /**
  * Write a world to order, check it, keep it, and hand back something to play.
@@ -90,13 +90,12 @@ export async function generateScenario(
 		...(request.liveInGame ? { liveInGame: true } : {}),
 	};
 
-	// Structural problems first: these mean the file does not describe a world of this
-	// seed at all, which is a different and worse thing than a story with a hole in it.
-	const findings: Finding[] = verifyArtifact(artifact).map((message) => ({
-		severity: "error" as const,
-		message,
-	}));
-	findings.push(...validateArtifact(artifact));
+	// Whatever the repair pass could not fix, reported in its own words — structural
+	// problems included, since those are what it was judged on too. Asking again here
+	// would mean generating the whole bounded world a second time to be told the same
+	// thing, and would be a second opinion that could disagree with the one the repairs
+	// were weighed against.
+	const findings: Finding[] = [...result.findings];
 	findings.sort((a, b) => rank(a) - rank(b));
 	for (const finding of findings) {
 		logger.warn(`generated ${id}: ${finding.severity} ${finding.message}`);

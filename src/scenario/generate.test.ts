@@ -3,7 +3,9 @@ import { demoArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
 import { AuthoringStopped, type AuthorResult } from "../ai/author/author.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { freeScenarioId, generateScenario } from "./generate.js";
+import { verifyArtifact } from "./repo.js";
 import type { GenerateRequest } from "./scenario.js";
+import type { Finding } from "./validate.js";
 
 /**
  * Writing a world to order, minus the four minutes and the model.
@@ -20,8 +22,29 @@ const REQUEST: GenerateRequest = {
 	liveInGame: false,
 };
 
-function author(artifact: ScenarioArtifact, calls = 12) {
-	return async (): Promise<AuthorResult> => ({ artifact, calls });
+/**
+ * A stand-in for the authoring pipeline that reports what the real one would.
+ *
+ * Findings travel *with* the result rather than being re-derived here, because deriving
+ * them means generating the whole bounded world a second time — so a fake author that
+ * always claimed a clean world would be testing a contract nothing keeps.
+ */
+function author(artifact: ScenarioArtifact, calls = 12, findings: readonly Finding[] = []) {
+	return async (): Promise<AuthorResult> => ({ artifact, calls, findings, repairs: [] });
+}
+
+/** A world with a fault in it, and the findings the authoring pass would hand over with it. */
+function broken(): { artifact: ScenarioArtifact; findings: readonly Finding[] } {
+	// A spec keyed to a site this seed does not produce: `verifyArtifact` calls that an
+	// error, which is as bad as a generated artifact gets.
+	const artifact = demoArtifact({ sites: { "12345": demoSiteSpec(12345) } });
+	return {
+		artifact,
+		findings: [
+			...verifyArtifact(artifact).map((message) => ({ severity: "error" as const, message })),
+			{ severity: "warning" as const, message: "a place the story never visits" },
+		],
+	};
 }
 
 /** Collects what was written instead of touching `.scenarios`. */
@@ -65,11 +88,8 @@ describe("generating a world", () => {
 		// A finding is a fault in *our* authoring passes. Refusing to start after several
 		// paid minutes turns a blemish into a total loss, so findings are reported and the
 		// world is still played.
-		const h = harness({
-			// A spec keyed to a site this seed does not produce: `verifyArtifact` calls that
-			// an error, which is as bad as a generated artifact gets.
-			author: author(demoArtifact({ sites: { "12345": demoSiteSpec(12345) } })),
-		});
+		const { artifact, findings } = broken();
+		const h = harness({ author: author(artifact, 12, findings) });
 		const outcome = await generateScenario(REQUEST, h.deps);
 
 		expect(outcome.findings.some((f) => f.severity === "error")).toBe(true);
@@ -78,9 +98,8 @@ describe("generating a world", () => {
 	});
 
 	it("puts the errors above the warnings, so a truncated list shows what matters", async () => {
-		const h = harness({
-			author: author(demoArtifact({ sites: { "12345": demoSiteSpec(12345) } })),
-		});
+		const faulty = broken();
+		const h = harness({ author: author(faulty.artifact, 12, faulty.findings) });
 		const { findings } = await generateScenario(REQUEST, h.deps);
 		const firstWarning = findings.findIndex((f) => f.severity !== "error");
 		const lastError = findings.map((f) => f.severity).lastIndexOf("error");
@@ -139,7 +158,7 @@ describe("generating a world", () => {
 		const h = harness({
 			author: async (options) => {
 				options.onProgress?.("lore: The Long Siege");
-				return { artifact: demoArtifact(), calls: 1 };
+				return { artifact: demoArtifact(), calls: 1, findings: [], repairs: [] };
 			},
 		});
 		await generateScenario(REQUEST, h.deps);

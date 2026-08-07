@@ -7,7 +7,15 @@ import { type WorldRecipe, worldSeed } from "../../core/world/recipe.js";
 import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 import { npcId } from "../../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "../../scenario/artifact.js";
-import { planFor, type Survey, storySites, surveyWorld } from "../../scenario/survey.js";
+import { inspect, repairUntilClean, score } from "../../scenario/repair.js";
+import {
+	planFor,
+	type Survey,
+	storySites,
+	surveyWorld,
+	walkableSites,
+} from "../../scenario/survey.js";
+import type { Finding } from "../../scenario/validate.js";
 import { logger } from "../../utils/log.js";
 import { structured } from "../client.js";
 import type { DialogueTree } from "../dialogue/tree.js";
@@ -21,6 +29,7 @@ import {
 	sitePrompt,
 } from "../director/prompt.js";
 import { RegionSpecSchema, SiteSpecSchema, WorldLoreSchema } from "../director/schemas.js";
+import { mendArtifact } from "./mend.js";
 import {
 	ARC_SYSTEM,
 	arcPrompt,
@@ -29,6 +38,7 @@ import {
 	TREE_SYSTEM,
 	treePrompt,
 } from "./prompts.js";
+import { authorReactions, type Reactions } from "./reactions.js";
 import { type ArcResponse, ArcSchema, TreeSchema, WorldShapeSchema } from "./schemas.js";
 import { recipeFor } from "./shape.js";
 
@@ -120,6 +130,16 @@ async function pooled<T, R>(
 export interface AuthorResult {
 	readonly artifact: ScenarioArtifact;
 	readonly calls: number;
+	/**
+	 * What is still wrong with it, after everything that could be fixed was.
+	 *
+	 * Handed back rather than left for the caller to re-derive, because deriving it means
+	 * generating the whole bounded world again — several seconds of the slowest work in
+	 * the pipeline, to recompute an answer this pass already had.
+	 */
+	readonly findings: readonly Finding[];
+	/** What the repair pass changed, in the words of the faults it removed. */
+	readonly repairs: readonly string[];
 }
 
 export async function authorScenario(options: AuthorOptions): Promise<AuthorResult> {
@@ -156,15 +176,27 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		}
 	}
 
-	// --- pass 1: survey, free ------------------------------------------------
+	// --- pass 1: survey ------------------------------------------------------
+	// Free apart from the reachability sweep below, which is one generation of the whole
+	// bounded world — the same work the validator does at the end, done first so the story
+	// is never plotted somewhere it would then be refused.
 	const world = worldSeed(options.seed, recipe);
 	const survey = surveyWorld(world, options.brief.duration);
-	const settlements = storySites(survey);
+	// Which of them the player can actually get to. A straight line is the right measure
+	// for ordering a story outward and the wrong one for deciding a place can be visited:
+	// a town across an inlet is thirty tiles away and unreachable, and a beat set there is
+	// a story that cannot be finished. Costs one sweep of the bounded world, paid here so
+	// that sixty model calls are not spent writing a scene nobody can walk to.
+	const walkable = walkableSites(survey);
+	const settlements = storySites(survey).filter((entry) => walkable.has(entry.site.id));
 	say(
 		`surveyed ${survey.sites.length} sites (${settlements.length} settlements) in a ${
 			survey.bounds.maxX - survey.bounds.minX
 		}-tile world`,
 	);
+	const stranded = survey.sites.length - walkable.size;
+	if (stranded > 0)
+		say(`${stranded} place(s) cannot be walked to from the start; the story will not go there`);
 	if (survey.boundaryAdjustment !== 0)
 		say(`moved the boundary ${survey.boundaryAdjustment} tiles to avoid cutting a town in half`);
 
@@ -301,6 +333,33 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	stopIfAsked("the plot");
 	if (plotted?.placements.length) say(`hid ${plotted.placements.length} things to find`);
 
+	// --- pass 4b: what the world does about it -------------------------------
+	// After the arc because everything it writes hangs off a flag the arc set, and before
+	// the dialogue because it is one call rather than one per person — a run that dies in
+	// the long pass should already have the short one banked.
+	let reactions: Reactions = { triggers: [], barriers: [] };
+	if (arc) {
+		const castles = survey.sites
+			.filter((entry) => entry.site.kind === "castle")
+			.map((entry) => ({
+				siteId: entry.site.id,
+				name:
+					sites[String(entry.site.id)]?.name ??
+					`the castle at ${entry.site.site.x},${entry.site.site.y}`,
+				description: sites[String(entry.site.id)]?.description ?? "A castle.",
+			}));
+		const result = await authorReactions({ lore, arc, castles, ...abortable });
+		if (result.called) calls++;
+		reactions = result.reactions;
+		if (reactions.triggers.length + reactions.barriers.length > 0)
+			say(
+				`the world answers: ${reactions.triggers.length} reaction(s)${
+					reactions.barriers.length > 0 ? `, ${reactions.barriers.length} gate(s) barred` : ""
+				}`,
+			);
+	}
+	stopIfAsked("the world's reactions");
+
 	// --- pass 5: dialogue ----------------------------------------------------
 	const trees: Record<string, DialogueTree> = {};
 	if (!options.skipTrees) {
@@ -336,7 +395,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	// worth keeping: stopping would throw away a finished world to save nothing.
 	stopIfAsked("the conversations");
 
-	const artifact: ScenarioArtifact = {
+	const drafted: ScenarioArtifact = {
 		artifactVersion: ARTIFACT_VERSION,
 		id: options.id,
 		title: arc?.title ?? lore.title,
@@ -350,6 +409,8 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		regions,
 		sites,
 		...(arc ? { arc } : {}),
+		...(reactions.triggers.length > 0 ? { triggers: reactions.triggers } : {}),
+		...(reactions.barriers.length > 0 ? { barriers: reactions.barriers } : {}),
 		...(plotted?.placements.length ? { placements: plotted.placements } : {}),
 		...(Object.keys(trees).length > 0 ? { trees } : {}),
 		authoredWith: {
@@ -358,7 +419,54 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			at: new Date().toISOString(),
 		},
 	};
-	return { artifact, calls };
+
+	// --- pass 6: check it, and fix what can be fixed --------------------------
+	// Here rather than in the callers, so the CLI and the launcher get the same world
+	// from the same input. It costs a few seconds of world generation at the end of a
+	// run that has already spent minutes, and it is the only pass that measures the
+	// others: everything above this line is a model being asked to be careful.
+	say("checking the world against itself");
+	const mechanical = repairUntilClean(drafted, say);
+	let artifact = mechanical.artifact;
+	let findings = mechanical.findings;
+	const repairs = [...mechanical.repairs];
+
+	// --- pass 7: the faults that need words ----------------------------------
+	// Last, and bounded, because passes 1–6 should have made it rare. Kept only if the
+	// validator agrees it helped: a rewritten conversation is a real change to the world,
+	// and one that trades a spoken fork for a broken tree is not a repair.
+	if (findings.length > 0 && !options.skipTrees) {
+		const mended = await mendArtifact({
+			artifact,
+			writeTree,
+			onProgress: say,
+			...abortable,
+		});
+		calls += mended.calls;
+		if (mended.repairs.length > 0) {
+			// The same two halves the mechanical loop is judged on. A rewritten conversation
+			// can point at a node it no longer contains — which `validate.ts` has nothing to
+			// say about and `readScenarioFile` refuses outright — so weighing only the
+			// expensive check would let a mend produce a world the launcher will not open.
+			const after = inspect(mended.artifact);
+			if (score(after) < score(findings)) {
+				artifact = mended.artifact;
+				findings = after;
+				repairs.push(...mended.repairs);
+			} else {
+				say("the rewrites made nothing better; kept the world as it was");
+			}
+		}
+	}
+
+	say(
+		findings.length === 0
+			? "nothing wrong with it"
+			: `${findings.filter((finding) => finding.severity === "error").length} error(s), ${
+					findings.filter((finding) => finding.severity !== "error").length
+				} warning(s)`,
+	);
+	return { artifact, calls, findings, repairs };
 }
 
 /**
@@ -573,7 +681,7 @@ export function lowerArc(
 	};
 }
 
-async function writeTree(input: {
+export interface WriteTreeInput {
 	readonly lore: WorldLore;
 	readonly site: SiteSpec;
 	readonly npc: NpcSpec;
@@ -584,8 +692,12 @@ async function writeTree(input: {
 		readonly questName?: string;
 	};
 	readonly availableFlags: readonly string[];
+	/** Flags a reply must be hidden behind. Used by the repair pass, not the first run. */
+	readonly insist?: readonly string[];
 	readonly signal?: AbortSignal;
-}): Promise<DialogueTree | undefined> {
+}
+
+export async function writeTree(input: WriteTreeInput): Promise<DialogueTree | undefined> {
 	const response = await structured({
 		kind: "dialogue",
 		model: MODELS.dialogue,
@@ -597,6 +709,7 @@ async function writeTree(input: {
 			npc: input.npc,
 			...(input.beat ? { beat: input.beat } : {}),
 			availableFlags: input.availableFlags,
+			...(input.insist ? { insist: input.insist } : {}),
 		}),
 		temperature: 0.85,
 		...(input.signal ? { signal: input.signal } : {}),

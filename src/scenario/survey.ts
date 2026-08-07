@@ -12,6 +12,7 @@ import { CHUNK } from "../core/world/coords.js";
 import { isSettlement, MACRO, type MacroSite, macroSite } from "../core/world/macro.js";
 import type { WorldSeed } from "../core/world/recipe.js";
 import { findSpawn } from "../engine/spawn.js";
+import { canReach, gridFor, reachableFrom } from "./passability.js";
 
 /**
  * Everything about a world that can be known for free.
@@ -267,4 +268,28 @@ export function surveyWorld(world: WorldSeed, duration: Duration | undefined): S
 /** The settlements a story can actually be hung on. */
 export function storySites(survey: Survey): readonly SurveyedSite[] {
 	return survey.sites.filter((entry) => entry.settlement);
+}
+
+/**
+ * Which of a survey's places the player can actually walk to.
+ *
+ * `distanceFromSpawn` is a straight line, which is the right measure for *ordering* a
+ * story outward and the wrong one for deciding whether a place can be visited at all: a
+ * town across an inlet is thirty tiles away and unreachable. A story with a beat there
+ * cannot be finished, and nothing before this could tell — the validator says so at the
+ * end, by which time sixty model calls have been spent writing the scene.
+ *
+ * Separate from `surveyWorld` and asked for explicitly, because it is not free: it
+ * generates every chunk of the bounded world, which is the same work the validator does
+ * and several seconds of it. A survey printed for a person does not need it; a story
+ * about to be plotted does.
+ */
+export function walkableSites(survey: Survey): Set<number> {
+	const grid = gridFor(survey.world, survey.bounds);
+	const seen = reachableFrom(grid, survey.spawn);
+	const reachable = new Set<number>();
+	for (const entry of survey.sites) {
+		if (canReach(grid, seen, entry.site.site)) reachable.add(entry.site.id);
+	}
+	return reachable;
 }

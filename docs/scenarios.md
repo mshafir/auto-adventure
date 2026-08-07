@@ -475,12 +475,33 @@ a changed objective.
 ```
 npm run validate -- --scenario green-chapel     # one
 npm run validate                                # every scenario on disk
+npm run validate -- --deep                      # and play each of them to the end
 ```
 
 `assemble --check` validates a *draft*; this runs the same offline pass over what is
 **installed**, and exits non-zero on errors so it can gate a commit. Worth having even
 now that a draft can say everything, because an artifact can be hand-edited, produced
 by an older build, or assembled against a generator that has since moved.
+
+`--deep` is a different kind of check, and the strongest one available. Everything else
+reasons *about* the file; this builds a real session and walks the story through the real
+engine — teleporting between the towns the beats name, opening the doors of the people
+who are indoors, holding the conversations, and asking `arcOutline` at the end whether the
+story is told. It is the only way to find out that the person a beat hangs on is not
+actually standing in the town written for them, which every static check will call fine.
+
+It reports what it had to be *given* as well as what it managed, and that line is the one
+to read:
+
+```
+  given    gave "Lead Standard" so beat the-weight-in-hand could open
+  walked 8 beat(s) to the end, with 1 hand-out(s)
+```
+
+A walker cannot search a crate it has no reason to open, so an item it could not obtain by
+going somewhere or speaking to somebody is handed over and recorded. "Finished with three
+hand-outs" is a weaker result than "finished", and saying only the verdict would hide the
+difference behind a word.
 
 ## Turning the clock off
 
@@ -1326,9 +1347,30 @@ next beat waits on; two arms of a fork never gate each other; a step that names 
 parent it cannot have is demoted rather than dropped; and a parent gets a `quest`
 objective per step, so it closes the moment its last step does.
 
+`optional` and `find` are now *required* rather than offered. Both sat in the schema,
+documented, for as long as the pipeline existed, and every generated world came back with
+none of either — because "you may" reads as "you need not" and the straight line is always
+the easier thing to write. A story with no side errand and nothing to search for is a
+story of walking between conversations.
+
+**After the arc**, a reactions pass writes the two kinds nothing had ever produced:
+
+| kind | what it does |
+| --- | --- |
+| `triggers` | the world noticing — a journal line, a card — once a beat has opened |
+| `barriers` | a castle gate barred until a beat opens it |
+
+Both are chosen by **index** into lists the pass is shown, never by id or coordinate: a
+trigger waits on a flag some beat definitely sets, and a gate names a site the survey
+found. An unsatisfiable condition is not something the pass can express. Barriers are
+offered only where there is a castle, because a village's streets have as many ways in as
+they have edges — barring one tile of an open road bars nothing and says it did — and a
+gate whose opening beat happens *behind* it is refused outright.
+
 What the model is still not trusted with: `places` and `zones` (they need coordinates,
-and a coordinate is exactly what a model invents confidently and wrongly), barriers
-(they need a choke point that has been looked at), and the recipe itself.
+and a coordinate is exactly what a model invents confidently and wrongly), where a gate
+actually stands (`castleGateTiles` answers that from the generated world), and the recipe
+itself.
 
 ## Authoring
 
@@ -1337,18 +1379,29 @@ expensive enough to want resuming.
 
 | Pass | Does | Cost |
 |---|---|---|
-| 0 | **Survey.** `findSpawn`, `sitesAround` over the footprint, `siteContext`/`regionContext` for each, boundary-rect solve | free — all pure |
+| 0 | **Shape** — what kind of country the brief wants, lowered into a recipe | 1 call |
+| 1 | **Survey.** `findSpawn`, `sitesAround` over the footprint, `siteContext`/`regionContext` for each, boundary-rect solve | free — all pure |
+| 1b | **Reachability.** One flood fill from the spawn over the whole bounded world; places it cannot reach are not offered to the story | one world generation |
 | 1 | **Lore** from the brief | 1 call |
-| 2 | **Arc** — beats placed over the surveyed sites | 1 call |
-| 3 | **Regions** | ~6 calls |
-| 4 | **Sites**, each told its arc role | ~13 calls |
+| 2 | **Regions** | ~6 calls |
+| 3 | **Sites**, each told what the engine has room for | ~13 calls |
+| 4 | **Arc** — beats placed over the surveyed sites | 1 call |
+| 4b | **Reactions** — triggers, and a gate on a castle if there is one | 1 call |
 | 5 | **Trees**, per NPC | ~40 calls |
-| 6 | **Validate and repair** | free |
+| 6 | **Validate and repair**, mechanically | free |
+| 7 | **Mend** — the faults that need prose written | ≤ 6 calls |
 
-Pass 0 is why this produces better worlds than `live` can. The model is handed
+Pass 1 is why this produces better worlds than `live` can. The model is handed
 the real site list — kinds, importance, bearings, building budgets, distances —
-before it invents anything. Pass 2 runs *before* sites deliberately, so each site
-knows its place in the story rather than having one assigned afterwards.
+before it invents anything. Pass 4b runs *after* the arc for the same kind of
+reason in reverse: a trigger is a consequence, and it can only be conditioned on a
+flag that already exists, so nothing it writes can wait on something nobody sets.
+
+Pass 1b is the only one that costs real work for nothing visible, and it is worth
+it. `distanceFromSpawn` is a straight line — right for ordering a story outward,
+wrong for deciding a place can be visited at all, because a town across an inlet is
+thirty tiles away and unreachable. Without this the validator says so at the *end*,
+after sixty calls have been spent writing a scene nobody can walk to.
 
 At radius 6 that is roughly 60 calls: ~169 macro cells, ~13 settlements, ~40
 people. A couple of minutes at Flash speeds with a concurrency of 4.
@@ -1368,10 +1421,49 @@ its own output and check things live generation structurally cannot:
   distance matches the requested duration
 - the boundary rect intersects no site footprint and suits its edge biome
 - every tree node is reachable and every `goto` resolves
+- **the story can be finished**: `checkCompleteness` simulates the arc forward from
+  an empty state, once per arm of every fork, and reports a beat that no route
+  reaches or an errand no route can close — the class of fault where every id
+  resolves, every flag is written, and the story stops anyway
 
-Failures feed a repair pass. A golden test asserts the artifact's site ids equal
-`macroSite(seed, mx, my).id`, which is the one invariant that silently ruins
-everything if it breaks.
+A golden test asserts the artifact's site ids equal `macroSite(seed, mx, my).id`,
+which is the one invariant that silently ruins everything if it breaks.
+
+### Repair until clean
+
+Findings are not merely printed. `scenario/repair.ts` fixes what has one right
+answer, and the loop is judged by the validator rather than by itself:
+
+```
+repair (mechanical, free)  →  validate  →  keep it only if the score fell
+   ↓  what is left and needs words, capped at 6 calls
+mend (model)               →  validate  →  keep it only if the score fell
+```
+
+Errors count for ten warnings in that score, so trading a step of the story that
+cannot be taken for a place that came out rougher than intended is a trade the loop
+will make, and the reverse is one it will not. A round that improves nothing is
+thrown away whole, which means a repair with an unforeseen consequence costs one
+wasted world-generation rather than a worse scenario.
+
+Every repair **re-derives its own condition** rather than parsing a finding — a
+finding is a sentence written for a person, and coupling a fix to its wording means
+improving the wording silently disables the fix. What they fix, one class each:
+
+| repair | fault |
+|---|---|
+| `standTheCastSomewhereReal` | somebody at an anchor the town does not build, in a room that was not built, or claiming a building that did not fit |
+| `hideThingsWhereThereIsSomewhereToHideThem` | a hidden thing in a kind of building the ground refused |
+| `spellObjectivesAsTheWorldDoes` | an objective the world spells differently, so it would never match |
+| `dropObjectivesNothingCanTick` | an objective waiting on a flag nothing sets, which keeps the whole arc from ever ending |
+| `dropOneArmedForks` | a fork with one arm, which is not a choice |
+| `forgetPeopleWhoAreNotHere` | a conversation gated on somebody the scenario does not contain |
+| `gateTheCastOnTheirOwnScene` | somebody on stage before the beat they carry can open |
+
+`mend` covers the two that genuinely need prose: somebody with no conversation at
+all, and a fork nobody speaks about. It keeps a rewrite only if the rewrite did the
+thing it was asked for, so a replacement that is merely *different* is discarded and
+the original conversation kept.
 
 ## Launcher
 

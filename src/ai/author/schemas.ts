@@ -138,6 +138,53 @@ export const ArcSchema = z.object({
 	endings: cappedList(ArcEndingSchema, 6),
 });
 
+/**
+ * Something the world does once a step of the story has happened.
+ *
+ * The condition is an *index into the beats it was shown*, never a flag the model writes,
+ * which is the whole safety property: a trigger cannot wait on a flag nothing sets,
+ * because it is not allowed to name one. Out-of-range indices are dropped, exactly as
+ * with a beat's site index.
+ */
+export const ReactionSchema = z.object({
+	id: slugText(48).describe("Short stable slug, e.g. 'the-mill-burns'."),
+	afterBeat: z
+		.number()
+		.int()
+		.min(0)
+		.describe("Index into the list of beats. This happens once that beat has opened."),
+	journal: cappedText(240)
+		.nullable()
+		.describe("One line written into the player's journal, in their voice. Null for none."),
+	cardTitle: cappedText(80).nullable().describe("Title of a full screen shown, or null."),
+	cardBody: cappedText(600)
+		.nullable()
+		.describe("Two or three short paragraphs. Only used when cardTitle is given."),
+});
+
+/**
+ * A gate across the one place in the world that has a single way in.
+ *
+ * Named by index into the castles the prompt lists, and opened by a beat index, so the
+ * model never writes a coordinate or a flag. Only castles are offered: a village's
+ * streets have as many ways in as they have edges, so barring one tile of an open road
+ * bars nothing and says it did.
+ */
+export const BarrierSchema = z.object({
+	id: slugText(48),
+	castle: z.number().int().min(0).describe("Index into the list of castles."),
+	opensAfterBeat: z.number().int().min(0).describe("Index into the list of beats."),
+	lockedText: cappedText(200).describe("What the player is told when it will not open."),
+	opensText: cappedText(200).nullable().describe("Said once as the way opens, or null."),
+});
+
+export const ReactionsSchema = z.object({
+	triggers: cappedList(ReactionSchema, 4),
+	barriers: cappedList(BarrierSchema, 2),
+});
+
+export type ReactionsResponse = z.infer<typeof ReactionsSchema>;
+
 const TreeChoiceSchema = z.object({
 	text: cappedText(90).describe("What the player says, in the player's voice."),
 	goto: slugText(48).nullable().describe("Id of the next node, or null to end."),

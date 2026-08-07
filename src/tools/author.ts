@@ -16,8 +16,8 @@ import { authorScenario } from "../ai/author/author.js";
 import { logTelemetry } from "../ai/telemetry.js";
 import { hasGatewayKey, resolveSeed } from "../config.js";
 import { isDuration, normalizeBrief, type ScenarioBrief } from "../core/world/brief.js";
-import { verifyArtifact, writeScenario } from "../scenario/repo.js";
-import { hasErrors, validateArtifact } from "../scenario/validate.js";
+import { writeScenario } from "../scenario/repo.js";
+import { hasErrors } from "../scenario/validate.js";
 
 function parseArgs(argv: readonly string[]): Map<string, string> {
 	const args = new Map<string, string>();
@@ -102,7 +102,7 @@ async function main() {
 	const seed = resolveSeed(args.get("seed") ?? id);
 	const started = Date.now();
 
-	const { artifact, calls } = await authorScenario({
+	const { artifact, calls, findings, repairs } = await authorScenario({
 		id,
 		brief,
 		seed,
@@ -111,18 +111,21 @@ async function main() {
 		onProgress: (message) => process.stdout.write(`  ${message}\n`),
 	});
 
-	process.stdout.write(`\nvalidating against the generator...\n`);
-	const structural = verifyArtifact(artifact);
-	for (const problem of structural) process.stdout.write(`  error    ${problem}\n`);
+	if (repairs.length > 0) {
+		process.stdout.write(`\nrepaired ${repairs.length}:\n`);
+		for (const repair of repairs) process.stdout.write(`  fixed    ${repair}\n`);
+	}
 
-	const findings = validateArtifact(artifact);
+	process.stdout.write(
+		findings.length > 0 ? `\nwhat is left:\n` : `\nnothing left wrong with it\n`,
+	);
 	for (const finding of findings) {
 		process.stdout.write(
 			`  ${finding.severity === "error" ? "error  " : "warning"}  ${finding.message}\n`,
 		);
 	}
 
-	const broken = structural.length > 0 || hasErrors(findings);
+	const broken = hasErrors(findings);
 	if (broken && !args.has("force")) {
 		process.stderr.write("\nnot writing a scenario with errors in it; pass --force to override.\n");
 		logTelemetry();

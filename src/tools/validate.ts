@@ -4,7 +4,14 @@
  * ```
  * npm run validate -- --scenario green-chapel
  * npm run validate                              # every scenario on disk
+ * npm run validate -- --deep                    # and play each of them to the end
  * ```
+ *
+ * `--deep` is the other half, and a different kind of check. Everything above it reasons
+ * *about* the file; that one builds a real session and walks the story through the real
+ * engine, which is the only way to find out whether the person a beat hangs on is
+ * actually standing in the town that was written for them. Slow, so it is asked for
+ * rather than assumed.
  *
  * `assemble` validates a *draft*, which covers everything a draft can say — and the
  * newer vocabulary (conditions, triggers, gates, placed items, forks) is not among
@@ -16,8 +23,12 @@
  *
  * Reads what the game reads. Exits non-zero on errors so it can gate a commit.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { listScenarios, readScenarioFile, scenarioPath, verifyArtifact } from "../scenario/repo.js";
 import { hasErrors, validateArtifact } from "../scenario/validate.js";
+import { walkTheStory } from "../scenario/walk.js";
 
 function parseArgs(argv: readonly string[]): Map<string, string> {
 	const args = new Map<string, string>();
@@ -39,14 +50,24 @@ function parseArgs(argv: readonly string[]): Map<string, string> {
 	return args;
 }
 
-function main() {
+async function main() {
 	const args = parseArgs(process.argv.slice(2));
 	const named = args.get("scenario");
 	const ids = named && named !== "true" ? [named] : listScenarios().map((entry) => entry.id);
+	const deep = args.has("deep");
 
 	if (ids.length === 0) {
 		process.stderr.write("no scenarios installed\n");
 		process.exit(2);
+	}
+
+	// Somewhere to put the saves a walk writes. A tool that checks a scenario must not
+	// leave a world behind in the player's own directory with the same name as one of
+	// theirs — and one that wrote into the real home could overwrite a playthrough.
+	let home: string | undefined;
+	if (deep) {
+		home = mkdtempSync(join(tmpdir(), "auto-adventure-validate-"));
+		process.env.AUTO_ADVENTURE_HOME = home;
 	}
 
 	let broken = false;
@@ -70,11 +91,36 @@ function main() {
 				`  ${finding.severity === "error" ? "error  " : "warning"}  ${finding.message}\n`,
 			);
 		}
-		process.stdout.write(`  ${errors} error(s), ${warnings} warning(s)\n\n`);
+		process.stdout.write(`  ${errors} error(s), ${warnings} warning(s)\n`);
 		broken ||= structural.length > 0 || hasErrors(findings);
+
+		if (deep) {
+			const walk = await walkTheStory(artifact, `validate-${id}`);
+			for (const beat of walk.stuck) process.stdout.write(`  stuck    beat ${beat} never opened\n`);
+			for (const who of walk.absent)
+				process.stdout.write(`  absent   ${who} was not standing anywhere the walk could reach\n`);
+			for (const open of walk.unfinished) process.stdout.write(`  open     ${open}\n`);
+			// Said plainly, because "finished" earned by four hand-outs is a different
+			// result from "finished", and printing only the verdict would hide the
+			// difference behind a word.
+			for (const concession of walk.concessions) process.stdout.write(`  given    ${concession}\n`);
+			process.stdout.write(
+				walk.finished
+					? `  walked ${walk.opened.length} beat(s) to the end${
+							walk.concessions.length > 0 ? `, with ${walk.concessions.length} hand-out(s)` : ""
+						}\n`
+					: `  did not finish: ${walk.opened.length} beat(s) opened\n`,
+			);
+			broken ||= !walk.finished;
+		}
+		process.stdout.write("\n");
 	}
 
+	if (home) rmSync(home, { recursive: true, force: true });
 	process.exit(broken ? 1 : 0);
 }
 
-main();
+main().catch((error) => {
+	process.stderr.write(`\nvalidation failed: ${error instanceof Error ? error.stack : error}\n`);
+	process.exit(2);
+});

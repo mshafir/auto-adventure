@@ -123,6 +123,25 @@ export function regionPrompt(
 	].join("\n");
 }
 
+/**
+ * How many people a place should have.
+ *
+ * Roughly one per building, which is thin for a real village and about right for one the
+ * player walks through in a minute. This used to be *half* the budget capped at four, and
+ * the result was measurable: a generated world had twelve people across nine places
+ * against twenty-nine in a hand-written one of the same size, and most settlements had a
+ * single person standing in them. A town with one inhabitant does not read as a small
+ * town; it reads as an empty one with a caretaker.
+ *
+ * The floor of two is the important end. Hamlets and camps dominate a short world and
+ * their budget is small, so without it most of the map gets one person — and one person
+ * cannot disagree with anybody, which is where the life in a place comes from. The
+ * ceiling is the schema's own cap; asking for more would have the tail silently trimmed.
+ */
+function peopleWanted(buildingBudget: number): number {
+	return Math.min(6, Math.max(2, buildingBudget));
+}
+
 export const SITE_SYSTEM =
 	`You populate settlements in a world. ${HOUSE_STYLE} ` +
 	"You are given a place the engine has already laid out. Do not describe its layout, " +
@@ -164,11 +183,13 @@ export function sitePrompt(
 		"so put the landmark buildings first and fill the rest with houses. Only shops and inns",
 		"get signText.",
 		"",
-		`Give ${Math.min(4, Math.max(1, Math.round(context.buildingBudget / 2)))} people. Each stands`,
+		`Give ${peopleWanted(context.buildingBudget)} people. Each stands`,
 		"outdoors where the player can find them: shopkeepers on their doorstep, guards at the gate,",
 		"idlers at the well or a bench. 'knows' is what they will actually tell the player if asked —",
 		"rumours, prices, directions, grudges. Make at least one of them know something the player",
-		"could act on.",
+		"could act on, and at least one know something about somewhere else: what is down the road,",
+		"who is worth finding in the next town, what nobody has heard from in a while. A place whose",
+		"people only know about itself is a place the player leaves and forgets.",
 	]
 		.filter(Boolean)
 		.join("\n");
