@@ -18,7 +18,7 @@
  * map. What is left is the three lists and the key, all of them things you go
  * and look at and then come back from.
  */
-export type PanelTab = "inventory" | "quests" | "journal" | "key";
+export type PanelTab = "inventory" | "quests" | "journal" | "key" | "debug";
 
 /**
  * The tabs, in the order they are laid out and stepped through.
@@ -30,11 +30,30 @@ export type PanelTab = "inventory" | "quests" | "journal" | "key";
  */
 export const PANEL_TABS: readonly PanelTab[] = ["inventory", "quests", "journal", "key"];
 
+/**
+ * The tabs on offer, which is not always all of them.
+ *
+ * `debug` is the one that comes and goes. It holds the prompts and answers of every
+ * model call, which is a page most players have no use for and which is empty unless
+ * somebody asked for the recording — and a tab that is always there and always empty
+ * is a tab everybody has to step past forever to reach the one they wanted.
+ *
+ * A function rather than a constant because the reducer has to agree with the strip:
+ * stepping is modular arithmetic over this list, so a screen drawing four tabs while
+ * the reducer cycles five would leave one that could be reached and not seen.
+ */
+export function panelTabs(debug: boolean): readonly PanelTab[] {
+	return debug ? [...PANEL_TABS, "debug"] : PANEL_TABS;
+}
+
 /** Tabs holding a list the player can move a cursor through. */
 export const LIST_TABS: ReadonlySet<PanelTab> = new Set<PanelTab>([
 	"inventory",
 	"quests",
 	"journal",
+	// The list of exchanges. It behaves exactly like the other three — a cursor down a
+	// list, with the detail of the selected row underneath — so it gets the same keys.
+	"debug",
 ]);
 
 /**
@@ -81,6 +100,14 @@ export interface HudState {
 	readonly cursor: number;
 	readonly confirm?: PendingConfirm;
 	/**
+	 * How far into the selected row's detail the reader has scrolled, in lines.
+	 *
+	 * Only the debug page has anything long enough to need it: a quest description is
+	 * three lines and a prompt is three hundred. Reset whenever the selection changes,
+	 * because a position forty lines into the last exchange means nothing in this one.
+	 */
+	readonly detail: number;
+	/**
 	 * How big the map is drawn: above 1 for bigger tiles and less world.
 	 *
 	 * Interface state rather than world state, so it stays out of the save file —
@@ -122,7 +149,10 @@ export type HudAction =
 	| { readonly t: "Ask"; readonly confirm: PendingConfirm }
 	| { readonly t: "Dismiss" }
 	/** Step along {@link ZOOM_STEPS}. Clamps at both ends rather than wrapping. */
-	| { readonly t: "StepZoom"; readonly delta: number };
+	| { readonly t: "StepZoom"; readonly delta: number }
+	/** Scroll the selected row's detail, in pages. Clamped at the top only — the
+	 *  bottom depends on how many lines the text wrapped to, which only the view knows. */
+	| { readonly t: "ScrollDetail"; readonly delta: number };
 
 /**
  * Opening on a tab puts the interface in the state opening the menu and stepping
@@ -130,13 +160,28 @@ export type HudAction =
  * map, and a shot of the inventory should show it as the player would meet it.
  */
 export function initialHud(tab?: PanelTab, zoom = 1): HudState {
-	return { ...(tab ? { tab } : {}), inList: false, cursor: 0, zoom: nearestZoom(zoom) };
+	return {
+		...(tab ? { tab } : {}),
+		inList: false,
+		cursor: 0,
+		detail: 0,
+		zoom: nearestZoom(zoom),
+	};
 }
 
-export function hudReducer(state: HudState, action: HudAction): HudState {
+/**
+ * `tabs` defaults to the always-present four, so every existing caller and test reads
+ * exactly as it did. The one caller that passes something else is the app, which knows
+ * whether the debug page is on offer this run.
+ */
+export function hudReducer(
+	state: HudState,
+	action: HudAction,
+	tabs: readonly PanelTab[] = PANEL_TABS,
+): HudState {
 	switch (action.t) {
 		case "OpenMenu":
-			return { tab: action.tab ?? PANEL_TABS[0], inList: false, cursor: 0, zoom: state.zoom };
+			return { tab: action.tab ?? tabs[0], inList: false, cursor: 0, detail: 0, zoom: state.zoom };
 		case "CloseMenu":
 			if (state.tab === undefined && !state.confirm) return state;
 			// The cursor goes with the menu. Keeping it would mean the next tab
@@ -145,14 +190,14 @@ export function hudReducer(state: HudState, action: HudAction): HudState {
 			//
 			// Zoom does not: it is how the player has chosen to look at the map, and
 			// opening the inventory is not a decision to stop looking at it that way.
-			return { inList: false, cursor: 0, zoom: state.zoom };
+			return { inList: false, cursor: 0, detail: 0, zoom: state.zoom };
 		case "StepTab": {
 			if (state.tab === undefined) return state;
-			const at = PANEL_TABS.indexOf(state.tab);
-			const next = PANEL_TABS[(at + action.delta + PANEL_TABS.length) % PANEL_TABS.length];
+			const at = tabs.indexOf(state.tab);
+			const next = tabs[(at + action.delta + tabs.length) % tabs.length];
 			// Row four of the inventory has nothing to do with row four of the
 			// journal, so changing tab starts from the top.
-			return { ...withoutConfirm(state), tab: next, inList: false, cursor: 0 };
+			return { ...withoutConfirm(state), tab: next, inList: false, cursor: 0, detail: 0 };
 		}
 		case "EnterList":
 			// The key tab has nothing to select, so stepping into it would take the
@@ -160,7 +205,15 @@ export function hudReducer(state: HudState, action: HudAction): HudState {
 			if (state.tab === undefined || !LIST_TABS.has(state.tab)) return state;
 			return { ...withoutConfirm(state), inList: true };
 		case "MoveCursor":
-			return { ...state, cursor: clampCursor(state.cursor + action.delta, action.count) };
+			// The scroll goes back to the top with the selection. Keeping it would open the
+			// next exchange forty lines in, which reads as an empty pane.
+			return {
+				...state,
+				cursor: clampCursor(state.cursor + action.delta, action.count),
+				detail: 0,
+			};
+		case "ScrollDetail":
+			return { ...state, detail: Math.max(0, state.detail + action.delta) };
 		case "Ask":
 			return { ...state, confirm: action.confirm };
 		case "Dismiss":

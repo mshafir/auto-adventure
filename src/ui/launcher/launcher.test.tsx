@@ -491,6 +491,8 @@ describe("configuring a world to be written", () => {
 		await m.ink.type(KEY.right); // day and night → off
 		await toRow(m, "Improvise while playing");
 		await m.ink.type(KEY.right); // improvise → off
+		await toRow(m, "Keep the working");
+		await m.ink.type(KEY.right); // keep the working → on
 		await toRow(m, "Write this world");
 		await m.ink.type(KEY.enter);
 
@@ -500,6 +502,7 @@ describe("configuring a world to be written", () => {
 			pack: "camelot",
 			dayAndNight: false,
 			liveInGame: false,
+			debug: true,
 		});
 		expect(m.requested[0]?.brief.duration).toBe("long");
 		m.ink.unmount();

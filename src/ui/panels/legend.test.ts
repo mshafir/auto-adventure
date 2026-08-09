@@ -70,15 +70,24 @@ describe("the map key", () => {
 	 * tile size, because a letter is not legible in forty pixels — but disposition
 	 * does, as colour. So the pixel key states what the glyph key never had to.
 	 */
-	it("names the four shades of person, which is all pixel mode can tell apart", () => {
+	it("names the shades of person, which is all pixel mode can tell apart", () => {
 		const folk = mapLegend("kitty").filter((entry) => entry.label.startsWith("folk"));
-		expect(folk).toHaveLength(4);
 		expect(folk.map((entry) => entry.color)).toEqual([
 			toHex(PAL.friendly),
 			toHex(PAL.neutral),
 			toHex(PAL.wary),
 			toHex(PAL.hostile),
+			// Off the disposition ramp on purpose: the question this colour answers is
+			// "is this the person the errand meant", not "how do they feel about you".
+			toHex(PAL.story),
 		]);
+	});
+
+	it("marks the story's own people in both keys, since colour is the only way to find them", () => {
+		for (const mode of ["glyph", "kitty"] as const) {
+			const entry = mapLegend(mode).find((each) => each.label.includes("story turns on"));
+			expect(entry?.color, mode).toBe(toHex(PAL.story));
+		}
 	});
 
 	it("puts you first in both, since that is the one thing worth finding fast", () => {

@@ -1,5 +1,6 @@
 import { render } from "ink";
 import { logTelemetry } from "../../ai/telemetry.js";
+import { clearTranscript, debugAi, setDebugAi } from "../../ai/transcript.js";
 import { CONFIG, gatewayKey, hasGatewayKey } from "../../config.js";
 import { listPacks } from "../../content/load.js";
 import { listTilePacks } from "../../content/tiles.js";
@@ -128,6 +129,14 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	// config page described, even if something else edited settings in between.
 	if (request.models) writeSettings({ modelSet: request.models });
 
+	// Before the first call, or the first pass is the one exchange nobody can read.
+	// Cleared as well as enabled: the launcher may have been round this loop already,
+	// and a transcript that opens on the previous world's prompts is worse than none.
+	if (request.debug) {
+		clearTranscript();
+		setDebugAi(true);
+	}
+
 	const startedAt = Date.now();
 	const stop = new AbortController();
 
@@ -155,6 +164,7 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 			{...(failure ? { failure } : {})}
 			{...(outcome?.findings.length ? { findings: outcome.findings } : {})}
 			{...(outcome?.path ? { path: outcome.path } : {})}
+			debug={debugAi()}
 			onDismiss={() => dismiss?.()}
 			onStop={() => {
 				if (stopping) return;

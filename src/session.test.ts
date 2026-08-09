@@ -259,6 +259,32 @@ describe("the opening card", () => {
 		session.dispose();
 	});
 
+	it("frames a scenario that improvises during play, which has its lore already", () => {
+		// The case that went missing. `liveInGame` puts a model behind the conversations,
+		// so the card used to wait for the director to report the world's lore — and a
+		// scenario's lore is in the artifact, so the director never asks and never
+		// reports. The result was a player dropped onto a tile with no premise, no
+		// protagonist and no idea which way the first beat was, in the one flavour of
+		// world that has all three written down.
+		process.env.AI_GATEWAY_API_KEY = "test-key";
+		try {
+			const artifact = demoArtifact();
+			const session = buildSession(
+				choice({
+					worldId: "improvised",
+					flavour: "prebuilt",
+					scenario: { ...artifact, liveInGame: true },
+					liveInGame: true,
+				}),
+				{ saveDebounceMs: 0 },
+			);
+			expect(session.engine.getState().card?.id).toBe("opening");
+			session.dispose();
+		} finally {
+			delete process.env.AI_GATEWAY_API_KEY;
+		}
+	});
+
 	it("uses the brief when a world was asked to be about something", () => {
 		const session = buildSession(
 			choice({

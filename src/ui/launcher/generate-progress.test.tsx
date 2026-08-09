@@ -1,6 +1,8 @@
 import stripAnsi from "strip-ansi";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { KEY, renderInk } from "../../../test/harness/ink.js";
+import { resetTelemetry } from "../../ai/telemetry.js";
+import { clearTranscript, recordExchange, setDebugAi } from "../../ai/transcript.js";
 import { GenerateProgress } from "./generate-progress.js";
 
 /**
@@ -137,6 +139,89 @@ describe("once it is written and something is wrong with it", () => {
 		// keypress confirming that it worked.
 		const m = mount({ findings: [] });
 		expect(m.screen()).not.toContain("press any key");
+		m.ink.unmount();
+	});
+});
+
+/**
+ * The working, for the run where the last world came out wrong.
+ *
+ * The point of keeping it in the program rather than only in the log: by the time
+ * somebody wants to know why the towns came out empty they are four minutes into a
+ * full-screen wait, and "open another shell and tail a file" is not an answer.
+ */
+describe("reading the working", () => {
+	afterEach(() => {
+		setDebugAi(false);
+		clearTranscript();
+		resetTelemetry();
+	});
+
+	function recorded() {
+		setDebugAi(true);
+		clearTranscript();
+		recordExchange({
+			kind: "site",
+			model: "google/gemini-2.5-flash",
+			system: "You name places.",
+			prompt: "A village on a river called SLUICEFORD.",
+			millis: 800,
+			attempt: 1,
+			usage: { inputTokens: 2000, outputTokens: 400 },
+			object: { name: "Millford" },
+		});
+	}
+
+	it("offers the working only when it is being kept", () => {
+		const plain = mount();
+		expect(plain.screen()).toContain("ESC to stop");
+		expect(plain.screen()).not.toContain("D for the working");
+		plain.ink.unmount();
+
+		const debugging = mount({ debug: true });
+		expect(debugging.screen()).toContain("D for the working");
+		debugging.ink.unmount();
+	});
+
+	it("shows the prompt that was actually sent", async () => {
+		recorded();
+		const m = mount({ debug: true });
+		await m.ink.settle();
+		await m.ink.type("d");
+		const text = m.screen();
+		expect(text).toContain("SLUICEFORD");
+		expect(text).toContain("You name places.");
+		m.ink.unmount();
+	});
+
+	it("switches to what came back, and comes out again on ESC", async () => {
+		recorded();
+		const m = mount({ debug: true });
+		await m.ink.settle();
+		await m.ink.type("d");
+		await m.ink.type(KEY.right);
+		expect(m.screen()).toContain("Millford");
+
+		// ESC here means "put this down", not "throw the world away". A reader who
+		// opened the transcript has not asked to stop the run.
+		await m.ink.type(KEY.escape);
+		expect(m.stopped).toHaveLength(0);
+		expect(m.screen()).toContain("lore: The Long Siege");
+		m.ink.unmount();
+	});
+
+	it("does not read D as 'I have finished reading the faults'", async () => {
+		// The screen most worth opening the working from is the one reporting what came
+		// out wrong, and that screen otherwise starts the game on any key at all.
+		recorded();
+		const m = mount({
+			debug: true,
+			findings: [{ severity: "warning", message: "nobody lives in Millford" }],
+		});
+		await m.ink.settle();
+		await m.ink.type("d");
+		expect(m.dismissed).toHaveLength(0);
+		expect(m.screen()).toContain("SLUICEFORD");
 		m.ink.unmount();
 	});
 });

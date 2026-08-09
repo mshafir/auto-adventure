@@ -19,7 +19,7 @@
  * those are the same knob. A live world is unbounded and has no arc, so it
  * records the field and ignores it.
  */
-export type Duration = "short" | "medium" | "long";
+export type Duration = "tiny" | "short" | "medium" | "long";
 
 export interface ScenarioBrief {
 	/** Freeform intent, used close to verbatim. The main knob. */
@@ -33,7 +33,7 @@ export interface ScenarioBrief {
 	readonly duration?: Duration;
 }
 
-const DURATIONS: readonly Duration[] = ["short", "medium", "long"];
+const DURATIONS: readonly Duration[] = ["tiny", "short", "medium", "long"];
 
 export function isDuration(value: string): value is Duration {
 	return (DURATIONS as readonly string[]).includes(value);

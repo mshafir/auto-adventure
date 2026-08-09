@@ -127,6 +127,24 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 			return { t: "hud", action: { t: "MoveCursor", delta: -1, count: context.listCount } };
 		}
 		if (letter === "d" && plain && context.canDrop) return { t: "askDrop" };
+
+		/*
+		 * Paging the selected row's detail, which only the working page needs.
+		 *
+		 * Every other page's detail is a few sentences and fits. A prompt is a document
+		 * of a few hundred lines, and a pane that shows the first twelve of it and no way
+		 * to see the rest is a pane that cannot answer the question it exists for.
+		 *
+		 * Space and B rather than the arrow keys, which already move the selection and
+		 * the tab strip — and rather than PageUp/PageDown, which Ink does not report.
+		 */
+		if (hud.tab === "debug" && plain) {
+			if (input === " " || key.return) {
+				return { t: "hud", action: { t: "ScrollDetail", delta: 1 } };
+			}
+			if (letter === "b") return { t: "hud", action: { t: "ScrollDetail", delta: -1 } };
+		}
+
 		// Everything else is swallowed. A stray keypress must not walk the player
 		// somewhere they cannot see.
 		return undefined;

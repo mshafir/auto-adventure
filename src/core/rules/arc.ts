@@ -183,6 +183,30 @@ export function beatNpcId(beat: ScenarioBeat): string {
 	return makeNpcId(beat.siteId, beat.npcSlot);
 }
 
+/**
+ * Everyone the story hangs on.
+ *
+ * These people are not ordinary residents who happen to be standing in a town. Walking
+ * into one *is* the story moving: a beat opens, an errand lands in the log and a line
+ * goes into the journal. So they are treated differently in two places that both follow
+ * from the same fact — they are drawn in their own colour, because a player has to be
+ * able to find the person a bearing is pointing at; and they never improvise, because
+ * what they say is the thing the beat is *for*, and a model asked to invent a greeting
+ * will cheerfully talk about the weather while the quest it should have handed over
+ * appears in the log behind it with nothing said about it at all.
+ *
+ * A set rather than a predicate over beats, because the callers ask per person per
+ * frame — once for every visible tile — and re-walking the beat list there would be
+ * thousands of scans a frame.
+ */
+export function storyNpcIds(arc: ScenarioArc | undefined): ReadonlySet<string> {
+	if (!arc) return EMPTY_IDS;
+	return new Set(arc.beats.map((beat) => beatNpcId(beat)));
+}
+
+/** Shared, so a world with no story allocates nothing per frame. */
+const EMPTY_IDS: ReadonlySet<string> = new Set<string>();
+
 export function beatIsOpen(state: GameState, beat: ScenarioBeat): boolean {
 	return Boolean(state.flags[beat.setsFlag]);
 }

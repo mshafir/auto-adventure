@@ -80,6 +80,7 @@ function glyphLegend(): readonly LegendEntry[] {
 	return [
 		{ ch: PLAYER_GLYPH, color: toHex(PAL.player), label: "you", bold: true },
 		{ ch: "A", color: toHex(PAL.neutral), label: "folk" },
+		{ ch: "A", color: toHex(PAL.story), label: "folk, the story turns on", bold: true },
 		...THINGS.map((thing) => thing.entry()),
 	];
 }
@@ -100,7 +101,9 @@ function glyphLegend(): readonly LegendEntry[] {
  * People are the case where this is not merely a translation. Every person is the
  * same figure at tile size, because a letter is not legible in forty pixels; what
  * distinguishes them is `dispositionColor`, and that is a fact about pixel mode
- * that the glyph key never had to state. So the four shades get a line each.
+ * that the glyph key never had to state. So the four shades get a line each — five
+ * with the story's own people, who are drawn off that ramp entirely because the
+ * question their colour answers is a different one.
  *
  * Not a strip of the real sprites, tempting as that is. A placeholder cell beside
  * a text label puts two things on one screen row, which is exactly where Ink slices
@@ -114,6 +117,7 @@ function pixelLegend(): readonly LegendEntry[] {
 		{ ch: SWATCH, color: toHex(PAL.neutral), label: "folk, indifferent" },
 		{ ch: SWATCH, color: toHex(PAL.wary), label: "folk, wary" },
 		{ ch: SWATCH, color: toHex(PAL.hostile), label: "folk, hostile" },
+		{ ch: SWATCH, color: toHex(PAL.story), label: "folk, the story turns on" },
 		...THINGS.map((thing) => {
 			const entry = thing.entry();
 			return { ...entry, ch: SWATCH, bold: false, label: `${entry.label} — ${thing.drawn}` };

@@ -678,6 +678,24 @@ how large the world is, since in a bounded world those are the same knob. The ed
 is made of deep water, cliffs or mountains, chosen to suit the ground it is drawn
 on, and it is placed so that it cuts no settlement in half.
 
+`--duration tiny` is the odd one out. Two beats across a world four macro cells wide
+is not much of a game; it exists so that a change to the *pipeline* can be tried for
+about a tenth of the price of the shortest real world. Every pass still runs — shape,
+lore, regions, sites, arc, reactions, dialogue, repair — so a break shows up on a run
+that cost a minute rather than on the next world somebody wanted to keep.
+
+A model that answers in the requested schema most of the time, rather than always, is
+the normal case rather than a broken one — a measured run had `openai/gpt-5-mini`
+answering the dialogue schema eight times in twenty-six. So a mismatch is retried like
+any other failure, and the last attempt is spent on a dearer model from the same
+provider where the catalogue names one. Both are paid only on a call that has already
+failed, and both are visible in the cost line.
+
+Add `--debug` to keep every prompt and every answer in the log, at full length. The
+launcher offers the same thing as **keep the working**, which additionally makes them
+readable inside the game: `D` on the writing screen, and a `Working` tab in the menu
+while playing. `DEBUG_AI=1` turns it on for a whole run.
+
 See `docs/scenarios.md` for the design.
 
 ## Playing without a model

@@ -64,7 +64,7 @@ function main() {
 	const args = parseArgs(process.argv.slice(2));
 	const duration = args.get("duration") ?? "medium";
 	if (!isDuration(duration)) {
-		process.stderr.write(`--duration must be short, medium or long, not "${duration}"\n`);
+		process.stderr.write(`--duration must be tiny, short, medium or long, not "${duration}"\n`);
 		process.exit(2);
 	}
 	const seedArg = args.get("seed") ?? "auto-adventure";

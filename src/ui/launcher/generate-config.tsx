@@ -34,7 +34,7 @@ const RAMP = { from: rgb("#f0c674"), to: rgb("#4f7fd4") };
 /** The built-in look and the built-in tables, offered as a choice like any other. */
 const DEFAULT_PACK = "the default";
 
-const DURATIONS: readonly Duration[] = ["short", "medium", "long"];
+const DURATIONS: readonly Duration[] = ["tiny", "short", "medium", "long"];
 
 /**
  * Roughly what each length costs, for the line under the settings.
@@ -44,11 +44,33 @@ const DURATIONS: readonly Duration[] = ["short", "medium", "long"];
  * world's shape, its lore and its plot. Approximate on purpose — the real count depends
  * on how many places the seed put inside the boundary, which nothing knows yet — and
  * rounded so nobody reads it as a quote.
+ *
+ * The *minutes* are the part to distrust, and they are a range for a reason that is not
+ * the seed. These were calibrated on Gemini Flash, which answers in a few seconds. A
+ * reasoning model does not: a measured `tiny` run on `openai/gpt-5-mini` averaged 45
+ * seconds a call and took fourteen minutes end to end, four-way concurrency and all.
+ * The line under the settings therefore says which model the estimate assumes, rather
+ * than quoting a number that is wrong by an order of magnitude for half the catalogue.
  */
 const COST: Readonly<Record<Duration, { calls: string; minutes: string }>> = {
-	short: { calls: "30", minutes: "1–2" },
-	medium: { calls: "60", minutes: "2–4" },
-	long: { calls: "120", minutes: "4–8" },
+	tiny: { calls: "15", minutes: "1–2" },
+	short: { calls: "30", minutes: "2–4" },
+	medium: { calls: "60", minutes: "4–8" },
+	long: { calls: "120", minutes: "8–15" },
+};
+
+/**
+ * What each length is for, since one of them is not for playing.
+ *
+ * The paragraph used to be one sentence about the trade between story and map, which is
+ * true of three of the four. `tiny` needs saying outright or somebody picks the cheapest
+ * row expecting a small adventure and gets a proof that the machinery works.
+ */
+const LENGTHS: Readonly<Record<Duration, string>> = {
+	tiny: "A test world: two beats, a few places, and written conversations only for the people the story turns on. Enough to see whether a premise becomes anything worth paying for, and not much of a game on its own.",
+	short: "A handful of places and three beats. An evening.",
+	medium: "The default. A dozen or so places, six beats, and room between them.",
+	long: "A large map and ten beats, with side errands and forks in it. The dearest by some way.",
 };
 
 export interface GenerateConfigProps {
@@ -96,6 +118,7 @@ export function GenerateConfig({
 	const [pack, setPack] = useState(DEFAULT_PACK);
 	const [dayAndNight, setDayAndNight] = useState(true);
 	const [liveInGame, setLiveInGame] = useState(true);
+	const [debug, setDebug] = useState(false);
 	const [editing, setEditing] = useState(false);
 
 	// The default is offered first in both lists, so ← from it wraps to a real pack
@@ -111,7 +134,7 @@ export function GenerateConfig({
 			id: "length",
 			label: "Length",
 			detail: duration,
-			body: "How long the story runs, and how much world it runs across — in a bounded world those are one knob. A short world is a handful of places and three beats.",
+			body: `How long the story runs, and how much world it runs across — in a bounded world those are one knob. ${LENGTHS[duration]}`,
 		},
 		{
 			id: "premise",
@@ -132,11 +155,14 @@ export function GenerateConfig({
 			// The two models and both prices, because this is the only row on the page
 			// whose cost is not already in the line at the bottom, and "6.6× the
 			// default" is only useful next to what the default was.
+			// The speed caveat belongs here rather than on the cost line, which is the one
+			// row that must never be cut: it is already the longest thing on the page and
+			// the number a player reads before pressing ENTER.
 			body: `${chosen.note} ${chosen.provider}: ${priceLine(chosen.prose.price)}${
 				chosen.fast.model === chosen.prose.model
 					? "."
 					: `, with ${chosen.fast.model} at ${priceLine(chosen.fast.price)} for the bookkeeping.`
-			}`,
+			} The minutes below assume a fast model; a reasoning model thinks for most of a minute per call and takes several times as long.`,
 		},
 		{
 			id: "tiles",
@@ -175,6 +201,14 @@ export function GenerateConfig({
 				: "Nobody says anything that was not written down in advance. Free to play, entirely offline, and the same every time.",
 		},
 		{
+			id: "debug",
+			label: "Keep the working",
+			detail: debug ? "on" : "off",
+			body: debug
+				? "Every prompt and every answer is kept, readable while it is being written and afterwards from the game's own menu. Costs nothing extra to run; it is what you turn on when the last world came out wrong and you want to know why."
+				: "Only the summary of each pass is reported. Turn this on to keep the full prompts and answers, and to read them without leaving the game.",
+		},
+		{
 			id: "begin",
 			label: "Write this world",
 			accent: "green",
@@ -208,6 +242,9 @@ export function GenerateConfig({
 				return;
 			case "live":
 				setLiveInGame((current) => !current);
+				return;
+			case "debug":
+				setDebug((current) => !current);
 				return;
 			default:
 				return;
@@ -249,6 +286,7 @@ export function GenerateConfig({
 								models,
 								dayAndNight,
 								liveInGame,
+								...(debug ? { debug: true } : {}),
 							});
 							return;
 						}

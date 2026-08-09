@@ -69,6 +69,15 @@ export interface DialoguePanelProps {
 	 */
 	readonly facing?: Facing;
 	readonly nearbyName?: string;
+	/**
+	 * Whether the person in front of you is one the story hangs on.
+	 *
+	 * Said in words as well as in colour. The colour on the map is what finds them
+	 * across a street; this is what confirms it once you are standing in front of one,
+	 * and it is the version of the fact that survives a colourblind reader or a terminal
+	 * themed to within an inch of its life.
+	 */
+	readonly nearbyIsStory?: boolean;
 	/** Outer width, so text can be clamped to what actually fits. */
 	readonly width: number;
 	/** Outer height, border included. Must match {@link panelHeightFor}. */
@@ -82,7 +91,14 @@ export interface DialoguePanelProps {
  * player picks one. There is no free-text field — being able to type would make
  * the model's job easier but would break the tone the game is going for.
  */
-export function DialoguePanel({ looking, facing, nearbyName, width, height }: DialoguePanelProps) {
+export function DialoguePanel({
+	looking,
+	facing,
+	nearbyName,
+	nearbyIsStory,
+	width,
+	height,
+}: DialoguePanelProps) {
 	const state = useGameState();
 	const dialogue = state.dialogue;
 	// Border and horizontal padding come off before anything is measured.
@@ -94,8 +110,9 @@ export function DialoguePanel({ looking, facing, nearbyName, width, height }: Di
 			<Frame height={height}>
 				{nearbyName ? (
 					<Text wrap="truncate">
-						<Text color="cyan">{clampLine(nearbyName, inner - 28)}</Text> is here. Press SPACE to
-						speak.
+						<Text color="cyan">{clampLine(nearbyName, inner - 28)}</Text>
+						{nearbyIsStory ? " is here, and the story turns on them." : " is here."}
+						{" Press SPACE to speak."}
 					</Text>
 				) : (
 					wrapToLines(idle, inner - 2, height - 2).map((text, index) => (

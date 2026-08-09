@@ -36,12 +36,29 @@ export interface ModelChoice {
 	readonly fast: { readonly model: string; readonly price: ModelPrice };
 	/** Prose the player reads: dialogue, and the world's lore. */
 	readonly prose: { readonly model: string; readonly price: ModelPrice };
+	/**
+	 * A dearer model from the same provider, tried once when the prose one keeps
+	 * failing to answer in the schema.
+	 *
+	 * Not a third tier to run a world on — it is a last attempt before giving up, and it
+	 * runs on the small fraction of calls that got there. Measured on a real run:
+	 * `openai/gpt-5-mini` answered the dialogue schema 8 times in 26, and every one of
+	 * the other 18 conversations was lost outright. A single retry on a stronger model
+	 * costs a few cents across a whole world and is the difference between a town that
+	 * talks and a town that does not.
+	 *
+	 * Absent where there is nothing better to reach for: a row that already names the
+	 * best model its provider offers, and the open-weights rows, whose larger models are
+	 * documented above as unable to answer in a schema at all.
+	 */
+	readonly strong?: { readonly model: string; readonly price: ModelPrice };
 	/** One line for the settings page, saying what the trade is. */
 	readonly note: string;
 }
 
 /**
- * Prices as published by the gateway on 2026-08-07, in dollars per million tokens.
+ * Prices as published by the gateway on 2026-08-09, in dollars per million tokens, and
+ * checked against `GET /v1/models` on that date — every row below agreed with it.
  *
  * They will drift, and a stale number here is a number that misleads rather than
  * one that breaks: nothing is charged against this table, it only orders the list
@@ -98,6 +115,7 @@ export const CATALOGUE: readonly ModelChoice[] = [
 		provider: "OpenAI",
 		fast: { model: "openai/gpt-5-nano", price: { input: 0.05, output: 0.4 } },
 		prose: { model: "openai/gpt-5-mini", price: { input: 0.25, output: 2.0 } },
+		strong: { model: "openai/gpt-5", price: { input: 1.25, output: 10.0 } },
 		note: "Nano does the bookkeeping and mini does the writing. Holds a long brief well, which shows up as a story that remembers its own beginning.",
 	},
 	{
@@ -106,6 +124,7 @@ export const CATALOGUE: readonly ModelChoice[] = [
 		provider: "Google",
 		fast: { model: "google/gemini-2.5-flash-lite", price: { input: 0.1, output: 0.4 } },
 		prose: { model: "google/gemini-2.5-flash", price: { input: 0.3, output: 2.5 } },
+		strong: { model: "google/gemini-2.5-pro", price: { input: 1.25, output: 10.0 } },
 		note: "What the game has always used, and what every other row here is priced against. Fast enough that a live world keeps up with walking.",
 	},
 	{
@@ -114,6 +133,11 @@ export const CATALOGUE: readonly ModelChoice[] = [
 		provider: "Google",
 		fast: { model: "google/gemini-3.1-flash-lite", price: { input: 0.25, output: 1.5 } },
 		prose: { model: "google/gemini-3-flash", price: { input: 0.5, output: 3.0 } },
+		// A preview slug, and the only pro-class Gemini 3 the gateway carries: there is no
+		// stable `gemini-3-pro`, which a live check found the hard way. Preview names
+		// churn, so if `catalogue-live.test.ts` starts failing on this row, this is the
+		// line to look at rather than the escalation machinery.
+		strong: { model: "google/gemini-3.1-pro-preview", price: { input: 2.0, output: 12.0 } },
 		note: "The same shape as the default, a generation newer. Noticeably better at holding a plot together across a long world.",
 	},
 	{
@@ -122,6 +146,8 @@ export const CATALOGUE: readonly ModelChoice[] = [
 		provider: "Anthropic",
 		fast: { model: "anthropic/claude-haiku-4.5", price: { input: 1.0, output: 5.0 } },
 		prose: { model: "anthropic/claude-haiku-4.5", price: { input: 1.0, output: 5.0 } },
+		// The row below, which this table already vouches for.
+		strong: { model: "anthropic/claude-sonnet-5", price: { input: 2.0, output: 10.0 } },
 		note: "One model throughout. Writes people who sound like people; the small model doing the bookkeeping is the same expensive one, which is most of why this costs what it does.",
 	},
 	{

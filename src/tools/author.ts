@@ -13,8 +13,9 @@
  */
 
 import { authorScenario } from "../ai/author/author.js";
-import { logTelemetry } from "../ai/telemetry.js";
-import { hasGatewayKey, resolveSeed } from "../config.js";
+import { logTelemetry, money, telemetrySnapshot } from "../ai/telemetry.js";
+import { setDebugAi } from "../ai/transcript.js";
+import { hasGatewayKey, installGatewayKey, resolveSeed } from "../config.js";
 import { isDuration, normalizeBrief, type ScenarioBrief } from "../core/world/brief.js";
 import { writeScenario } from "../scenario/repo.js";
 import { hasErrors } from "../scenario/validate.js";
@@ -53,10 +54,11 @@ function usage(): never {
 			"  --tone <text>        refines the brief",
 			"  --protagonist <text> who the player is",
 			"  --avoid <text>       what to keep out",
-			"  --duration <d>       short | medium | long   (default medium)",
+			"  --duration <d>       tiny | short | medium | long   (default medium)",
 			"  --seed <word|number> which world to author against",
 			"  --concurrency <n>    model calls in flight  (default 4)",
 			"  --no-trees           skip the per-person dialogue pass",
+			"  --debug              keep every prompt and answer in the log",
 			"  --force              write even if validation found errors",
 			"",
 		].join("\n"),
@@ -67,7 +69,7 @@ function usage(): never {
 function briefFromArgs(args: Map<string, string>): ScenarioBrief | undefined {
 	const duration = args.get("duration");
 	if (duration && !isDuration(duration)) {
-		process.stderr.write(`--duration must be short, medium or long, not "${duration}"\n`);
+		process.stderr.write(`--duration must be tiny, short, medium or long, not "${duration}"\n`);
 		process.exit(2);
 	}
 	return normalizeBrief({
@@ -92,10 +94,20 @@ async function main() {
 	// Arguments before environment: a typo in the command is the caller's own and
 	// deserves to be the thing reported, not a missing key they may well have.
 	const brief = briefFromArgs(args) ?? {};
+	// A key saved from the launcher's options page lives in the player's settings, and
+	// the AI SDK reads `process.env` and nothing else. Without this the check below
+	// passed — `hasGatewayKey` consults both — and then every single call failed for
+	// want of the key it had just confirmed was there.
+	installGatewayKey();
 	if (!hasGatewayKey()) {
 		process.stderr.write("AI_GATEWAY_API_KEY is not set; there is nothing to author with.\n");
 		process.exit(1);
 	}
+
+	// Before the first call, or the pass most worth reading is the one pass that was
+	// not recorded. There is no screen here to read them back from, so this is the log
+	// alone — which is the right shape for a scripted run.
+	if (args.has("debug")) setDebugAi(true);
 
 	// The seed defaults to the id, so re-running the same command reproduces the same
 	// world and a different scenario gets a different one.
@@ -135,9 +147,11 @@ async function main() {
 	const path = writeScenario(artifact);
 	const seconds = Math.round((Date.now() - started) / 1000);
 	process.stdout.write(
-		`\nwrote ${path}\n  ${calls} model calls, ${seconds}s, ${Object.keys(artifact.sites).length} places, ${
-			artifact.arc?.beats.length ?? 0
-		} beats, ${Object.keys(artifact.trees ?? {}).length} conversations\n`,
+		`\nwrote ${path}\n  ${calls} model calls, ${seconds}s, ${money(telemetrySnapshot().totalCost)}, ${
+			Object.keys(artifact.sites).length
+		} places, ${artifact.arc?.beats.length ?? 0} beats, ${
+			Object.keys(artifact.trees ?? {}).length
+		} conversations\n`,
 	);
 	logTelemetry();
 }

@@ -1,7 +1,16 @@
 import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { useEffect, useState } from "react";
+import {
+	money,
+	onTelemetry,
+	type TelemetrySnapshot,
+	telemetrySnapshot,
+	tokens,
+} from "../../ai/telemetry.js";
+import { type Exchange, onTranscript, transcript } from "../../ai/transcript.js";
 import { FRAME_CHROME, Frame, Rule } from "../panels/primitives.js";
+import { TRANSCRIPT_PAGE, type TranscriptPart, TranscriptView } from "../panels/transcript-view.js";
 import { type ColorDepth, rgb } from "../render/color.js";
 import { clampLine, wrapToLines } from "../render/text.js";
 import { rampRows } from "./gradient.js";
@@ -58,6 +67,13 @@ export interface GenerateProgressProps {
 	/** Called when the player has read the findings and wants to get on with it. */
 	readonly onDismiss?: () => void;
 	readonly onStop: () => void;
+	/**
+	 * Whether the full prompts are being kept, and so whether `D` does anything.
+	 *
+	 * Passed in rather than read from the module so this stays a pure view and can be
+	 * rendered in a test without turning global debug state on.
+	 */
+	readonly debug?: boolean;
 }
 
 export function GenerateProgress({
@@ -74,6 +90,7 @@ export function GenerateProgress({
 	path,
 	onDismiss,
 	onStop,
+	debug = false,
 }: GenerateProgressProps) {
 	const reviewing = Boolean(findings && findings.length > 0);
 
@@ -87,15 +104,111 @@ export function GenerateProgress({
 		return () => clearInterval(timer);
 	}, [failure, reviewing]);
 
-	useInput((_input, key) => {
-		// Any key once the work is done and there is something to read; ESC only while it
-		// is still running, where it means stop rather than go on.
+	/*
+	 * The spend, kept current between progress lines.
+	 *
+	 * Progress lines arrive once a *pass* and calls arrive once a *call*, so a cost
+	 * drawn only when a line lands would sit frozen for a minute at a time — the same
+	 * stalled-looking screen the elapsed clock exists to avoid. Both counters subscribe
+	 * instead, and a version number is enough: the snapshot itself is read during render.
+	 */
+	const [, bump] = useState(0);
+	useEffect(() => {
+		const redraw = () => bump((n) => n + 1);
+		const offTelemetry = onTelemetry(redraw);
+		const offTranscript = onTranscript(redraw);
+		return () => {
+			offTelemetry();
+			offTranscript();
+		};
+	}, []);
+	const spend = telemetrySnapshot();
+
+	// Where the reader is in the transcript. Held here rather than in the component that
+	// draws it, so moving the cursor does not reset the scroll and vice versa.
+	const [showing, setShowing] = useState(false);
+	const [cursor, setCursor] = useState(0);
+	const [offset, setOffset] = useState(0);
+	const [part, setPart] = useState<TranscriptPart>("prompt");
+	const exchanges: readonly Exchange[] = showing ? transcript() : [];
+
+	useInput((input, key) => {
+		const letter = input.toLowerCase();
+
+		// The transcript takes every key while it is up, including the ones that would
+		// otherwise stop the run or start the game. Somebody reading a prompt has not
+		// asked to leave, and ESC here means "put this down", not "throw the world away".
+		if (showing) {
+			if (key.escape || letter === "d") {
+				setShowing(false);
+				return;
+			}
+			if (key.upArrow) {
+				setCursor((at) => Math.max(0, at - 1));
+				setOffset(0);
+				return;
+			}
+			if (key.downArrow) {
+				setCursor((at) => Math.min(Math.max(0, exchanges.length - 1), at + 1));
+				setOffset(0);
+				return;
+			}
+			// Left and right swap which half of the exchange is shown, which is the one
+			// thing a reader does constantly: the question and the answer to it.
+			if (key.leftArrow || key.rightArrow) {
+				setPart((current) => (current === "prompt" ? "answer" : "prompt"));
+				setOffset(0);
+				return;
+			}
+			if (input === " " || key.return) {
+				setOffset((line) => line + TRANSCRIPT_PAGE);
+				return;
+			}
+			if (letter === "b") setOffset((line) => Math.max(0, line - TRANSCRIPT_PAGE));
+			return;
+		}
+
+		// Never on any key. `D` opens the working, and taking it as "I have read the
+		// findings, start the game" would make the transcript unreachable exactly where
+		// it is most wanted — on the screen reporting what came out wrong.
+		if (debug && letter === "d") {
+			setShowing(true);
+			return;
+		}
+		// Any other key once the work is done and there is something to read; ESC only
+		// while it is still running, where it means stop rather than go on.
 		if (reviewing) {
 			onDismiss?.();
 			return;
 		}
 		if (key.escape) onStop();
 	});
+
+	if (showing) {
+		return (
+			<Frame style="menu" width={columns} height={rows}>
+				<Box marginBottom={1}>
+					<Text bold>{rampRows([WORKING], RAMP, depth)[0] ?? WORKING}</Text>
+					{title ? <Text dimColor>{`  “${title}”`}</Text> : null}
+				</Box>
+				<Box flexGrow={1} flexDirection="column">
+					<TranscriptView
+						exchanges={exchanges}
+						cursor={cursor}
+						offset={offset}
+						part={part}
+						width={columns - CHROME}
+						rows={Math.max(6, rows - FRAME_CHROME - PAGE_CHROME)}
+						totals={spend}
+						recording
+					/>
+				</Box>
+				<Text dimColor wrap="truncate">
+					↑↓ exchange · ←→ question/answer · SPACE down · B up · D or ESC back
+				</Text>
+			</Frame>
+		);
+	}
 
 	const elapsed = Math.max(0, Math.round((now - startedAt) / 1000));
 	const inner = columns - CHROME;
@@ -118,6 +231,8 @@ export function GenerateProgress({
 				{...(title ? { title } : {})}
 				findings={findings ?? []}
 				{...(path ? { path } : {})}
+				spent={spend}
+				debug={debug}
 			/>
 		);
 	}
@@ -150,12 +265,27 @@ export function GenerateProgress({
 					</Text>
 					<Text dimColor>
 						{`  ${clock(elapsed)} · ${calls} model ${calls === 1 ? "call" : "calls"} · `}
+					</Text>
+					{/* The bill, as it is run up rather than after the fact.
+					    This is the number a player is actually deciding about while they
+					    watch — whether to let it finish — and until now the only place it
+					    existed was a summary line in a log file written when it was too
+					    late to act on. Tokens beside it because a cost of zero is what an
+					    unpriced model looks like, and a token count says the difference
+					    between "nothing has happened" and "we cannot price this". */}
+					<Text color="yellow">{money(spend.totalCost)}</Text>
+					<Text dimColor>
+						{` ${tokens(spend.totalTokens)} tok`}
+						{spend.failures > 0 ? ` · ${spend.failures} failed` : ""}
+						{" · "}
 						{stopping
 							? // Said plainly rather than pretending the keypress was instant. Nothing
 								// here can be interrupted mid-call, so a player told "stopping" and then
 								// made to wait ten seconds has been told the truth.
 								"stopping after this pass"
-							: "ESC to stop"}
+							: debug
+								? "ESC to stop · D for the working"
+								: "ESC to stop"}
 					</Text>
 				</Text>
 			)}
@@ -181,6 +311,8 @@ function Review({
 	title,
 	findings,
 	path,
+	spent,
+	debug,
 }: {
 	readonly columns: number;
 	readonly rows: number;
@@ -188,6 +320,8 @@ function Review({
 	readonly title?: string;
 	readonly findings: readonly { readonly severity: string; readonly message: string }[];
 	readonly path?: string;
+	readonly spent: TelemetrySnapshot;
+	readonly debug: boolean;
 }) {
 	const inner = columns - CHROME;
 	const errors = findings.filter((finding) => finding.severity === "error");
@@ -245,8 +379,21 @@ function Review({
 					{`Kept in ${path}`}
 				</Text>
 			) : null}
+			{/* What it came to, said once, where it can be read. A player deciding
+			    whether to write another one of these has exactly one question, and
+			    "several minutes and some number of calls" was never an answer to it. */}
+			<Text wrap="truncate">
+				<Text dimColor>{"Cost "}</Text>
+				<Text color="yellow">{money(spent.totalCost)}</Text>
+				<Text dimColor>
+					{` over ${spent.calls} call${spent.calls === 1 ? "" : "s"}, ${tokens(spent.totalTokens)} tokens`}
+					{spent.failures > 0 ? `, ${spent.failures} of them failed` : ""}
+				</Text>
+			</Text>
 			<Text color="cyan" wrap="truncate">
-				Press any key to play it.
+				{debug
+					? "D to read the working, or any other key to play it."
+					: "Press any key to play it."}
 			</Text>
 		</Frame>
 	);
@@ -268,3 +415,4 @@ function clock(seconds: number): string {
 
 const HEADING = "Writing a world";
 const WRITTEN = "A world written";
+const WORKING = "The working";

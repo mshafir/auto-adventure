@@ -26,6 +26,8 @@ export type KeyBarMode =
 			readonly canDrop: boolean;
 			readonly hasList: boolean;
 			readonly inList: boolean;
+			/** The working page, whose detail is long enough to need paging. */
+			readonly canPage?: boolean;
 	  }
 	| { readonly t: "dialogue" };
 
@@ -67,6 +69,7 @@ function bindingsFor(mode: KeyBarMode): readonly Binding[] {
 					? [mode.inList ? { key: "Up/Dn", label: "read" } : { key: "Dn", label: "go in" }]
 					: []),
 				...(mode.canDrop ? [{ key: "D", label: "drop" }] : []),
+				...(mode.canPage ? [{ key: "Space/B", label: "scroll" }] : []),
 				{ key: "Esc", label: "back to map" },
 			];
 		case "dialogue":

@@ -1,6 +1,7 @@
 node_modules
 dist
 log.txt
+*.log
 .env
 .env.local
 maps
