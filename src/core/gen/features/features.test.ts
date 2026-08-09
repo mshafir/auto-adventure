@@ -24,7 +24,7 @@ function placed(kind: SiteKind, at: { x: number; y: number }, importance = 3) {
 }
 
 function build(world: WorldSeed, site: MacroSite): FeaturePatch {
-	const patch = generateFeature(world, site, fallbackSettlementSpec(world.seed, site));
+	const patch = generateFeature(world, site, fallbackSettlementSpec(world, site));
 	if (!patch) throw new Error(`nothing builds a ${site.kind}`);
 	return patch;
 }
@@ -81,7 +81,7 @@ describe("the registry", () => {
 
 	it("serves the same patch twice rather than building it again", () => {
 		const { world, site } = placed("castle", { x: 320, y: 320 });
-		const spec = fallbackSettlementSpec(world.seed, site);
+		const spec = fallbackSettlementSpec(world, site);
 		expect(generateFeature(world, site, spec)).toBe(generateFeature(world, site, spec));
 	});
 

@@ -1,3 +1,4 @@
+import { DEFAULT_PACK } from "../core/content/default.js";
 import type { ContentPack } from "../core/content/pack.js";
 import { getComplex, getInterior } from "../core/gen/features/interior.js";
 import type { StructureKind } from "../core/gen/features/patch.js";
@@ -444,6 +445,10 @@ export class GameEngine {
 		return obtainableItems({
 			seed: this.state.world.seed,
 			siteId: site.id,
+			// The world's own tables, not the built-in ones. `validate.ts` resolves the
+			// same pack the same way, which is what keeps the offline answer and the live
+			// one from being two different answers.
+			goods: (this.services.content ?? DEFAULT_PACK).goods,
 			people: this.npcs
 				.atSite(site.id)
 				.map((npc) => ({ role: npc.spec.role, slot: npc.spec.slot })),

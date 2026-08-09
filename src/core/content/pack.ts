@@ -1,4 +1,6 @@
+import { mergeRecipe, type WorldRecipe } from "../world/recipe.js";
 import type { WorldLore } from "../world/spec.js";
+import { type GoodsOverride, type GoodsTables, mergeGoods, mergeGoodsOverride } from "./goods.js";
 
 /**
  * The flavour of a world, as data.
@@ -67,6 +69,15 @@ export interface ContentPack {
 	readonly lore: WorldLore;
 	/** Ambient lines for a region nobody has written. */
 	readonly ambient: readonly string[];
+	/**
+	 * What there is to find, buy and gather.
+	 *
+	 * The one table here that a quest can reach, and therefore the one that has to be
+	 * *checked* rather than merely trusted — see {@link GoodsTables}. It travels with the
+	 * rest of the pack because it is the same editorial act: a world whose smith sells
+	 * what every other world's smith sells is a world with a costume on.
+	 */
+	readonly goods: GoodsTables;
 }
 
 /**
@@ -79,6 +90,22 @@ export interface ContentPack {
  */
 export interface PackOverride {
 	readonly id?: string;
+	/**
+	 * What this pack does to the *map*, as a recipe fragment.
+	 *
+	 * The one table here that is not cosmetic, and it is not cosmetic in a way the rest
+	 * of this file is careful to avoid — so it is handled differently and never reaches
+	 * the runtime {@link ContentPack} at all. It is folded into the scenario's recipe when
+	 * the scenario is built ({@link mergeRecipe}), which puts it inside `worldKey` where
+	 * anything that changes what the generator builds has to be, and persists it into the
+	 * artifact so the world does not depend on the pack still being on disk.
+	 *
+	 * It is here rather than only in the recipe because a pack is the reusable unit. A
+	 * Camelot pack knows that its villages are longhouses and its forts are motte-and-
+	 * bailey, and a dozen scenarios should be able to say `"pack": "camelot"` and get all
+	 * of it rather than copying a roster into each of their recipes.
+	 */
+	readonly world?: WorldRecipe;
 	readonly names?: {
 		readonly given?: readonly string[];
 		readonly family?: readonly string[];
@@ -95,6 +122,7 @@ export interface PackOverride {
 	readonly wanderers?: readonly OutdoorRole[];
 	readonly lore?: WorldLore;
 	readonly ambient?: readonly string[];
+	readonly goods?: GoodsOverride;
 }
 
 /**
@@ -131,6 +159,7 @@ export function mergePack(base: ContentPack, override?: PackOverride): ContentPa
 		wanderers: override.wanderers ?? base.wanderers,
 		lore: override.lore ?? base.lore,
 		ambient: override.ambient ?? base.ambient,
+		goods: mergeGoods(base.goods, override.goods),
 	};
 }
 
@@ -165,9 +194,13 @@ export function mergeOverride(
 				}
 			: undefined;
 
+	const world = mergeRecipe(base.world, over.world);
+	const goods = mergeGoodsOverride(base.goods, over.goods);
+
 	return {
 		id: over.id ?? base.id,
 		...(names ? { names } : {}),
+		...(world ? { world } : {}),
 		households: { ...base.households, ...over.households },
 		appearance: { ...base.appearance, ...over.appearance },
 		talksAbout: { ...base.talksAbout, ...over.talksAbout },
@@ -175,6 +208,7 @@ export function mergeOverride(
 		...((over.wanderers ?? base.wanderers) ? { wanderers: over.wanderers ?? base.wanderers } : {}),
 		...((over.lore ?? base.lore) ? { lore: over.lore ?? base.lore } : {}),
 		...((over.ambient ?? base.ambient) ? { ambient: over.ambient ?? base.ambient } : {}),
+		...(goods ? { goods } : {}),
 	};
 }
 

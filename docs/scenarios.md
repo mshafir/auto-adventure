@@ -598,6 +598,43 @@ more densely settled, it is one continuous suburb.
 Also here: `radius` per kind (`{ base, perImportance }`), `maxImportance`,
 `civilizationFloor` and `maxSlope`.
 
+### roster and filler
+
+What each kind of settlement is actually built out of:
+
+```json
+{
+  "sites": {
+    "roster": {
+      "village": {
+        "count": { "base": 8, "perImportance": 1 },
+        "structures": [["farmhouse", 10], ["barn", 6], ["shrine", 3]]
+      },
+      "town": { "count": { "base": 11, "perImportance": 1 }, "walled": 3,
+                "structures": [["tower", 6], ["temple", 5], ["inn", 5]] }
+    },
+    "filler": [["farmhouse", 6], ["barn", 3]]
+  }
+}
+```
+
+`count` is `base + floor(perImportance × importance)`, which is how a town grows by one
+building per point of importance and a village by one per two. `walled` is `true` for
+always or a number meaning "at this importance and above" — a fort is walled because it
+is a fort, a town once it is big enough to be worth the stone. `structures` is weighted
+and drawn from with replacement.
+
+`filler` is separate because it answers a different question: what to put on a plot the
+spec did not name. Filling from the site's own roster would arguably read better — a
+fort padded with barracks rather than cottages — but it changes what every world
+generates, so it is a thing to write down rather than a decision made on your behalf.
+
+Rosters merge **by kind**. Naming the village leaves the hamlet exactly as it was.
+
+The buildings you may name are the registered structure kinds, and the schema refuses
+anything else — including `cave`, which the cave feature builds as the mouth of a
+volume rather than something a roster asks for.
+
 ### places
 
 A site put somewhere specific:
@@ -709,6 +746,43 @@ world the first time settlements went behind the registry.
 `bounds` must actually contain what `build` writes. It is consulted to reject a site
 cheaply, before building, so a patch that spilled outside would be clipped away in the
 chunks that rejected it and drawn in the ones that did not.
+
+### Adding a new kind of building
+
+Buildings have a registry too, in `core/gen/features/structures.ts`, and one entry says
+everything about a kind:
+
+```ts
+registerStructure({
+  id: "granary",
+  size: "large", importance: 2,
+  materials: { wall: T.woodWall, cover: T.roof },
+  sign: false,
+  anchors: ["hearth"],
+  plan: { size: [15, 11], floor: T.floorWood, wall: T.woodWall, furnishings: [ … ] },
+  authorable: true,
+});
+```
+
+That used to be eight places — walls and roof in `building.ts`, whether it puts a board
+out beside it, which anchors it offers, how small a plot it will accept, the room in
+`interior.ts`, plot size and plot priority in `fallback-spec.ts`, and who lives in it in
+the content pack. There was no way to discover you had missed one except by walking into
+the building.
+
+The *list* of kinds was three lists — the `StructureKind` union, the director's
+`STRUCTURE_KINDS`, and the fallback roster's keys — with no test tying any two together.
+`STRUCTURE_KINDS` is what the model may say and what the scenario schema enforces, so a
+drift between the first two was a scenario that validated and then generated a building
+nobody had a plan for. It is now derived from the registry, and `authorable` says which
+kinds an author may name — `cave` is the one that cannot, because the cave feature builds
+it as the mouth of a volume.
+
+**Registration is code, not data, and that is deliberate.** Interiors are cached under
+`(seed, interiorId, kind)`. If a kind's plan could differ between two worlds open in one
+process — which the launcher does routinely — that key would be wrong. A registered kind
+is a build-time fact, identical in every world. A *world* that wants different buildings
+says so in its recipe's [`roster`](#roster-and-filler), where it hashes into a key.
 
 ## Buildings with more than one room
 
@@ -1190,10 +1264,11 @@ pipeline a scenario could not touch.
 A `ContentPack` is those tables as data. Two rules keep it from becoming a
 configuration language:
 
-**Cosmetic only.** Nothing in a pack decides whether a tile is passable, what a
-container holds, or what a shop stocks. So a world opened with the wrong pack looks
-different but cannot become unplayable, and a quest can never start naming an item
-that no longer generates.
+**Cosmetic, except where it is checkable.** Nothing in a pack decides whether a tile is
+passable. Most of it decides only what things are *called*, so a world opened with the
+wrong pack looks different and cannot become unplayable. Two tables reach further and are
+handled differently — `goods` and `world`, both below — and the rule for those is not
+that you are trusted but that the result is *verified*.
 
 **Owned by the world.** Names are *derived*, not stored — so adopting a different
 pack mid-world would rename everybody the player had already met while keeping
@@ -1211,6 +1286,49 @@ like the brief, and a world with one of its own ignores whatever is offered.
 | `wanderers` | the people at the well and the bench |
 | `lore` | the premise a world with no model runs on |
 | `ambient` | flavour lines for a region nobody wrote |
+| `goods` | what there is to find, buy and gather |
+| `world` | a recipe fragment: what the map is *built* of |
+
+### goods
+
+`stores` (what a building keeps in its crates), `catalogue` (what a shop sells),
+`yields` and `forageChance` (what the ground gives up), and `trades` (which catalogue a
+role sells from). Everything is `[name, description]` pairs, keyed by structure kind or
+terrain key, merged by key.
+
+This is where a pack's illusion used to break hardest: a Camelot smith, renamed and
+re-voiced by the pack, still sold the same *Horseshoe* as every other world.
+
+It is not cosmetic. `obtainableItems` reads all three tables to decide which item names a
+`have` objective may legitimately use, so emptying a catalogue is an errand for something
+that does not exist. What makes it safe to write anyway is that the same function answers
+the question offline: the validator reports an errand nothing can satisfy, and
+`repairUntilClean` drops it. A hostile pack produces a reported fault, not a story that
+quietly cannot be finished.
+
+**Adding a trade is one entry.** A role trades from a catalogue whose name appears in it,
+so writing `catalogue.fletcher` is enough to make "the castle fletcher" sell arrows.
+`trades` is only the shortcut for roles whose words do not match — a farrier keeps a
+smithy.
+
+### world
+
+A recipe fragment, in the pack, using exactly the syntax of
+[the recipe](#the-recipe-choosing-the-world-instead-of-rolling-for-it) — most usefully
+`sites.roster`, so a Camelot pack can say its villages are farmhouses and barns.
+
+It is handled unlike every other table here, and the reason is mechanical. Feature
+patches are cached under the seed *and the recipe* (`worldKey`), and interiors under
+`(seed, interiorId, kind)`. Anything that changes what the generator builds has to be
+inside one of those keys, or a town generated under one pack gets served, from cache, to
+a world opened under another. So the fragment is folded into the scenario's recipe **when
+the scenario is built** rather than consulted while it runs — after which it hashes into
+the key like everything else, and is persisted into the artifact. A world built with a
+pack replays correctly even if the pack is deleted, because the part that shaped the map
+is no longer in the pack.
+
+A scenario's own recipe wins over the pack's, section by section: naming a pack and then
+stating a climate is correcting the pack, not being overruled by it.
 
 ### Merge rules
 
@@ -1455,6 +1573,7 @@ improving the wording silently disables the fix. What they fix, one class each:
 | `standTheCastSomewhereReal` | somebody at an anchor the town does not build, in a room that was not built, or claiming a building that did not fit |
 | `hideThingsWhereThereIsSomewhereToHideThem` | a hidden thing in a kind of building the ground refused |
 | `spellObjectivesAsTheWorldDoes` | an objective the world spells differently, so it would never match |
+| `dropErrandsForThingsThatDoNotExist` | a `have` objective for an item this world's goods do not produce under any spelling |
 | `dropObjectivesNothingCanTick` | an objective waiting on a flag nothing sets, which keeps the whole arc from ever ending |
 | `dropOneArmedForks` | a fork with one arm, which is not a choice |
 | `forgetPeopleWhoAreNotHere` | a conversation gated on somebody the scenario does not contain |

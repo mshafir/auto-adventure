@@ -41,7 +41,11 @@ function findBuiltTown(): { site: MacroSite; spec: SiteSpec } {
 			if (!isSettlement(site.kind)) continue;
 			if (site.site.x < BOUNDS.minX || site.site.x > BOUNDS.maxX) continue;
 			if (site.site.y < BOUNDS.minY || site.site.y > BOUNDS.maxY) continue;
-			const spec: SiteSpec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+			const spec: SiteSpec = fallbackSite(
+				worldSeed(SEED),
+				site,
+				siteContext(worldSeed(SEED), site),
+			);
 			if (generateSettlement(worldSeed(SEED), site, spec.settlement).buildings.length > 0) {
 				return { site, spec };
 			}

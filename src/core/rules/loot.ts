@@ -1,3 +1,4 @@
+import { DEFAULT_GOODS, type GoodsEntry, type GoodsTables } from "../content/goods.js";
 import { rngFor } from "../rand/rng.js";
 import { D, type DecorId, decorDef } from "../tiles/decor.js";
 
@@ -37,69 +38,9 @@ export function isContainer(decor: DecorId): boolean {
  * order rather than by an explicit number: the first entries are the everyday
  * stock and the last are the finds.
  */
-const STORES: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
-	mill: [
-		["Sack of Flour", "Coarse-ground, and still warm from the stones."],
-		["Sack of Grain", "Unmilled, with the chaff still in it."],
-		["Timber", "Rough-sawn planks, stacked and banded."],
-		["Millstone Grit", "Swept up from under the runner stone."],
-	],
-	barn: [
-		["Bale of Hay", "Tight-bound and dusty."],
-		["Sack of Grain", "Unmilled, with the chaff still in it."],
-		["Timber", "Rough-sawn planks, stacked and banded."],
-	],
-	warehouse: [
-		["Timber", "Rough-sawn planks, stacked and banded."],
-		["Bolt of Cloth", "Undyed linen, wound on a wooden core."],
-		["Barrel of Salt", "Heavy, and worth more than it looks."],
-		["Iron Nails", "A twist of paper holding two dozen."],
-	],
-	smithy: [
-		["Iron Ore", "Rust-red lumps, unsmelted."],
-		["Charcoal", "A sack of it, light as nothing."],
-		["Scrap Iron", "Offcuts and failures, kept for remelting."],
-	],
-	stable: [
-		["Feed Sack", "Oats, mostly."],
-		["Leather Harness", "Supple, and recently oiled."],
-	],
-	inn: [
-		["Bottle of Ale", "Cloudy, and stoppered with a rag."],
-		["Wheel of Cheese", "Rinded and heavy."],
-		["Tallow Candles", "A bundle of six."],
-	],
-	shop: [
-		["Bolt of Cloth", "Undyed linen, wound on a wooden core."],
-		["Tallow Candles", "A bundle of six."],
-		["Coil of Rope", "Forty feet of it, waxed against the wet."],
-	],
-	apothecary: [
-		["Dried Herbs", "Bundled and labelled in a small hand."],
-		["Clay Vial", "Empty, and stoppered with wax."],
-	],
-	temple: [["Beeswax Candles", "Better than tallow, and kept for feast days."]],
-	barracks: [
-		["Iron Nails", "A twist of paper holding two dozen."],
-		["Whetstone", "Worn hollow in the middle."],
-	],
-	ruin: [
-		["Tarnished Coins", "Old currency, of a mint nobody here uses."],
-		["Rusted Key", "It fits something. Not this."],
-	],
-	farmhouse: [
-		["Sack of Grain", "Unmilled, with the chaff still in it."],
-		["Preserved Fruit", "In a sealed crock, and still good."],
-	],
-	house: [
-		["Tallow Candles", "A bundle of six."],
-		["Woollen Blanket", "Patched, and clean."],
-	],
-};
-
 /** Falls back to the plainest household goods rather than to nothing. */
-function storeFor(structure: string): readonly (readonly [string, string])[] {
-	return STORES[structure] ?? STORES.house ?? [];
+function storeFor(structure: string, goods: GoodsTables): readonly GoodsEntry[] {
+	return goods.stores[structure] ?? goods.stores.house ?? [];
 }
 
 /**
@@ -109,8 +50,11 @@ function storeFor(structure: string): readonly (readonly [string, string])[] {
  * timber" a legal request in a milling town and an illegal one in a fishing
  * village — without either the model or the resolver hardcoding a list.
  */
-export function itemsStoredIn(structure: string): readonly string[] {
-	return storeFor(structure).map(([name]) => name);
+export function itemsStoredIn(
+	structure: string,
+	goods: GoodsTables = DEFAULT_GOODS,
+): readonly string[] {
+	return storeFor(structure, goods).map(([name]) => name);
 }
 
 /**
@@ -143,10 +87,11 @@ export function containerContents(
 	decor: DecorId,
 	structure: string,
 	level = 0,
+	goods: GoodsTables = DEFAULT_GOODS,
 ): readonly LootItem[] {
 	if (!isContainer(decor)) return [];
 
-	const store = storeFor(structure);
+	const store = storeFor(structure, goods);
 	if (store.length === 0) return [];
 
 	// The level joins the stream only above the ground floor, for the same reason it

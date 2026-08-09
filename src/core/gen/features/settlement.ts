@@ -49,15 +49,6 @@ export interface SettlementSpec {
 	readonly structures: readonly StructureSpec[];
 }
 
-/** Weighted filler used when a spec has fewer structures than there are plots. */
-const FILLER: readonly (readonly [StructureKind, number])[] = [
-	["house", 10],
-	["farmhouse", 3],
-	["barn", 2],
-	["stable", 1],
-	["warehouse", 1],
-];
-
 /**
  * The settlement at a site.
  *
@@ -264,7 +255,7 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 
 	plots.forEach((plot, i) => {
 		const assigned = assignments[i];
-		const kind: StructureKind = assigned?.kind ?? pickFiller(rng);
+		const kind: StructureKind = assigned?.kind ?? pickFiller(world, rng);
 		const size = fitRect(plot, assigned?.size ?? "small", rng);
 		if (size.w < 5 || size.h < 5) return;
 
@@ -405,9 +396,11 @@ function demolish(
 	}
 }
 
-function pickFiller(rng: Rng): StructureKind {
-	const index = rng.weighted(FILLER.map(([, weight]) => weight));
-	return FILLER[index]?.[0] ?? "house";
+function pickFiller(world: WorldSeed, rng: Rng): StructureKind {
+	const filler = world.rules.sites.filler;
+	if (filler.length === 0) return "house";
+	const index = rng.weighted(filler.map(([, weight]) => weight));
+	return filler[index]?.[0] ?? "house";
 }
 
 /** Shrink a plot to a buildable rectangle with a little jitter. */

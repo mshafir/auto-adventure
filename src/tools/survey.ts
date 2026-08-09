@@ -52,7 +52,7 @@ function parseArgs(argv: readonly string[]): Map<string, string> {
  */
 function likelyAnchors(world: WorldSeed, site: Parameters<typeof generateSettlement>[1]): string[] {
 	invalidateFeature(world, site.id);
-	const built = generateSettlement(world, site, fallbackSettlementSpec(world.seed, site));
+	const built = generateSettlement(world, site, fallbackSettlementSpec(world, site));
 	const kinds = [...new Set(built.anchors.map((anchor) => anchor.kind))].sort();
 	// Leave no cached patch behind: the next thing to generate this site should be
 	// measuring the authored roster, not this probe.

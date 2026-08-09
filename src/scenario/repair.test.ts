@@ -169,6 +169,66 @@ describe("repairArtifact", SLOW, () => {
 		expect(fixed.arc?.beats[0]?.quest?.objectives[0]?.target).toBe("The Drowned Lamp");
 	});
 
+	/**
+	 * The test that justifies letting a pack write goods at all.
+	 *
+	 * A pack may now empty a catalogue, and an errand written against a fuller one then
+	 * names something the world does not contain. The promise made when that was allowed
+	 * was not that authors would be careful — it was that this is *checkable*, because
+	 * `obtainableItems` already answers the question and the validator already asks it.
+	 * So: a hostile pack must produce a reported fault and a repaired scenario, never a
+	 * story that quietly cannot be finished.
+	 */
+	it("drops an errand for a thing the scenario's own pack does not stock", () => {
+		const fetch = (target: string): ScenarioArc => ({
+			title: "t",
+			premise: "p",
+			beats: [
+				beat("one", 0, {
+					quest: {
+						id: "the-nails",
+						name: "The nails",
+						description: "d",
+						objectives: [
+							{ kind: "talk", target: "Ilse Marrow", done: false },
+							{ kind: "have", target, done: false },
+						],
+					},
+				}),
+			],
+		});
+
+		// Nothing in any world stocks this, so it stands for an errand written against a
+		// catalogue this scenario's pack does not have.
+		const broken = demoArtifact({ arc: fetch("Sheaf of Arrows") });
+		const { gone, added, repairs, fixed } = difference(broken);
+		expect(messages(broken).join("\n")).toContain("Sheaf of Arrows");
+		expect(gone.join("\n")).toContain("Sheaf of Arrows");
+		expect(added).toEqual([]);
+		expect(repairs.join("\n")).toContain("nothing here produces");
+		expect(fixed.arc?.beats[0]?.quest?.objectives).toHaveLength(1);
+	});
+
+	it("leaves an errand for a thing the world does stock exactly as it found it", () => {
+		const arc: ScenarioArc = {
+			title: "t",
+			premise: "p",
+			beats: [
+				beat("one", 0, {
+					quest: {
+						id: "the-candles",
+						name: "The candles",
+						description: "d",
+						objectives: [{ kind: "have", target: "Tallow Candles", done: false }],
+					},
+				}),
+			],
+		};
+		const { added, repairs } = difference(demoArtifact({ arc }));
+		expect(added).toEqual([]);
+		expect(repairs.join("\n")).not.toContain("nothing here produces");
+	});
+
 	it("drops an objective waiting on a flag nothing sets", () => {
 		const arc: ScenarioArc = {
 			title: "t",

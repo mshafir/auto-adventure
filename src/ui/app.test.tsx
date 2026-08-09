@@ -34,7 +34,7 @@ function findTown(seed: number): MacroSite {
 /** An engine standing next to the first person in the nearest town. */
 function engineBesideSomeone(arc?: ScenarioArc) {
 	const site = findTown(SEED);
-	const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+	const spec = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
 	const base = createInitialState(
 		{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
 		site.site,

@@ -17,7 +17,7 @@ import { ConditionSchema } from "../core/rules/condition-schema.js";
 import type { QuestObjective } from "../core/rules/state.js";
 import { resolveName } from "../core/rules/surroundings.js";
 import { normalizeBrief } from "../core/world/brief.js";
-import { worldSeed } from "../core/world/recipe.js";
+import { mergeRecipe, worldSeed } from "../core/world/recipe.js";
 import { WorldRecipeSchema } from "../core/world/recipe-schema.js";
 import type { RegionSpec, SiteSpec } from "../core/world/spec.js";
 import { npcId } from "../core/world/spec.js";
@@ -354,12 +354,18 @@ export function assembleArtifact(
 ): ScenarioArtifact {
 	const brief = normalizeBrief(draft.brief) ?? {};
 	const seed = resolveDraftSeed(draft);
-	const world = worldSeed(seed, draft.recipe);
-	const survey = surveyWorld(world, brief.duration);
 	// The filler is named from the scenario's own pack, or half the world reads in a
 	// different register from the half the author wrote. The named pack goes under the
 	// draft's own tables, so a scenario borrowing a pack can still change one line of it.
-	const pack = mergePack(DEFAULT_PACK, mergeOverride(options.pack, draft.content));
+	const override = mergeOverride(options.pack, draft.content);
+	const pack = mergePack(DEFAULT_PACK, override);
+	// A pack may also say what the world is *built* of, and that half of it is folded
+	// into the recipe here rather than consulted at runtime — see `PackOverride.world`.
+	// Resolved once and carried on the artifact, so the map no longer depends on the
+	// pack being on disk when the scenario is played.
+	const recipe = mergeRecipe(override?.world, draft.recipe);
+	const world = worldSeed(seed, recipe);
+	const survey = surveyWorld(world, brief.duration);
 
 	const regions: Record<string, RegionSpec> = {};
 	const drafted = new Map(draft.regions?.map((region) => [region.regionId, region]) ?? []);
@@ -388,7 +394,7 @@ export function assembleArtifact(
 		if (!written) {
 			// Not authored: the deterministic roster, which is a real place with real
 			// people in it. This is what makes partial drafts worth assembling.
-			sites[key] = fallbackSite(seed, entry.site, entry.context, pack);
+			sites[key] = fallbackSite(world, entry.site, entry.context, pack);
 			continue;
 		}
 		sites[key] = {
@@ -443,7 +449,10 @@ export function assembleArtifact(
 		...(draft.pack ? { pack: draft.pack } : {}),
 		...(draft.content && !isOverrideEmpty(draft.content) ? { content: draft.content } : {}),
 		seed,
-		...(draft.recipe ? { recipe: draft.recipe } : {}),
+		// The *merged* recipe, not the draft's own: the pack's fragment shaped the world
+		// that was just surveyed, so an artifact carrying only the draft's half would
+		// describe a different map from the one its beats were plotted on.
+		...(recipe ? { recipe } : {}),
 		spawn: survey.spawn,
 		bounds: survey.bounds,
 		lore: draft.lore,

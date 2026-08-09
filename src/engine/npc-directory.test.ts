@@ -29,7 +29,7 @@ function findTown(world: WorldSeed): MacroSite {
 }
 
 function populated(world: WorldSeed, site: MacroSite) {
-	const spec: SiteSpec = fallbackSite(world.seed, site, siteContext(world, site));
+	const spec: SiteSpec = fallbackSite(world, site, siteContext(world, site));
 	const chunks = new ChunkManager({
 		world,
 		specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
@@ -123,7 +123,7 @@ describe("npc placement", () => {
 			const at = { x: 320, y: 320 };
 			const world = worldSeed(SEED, { places: [{ at, kind, importance: 4 }] });
 			const site = macroSite(world, Math.floor(at.x / CHUNK), Math.floor(at.y / CHUNK));
-			const base: SiteSpec = fallbackSite(world.seed, site, siteContext(world, site));
+			const base: SiteSpec = fallbackSite(world, site, siteContext(world, site));
 			const crowd: SiteSpec = {
 				...base,
 				npcs: Array.from({ length: 40 }, (_, slot) => ({
@@ -227,7 +227,7 @@ describe("a town placed before its ground exists", () => {
 	 * into the town the story hangs on and there was simply no one there.
 	 */
 	function unbuilt(world: WorldSeed, site: MacroSite) {
-		const spec: SiteSpec = fallbackSite(world.seed, site, siteContext(world, site));
+		const spec: SiteSpec = fallbackSite(world, site, siteContext(world, site));
 		const chunks = new ChunkManager({
 			world,
 			specFor: (s) => (s.id === site.id ? spec.settlement : undefined),
@@ -276,7 +276,7 @@ describe("a town placed before its ground exists", () => {
 describe("bumping into people", () => {
 	it("opens a conversation instead of walking through them", () => {
 		const site = findTown(WORLD);
-		const spec = fallbackSite(SEED, site, siteContext(WORLD, site));
+		const spec = fallbackSite(WORLD, site, siteContext(WORLD, site));
 		const state = createInitialState(
 			{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
 			site.site,
@@ -372,7 +372,7 @@ describe("towns whose halos overlap", () => {
 		const sites = sitesAround(world, cc.cx, cc.cy);
 		const specs = new Map<number, SiteSpec>();
 		for (const site of sites)
-			specs.set(site.id, fallbackSite(world.seed, site, siteContext(world, site)));
+			specs.set(site.id, fallbackSite(world, site, siteContext(world, site)));
 
 		const chunks = new ChunkManager({
 			world,
@@ -548,7 +548,7 @@ describe("people the story has not brought on yet", () => {
 	/** The same town, with one resident gated behind a flag. */
 	function gated(condition: Condition) {
 		const site = findTown(WORLD);
-		const spec: SiteSpec = fallbackSite(SEED, site, siteContext(WORLD, site));
+		const spec: SiteSpec = fallbackSite(WORLD, site, siteContext(WORLD, site));
 		const hidden = spec.npcs[0] as NpcSpec;
 		const withGate: SiteSpec = {
 			...spec,

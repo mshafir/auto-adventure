@@ -1,3 +1,4 @@
+import type { GoodsTables } from "../content/goods.js";
 import { getInterior } from "../gen/features/interior.js";
 import type { StructureKind } from "../gen/features/patch.js";
 import type { TerrainId } from "../tiles/terrain.js";
@@ -47,6 +48,18 @@ export interface ObtainableGround {
 
 export interface ObtainableInput {
 	readonly seed: number;
+	/**
+	 * The tables that say what exists to be had.
+	 *
+	 * Required rather than defaulted, and this is the one place in the goods work where
+	 * that is worth the churn at every call site. The whole reason this function was
+	 * extracted (see above) is that the validator and the running engine must not have
+	 * separate notions of "obtainable" — and the moment goods became per-world, a default
+	 * here would be exactly how they acquire one: a scenario authored against a pack's
+	 * catalogue, then validated against the built-in one, passes with a fetch quest the
+	 * game will refuse. A default would make that silent. This makes it a type error.
+	 */
+	readonly goods: GoodsTables;
 	readonly siteId: number;
 	/** Everyone at the site. Non-traders are ignored here rather than by callers. */
 	readonly people: readonly { readonly role: string; readonly slot: number }[];
@@ -80,9 +93,9 @@ export function obtainableItems(input: ObtainableInput): string[] {
 	const names = new Set<string>();
 
 	for (const person of input.people) {
-		const kind = tradeKind(person.role);
+		const kind = tradeKind(person.role, input.goods);
 		if (!kind) continue;
-		for (const item of shopStock(input.seed, input.siteId, person.slot, kind)) {
+		for (const item of shopStock(input.seed, input.siteId, person.slot, kind, input.goods)) {
 			names.add(item.name);
 		}
 	}
@@ -107,6 +120,8 @@ export function obtainableItems(input: ObtainableInput): string[] {
 					y,
 					decor,
 					building.kind,
+					0,
+					input.goods,
 				)) {
 					names.add(item.name);
 				}
@@ -114,7 +129,7 @@ export function obtainableItems(input: ObtainableInput): string[] {
 		}
 	}
 
-	if (input.ground) for (const name of groundYields(input.ground)) names.add(name);
+	if (input.ground) for (const name of groundYields(input.ground, input.goods)) names.add(name);
 	for (const placed of input.placed ?? []) names.add(placed);
 	for (const carried of input.carried ?? []) names.add(carried);
 
@@ -130,14 +145,14 @@ export function obtainableItems(input: ObtainableInput): string[] {
  * *kinds* of ground are present, and a stride of three cannot miss a patch of crops
  * or a stretch of forest floor while costing a ninth as many reads.
  */
-function groundYields(ground: ObtainableGround): Set<string> {
+function groundYields(ground: ObtainableGround, goods: GoodsTables): Set<string> {
 	const names = new Set<string>();
 	const reach = ground.radius + FORAGE_MARGIN;
 	for (let y = ground.centre.y - reach; y <= ground.centre.y + reach; y += FORAGE_STRIDE) {
 		for (let x = ground.centre.x - reach; x <= ground.centre.x + reach; x += FORAGE_STRIDE) {
 			const terrain = ground.terrainAt(x, y);
-			if (terrain === undefined || !isForageable(terrain)) continue;
-			for (const name of forageYields(terrain)) names.add(name);
+			if (terrain === undefined || !isForageable(terrain, goods)) continue;
+			for (const name of forageYields(terrain, goods)) names.add(name);
 		}
 	}
 	return names;

@@ -255,7 +255,7 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 	const patches = featuresOverlapping(
 		world,
 		sites,
-		(site) => ctx.specFor?.(site) ?? fallbackSettlementSpec(seed, site),
+		(site) => ctx.specFor?.(site) ?? fallbackSettlementSpec(world, site),
 		{ x: originX, y: originY, w: CHUNK, h: CHUNK },
 	);
 

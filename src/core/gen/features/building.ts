@@ -3,7 +3,7 @@ import type { Rng } from "../../rand/rng.js";
 import type { Lock } from "../../rules/lock.js";
 import { D } from "../../tiles/decor.js";
 import { TFlag } from "../../tiles/flags.js";
-import { T, type TerrainId } from "../../tiles/terrain.js";
+import { T } from "../../tiles/terrain.js";
 import {
 	type Anchor,
 	type BuildingPlacement,
@@ -13,58 +13,21 @@ import {
 	patchWrite,
 	type StructureKind,
 } from "./patch.js";
+import { type BuildingMaterials, structureDef } from "./structures.js";
 
-export interface BuildingMaterials {
-	readonly wall: TerrainId;
-	/** What fills the footprint as seen from outside: a roof, or open sky. */
-	readonly cover: TerrainId;
-}
+export type { BuildingMaterials };
 
 function materialsFor(kind: StructureKind): BuildingMaterials {
-	switch (kind) {
-		case "temple":
-		case "barracks":
-		case "tower":
-		case "smithy":
-			return { wall: T.stoneWall, cover: T.roof };
-		// A ruin is roofless by definition, and its rubble is the point.
-		case "ruin":
-			return { wall: T.stoneWall, cover: T.rubble };
-		default:
-			return { wall: T.woodWall, cover: T.roof };
-	}
+	return structureDef(kind).materials;
 }
 
 /** Shops put a board out front; a farmhouse does not. */
 function hasSign(kind: StructureKind): boolean {
-	return (
-		kind === "shop" ||
-		kind === "inn" ||
-		kind === "smithy" ||
-		kind === "apothecary" ||
-		kind === "stable" ||
-		kind === "mill"
-	);
+	return structureDef(kind).sign;
 }
 
 function interiorAnchors(kind: StructureKind): readonly Anchor["kind"][] {
-	switch (kind) {
-		case "shop":
-		case "apothecary":
-			return ["counter", "backroom"];
-		case "inn":
-			return ["counter", "hearth", "backroom"];
-		case "smithy":
-			return ["counter", "hearth"];
-		case "temple":
-		case "shrine":
-			return ["hearth"];
-		case "barracks":
-		case "tower":
-			return ["hearth", "backroom"];
-		default:
-			return ["hearth"];
-	}
+	return structureDef(kind).anchors;
 }
 
 export interface BuildResult {
@@ -276,16 +239,9 @@ function interiorSpot(inner: Rect, kind: Anchor["kind"], rng: Rng): Vec2 | undef
 
 /** Minimum plot a given structure needs, as `[width, height]`. */
 export function minimumPlot(kind: StructureKind, size: "small" | "medium" | "large"): Vec2 {
+	const def = structureDef(kind);
+	if (def.plotFixed) return def.plotFixed;
 	const base = size === "large" ? 9 : size === "medium" ? 7 : 5;
-	switch (kind) {
-		case "temple":
-		case "barracks":
-		case "warehouse":
-		case "barn":
-			return { x: base + 2, y: base + 1 };
-		case "tower":
-			return { x: 5, y: 5 };
-		default:
-			return { x: base, y: base };
-	}
+	const pad = def.plotPad;
+	return { x: base + (pad?.x ?? 0), y: base + (pad?.y ?? 0) };
 }

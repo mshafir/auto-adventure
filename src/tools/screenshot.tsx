@@ -344,7 +344,7 @@ function shotArc(siteId: number): ScenarioArc {
 
 function buildEngine(withArc = false) {
 	const site = findTown(SEED);
-	const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+	const spec = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
 	const base = createInitialState(
 		{ id: "shot", name: "shot", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },
 		site.site,

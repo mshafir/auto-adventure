@@ -1,3 +1,7 @@
+import { resolveOverride } from "../content/load.js";
+import { DEFAULT_PACK } from "../core/content/default.js";
+import type { GoodsTables } from "../core/content/goods.js";
+import { mergeOverride, mergePack, type PackOverride } from "../core/content/pack.js";
 import { getInterior } from "../core/gen/features/interior.js";
 import type { AnchorKind } from "../core/gen/features/patch.js";
 import { generateFeature, invalidateFeature } from "../core/gen/features/registry.js";
@@ -27,6 +31,36 @@ import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
 import { checkCompleteness } from "./completeness.js";
 import { conditionSatisfiable, flagsWritten, unsatisfiableFlags } from "./flag-sources.js";
 import { gridFor, isPassable, type PassabilityGrid, pathLength, terrainOf } from "./passability.js";
+
+/**
+ * The goods this scenario is written against.
+ *
+ * Resolved exactly the way `repo.ts` resolves a scenario's pack when it is read off
+ * disk — the named pack first, the scenario's own tables over it — because the whole
+ * value of `obtainableItems` living in `core` is that the validator and the running
+ * engine ask one question rather than two similar ones. Two resolutions here would be
+ * two answers, and the symptom is a scenario that validates carrying a fetch quest the
+ * game refuses.
+ *
+ * Both shapes are handled deliberately. An artifact loaded from disk has already had its
+ * `pack` folded into `content`; one straight out of the authoring passes — which is what
+ * the repair loop validates, several times — still carries only the name.
+ *
+ * Memoised per artifact, because this runs once per site and the alternative is reading
+ * and parsing the same pack file forty times.
+ */
+const goodsCache = new WeakMap<ScenarioArtifact, GoodsTables>();
+
+export function goodsFor(artifact: ScenarioArtifact): GoodsTables {
+	const cached = goodsCache.get(artifact);
+	if (cached) return cached;
+	const named: PackOverride | undefined = artifact.pack
+		? resolveOverride(artifact.pack)
+		: undefined;
+	const goods = mergePack(DEFAULT_PACK, mergeOverride(named, artifact.content)).goods;
+	goodsCache.set(artifact, goods);
+	return goods;
+}
 
 /**
  * Check authored content against the world it claims to describe.
@@ -1422,6 +1456,7 @@ export function surroundingsFor(
 			...obtainableItems({
 				seed: artifact.seed,
 				siteId,
+				goods: goodsFor(artifact),
 				people: spec.npcs.map((npc) => ({ role: npc.role, slot: npc.slot })),
 				buildings: built.buildings.map((building) => ({
 					interiorId: building.interiorId,

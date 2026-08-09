@@ -1,8 +1,9 @@
 import { type Rng, rngFor } from "../../rand/rng.js";
-import { D, type DecorId } from "../../tiles/decor.js";
+import { D } from "../../tiles/decor.js";
 import { TFlag } from "../../tiles/flags.js";
 import { T, type TerrainId, terrainDef } from "../../tiles/terrain.js";
 import type { StructureKind } from "./patch.js";
+import { type Plan, structureDef } from "./structures.js";
 
 /**
  * A way from one level of a complex to another.
@@ -89,175 +90,8 @@ export function clearInteriorCache(): void {
 	complexCache.clear();
 }
 
-interface Furnishing {
-	readonly decor: DecorId;
-	readonly count: number;
-	readonly anchor?: string;
-}
-
-interface Plan {
-	readonly size: readonly [number, number];
-	readonly floor: TerrainId;
-	readonly wall: TerrainId;
-	readonly furnishings: readonly Furnishing[];
-	/**
-	 * How many storeys, including the ground floor.
-	 *
-	 * A guest storey over an inn and a watch room at the top of a tower are the two
-	 * cases that actually matter: they are where a scenario wants to put somebody who
-	 * should be hard to walk into by accident.
-	 */
-	readonly floors?: number;
-	/** What furnishes the storeys above the ground floor. */
-	readonly upstairs?: readonly Furnishing[];
-}
-
 function planFor(kind: StructureKind): Plan {
-	switch (kind) {
-		case "inn":
-			return {
-				size: [17, 11],
-				floor: T.floorWood,
-				wall: T.woodWall,
-				furnishings: [
-					{ decor: D.counter, count: 4, anchor: "counter" },
-					{ decor: D.hearth, count: 1, anchor: "hearth" },
-					{ decor: D.table, count: 3 },
-					{ decor: D.chair, count: 4 },
-					{ decor: D.bed, count: 3, anchor: "backroom" },
-					{ decor: D.barrel, count: 2 },
-				],
-				// Rooms over the taproom, which is where an inn keeps the people worth
-				// finding: a guest is upstairs, not standing in the common room all day.
-				floors: 2,
-				upstairs: [
-					{ decor: D.bed, count: 5, anchor: "backroom" },
-					{ decor: D.table, count: 2 },
-					{ decor: D.chair, count: 3 },
-					{ decor: D.shelf, count: 1 },
-				],
-			};
-		case "shop":
-		case "apothecary":
-			return {
-				size: [13, 9],
-				floor: T.floorWood,
-				wall: T.woodWall,
-				furnishings: [
-					{ decor: D.counter, count: 3, anchor: "counter" },
-					{ decor: D.shelf, count: 4 },
-					{ decor: D.crate, count: 3 },
-					{ decor: D.barrel, count: 2 },
-				],
-			};
-		case "smithy":
-			return {
-				size: [13, 9],
-				floor: T.floorStone,
-				wall: T.stoneWall,
-				furnishings: [
-					{ decor: D.anvil, count: 1, anchor: "counter" },
-					{ decor: D.hearth, count: 1, anchor: "hearth" },
-					{ decor: D.crate, count: 2 },
-					{ decor: D.barrel, count: 1 },
-				],
-			};
-		case "temple":
-		case "shrine":
-			return {
-				size: [15, 11],
-				floor: T.floorStone,
-				wall: T.stoneWall,
-				furnishings: [
-					{ decor: D.statue, count: 1, anchor: "hearth" },
-					{ decor: D.bench, count: 6 },
-					{ decor: D.lamp, count: 2 },
-				],
-			};
-		case "barracks":
-			return {
-				size: [15, 11],
-				floor: T.floorStone,
-				wall: T.stoneWall,
-				furnishings: [
-					{ decor: D.bed, count: 6 },
-					{ decor: D.crate, count: 2 },
-					{ decor: D.hearth, count: 1, anchor: "hearth" },
-				],
-			};
-		case "tower":
-			// The one building that is *mostly* vertical. Small rooms, three of them, and
-			// the top one is where anything worth climbing for is kept.
-			return {
-				size: [9, 9],
-				floor: T.floorStone,
-				wall: T.stoneWall,
-				furnishings: [
-					{ decor: D.crate, count: 2 },
-					{ decor: D.barrel, count: 2 },
-					{ decor: D.hearth, count: 1, anchor: "hearth" },
-				],
-				floors: 3,
-				upstairs: [
-					{ decor: D.table, count: 1, anchor: "counter" },
-					{ decor: D.shelf, count: 2 },
-					{ decor: D.chest, count: 1, anchor: "backroom" },
-					{ decor: D.chair, count: 1 },
-				],
-			};
-		case "warehouse":
-		case "barn":
-		case "stable":
-			return {
-				size: [15, 11],
-				floor: T.floorWood,
-				wall: T.woodWall,
-				furnishings: [
-					{ decor: D.crate, count: 8 },
-					{ decor: D.barrel, count: 6 },
-				],
-			};
-		case "mill":
-			// A mill used to fall through to the household plan — a hearth, two beds
-			// and a shelf — so the one building most likely to be sent an errand about
-			// had nothing in it and did not read as a mill either.
-			return {
-				size: [13, 11],
-				floor: T.floorStone,
-				wall: T.woodWall,
-				furnishings: [
-					{ decor: D.counter, count: 1, anchor: "counter" },
-					{ decor: D.crate, count: 4 },
-					{ decor: D.barrel, count: 3 },
-					{ decor: D.shelf, count: 2 },
-				],
-				floors: 2,
-				upstairs: [
-					{ decor: D.crate, count: 5 },
-					{ decor: D.barrel, count: 3 },
-				],
-			};
-		case "ruin":
-			return {
-				size: [11, 9],
-				floor: T.rubble,
-				wall: T.stoneWall,
-				furnishings: [{ decor: D.chest, count: 1 }],
-			};
-		default:
-			return {
-				size: [11, 9],
-				floor: T.floorWood,
-				wall: T.woodWall,
-				furnishings: [
-					{ decor: D.hearth, count: 1, anchor: "hearth" },
-					{ decor: D.bed, count: 2 },
-					{ decor: D.table, count: 1 },
-					{ decor: D.chair, count: 2 },
-					{ decor: D.shelf, count: 1 },
-				],
-			};
-	}
+	return structureDef(kind).plan;
 }
 
 function buildComplex(seed: number, interiorId: number, kind: StructureKind): readonly Interior[] {

@@ -301,11 +301,6 @@ export class Director {
 	}
 
 	private materialiseFallback(site: MacroSite): SiteSpec {
-		return fallbackSite(
-			this.options.world.seed,
-			site,
-			siteContext(this.options.world, site),
-			this.pack,
-		);
+		return fallbackSite(this.options.world, site, siteContext(this.options.world, site), this.pack);
 	}
 }

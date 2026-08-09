@@ -1,3 +1,4 @@
+import { DEFAULT_GOODS } from "./goods.js";
 import type { ContentPack } from "./pack.js";
 
 /**
@@ -199,4 +200,5 @@ export const DEFAULT_PACK: ContentPack = {
 		"Somewhere behind you, a bird you cannot name calls twice and stops.",
 		"The road here is older than anything built beside it.",
 	],
+	goods: DEFAULT_GOODS,
 };

@@ -1,9 +1,11 @@
 import { MODELS } from "../../config.js";
+import { DEFAULT_PACK } from "../../core/content/default.js";
+import { mergePack, type PackOverride } from "../../core/content/pack.js";
 import type { ArcEnding, ScenarioArc, ScenarioBeat } from "../../core/rules/arc.js";
 import type { Placement } from "../../core/rules/placement.js";
 import type { QuestObjective } from "../../core/rules/state.js";
 import type { ScenarioBrief } from "../../core/world/brief.js";
-import { type WorldRecipe, worldSeed } from "../../core/world/recipe.js";
+import { mergeRecipe, type WorldRecipe, worldSeed } from "../../core/world/recipe.js";
 import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 import { npcId } from "../../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "../../scenario/artifact.js";
@@ -62,6 +64,19 @@ export interface AuthorOptions {
 	readonly seed: number;
 	/** How the world generates, beyond the seed. */
 	readonly recipe?: WorldRecipe;
+	/**
+	 * The content pack this scenario is being written for.
+	 *
+	 * Needed here rather than only at play time because a pack has two halves. The
+	 * cosmetic half names the people a place with no model gets; the recipe fragment says
+	 * what the place is built out of. Attaching the pack to the artifact afterwards —
+	 * which is what `generate.ts` did, and all it could do — meant a Camelot world was
+	 * surveyed, plotted and populated as an ordinary one and then handed a Camelot
+	 * vocabulary at the door.
+	 */
+	readonly pack?: PackOverride;
+	/** What that pack is called, for the artifact to point at. */
+	readonly packName?: string;
 	/** Model calls in flight at once. */
 	readonly concurrency?: number;
 	/** Skip the per-NPC dialogue pass, which is most of the cost. */
@@ -180,7 +195,13 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	// Free apart from the reachability sweep below, which is one generation of the whole
 	// bounded world — the same work the validator does at the end, done first so the story
 	// is never plotted somewhere it would then be refused.
+	// The pack's recipe fragment goes under whatever the caller asked for, so a scenario
+	// that names a pack *and* states a climate keeps its own climate. Folded in before
+	// the survey, because everything after this point is measured against the world it
+	// produces — see `PackOverride.world` for why it cannot be consulted later.
+	recipe = mergeRecipe(options.pack?.world, recipe);
 	const world = worldSeed(options.seed, recipe);
+	const pack = mergePack(DEFAULT_PACK, options.pack);
 	const survey = surveyWorld(world, options.brief.duration);
 	// Which of them the player can actually get to. A straight line is the right measure
 	// for ordering a story outward and the wrong one for deciding a place can be visited:
@@ -309,7 +330,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 					})),
 					hooks: response.hooks,
 				}
-			: fallbackSite(options.seed, entry.site, entry.context);
+			: fallbackSite(world, entry.site, entry.context, pack);
 	});
 	say(`populated ${Object.keys(sites).length} places`);
 	stopIfAsked("the places");
@@ -402,6 +423,12 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		blurb: arc?.premise ?? lore.premise,
 		brief: options.brief,
 		seed: options.seed,
+		// Named here rather than stapled on by `generate.ts` afterwards, because the
+		// repair loop below validates this artifact several times and `goodsFor` needs
+		// something to resolve. A world authored against a pack's catalogue and then
+		// checked against the built-in one is the exact disagreement `obtainableItems`
+		// exists to prevent.
+		...(options.packName ? { pack: options.packName } : {}),
 		...(recipe ? { recipe } : {}),
 		spawn: survey.spawn,
 		bounds: survey.bounds,

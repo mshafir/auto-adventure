@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { WorldLoreSchema } from "../../ai/director/schemas.js";
+import { WorldRecipeSchema } from "../world/recipe-schema.js";
 
 /**
  * Validation for a pack an author wrote.
@@ -27,6 +28,36 @@ const HouseholdSchema = z.object({
 	roles: z.array(z.string().min(1).max(40)).max(12),
 });
 
+/**
+ * A thing and its one line, as a pack writes one.
+ *
+ * The description is not decoration: it is what the examine verb prints and what
+ * `basePrice` reads for its keyword hints, so an item with an empty one is an item that
+ * costs the base price and reads as a bug.
+ */
+const GoodsEntrySchema = z.tuple([z.string().min(1).max(60), z.string().min(1).max(200)]);
+
+const GoodsTableSchema = z.record(z.string().min(1), z.array(GoodsEntrySchema).max(24));
+
+const TradeSchema = z
+	.object({
+		kind: z.string().min(1).max(40),
+		roles: z.array(z.string().min(1).max(40)).min(1).max(16),
+	})
+	.strict();
+
+const GoodsOverrideSchema = z
+	.object({
+		stores: GoodsTableSchema.optional(),
+		catalogue: GoodsTableSchema.optional(),
+		trades: z.array(TradeSchema).max(24).optional(),
+		yields: GoodsTableSchema.optional(),
+		// A ground that always yields is a shop, and one that never does is scenery an
+		// errand may still be written about. Neither end is refused, only bounded.
+		forageChance: z.record(z.string().min(1), z.number().min(0).max(1)).optional(),
+	})
+	.strict();
+
 export const PackOverrideSchema = z.object({
 	id: z
 		.string()
@@ -34,6 +65,10 @@ export const PackOverrideSchema = z.object({
 		.max(48)
 		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case slug")
 		.optional(),
+	// The one table that is not cosmetic. Validated by the recipe's own schema rather
+	// than by a copy of it, so a pack cannot ask the generator for something a recipe
+	// file could not.
+	world: WorldRecipeSchema.optional(),
 	names: z
 		.object({
 			given: words(24).optional(),
@@ -61,6 +96,7 @@ export const PackOverrideSchema = z.object({
 	wanderers: z.array(OutdoorRoleSchema).max(12).optional(),
 	lore: WorldLoreSchema.optional(),
 	ambient: z.array(z.string().min(1).max(200)).max(12).optional(),
+	goods: GoodsOverrideSchema.optional(),
 });
 
 /**
@@ -94,4 +130,13 @@ export const ContentPackSchema = z.object({
 	wanderers: z.array(OutdoorRoleSchema).max(12),
 	lore: WorldLoreSchema,
 	ambient: z.array(z.string().min(1).max(200)).max(12),
+	goods: z
+		.object({
+			stores: GoodsTableSchema,
+			catalogue: GoodsTableSchema,
+			trades: z.array(TradeSchema).max(24),
+			yields: GoodsTableSchema,
+			forageChance: z.record(z.string().min(1), z.number().min(0).max(1)),
+		})
+		.strict(),
 });

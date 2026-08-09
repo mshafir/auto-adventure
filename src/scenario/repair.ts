@@ -170,6 +170,10 @@ const REPAIRS: readonly ((artifact: ScenarioArtifact, ground: Ground) => RepairR
 	standTheCastSomewhereReal,
 	hideThingsWhereThereIsSomewhereToHideThem,
 	spellObjectivesAsTheWorldDoes,
+	// After the respelling, and that order matters: an item this would delete for not
+	// existing may simply have been written in the wrong words, and the two repairs
+	// disagree about which is the case only because one of them has not run yet.
+	dropErrandsForThingsThatDoNotExist,
 	dropObjectivesNothingCanTick,
 	dropOneArmedForks,
 	forgetPeopleWhoAreNotHere,
@@ -476,6 +480,58 @@ function dropObjectivesNothingCanTick(artifact: ScenarioArtifact): RepairResult 
 			if (tickable(objective, written)) continue;
 			repairs.push(
 				`"${beat.quest.name}" waited for "${objective.target}" to be set and nothing sets it; dropped that objective`,
+			);
+		}
+		return { ...beat, quest: { ...beat.quest, objectives } };
+	});
+
+	return beats.some((beat, index) => beat !== arc.beats[index])
+		? { artifact: { ...artifact, arc: { ...arc, beats } }, repairs }
+		: { artifact, repairs: [] };
+}
+
+/**
+ * Errands for a thing the world does not contain.
+ *
+ * The other half of {@link spellObjectivesAsTheWorldDoes}: that one fixes an item the
+ * world spells differently, and this one handles an item the world does not have under
+ * any spelling. Both used to be impossible to tell apart from here, because the goods
+ * were compiled in and therefore always the same — a `have` objective could only be wrong
+ * by being misspelt. Now that a pack may write its own catalogue, an errand can name
+ * something that was perfectly real in the world it was drafted against and is not in
+ * this one, and no amount of respelling will find it.
+ *
+ * Scoped to `have` on purpose. A `reach` or `talk` target that resolves to nothing is
+ * somebody standing in the wrong place, which `standTheCastSomewhereReal` moves rather
+ * than deletes; deleting those would throw away a scene to avoid moving a person.
+ *
+ * An errand left with no objectives at all is left alone, for the reason given above: one
+ * that closes the moment it is handed out is a different kind of wrong, and one a person
+ * should look at.
+ */
+function dropErrandsForThingsThatDoNotExist(
+	artifact: ScenarioArtifact,
+	ground: Ground,
+): RepairResult {
+	const arc = artifact.arc;
+	if (!arc) return { artifact, repairs: [] };
+	const repairs: string[] = [];
+	const terrainAt = (x: number, y: number) => terrainOf(ground.grid, x, y);
+
+	const beats = arc.beats.map((beat) => {
+		if (!beat.quest) return beat;
+		const surroundings = surroundingsFor(artifact, beat.siteId, ground.sites, terrainAt);
+		const missing = (objective: QuestObjective) =>
+			objective.kind === "have" &&
+			resolveObjectiveTarget(objective.kind, objective.target, surroundings) === undefined;
+
+		const objectives = beat.quest.objectives.filter((objective) => !missing(objective));
+		if (objectives.length === beat.quest.objectives.length) return beat;
+		if (objectives.length === 0) return beat;
+		for (const objective of beat.quest.objectives) {
+			if (!missing(objective)) continue;
+			repairs.push(
+				`"${beat.quest.name}" asked for "${objective.target}", which nothing here produces; dropped that objective`,
 			);
 		}
 		return { ...beat, quest: { ...beat.quest, objectives } };

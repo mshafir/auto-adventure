@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { StructureKind } from "../../core/gen/features/patch.js";
+import { authorableStructureKinds } from "../../core/gen/features/structures.js";
 import { cappedInt, cappedList, cappedText } from "../limits.js";
 
 /**
@@ -14,23 +16,21 @@ import { cappedInt, cappedList, cappedText } from "../limits.js";
  * Everything here has a deterministic counterpart in `fallback.ts`.
  */
 
-export const STRUCTURE_KINDS = [
-	"house",
-	"shop",
-	"inn",
-	"smithy",
-	"temple",
-	"barracks",
-	"tower",
-	"farmhouse",
-	"barn",
-	"warehouse",
-	"mill",
-	"stable",
-	"apothecary",
-	"ruin",
-	"shrine",
-] as const;
+/**
+ * The buildings an author may ask for, derived from the structure registry.
+ *
+ * This was a hand-maintained copy of `StructureKind` with one entry missing, and the
+ * missing entry was correct — `cave` is built by the cave feature, not asked for by a
+ * roster — but nothing said so and nothing checked it. A copy that is *deliberately*
+ * short by one is indistinguishable from a copy somebody forgot to update, and the
+ * symptom of the second is a scenario that validates and then generates a building with
+ * no plan behind it. `authorable` on the registered kind says which is which, in the one
+ * place that also says what the building is made of.
+ */
+export const STRUCTURE_KINDS = authorableStructureKinds() as readonly [
+	StructureKind,
+	...StructureKind[],
+];
 
 /** Anchors an NPC may stand at. Indoor anchors are excluded on purpose: NPCs
  * are placed in the open so the player can see and reach them without an

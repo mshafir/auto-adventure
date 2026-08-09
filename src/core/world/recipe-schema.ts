@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { StructureKind } from "../gen/features/patch.js";
+import { authorableStructureKinds } from "../gen/features/structures.js";
 import { TERRAIN, terrainByKey } from "../tiles/terrain.js";
 import { ALL_BIOMES } from "./biome.js";
 import { CHUNK, HALO } from "./coords.js";
@@ -125,10 +127,43 @@ const settledKind = z.enum(SETTLED_KINDS);
 // optional by definition.
 const weightTable = z.partialRecord(settledKind, z.number().min(0).max(40));
 
+/**
+ * Buildings a roster may ask for, from the structure registry.
+ *
+ * The registry rather than a list written here, for the reason `STRUCTURE_KINDS` is
+ * derived: a second copy of the kinds is a copy that can be wrong, and the symptom is a
+ * recipe that validates and then asks for a building with no plan behind it.
+ */
+const structureKind = z.enum(authorableStructureKinds() as [StructureKind, ...StructureKind[]]);
+
+/** Weighted `[kind, weight]` pairs, as both the roster and the filler are written. */
+const structureTable = z
+	.array(z.tuple([structureKind, z.number().min(0).max(100)]))
+	.min(1)
+	.max(24);
+
+const RosterRuleSchema = z
+	.object({
+		count: z
+			.object({
+				// Forty is far past what any footprint holds — the surplus specs are dropped
+				// when plots are assigned — so this is a guard against a typo costing a
+				// minute of generation, not a design limit.
+				base: z.number().int().min(0).max(40),
+				perImportance: z.number().min(0).max(8).optional(),
+			})
+			.strict(),
+		walled: z.union([z.boolean(), z.number().int().min(1).max(5)]).optional(),
+		structures: structureTable,
+	})
+	.strict();
+
 export const SiteRecipeSchema = z
 	.object({
 		weights: weightTable.optional(),
 		wildWeights: weightTable.optional(),
+		roster: z.partialRecord(settledKind, RosterRuleSchema).optional(),
+		filler: structureTable.optional(),
 		radius: z
 			.partialRecord(
 				settledKind,

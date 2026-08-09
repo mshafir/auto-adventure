@@ -1,5 +1,6 @@
 import { AuthoringStopped, type AuthorResult, authorScenario } from "../ai/author/author.js";
 import { resolveSeed } from "../config.js";
+import { resolveOverride } from "../content/load.js";
 import { logger } from "../utils/log.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { listScenarios, writeScenario } from "./repo.js";
@@ -58,12 +59,19 @@ export async function generateScenario(
 	const seed = resolveSeed(id);
 	logger.info(`generating scenario "${id}" seed ${seed}, ${request.brief.duration ?? "medium"}`);
 
+	const packOverride = request.pack ? resolveOverride(request.pack) : undefined;
+
 	let result: AuthorResult;
 	try {
 		result = await author({
 			id,
 			brief: request.brief,
 			seed,
+			// Read *before* authoring rather than attached after it. A pack has a recipe
+			// fragment in it, and a world that is surveyed and plotted before its pack is
+			// known has already decided everything the fragment had an opinion about.
+			...(packOverride ? { pack: packOverride } : {}),
+			...(request.pack ? { packName: request.pack } : {}),
 			...(deps.signal ? { signal: deps.signal } : {}),
 			onProgress: deps.onProgress,
 		});
@@ -83,6 +91,10 @@ export async function generateScenario(
 	const artifact: ScenarioArtifact = {
 		...result.artifact,
 		...(request.tiles ? { tiles: request.tiles } : {}),
+		// Restated rather than left to the author, which also sets it. The author needs it
+		// early, so the repair loop validates against the right catalogue; this is the
+		// boundary's own guarantee that what was asked for is what was written, and it
+		// holds even for an author that was injected and knows nothing about packs.
 		...(request.pack ? { pack: request.pack } : {}),
 		// Written only when they differ from the default, so an ordinary generated world's
 		// artifact stays the shape every hand-written one already has.

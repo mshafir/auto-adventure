@@ -45,7 +45,7 @@ function stubDirector(overrides: Partial<ConstructorParameters<typeof Director>[
 describe("deterministic fallbacks", () => {
 	it("names every settlement without a model", () => {
 		const site = findSite(SEED);
-		const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+		const spec = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
 		expect(spec.name).toMatch(/\S/);
 		expect(spec.shortName).toMatch(/\S/);
 		expect(spec.settlement.structures.length).toBeGreaterThan(0);
@@ -53,8 +53,8 @@ describe("deterministic fallbacks", () => {
 
 	it("produces the same spec twice", () => {
 		const site = findSite(SEED);
-		const a = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
-		const b = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+		const a = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
+		const b = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
 		expect(a).toEqual(b);
 	});
 
@@ -66,7 +66,7 @@ describe("deterministic fallbacks", () => {
 			for (let my = -4; my <= 4; my++) {
 				const site = macroSite(worldSeed(SEED), mx, my);
 				if (site.kind === "none") continue;
-				const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+				const spec = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
 				for (const structure of spec.settlement.structures) {
 					expect(STRUCTURE_KINDS).toContain(structure.kind);
 					expect(structure.importance).toBeGreaterThanOrEqual(1);
@@ -82,7 +82,7 @@ describe("deterministic fallbacks", () => {
 		// room for buildings must actually get them: a spec the generator quietly
 		// discards is the failure mode worth catching.
 		const site = findSite(SEED, ["town", "village"]);
-		const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+		const spec = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
 		const patch = generateSettlement(worldSeed(SEED), site, spec.settlement);
 		expect(patch.buildings.length).toBeGreaterThan(0);
 		for (const building of patch.buildings) {
@@ -92,7 +92,7 @@ describe("deterministic fallbacks", () => {
 
 	it("gives every fallback NPC a single-letter glyph and a placement", () => {
 		const site = findSite(SEED);
-		const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+		const spec = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
 		expect(spec.npcs.length).toBeGreaterThan(0);
 		for (const npc of spec.npcs) {
 			expect(npc.glyph).toMatch(/^[A-Z]$/);

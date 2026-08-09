@@ -104,7 +104,7 @@ export interface Survey {
 function buildsSomething(world: WorldSeed, site: MacroSite): boolean {
 	if (!featureKindFor(site.kind)) return true;
 	try {
-		const patch = generateFeature(world, site, fallbackSettlementSpec(world.seed, site));
+		const patch = generateFeature(world, site, fallbackSettlementSpec(world, site));
 		return !patch || patch.buildings.length > 0 || patch.anchors.length > 0;
 	} finally {
 		invalidateFeature(world, site.id);

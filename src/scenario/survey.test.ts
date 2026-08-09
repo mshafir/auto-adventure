@@ -201,7 +201,7 @@ describe("a world with landmarks asked for", () => {
 				const patch = generateFeature(
 					survey.world,
 					entry.site,
-					fallbackSettlementSpec(seed, entry.site),
+					fallbackSettlementSpec(survey.world, entry.site),
 				);
 				invalidateFeature(survey.world, entry.site.id);
 				if (!patch) continue;

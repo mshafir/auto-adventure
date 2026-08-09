@@ -1,7 +1,9 @@
 import { type Rng, rngFor } from "../../rand/rng.js";
-import type { MacroSite, SiteKind } from "../../world/macro.js";
+import type { MacroSite } from "../../world/macro.js";
+import type { RosterRule, WorldSeed } from "../../world/recipe.js";
 import type { StructureKind } from "./patch.js";
 import type { SettlementSpec, StructureSpec } from "./settlement.js";
+import { structureDef } from "./structures.js";
 
 /**
  * The settlement a place has when no LLM has described it.
@@ -10,117 +12,27 @@ import type { SettlementSpec, StructureSpec } from "./settlement.js";
  * is what lets the whole world be generated, played and tested offline. It is
  * also the value committed permanently when a director call fails, so a network
  * problem produces a plain village rather than a hole in the map.
+ *
+ * *What* a settlement is made of is no longer here: it is the recipe's
+ * {@link RosterRule}, so a scenario can say that its villages are three longhouses
+ * and a boat-shed. What stays is everything that is a property of the *structure*
+ * rather than of the place — how big a plot it wants and how badly it wants one —
+ * which no world has ever needed to disagree about.
  */
-const ROSTER: Readonly<Record<SiteKind, readonly (readonly [StructureKind, number])[]>> = {
-	town: [
-		["inn", 10],
-		["shop", 9],
-		["smithy", 7],
-		["temple", 5],
-		["apothecary", 4],
-		["warehouse", 4],
-		["stable", 3],
-		["house", 14],
-	],
-	village: [
-		["inn", 7],
-		["shop", 6],
-		["smithy", 5],
-		["mill", 3],
-		["house", 14],
-		["farmhouse", 6],
-	],
-	hamlet: [
-		["house", 14],
-		["farmhouse", 8],
-		["barn", 4],
-		["shop", 2],
-	],
-	fort: [
-		["barracks", 8],
-		["tower", 6],
-		["smithy", 4],
-		["stable", 3],
-		["warehouse", 3],
-	],
-	camp: [
-		["house", 4],
-		["stable", 1],
-	],
-	ruins: [["ruin", 10]],
-	landmark: [["shrine", 1]],
-	castle: [
-		["barracks", 8],
-		["tower", 7],
-		["smithy", 3],
-		["stable", 3],
-		["warehouse", 3],
-		["temple", 2],
-	],
-	docks: [
-		["warehouse", 8],
-		["inn", 4],
-		["shop", 3],
-		["house", 6],
-	],
-	// A cave is a mouth and a volume behind it. Nothing is built on the surface, so
-	// the roster is empty and the feature's own generator does all the work.
-	cave: [],
-	none: [],
-};
+function structureCount(rule: RosterRule, importance: number): number {
+	return rule.count.base + Math.floor((rule.count.perImportance ?? 0) * importance);
+}
 
-const SIZE_BY_KIND: Readonly<Partial<Record<StructureKind, "small" | "medium" | "large">>> = {
-	temple: "large",
-	barracks: "large",
-	warehouse: "large",
-	barn: "large",
-	inn: "medium",
-	smithy: "medium",
-	shop: "medium",
-	mill: "medium",
-	tower: "small",
-};
-
-const IMPORTANCE_BY_KIND: Readonly<Partial<Record<StructureKind, number>>> = {
-	temple: 5,
-	inn: 5,
-	barracks: 5,
-	smithy: 4,
-	shop: 4,
-	apothecary: 4,
-	mill: 3,
-	tower: 3,
-	warehouse: 2,
-	stable: 2,
-	barn: 2,
-	farmhouse: 1,
-	house: 1,
-};
-
-function structureCount(site: MacroSite): number {
-	switch (site.kind) {
-		case "town":
-			return 9 + site.importance;
-		case "village":
-			return 6 + Math.floor(site.importance / 2);
-		case "fort":
-			return 4 + Math.floor(site.importance / 2);
-		case "hamlet":
-			return 3 + Math.floor(site.importance / 2);
-		case "castle":
-			return 5 + site.importance;
-		case "docks":
-			return 4 + Math.floor(site.importance / 2);
-		case "camp":
-			return 2;
-		case "ruins":
-			return 3;
-		case "landmark":
-			return 1;
-		case "cave":
-		case "none":
-			return 0;
-	}
+/**
+ * Whether this place has a wall round it.
+ *
+ * `true` is unconditional and a number is a threshold on importance, which is the
+ * difference between a fort — walled because it is a fort — and a town, walled once
+ * it is big enough to be worth the stone.
+ */
+function walled(rule: RosterRule, importance: number): boolean {
+	if (typeof rule.walled === "number") return importance >= rule.walled;
+	return rule.walled === true;
 }
 
 function pick(rng: Rng, table: readonly (readonly [StructureKind, number])[]): StructureKind {
@@ -129,23 +41,29 @@ function pick(rng: Rng, table: readonly (readonly [StructureKind, number])[]): S
 	return table[index]?.[0] ?? "house";
 }
 
-export function fallbackSettlementSpec(seed: number, site: MacroSite): SettlementSpec {
-	const rng = rngFor(seed, "fallback-spec", site.mx, site.my);
-	const table = ROSTER[site.kind];
-	const count = structureCount(site);
+/**
+ * Takes the whole world rather than the seed alone.
+ *
+ * The roster lives in the recipe now, and a caller holding only a seed would silently
+ * build every settlement from the defaults while looking like it agreed with the world
+ * around it. Widening the parameter makes that a compile error at every call site
+ * instead — the same reasoning that bundled the seed and the rules into
+ * {@link WorldSeed} in the first place.
+ */
+export function fallbackSettlementSpec(world: WorldSeed, site: MacroSite): SettlementSpec {
+	const rng = rngFor(world.seed, "fallback-spec", site.mx, site.my);
+	// `none` is the absence of a site rather than a kind of one, so it has no rule and
+	// builds nothing. Everything else is guaranteed a rule by `resolveRecipe`.
+	const rule = site.kind === "none" ? undefined : world.rules.sites.roster[site.kind];
+	if (!rule) return { walled: false, structures: [] };
+	const count = structureCount(rule, site.importance);
 
 	const structures: StructureSpec[] = [];
 	for (let i = 0; i < count; i++) {
-		const kind = pick(rng, table);
-		structures.push({
-			kind,
-			size: SIZE_BY_KIND[kind] ?? "small",
-			importance: IMPORTANCE_BY_KIND[kind] ?? 1,
-		});
+		const kind = pick(rng, rule.structures);
+		const def = structureDef(kind);
+		structures.push({ kind, size: def.size, importance: def.importance });
 	}
 
-	return {
-		walled: site.kind === "fort" || (site.kind === "town" && site.importance >= 4),
-		structures,
-	};
+	return { walled: walled(rule, site.importance), structures };
 }

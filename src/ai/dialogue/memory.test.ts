@@ -151,7 +151,7 @@ describe("npc memory records", () => {
 describe("offline conversation", () => {
 	it("holds a real conversation and remembers it afterwards", async () => {
 		const site = findTown(SEED);
-		const spec = fallbackSite(SEED, site, siteContext(worldSeed(SEED), site));
+		const spec = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
 		const engine = new GameEngine(
 			createInitialState(
 				{ id: "t", name: "t", seed: SEED, createdAt: "2026-01-01T00:00:00.000Z" },

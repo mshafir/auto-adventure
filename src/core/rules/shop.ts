@@ -1,3 +1,4 @@
+import { DEFAULT_GOODS, type GoodsTables } from "../content/goods.js";
 import type { StructureKind } from "../gen/features/patch.js";
 import { hashString } from "../rand/hash.js";
 import { rngFor } from "../rand/rng.js";
@@ -68,57 +69,20 @@ export function sellPrice(base: number, disposition: number): number {
 	return Math.max(1, Math.round(base * adjustment));
 }
 
-/** Structure kinds that hold stock at all. */
-export function sellsGoods(kind: StructureKind | string): boolean {
-	return (
-		kind === "shop" ||
-		kind === "smithy" ||
-		kind === "apothecary" ||
-		kind === "inn" ||
-		kind === "stable" ||
-		kind === "warehouse"
-	);
+/**
+ * Structure kinds that hold stock at all.
+ *
+ * A kind with a catalogue is a kind that trades, rather than six names written down
+ * again. The default tables list exactly those six, so nothing about an ordinary world
+ * changes — but a pack that adds a `fletcher` catalogue now gets a fletcher who sells
+ * things, where before this said no and there was nowhere to say otherwise.
+ */
+export function sellsGoods(
+	kind: StructureKind | string,
+	goods: GoodsTables = DEFAULT_GOODS,
+): boolean {
+	return goods.catalogue[kind] !== undefined;
 }
-
-const CATALOGUE: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
-	shop: [
-		["Coil of Rope", "Forty feet of it, waxed against the wet."],
-		["Tallow Candles", "A bundle of six. They smell of the rendering shed."],
-		["Tin Lantern", "Dented, but the shutter still works."],
-		["Travelling Cloak", "Heavy wool, patched at one shoulder."],
-		["Iron Nails", "A twist of paper holding two dozen."],
-		["Flint and Steel", "Struck often enough to have worn a groove."],
-	],
-	smithy: [
-		["Hand Axe", "Well balanced, meant for wood rather than war."],
-		["Iron Knife", "Plain, sharp, and honestly made."],
-		["Horseshoe", "Fitted for a heavy animal."],
-		["Steel Sword", "Second-hand. Somebody's initials are on the pommel."],
-		["Chain Shirt", "Rust has been scoured off it more than once."],
-	],
-	apothecary: [
-		["Bitterroot Salve", "Smells terrible. Closes a cut in a day."],
-		["Fever Draught", "Cloudy, and warm to the touch."],
-		["Dried Yarrow", "A paper packet, tied with thread."],
-		["Sleeping Tincture", "Three drops. No more, the label insists."],
-	],
-	inn: [
-		["Loaf and Cheese", "Yesterday's bread, today's cheese."],
-		["Skin of Ale", "Thin, but cold."],
-		["Bowl of Stew", "Mostly turnip. Filling."],
-		["A Bed for the Night", "Straw mattress, shared room, no questions."],
-	],
-	stable: [
-		["Bag of Oats", "Enough for a week on the road."],
-		["Leather Halter", "Softened with use."],
-		["Saddle Blanket", "Faded to no colour at all."],
-	],
-	warehouse: [
-		["Crate of Salt", "Heavy, and worth carrying anyway."],
-		["Bolt of Linen", "Unbleached. Sold by the ell."],
-		["Barrel Hoops", "Six of them, banded together."],
-	],
-};
 
 /**
  * What this shop has today.
@@ -127,8 +91,14 @@ const CATALOGUE: Readonly<Record<string, readonly (readonly [string, string])[]>
  * the player walks in and the same after a reload — the shop is part of the
  * world, not a roll made when the panel opens.
  */
-export function shopStock(seed: number, siteId: number, slot: number, kind: string): StockItem[] {
-	const catalogue = CATALOGUE[kind] ?? CATALOGUE.shop ?? [];
+export function shopStock(
+	seed: number,
+	siteId: number,
+	slot: number,
+	kind: string,
+	goods: GoodsTables = DEFAULT_GOODS,
+): StockItem[] {
+	const catalogue = goods.catalogue[kind] ?? goods.catalogue.shop ?? [];
 	if (catalogue.length === 0) return [];
 
 	const rng = rngFor(seed, "shop:stock", siteId, slot);
@@ -155,16 +125,23 @@ export function shopStock(seed: number, siteId: number, slot: number, kind: stri
  * has to know which item names exist before a quest may ask for one, need the same
  * answer — and two copies of this mapping would drift.
  */
-const TRADES: readonly (readonly [RegExp, string])[] = [
-	[/\b(smith|blacksmith|farrier|armou?rer)\b/i, "smithy"],
-	[/\b(apothecary|herbalist|healer|physician)\b/i, "apothecary"],
-	[/\b(innkeep|inn|tavern|cook|baker)\b/i, "inn"],
-	[/\b(stable|ostler|groom)\b/i, "stable"],
-	[/\b(factor|warehouse|quartermaster)\b/i, "warehouse"],
-	[/\b(shop|merchant|trader|pedlar|peddler|grocer|chandler)\b/i, "shop"],
-];
-
-export function tradeKind(role: string): string | undefined {
-	for (const [pattern, kind] of TRADES) if (pattern.test(role)) return kind;
-	return sellsGoods(role) ? role : undefined;
+export function tradeKind(role: string, goods: GoodsTables = DEFAULT_GOODS): string | undefined {
+	const words = new Set(
+		role
+			.toLowerCase()
+			.split(/[^a-z]+/)
+			.filter(Boolean),
+	);
+	for (const trade of goods.trades) {
+		if (trade.roles.some((word) => words.has(word))) return trade.kind;
+	}
+	// A role that names a catalogue outright trades from it, whether or not anybody
+	// wrote a pattern for it. This is the half that was missing: the old fall-back
+	// tested the *whole* role string against six hard-coded kinds, so "the village
+	// fletcher" matched nothing even in a pack that had gone to the trouble of writing a
+	// fletcher's catalogue — the fletcher sold nothing, and because `obtainableItems`
+	// reads shop stock, no errand could name their wares either. A pack adds a trade by
+	// adding a catalogue, which is the one thing it was always going to do anyway.
+	for (const word of words) if (goods.catalogue[word]) return word;
+	return undefined;
 }

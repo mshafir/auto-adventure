@@ -5,6 +5,7 @@ import { rngFor } from "../../core/rand/rng.js";
 import type { RegionContext, SiteContext } from "../../core/world/context.js";
 import type { MacroSite } from "../../core/world/macro.js";
 import { personName, placeName, regionName } from "../../core/world/names.js";
+import type { WorldSeed } from "../../core/world/recipe.js";
 import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 
 /**
@@ -40,12 +41,13 @@ export function fallbackRegion(
 }
 
 export function fallbackSite(
-	seed: number,
+	world: WorldSeed,
 	site: MacroSite,
 	context: SiteContext,
 	pack: ContentPack = DEFAULT_PACK,
 ): SiteSpec {
-	const settlement = fallbackSettlementSpec(seed, site);
+	const seed = world.seed;
+	const settlement = fallbackSettlementSpec(world, site);
 	const name = placeName(seed, site.id, site.kind, context.biome, pack);
 	const rng = rngFor(seed, "fallback-npcs", site.mx, site.my);
 

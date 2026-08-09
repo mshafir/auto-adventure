@@ -1,3 +1,4 @@
+import type { StructureKind } from "../gen/features/patch.js";
 import type { TerrainId } from "../tiles/terrain.js";
 import { type BiomeDef, type BiomeId, DEFAULT_BIOME_TABLE } from "./biome-table.js";
 import { CHUNK } from "./coords.js";
@@ -105,6 +106,62 @@ export interface SiteRecipe {
 	readonly civilizationFloor?: number;
 	/** Above this slope, likewise. */
 	readonly maxSlope?: number;
+	/**
+	 * What each kind of settlement is built out of, when nobody has written it down.
+	 *
+	 * This is the table that decides what every unauthored place in the world is made
+	 * of, and until it lived here there was no way to say anything about it: a pack
+	 * could rename the smith and rewrite what he talked about, and every hamlet was
+	 * still fourteen houses to eight farmhouses to four barns. A pack-swapped world
+	 * read as the same world with different labels on it.
+	 *
+	 * It belongs to the *recipe* rather than to the content pack, and the reason is
+	 * mechanical rather than editorial. A roster changes what the generator builds, and
+	 * `generateFeature` caches patches under {@link worldKey} — the seed and the recipe
+	 * and nothing else. A roster carried by the pack would be a town generated under one
+	 * pack and served, from cache, to a world opened under another. The recipe is
+	 * already hashed into that key, so putting it here makes the cache correct for free
+	 * instead of making it an argument. A pack that wants a say ships a recipe fragment,
+	 * which is folded in before the world is resolved.
+	 */
+	readonly roster?: Partial<Record<SettledKind, RosterRule>>;
+	/**
+	 * What fills a plot nobody asked for.
+	 *
+	 * Separate from {@link roster} because it is consulted for a different reason: a
+	 * settlement whose spec named fewer structures than the ground had room for. Filling
+	 * from the site's own roster would arguably be better — a fort padded with barracks
+	 * rather than with cottages — but it is a change to what every world generates, so it
+	 * is a decision for an author to write down rather than one to make on their behalf.
+	 */
+	readonly filler?: readonly (readonly [StructureKind, number])[];
+}
+
+/**
+ * One kind of settlement, as a recipe writes it.
+ *
+ * The three questions `fallback-spec.ts` used to answer with a table, a switch and an
+ * expression: how many buildings, whether there is a wall round them, and what they are.
+ */
+export interface RosterRule {
+	/**
+	 * How many structures: `base + floor(perImportance * importance)`.
+	 *
+	 * A formula rather than a flat number because importance is what separates a
+	 * hamlet of four cottages from one of six, and expressing that as a rule keeps the
+	 * shape of the old `switch` — where a town grew by one building per point and a
+	 * village by one per two — instead of flattening it away.
+	 */
+	readonly count: { readonly base: number; readonly perImportance?: number };
+	/**
+	 * Whether a wall goes round it. A number means "at this importance and above".
+	 *
+	 * A fort is walled because it is a fort; a town is walled once it is big enough to
+	 * be worth walling. Those are two different statements and the type says so.
+	 */
+	readonly walled?: boolean | number;
+	/** Weighted, and drawn from with replacement: `[kind, weight]`. */
+	readonly structures: readonly (readonly [StructureKind, number])[];
 }
 
 /** Every site kind except `none`, which is the absence of one. */
@@ -164,6 +221,63 @@ export interface ZoneRecipe {
 	readonly scatter?: number;
 }
 
+/**
+ * Lay one recipe over another.
+ *
+ * This exists for exactly one caller: a content pack that ships a recipe fragment. A
+ * pack is the natural place to say what a world is *made of* — a Camelot pack knows its
+ * villages are longhouses — but a roster changes what the generator builds, and a pack
+ * cannot be allowed near that at *runtime* because {@link worldKey} does not carry it.
+ * So the fragment is folded in here, once, before the world is resolved: from that point
+ * on it is part of the recipe, it hashes into the key like everything else, and it is
+ * persisted into the artifact. A scenario built with a pack replays correctly even if the
+ * pack is gone, because the part of it that shaped the map is no longer in the pack.
+ *
+ * The scenario wins over the pack, section by section. A scenario that names a pack and
+ * then says something itself is correcting the pack, not being overridden by it.
+ *
+ * Maps merge by key and lists replace, the same two rules `mergePack` documents at
+ * length: an author who rewrites the village roster expects the hamlet's to survive, and
+ * one who writes `places` means these are the places.
+ */
+export function mergeRecipe(
+	base: WorldRecipe | undefined,
+	over: WorldRecipe | undefined,
+): WorldRecipe | undefined {
+	if (!base) return over;
+	if (!over) return base;
+
+	const sites =
+		base.sites || over.sites
+			? {
+					...base.sites,
+					...stripUndefined(over.sites),
+					...(base.sites?.weights || over.sites?.weights
+						? { weights: { ...base.sites?.weights, ...over.sites?.weights } }
+						: {}),
+					...(base.sites?.wildWeights || over.sites?.wildWeights
+						? { wildWeights: { ...base.sites?.wildWeights, ...over.sites?.wildWeights } }
+						: {}),
+					...(base.sites?.radius || over.sites?.radius
+						? { radius: { ...base.sites?.radius, ...over.sites?.radius } }
+						: {}),
+					...(base.sites?.roster || over.sites?.roster
+						? { roster: { ...base.sites?.roster, ...over.sites?.roster } }
+						: {}),
+				}
+			: undefined;
+
+	return {
+		...(base.climate || over.climate
+			? { climate: { ...base.climate, ...stripUndefined(over.climate) } }
+			: {}),
+		...(base.biomes || over.biomes ? { biomes: { ...base.biomes, ...over.biomes } } : {}),
+		...(sites ? { sites } : {}),
+		...((over.places ?? base.places) ? { places: over.places ?? base.places } : {}),
+		...((over.zones ?? base.zones) ? { zones: over.zones ?? base.zones } : {}),
+	};
+}
+
 // --- resolved ---------------------------------------------------------------
 
 /**
@@ -204,6 +318,8 @@ export interface ResolvedSites {
 	readonly maxImportance: number;
 	readonly civilizationFloor: number;
 	readonly maxSlope: number;
+	readonly roster: Readonly<Record<SettledKind, RosterRule>>;
+	readonly filler: readonly (readonly [StructureKind, number])[];
 }
 
 /**
@@ -284,6 +400,104 @@ const DEFAULT_RADIUS: Record<SettledKind, RadiusRule> = {
 };
 
 /**
+ * What a settlement is made of, before a recipe has its say.
+ *
+ * Lifted verbatim out of `fallback-spec.ts`, weights and counts both, so a world with
+ * no recipe generates the settlements it always did. The `count` formulas are the old
+ * `structureCount` switch read back as arithmetic: `floor(1 * importance)` is the town's
+ * `+ importance` and `floor(0.5 * importance)` is the village's `+ importance / 2`.
+ *
+ * A cave is a mouth and a volume behind it. Nothing is built on the surface, so its
+ * roster is empty and the feature's own generator does all the work.
+ */
+const DEFAULT_ROSTER: Record<SettledKind, RosterRule> = {
+	town: {
+		count: { base: 9, perImportance: 1 },
+		walled: 4,
+		structures: [
+			["inn", 10],
+			["shop", 9],
+			["smithy", 7],
+			["temple", 5],
+			["apothecary", 4],
+			["warehouse", 4],
+			["stable", 3],
+			["house", 14],
+		],
+	},
+	village: {
+		count: { base: 6, perImportance: 0.5 },
+		structures: [
+			["inn", 7],
+			["shop", 6],
+			["smithy", 5],
+			["mill", 3],
+			["house", 14],
+			["farmhouse", 6],
+		],
+	},
+	hamlet: {
+		count: { base: 3, perImportance: 0.5 },
+		structures: [
+			["house", 14],
+			["farmhouse", 8],
+			["barn", 4],
+			["shop", 2],
+		],
+	},
+	fort: {
+		count: { base: 4, perImportance: 0.5 },
+		walled: true,
+		structures: [
+			["barracks", 8],
+			["tower", 6],
+			["smithy", 4],
+			["stable", 3],
+			["warehouse", 3],
+		],
+	},
+	camp: {
+		count: { base: 2 },
+		structures: [
+			["house", 4],
+			["stable", 1],
+		],
+	},
+	ruins: { count: { base: 3 }, structures: [["ruin", 10]] },
+	landmark: { count: { base: 1 }, structures: [["shrine", 1]] },
+	castle: {
+		count: { base: 5, perImportance: 1 },
+		structures: [
+			["barracks", 8],
+			["tower", 7],
+			["smithy", 3],
+			["stable", 3],
+			["warehouse", 3],
+			["temple", 2],
+		],
+	},
+	docks: {
+		count: { base: 4, perImportance: 0.5 },
+		structures: [
+			["warehouse", 8],
+			["inn", 4],
+			["shop", 3],
+			["house", 6],
+		],
+	},
+	cave: { count: { base: 0 }, structures: [] },
+};
+
+/** Weighted filler used when a spec has fewer structures than there are plots. */
+const DEFAULT_FILLER: readonly (readonly [StructureKind, number])[] = [
+	["house", 10],
+	["farmhouse", 3],
+	["barn", 2],
+	["stable", 1],
+	["warehouse", 1],
+];
+
+/**
  * The order kinds are consumed from the roll.
  *
  * Fixed rather than derived from the weights object, because object key order is a
@@ -345,6 +559,12 @@ export function resolveRecipe(recipe?: WorldRecipe): WorldRules {
 		maxImportance: recipe?.sites?.maxImportance ?? 5,
 		civilizationFloor: recipe?.sites?.civilizationFloor ?? 0.16,
 		maxSlope: recipe?.sites?.maxSlope ?? 0.035,
+		// Merged per kind rather than per field: an author who rewrites the village is
+		// saying what a village is, not adjusting one number about it, and inheriting
+		// half the default village's structures under their own count would produce a
+		// place neither of them described.
+		roster: { ...DEFAULT_ROSTER, ...stripUndefined(recipe?.sites?.roster) },
+		filler: recipe?.sites?.filler ?? DEFAULT_FILLER,
 	};
 
 	const places = new Map<string, PlaceRecipe>();

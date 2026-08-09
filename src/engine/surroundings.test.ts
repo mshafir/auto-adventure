@@ -28,7 +28,7 @@ function findTown(seed: number): MacroSite {
 function townEngine(name: string) {
 	const seed = hashString(name);
 	const site = findTown(seed);
-	const spec = fallbackSite(seed, site, siteContext(worldSeed(seed), site));
+	const spec = fallbackSite(worldSeed(seed), site, siteContext(worldSeed(seed), site));
 	const engine = new GameEngine(
 		createInitialState(
 			{ id: "t", name: "t", seed, createdAt: "2026-01-01T00:00:00.000Z" },
