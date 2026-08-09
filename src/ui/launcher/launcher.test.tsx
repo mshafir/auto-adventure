@@ -46,6 +46,10 @@ interface Mounted {
 	readonly requested: GenerateRequest[];
 	readonly quits: number[];
 	readonly deleted: string[];
+	/** Keys the options page asked to be saved. An empty string is a forgetting. */
+	readonly keys: string[];
+	/** Model ids the launcher asked to be remembered, from either page that sets one. */
+	readonly models: string[];
 }
 
 function mount(
@@ -58,19 +62,44 @@ function mount(
 		contentPacks?: string[];
 		columns?: number;
 		rows?: number;
+		/** Absent means no Options page at all, which is the headless case. */
+		gatewayKey?: string;
+		keyFromEnv?: boolean;
+		modelSet?: string;
+		withOptions?: boolean;
 	} = {},
 ): Mounted {
 	const chosen: LaunchChoice[] = [];
 	const requested: GenerateRequest[] = [];
 	const quits: number[] = [];
 	const deleted: string[] = [];
+	const keys: string[] = [];
+	const models: string[] = [];
 	const saves = options.saves ?? [SAVE];
+	const wantsOptions = options.withOptions ?? true;
+	const canUseModel = options.canUseModel ?? true;
+	// The launcher takes a live world to be on offer when it holds a key, so a
+	// fixture that says a model is usable has to hold one. That is the real
+	// configuration: `pickLaunch` never passes one without the other.
+	const key = options.gatewayKey ?? (canUseModel ? "vck_launcher_test_key" : undefined);
 	const ink = renderInk(
 		<Launcher
 			saves={saves}
 			scenarios={options.scenarios ?? [SCENARIO]}
-			canUseModel={options.canUseModel ?? true}
+			canUseModel={canUseModel}
 			{...(options.unavailableNote ? { unavailableNote: options.unavailableNote } : {})}
+			{...(wantsOptions
+				? {
+						options: {
+							...(key ? { gatewayKey: key } : {}),
+							...(options.keyFromEnv ? { keyFromEnv: true } : {}),
+							...(options.modelSet ? { modelSet: options.modelSet } : {}),
+							settingsPath: "/home/somebody/.auto-adventure/settings.json",
+							onSaveKey: (key) => keys.push(key),
+							onChooseModel: (id) => models.push(id),
+						},
+					}
+				: {})}
 			context={{ saves, baseWorldId: "default", noAi: false }}
 			tilePacks={options.tilePacks ?? []}
 			contentPacks={options.contentPacks ?? []}
@@ -85,7 +114,7 @@ function mount(
 			...(options.rows !== undefined ? { rows: options.rows } : {}),
 		},
 	);
-	return { ink, chosen, requested, quits, deleted };
+	return { ink, chosen, requested, quits, deleted, keys, models };
 }
 
 /**
@@ -654,5 +683,188 @@ describe("continuing a world", () => {
 			expect(m.ink.screen(), `${rows} rows`).toContain("ESC back");
 			m.ink.unmount();
 		}
+	});
+});
+
+/** From the title screen onto the Options page. */
+async function toOptions(m: Mounted) {
+	await m.ink.settle();
+	await toRow(m, "Options");
+	await m.ink.type(KEY.enter);
+}
+
+describe("the options page", () => {
+	it("is on the front door, because a key is the first thing a player needs", async () => {
+		const m = mount({ canUseModel: false });
+		await m.ink.settle();
+		expect(m.ink.screen()).toContain("Options");
+		// And it says why it matters while it still does. Once a key is set this is
+		// just another row.
+		expect(flowed(m.ink.screen())).toContain("no AI key yet");
+		m.ink.unmount();
+	});
+
+	it("stops saying a key is missing once one is there", async () => {
+		const m = mount({ canUseModel: true });
+		await m.ink.settle();
+		expect(flowed(m.ink.screen())).not.toContain("no AI key yet");
+		m.ink.unmount();
+	});
+
+	it("never shows the key it is holding", async () => {
+		// The one screen in the game where what is on it might be in a recording.
+		const m = mount({ gatewayKey: "vck_secretsecretsecret" });
+		await toOptions(m);
+		expect(m.ink.screen()).not.toContain("secretsecret");
+		expect(m.ink.screen()).toContain("vck_");
+		m.ink.unmount();
+	});
+
+	it("saves a key that was typed", async () => {
+		const m = mount({ canUseModel: false });
+		await toOptions(m);
+		await toRow(m, "AI gateway key");
+		await m.ink.type(KEY.enter);
+		await m.ink.type("vck_typed");
+		await m.ink.type(KEY.enter);
+		expect(m.keys).toEqual(["vck_typed"]);
+		m.ink.unmount();
+	});
+
+	it("does not show the key back as it is typed", async () => {
+		const m = mount({ canUseModel: false });
+		await toOptions(m);
+		await toRow(m, "AI gateway key");
+		await m.ink.type(KEY.enter);
+		await m.ink.type("vck_typed");
+		expect(m.ink.screen()).not.toContain("vck_typed");
+		m.ink.unmount();
+	});
+
+	it("leaves the key alone when nothing was typed", async () => {
+		// ENTER on an empty field must not read as "forget my key", which is what a
+		// field pre-filled with nothing and saved literally would mean.
+		const m = mount({ gatewayKey: "vck_existing" });
+		await toOptions(m);
+		await toRow(m, "AI gateway key");
+		await m.ink.type(KEY.enter);
+		await m.ink.type(KEY.enter);
+		expect(m.keys).toEqual([]);
+		m.ink.unmount();
+	});
+
+	it("offers a live world the moment a key is saved, without restarting", async () => {
+		const m = mount({ canUseModel: false });
+		await toOptions(m);
+		await toRow(m, "AI gateway key");
+		await m.ink.type(KEY.enter);
+		await m.ink.type("vck_typed");
+		await m.ink.type(KEY.enter);
+		await m.ink.type(KEY.escape);
+		await m.ink.settle();
+		expect(flowed(m.ink.screen())).not.toContain("no AI key yet");
+		m.ink.unmount();
+	});
+
+	it("can forget a key, and stops offering to once it has", async () => {
+		const m = mount({ gatewayKey: "vck_existing" });
+		await toOptions(m);
+		await toRow(m, "Forget the key");
+		await m.ink.type(KEY.enter);
+		expect(m.keys).toEqual([""]);
+		await m.ink.settle();
+		expect(m.ink.screen()).not.toContain("Forget the key");
+		m.ink.unmount();
+	});
+
+	it("refuses to pretend it can edit a key the environment owns", async () => {
+		// A real environment variable wins everywhere. A page that let somebody type
+		// over it and then changed nothing would be lying to them.
+		const m = mount({ gatewayKey: "vck_fromenv", keyFromEnv: true });
+		await toOptions(m);
+		expect(flowed(m.ink.screen())).toContain("from the environment");
+		expect(m.ink.screen()).not.toContain("Forget the key");
+		m.ink.unmount();
+	});
+
+	it("changes the model with the horizontal arrows and remembers it", async () => {
+		const m = mount({ modelSet: "gemini-2.5" });
+		await toOptions(m);
+		await toRow(m, "Model");
+		await m.ink.type(KEY.right);
+		expect(m.models).toHaveLength(1);
+		expect(m.models[0]).not.toBe("gemini-2.5");
+		m.ink.unmount();
+	});
+
+	it("says what a model costs against the one it replaces", async () => {
+		const m = mount({ modelSet: "claude-sonnet" });
+		await toOptions(m);
+		const text = flowed(m.ink.screen());
+		expect(text).toContain("Claude Sonnet 5");
+		expect(text).toMatch(/[\d.]+× the default/);
+		m.ink.unmount();
+	});
+
+	it("is not reachable at all when nothing is bound to it", async () => {
+		// A headless or scripted run has no settings file to write to, and a page
+		// that opened onto nothing would be worse than no page.
+		const m = mount({ withOptions: false });
+		await m.ink.settle();
+		expect(m.ink.screen()).not.toContain("Options");
+		m.ink.unmount();
+	});
+});
+
+describe("choosing a model for a world", () => {
+	it("offers the choice on the page that decides what a world costs", async () => {
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Model");
+		expect(flowed(m.ink.screen())).toContain("per Mtok");
+		m.ink.unmount();
+	});
+
+	it("carries the choice onto the request, not just into settings", async () => {
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Model");
+		await m.ink.type(KEY.right);
+		const picked = m.models.at(-1);
+		await toRow(m, "Write this world");
+		await m.ink.type(KEY.enter);
+		expect(m.requested).toHaveLength(1);
+		expect(m.requested[0]?.models).toBe(picked);
+		m.ink.unmount();
+	});
+
+	it("remembers a model that was browsed and then walked away from", async () => {
+		// The price comparison is the reason to come here; making it only count when
+		// a world is written would throw the answer away every time.
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Model");
+		await m.ink.type(KEY.right);
+		await m.ink.type(KEY.escape);
+		expect(m.models).toHaveLength(1);
+		m.ink.unmount();
+	});
+
+	it("says nothing about price while the default is chosen", async () => {
+		// "at about 1× the usual price" is noise on the line every player reads
+		// before every world.
+		const m = mount({ modelSet: "gemini-2.5" });
+		await toConfig(m);
+		expect(flowed(m.ink.screen())).not.toContain("the usual price");
+		m.ink.unmount();
+	});
+
+	it("warns on the cost line once a dearer model is chosen", async () => {
+		const m = mount({ modelSet: "claude-sonnet" });
+		await toConfig(m);
+		const text = flowed(m.ink.screen());
+		expect(text).toContain("model calls on Claude Sonnet 5");
+		expect(text).toContain("the usual price");
+		m.ink.unmount();
 	});
 });

@@ -1,9 +1,10 @@
 import { render } from "ink";
 import { logTelemetry } from "../../ai/telemetry.js";
-import { CONFIG, hasGatewayKey } from "../../config.js";
+import { CONFIG, gatewayKey, hasGatewayKey } from "../../config.js";
 import { listPacks } from "../../content/load.js";
 import { listTilePacks } from "../../content/tiles.js";
 import { deleteSave, listSaves } from "../../persist/save-repo.js";
+import { displaySettingsPath, readSettings, writeSettings } from "../../persist/settings.js";
 import { type GenerationOutcome, generateScenario } from "../../scenario/generate.js";
 import { listScenarios, loadScenario } from "../../scenario/repo.js";
 import type { GenerateRequest, LaunchChoice } from "../../scenario/scenario.js";
@@ -22,6 +23,10 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 	const saves = listSaves();
 	const scenarios = listScenarios();
 	const canUseModel = hasGatewayKey() && !CONFIG.noAi;
+	const settings = readSettings();
+	// A key in the environment outranks the settings file everywhere, so the page
+	// that edits the file has to say when editing it would achieve nothing.
+	const keyFromEnv = Boolean(process.env.AI_GATEWAY_API_KEY?.trim());
 
 	let chosen: LaunchChoice | undefined;
 	let requested: GenerateRequest | undefined;
@@ -30,7 +35,31 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 			saves={saves}
 			scenarios={scenarios}
 			canUseModel={canUseModel}
-			{...(canUseModel ? {} : { unavailableNote: liveUnavailableNote() })}
+			options={{
+				...(gatewayKey() ? { gatewayKey: gatewayKey() } : {}),
+				...(keyFromEnv ? { keyFromEnv: true } : {}),
+				...(settings.modelSet ? { modelSet: settings.modelSet } : {}),
+				settingsPath: displaySettingsPath(),
+				onSaveKey: (key) => {
+					// Written here rather than in the component, which has to stay renderable
+					// in a test with no home directory to write a key into — the same reason
+					// deleting a save happens out here.
+					writeSettings({ gatewayKey: key });
+					if (!keyFromEnv) {
+						// The AI SDK reads the environment and nothing else, so a key that has
+						// just been typed only counts once it is put there. Clearing it has to
+						// clear the environment too, or "forget the key" would forget it
+						// everywhere except the place that matters until the next run.
+						if (key) process.env.AI_GATEWAY_API_KEY = key;
+						else delete process.env.AI_GATEWAY_API_KEY;
+					}
+					logger.info(key ? "gateway key saved" : "gateway key forgotten");
+				},
+				onChooseModel: (id) => {
+					writeSettings({ modelSet: id });
+					logger.info(`models set to "${id}"`);
+				},
+			}}
 			context={{
 				saves,
 				baseWorldId: CONFIG.worldName,
@@ -93,6 +122,12 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
  * lands in `.scenarios` before the game starts, so the world can be played again exactly.
  */
 async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice | undefined> {
+	// The launcher has already saved this, but saving it and spending it are two
+	// different things and only one of them is this run's business. Written again
+	// here so the world about to be paid for is provably the one the price on the
+	// config page described, even if something else edited settings in between.
+	if (request.models) writeSettings({ modelSet: request.models });
+
 	const startedAt = Date.now();
 	const stop = new AbortController();
 
@@ -172,19 +207,6 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	logger.info(`starting the generated world "${outcome.choice.worldId}"`);
 	return outcome.choice;
 }
-/**
- * Why a live world is not being offered.
- *
- * Two different reasons, and saying the wrong one is worse than saying nothing: a
- * player who set NO_AI themselves does not need to be told their key is missing,
- * and one whose key really is missing must not be left hunting for a setting they
- * never touched.
- */
-function liveUnavailableNote(): string {
-	if (CONFIG.noAi) return "NO_AI is set, so a live world is not on offer.";
-	return "No AI_GATEWAY_API_KEY, so a live world is not on offer.";
-}
-
 /**
  * Which scenario a prebuilt choice refers to.
  *

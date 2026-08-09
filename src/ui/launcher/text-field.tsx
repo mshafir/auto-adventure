@@ -17,6 +17,14 @@ export interface TextFieldProps {
 	readonly onCancel?: () => void;
 	readonly placeholder?: string;
 	readonly maxLength?: number;
+	/**
+	 * Draw dots instead of what was typed.
+	 *
+	 * For the one field in the game that takes a secret. The value in the caller is
+	 * untouched — this only changes what reaches the screen, because a key typed in
+	 * full is a key in whatever recording or shared terminal happens to be running.
+	 */
+	readonly mask?: boolean;
 }
 
 /** Long enough for a premise, short enough to stay one line in the prompt. */
@@ -29,6 +37,7 @@ export function TextField({
 	onCancel,
 	placeholder = "",
 	maxLength = DEFAULT_MAX,
+	mask = false,
 }: TextFieldProps) {
 	useInput((input, key) => {
 		if (key.return) {
@@ -55,7 +64,10 @@ export function TextField({
 		onChange((value + typed).slice(0, maxLength));
 	});
 
-	const showing = value.length > 0 ? value : placeholder;
+	// Masked by count rather than by character, so a pasted key of the wrong length
+	// is still visibly the wrong length.
+	const shown = mask ? "•".repeat(value.length) : value;
+	const showing = value.length > 0 ? shown : placeholder;
 	return (
 		<Text>
 			<Text color="cyan">{"> "}</Text>

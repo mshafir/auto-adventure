@@ -1,6 +1,8 @@
 import dotenvFlow from "dotenv-flow";
+import { type ModelChoice, modelChoice } from "./ai/catalogue.js";
 import { hashString } from "./core/rand/hash.js";
 import { isDuration, normalizeBrief, type ScenarioBrief } from "./core/world/brief.js";
+import { readSettings } from "./persist/settings.js";
 
 dotenvFlow.config({ silent: true });
 
@@ -8,6 +10,9 @@ dotenvFlow.config({ silent: true });
 // module reads LOG_LEVEL and LOG_FILE at evaluation time, and imports are
 // evaluated before this file's body — so importing it here would read those
 // variables before `dotenvFlow.config()` had a chance to define them.
+//
+// `./persist/settings.js` carries the same rule and says so, which is why the
+// stored key and model can be read from here at all.
 
 function envNumber(key: string, fallback: number): number {
 	const raw = process.env[key];
@@ -84,21 +89,78 @@ export const CONFIG = {
 } as const;
 
 /**
+ * Which pair of models the player picked, or the default.
+ *
+ * Read through a function rather than captured once, because the options page
+ * and the config page can both change it inside a single run — and re-reading a
+ * small JSON file between model calls is not a cost worth caching against.
+ * `MODEL_SET` exists so a scripted run can pin one without a settings file.
+ */
+export function activeModels(): ModelChoice {
+	return modelChoice(process.env.MODEL_SET?.trim() || readSettings().modelSet);
+}
+
+/**
  * Model selection, per call type, all overridable.
  *
  * These are plain provider-prefixed strings routed through the Vercel AI
  * Gateway (`AI_GATEWAY_API_KEY`), so switching a call type to a different
- * provider is an environment variable rather than a code change. Flash-Lite
- * handles the high-volume structured work where latency is visible and the
- * output is never read directly; Flash handles prose the player actually sees.
+ * provider is an environment variable rather than a code change. The cheap half
+ * of the chosen pair handles the high-volume structured work where latency is
+ * visible and the output is never read directly; the dear half handles prose the
+ * player actually sees.
+ *
+ * Getters rather than values, and that is the whole point: this used to be a
+ * frozen object read at import time, which meant the only way to change a model
+ * was to restart the process. A launcher that can offer the choice has to be able
+ * to answer differently on the next call, and every one of the eighteen
+ * `MODELS.director` call sites reads the same as it always did.
+ *
+ * A per-slot environment variable still wins over everything, so the escape hatch
+ * that existed before the catalogue did still works.
  */
-export const MODELS = {
-	director: process.env.MODEL_DIRECTOR ?? "google/gemini-2.5-flash-lite",
-	dialogue: process.env.MODEL_DIALOGUE ?? "google/gemini-2.5-flash",
-	summary: process.env.MODEL_SUMMARY ?? "google/gemini-2.5-flash-lite",
-	bible: process.env.MODEL_BIBLE ?? "google/gemini-2.5-flash",
-} as const;
+export const MODELS: Readonly<Record<"director" | "dialogue" | "summary" | "bible", string>> = {
+	get director() {
+		return process.env.MODEL_DIRECTOR ?? activeModels().fast.model;
+	},
+	get dialogue() {
+		return process.env.MODEL_DIALOGUE ?? activeModels().prose.model;
+	},
+	get summary() {
+		return process.env.MODEL_SUMMARY ?? activeModels().fast.model;
+	},
+	get bible() {
+		return process.env.MODEL_BIBLE ?? activeModels().prose.model;
+	},
+};
+
+/**
+ * The gateway key, from the environment or from the player's settings.
+ *
+ * The environment wins, so a CI run or a `AI_GATEWAY_API_KEY=… npm start` is
+ * never quietly overridden by whatever happens to be saved on that machine.
+ */
+export function gatewayKey(): string | undefined {
+	return process.env.AI_GATEWAY_API_KEY?.trim() || readSettings().gatewayKey;
+}
 
 export function hasGatewayKey(): boolean {
-	return Boolean(process.env.AI_GATEWAY_API_KEY);
+	return Boolean(gatewayKey());
+}
+
+/**
+ * Put the stored key where the AI SDK will find it.
+ *
+ * The gateway provider reads `AI_GATEWAY_API_KEY` out of `process.env` itself,
+ * deep inside the SDK, and there is no seam to hand it a key directly. So a key
+ * that arrived from the settings file has to be put back into the environment
+ * before the first model call — which is what this does, and why the options page
+ * calls it again after saving rather than asking the player to restart.
+ *
+ * Only ever fills a hole. A real environment variable is left exactly as it was.
+ */
+export function installGatewayKey(): void {
+	if (process.env.AI_GATEWAY_API_KEY?.trim()) return;
+	const stored = readSettings().gatewayKey;
+	if (stored) process.env.AI_GATEWAY_API_KEY = stored;
 }

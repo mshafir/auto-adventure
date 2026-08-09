@@ -91,6 +91,14 @@ export interface GenerateRequest {
 	readonly tiles?: string;
 	/** A pack under `.packs/`. Absent means the built-in tables. */
 	readonly pack?: string;
+	/**
+	 * A model-set id from `src/ai/catalogue.ts`. Absent means whatever is configured.
+	 *
+	 * Carried on the request as well as saved to settings, so the world that gets
+	 * written is provably the one the price on screen described — the settings write
+	 * is a side effect for next time, not the thing this run reads.
+	 */
+	readonly models?: string;
 	/** Whether the hour advances, the sky changes and people keep to a routine. */
 	readonly dayAndNight: boolean;
 	/** Whether a model runs during play, for conversations nobody wrote a tree for. */

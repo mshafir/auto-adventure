@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import { useState } from "react";
+import { CATALOGUE, costLabel, costRatio, modelChoice, priceLine } from "../../ai/catalogue.js";
 import { type Duration, normalizeBrief } from "../../core/world/brief.js";
 import type { GenerateRequest } from "../../scenario/scenario.js";
 import { FRAME_CHROME, Frame } from "../panels/primitives.js";
@@ -60,6 +61,16 @@ export interface GenerateConfigProps {
 	readonly contentPacks: readonly string[];
 	/** A premise from the environment, offered as a starting point. */
 	readonly initialPremise?: string;
+	/** The catalogue id currently in force. Absent means the built-in default. */
+	readonly modelSet?: string;
+	/**
+	 * Reported as the cursor moves through the models, not on beginning.
+	 *
+	 * The choice is remembered for the next world as well as spent on this one —
+	 * it is a machine setting that happens to be reachable from here, because here
+	 * is where somebody is thinking about what a world is worth.
+	 */
+	readonly onModelSet?: (id: string) => void;
 	readonly onBegin: (request: GenerateRequest) => void;
 	readonly onBack: () => void;
 	readonly isActive?: boolean;
@@ -72,11 +83,14 @@ export function GenerateConfig({
 	tilePacks,
 	contentPacks,
 	initialPremise = "",
+	modelSet,
+	onModelSet,
 	onBegin,
 	onBack,
 	isActive = true,
 }: GenerateConfigProps) {
 	const [duration, setDuration] = useState<Duration>("medium");
+	const [models, setModels] = useState(() => modelChoice(modelSet).id);
 	const [premise, setPremise] = useState(initialPremise);
 	const [tiles, setTiles] = useState(DEFAULT_PACK);
 	const [pack, setPack] = useState(DEFAULT_PACK);
@@ -88,6 +102,9 @@ export function GenerateConfig({
 	// rather than to nothing.
 	const tileChoices = [DEFAULT_PACK, ...tilePacks];
 	const packChoices = [DEFAULT_PACK, ...contentPacks];
+
+	const chosen = modelChoice(models);
+	const modelIds = CATALOGUE.map((entry) => entry.id);
 
 	const items: ChoiceItem[] = [
 		{
@@ -107,6 +124,19 @@ export function GenerateConfig({
 			body: premise.trim()
 				? premise.trim()
 				: "What the world should be about. Optional — with nothing here the model picks a premise as well, which is one fewer decision and no worse a world.",
+		},
+		{
+			id: "model",
+			label: "Model",
+			detail: `${chosen.label} · ${costLabel(chosen)}`,
+			// The two models and both prices, because this is the only row on the page
+			// whose cost is not already in the line at the bottom, and "6.6× the
+			// default" is only useful next to what the default was.
+			body: `${chosen.note} ${chosen.provider}: ${priceLine(chosen.prose.price)}${
+				chosen.fast.model === chosen.prose.model
+					? "."
+					: `, with ${chosen.fast.model} at ${priceLine(chosen.fast.price)} for the bookkeeping.`
+			}`,
 		},
 		{
 			id: "tiles",
@@ -157,6 +187,16 @@ export function GenerateConfig({
 			case "length":
 				setDuration((current) => next(DURATIONS, current, step));
 				return;
+			case "model":
+				setModels((current) => {
+					const to = next(modelIds, current, step);
+					// Reported as it changes rather than on beginning, so the choice is
+					// still remembered by a player who wandered in, compared the prices and
+					// went away again without writing anything.
+					onModelSet?.(to);
+					return to;
+				});
+				return;
 			case "tiles":
 				if (tilePacks.length > 0) setTiles((current) => next(tileChoices, current, step));
 				return;
@@ -206,6 +246,7 @@ export function GenerateConfig({
 								brief: normalizeBrief({ premise, duration }) ?? { duration },
 								...(tiles === DEFAULT_PACK ? {} : { tiles }),
 								...(pack === DEFAULT_PACK ? {} : { pack }),
+								models,
 								dayAndNight,
 								liveInGame,
 							});
@@ -235,10 +276,10 @@ export function GenerateConfig({
 				   only *one* paragraph is drawn at a time. The number that decides whether to
 				   press ENTER at all has to be readable without hunting for it. */
 				<Text wrap="truncate">
-					<Text color="yellow">{`~${COST[duration].calls} model calls`}</Text>
+					<Text color="yellow">{`~${COST[duration].calls} model calls on ${chosen.label}`}</Text>
 					<Text
 						dimColor
-					>{`, about ${COST[duration].minutes} minutes, and it cannot be paused.`}</Text>
+					>{`, about ${COST[duration].minutes} minutes${relative(models)}, and it cannot be paused.`}</Text>
 				</Text>
 			)}
 
@@ -249,6 +290,21 @@ export function GenerateConfig({
 			</Text>
 		</Frame>
 	);
+}
+
+/**
+ * What the chosen model does to the bill, as a clause or as nothing.
+ *
+ * Silent on the default, because "at the usual price" is noise on the line a
+ * player reads before every world they write. It only speaks up once the answer
+ * has stopped being the one they did not choose.
+ */
+function relative(id: string): string {
+	const ratio = costRatio(modelChoice(id));
+	if (Math.abs(ratio - 1) < 0.05) return "";
+	return ratio < 1
+		? `, at about ${ratio.toFixed(1)}× the usual price`
+		: `, at about ${ratio < 10 ? ratio.toFixed(1) : ratio.toFixed(0)}× the usual price`;
 }
 
 /** Enough of a premise to recognise it by, with an ellipsis where the rest was. */

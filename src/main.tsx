@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { render } from "ink";
-import { CONFIG } from "./config.js";
+import { CONFIG, installGatewayKey } from "./config.js";
 import type { LaunchChoice } from "./scenario/scenario.js";
 import { buildSession } from "./session.js";
 import App from "./ui/app.js";
@@ -127,6 +127,12 @@ async function chooseRenderer(): Promise<void> {
 }
 
 async function startGame() {
+	// Before anything can ask whether a model is available. A key saved on the
+	// options page lives in the player's settings, and the AI SDK only ever looks
+	// in the environment — this is the one place that gap gets closed for a run
+	// that starts with a key already stored.
+	installGatewayKey();
+
 	const choice = wantsLauncher() ? await pickLaunch() : choiceFromEnv();
 	if (!choice) return;
 

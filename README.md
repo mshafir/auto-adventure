@@ -86,14 +86,52 @@ is fully playable — every place is named, every building is entered, and every
 conversation is a real dialogue tree. See
 [Playing without a model](#playing-without-a-model).
 
+**You do not need any of these variables to use a model.** *Options*, on the
+title screen, takes a gateway key and keeps it in
+`~/.auto-adventure/settings.json` at mode `0600` — out of the repository, so it
+cannot be committed, copied into a container or pasted into a bug report. The
+same page chooses which models write a world, and so does the page that
+configures a world before it is written.
+
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_GATEWAY_API_KEY` | — | Vercel AI Gateway key. Absent means the deterministic path. |
+| `AI_GATEWAY_API_KEY` | — | Vercel AI Gateway key. Beats the saved one. Absent means the deterministic path. |
 | `NO_AI` | `0` | Force the deterministic path even with a key. |
-| `MODEL_DIRECTOR` | `google/gemini-2.5-flash-lite` | Region and site specs. High volume, never read directly. |
-| `MODEL_DIALOGUE` | `google/gemini-2.5-flash` | What NPCs say, and the authored conversation trees. |
-| `MODEL_SUMMARY` | `google/gemini-2.5-flash-lite` | Rolling NPC memory. |
-| `MODEL_BIBLE` | `google/gemini-2.5-flash` | The world premise and the story's plot, once per world. |
+| `MODEL_SET` | `gemini-2.5` | Which pair of models writes a world. Beats the saved choice. |
+| `MODEL_DIRECTOR` | the set's cheap half | Region and site specs. High volume, never read directly. |
+| `MODEL_DIALOGUE` | the set's dear half | What NPCs say, and the authored conversation trees. |
+| `MODEL_SUMMARY` | the set's cheap half | Rolling NPC memory. |
+| `MODEL_BIBLE` | the set's dear half | The world premise and the story's plot, once per world. |
+
+#### Which models
+
+A choice is a *pair*, not a model. The game makes a lot of small structured calls
+whose output nobody reads and rather fewer prose calls the player reads every
+word of; running both on the good model costs several times what a world is
+worth, and running both on the cheap one is visible in the writing. Rows are
+named after the half you can see, and priced against the default.
+
+| `MODEL_SET` | Writes | Bookkeeping | ≈ cost |
+|---|---|---|---|
+| `glm` | `zai/glm-4.7-flash` | the same | 0.4× |
+| `deepseek` | `deepseek/deepseek-v3.2` | the same | 0.5× |
+| `gpt-5-mini` | `openai/gpt-5-mini` | `openai/gpt-5-nano` | 0.8× |
+| `gemini-2.5` | `google/gemini-2.5-flash` | `google/gemini-2.5-flash-lite` | 1× |
+| `gemini-3` | `google/gemini-3-flash` | `google/gemini-3.1-flash-lite` | 1.8× |
+| `claude-haiku` | `anthropic/claude-haiku-4.5` | the same | 4.6× |
+| `claude-sonnet` | `anthropic/claude-sonnet-5` | `anthropic/claude-haiku-4.5` | 6.2× |
+
+Per-token prices live in `src/ai/catalogue.ts` and are read off the gateway's own
+catalogue rather than each vendor's pricing page, because the gateway is who
+bills. The multiplier is a blend for ordering the list, not a quote.
+
+Membership is not a judgement of how good a model is. It is whether the model can
+be **relied on to answer in a schema** — several strong writers answer one time in
+six and were cut for it, which is a failure nobody would ever see: a malformed
+answer is not an error, it is a world that quietly comes out with none of the
+authored names in it. `src/ai/catalogue-live.test.ts` is what checks this; it
+skips without a key, and the header of `catalogue.ts` records what was cut and
+why.
 
 Models are provider-prefixed strings routed through the gateway, so pointing a
 call type at a different provider is a variable rather than a code change. Calls

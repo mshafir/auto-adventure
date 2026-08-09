@@ -9,6 +9,7 @@ import { type ChoiceContext, choiceFor } from "./choice.js";
 import { Continue } from "./continue.js";
 import { GenerateConfig } from "./generate-config.js";
 import { NewWorld } from "./new-world.js";
+import { Options } from "./options.js";
 import { Title } from "./title.js";
 
 /**
@@ -24,15 +25,37 @@ import { Title } from "./title.js";
  * the only navigation rule, and it is why each page is mounted alone: `useInput`
  * handlers all fire, so two pages on screen would both act on every arrow key.
  *
- * Three of the four pages end in a `LaunchChoice`. The fourth does not: asking for a
- * world to be written produces a `GenerateRequest`, because the world does not exist yet
- * and will not until several minutes of authoring have run. That work happens after this
- * app has unmounted — see `pick-launch.tsx` — which is also why the page that used to ask
- * for a premise is gone. It was the front half of a wizard whose back half was "and now
- * play immediately"; the premise is a field on the config page now.
+ * Three of these pages end in a `LaunchChoice`. Asking for a world to be written does
+ * not: it produces a `GenerateRequest`, because the world does not exist yet and will
+ * not until several minutes of authoring have run. That work happens after this app has
+ * unmounted — see `pick-launch.tsx` — which is also why the page that used to ask for a
+ * premise is gone. It was the front half of a wizard whose back half was "and now play
+ * immediately"; the premise is a field on the config page now.
+ *
+ * Options ends in nothing at all, which makes it the odd one out. It changes the machine
+ * rather than the run, so coming back from it lands on the title screen with the rest of
+ * the launcher having quietly changed its mind about what is on offer — which is the
+ * whole point of it being reachable from the front door.
  */
 
-type Page = "title" | "new" | "generate" | "continue";
+type Page = "title" | "new" | "generate" | "continue" | "options";
+
+/**
+ * The settings page's whole dependency on the disk, passed in.
+ *
+ * Reading and writing the key happens in `pickLaunch`, not here, for the same
+ * reason deleting a save does: this component has to stay renderable in a test
+ * with no home directory to write a key into.
+ */
+export interface OptionsBinding {
+	readonly gatewayKey?: string;
+	readonly keyFromEnv?: boolean;
+	readonly modelSet?: string;
+	readonly settingsPath: string;
+	/** An empty string means forget it. */
+	readonly onSaveKey: (key: string) => void;
+	readonly onChooseModel: (id: string) => void;
+}
 
 export interface LauncherProps {
 	readonly saves: readonly SaveSummary[];
@@ -40,6 +63,8 @@ export interface LauncherProps {
 	readonly canUseModel: boolean;
 	/** Why a live world is not on offer, when it is not. */
 	readonly unavailableNote?: string;
+	/** Everything the Options page needs, and what it does with an answer. */
+	readonly options?: OptionsBinding;
 	readonly context: ChoiceContext;
 	/** A brief from the environment, offered as a starting point. */
 	readonly initialBrief?: ScenarioBrief;
@@ -69,6 +94,7 @@ export function Launcher({
 	scenarios,
 	canUseModel,
 	unavailableNote,
+	options,
 	context,
 	initialBrief,
 	tilePacks = [],
@@ -85,6 +111,11 @@ export function Launcher({
 	// Deleting takes a world off this page without the launcher restarting, so the
 	// list it renders from is state rather than the prop.
 	const [worlds, setWorlds] = useState(saves);
+	// The key and the model are state for the same reason the world list is: both
+	// can change without the launcher restarting, and every page downstream of the
+	// title screen asks a different question once they do.
+	const [key, setKey] = useState(options?.gatewayKey);
+	const [modelSet, setModelSet] = useState(options?.modelSet);
 	const columns = stdout.columns ?? 80;
 	// One row short of the terminal, the same rule the game itself follows: Ink
 	// updates incrementally only while its output is *shorter* than the window, and
@@ -96,6 +127,12 @@ export function Launcher({
 	// a delete is one a new world can immediately be given.
 	const here: ChoiceContext = { ...context, saves: worlds };
 
+	// A key added on the options page makes a live world possible without the
+	// launcher restarting — so this is the prop only until somebody changes it.
+	// `context.noAi` still wins: NO_AI is a decision, not a missing dependency.
+	const modelUsable = options ? Boolean(key) && !context.noAi : canUseModel;
+	const note = modelUsable ? undefined : (unavailableNote ?? liveUnavailable(context.noAi));
+
 	const take = (choice: LaunchChoice) => {
 		onChoose(choice);
 		exit();
@@ -105,6 +142,29 @@ export function Launcher({
 		onQuit();
 		exit();
 	};
+
+	if (page === "options" && options) {
+		return (
+			<Options
+				columns={columns}
+				rows={rows}
+				depth={depth}
+				{...(key ? { gatewayKey: key } : {})}
+				{...(options.keyFromEnv ? { keyFromEnv: true } : {})}
+				{...(modelSet ? { modelSet } : {})}
+				settingsPath={options.settingsPath}
+				onSaveKey={(next) => {
+					options.onSaveKey(next);
+					setKey(next || undefined);
+				}}
+				onChooseModel={(id) => {
+					options.onChooseModel(id);
+					setModelSet(id);
+				}}
+				onBack={() => setPage("title")}
+			/>
+		);
+	}
 
 	if (page === "continue") {
 		return (
@@ -131,6 +191,11 @@ export function Launcher({
 				depth={depth}
 				tilePacks={tilePacks}
 				contentPacks={contentPacks}
+				{...(modelSet ? { modelSet } : {})}
+				onModelSet={(id) => {
+					options?.onChooseModel(id);
+					setModelSet(id);
+				}}
 				{...(initialBrief?.premise ? { initialPremise: initialBrief.premise } : {})}
 				onBegin={(request) => {
 					// Resolved into a world by `pickLaunch`, after this app has unmounted: there
@@ -151,8 +216,8 @@ export function Launcher({
 				columns={columns}
 				rows={rows}
 				depth={depth}
-				canUseModel={canUseModel}
-				{...(unavailableNote ? { unavailableNote } : {})}
+				canUseModel={modelUsable}
+				{...(note ? { unavailableNote: note } : {})}
 				onScenario={(scenario) => take(choiceFor({ kind: "scenario", scenario }, here))}
 				onGenerate={() => setPage("generate")}
 				onBack={() => setPage("title")}
@@ -166,9 +231,25 @@ export function Launcher({
 			rows={rows}
 			depth={depth}
 			saveCount={worlds.length}
+			canUseModel={modelUsable}
 			onNew={() => setPage("new")}
 			onContinue={() => setPage("continue")}
+			{...(options ? { onOptions: () => setPage("options") } : {})}
 			onQuit={quit}
 		/>
 	);
+}
+
+/**
+ * Why a live world is not being offered.
+ *
+ * Two different reasons, and saying the wrong one is worse than saying nothing: a
+ * player who set NO_AI themselves does not need to be told their key is missing,
+ * and one whose key really is missing must not be left hunting for a setting they
+ * never touched. It points at the Options page now rather than at a variable,
+ * because there is a screen to point at.
+ */
+function liveUnavailable(noAi: boolean | undefined): string {
+	if (noAi) return "NO_AI is set, so a live world is not on offer.";
+	return "No AI gateway key yet, so a live world is not on offer. Options, on the title screen, is where it goes.";
 }

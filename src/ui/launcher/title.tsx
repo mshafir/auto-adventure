@@ -28,8 +28,24 @@ export interface TitleProps {
 	readonly saveCount: number;
 	readonly onNew: () => void;
 	readonly onContinue: () => void;
+	/**
+	 * Absent where there is no settings page to open.
+	 *
+	 * A headless or scripted run has no home directory to write a key into, and a
+	 * row that led to a page which could not save anything would be worse than no
+	 * row — so the choice is dropped rather than disabled.
+	 */
+	readonly onOptions?: () => void;
 	readonly onQuit: () => void;
 	readonly isActive?: boolean;
+	/**
+	 * Whether a model can be reached at all.
+	 *
+	 * The only thing the front door says about it, and it says it on the Options
+	 * row rather than in a note of its own: a player with no key needs to be told
+	 * where the key goes, not that one is missing.
+	 */
+	readonly canUseModel?: boolean;
 }
 
 export const BYLINE = "by Michael Shafir";
@@ -48,7 +64,7 @@ export const TAGLINE = "An endless world, written as you walk into it.";
 const RAMP = { from: rgb("#f0c674"), to: rgb("#4f7fd4") };
 
 /** Rows the page needs besides the banner: byline, credit, tagline, menu, footer. */
-const CHROME_ROWS = 14;
+const CHROME_ROWS = 15;
 
 export function Title({
 	columns,
@@ -57,8 +73,10 @@ export function Title({
 	saveCount,
 	onNew,
 	onContinue,
+	onOptions,
 	onQuit,
 	isActive = true,
+	canUseModel = true,
 }: TitleProps) {
 	const inner = Math.max(20, columns - FRAME_CHROME - 4);
 
@@ -73,6 +91,16 @@ export function Title({
 		});
 	}
 	items.push({ id: "new", label: "New world" });
+	// Called out only while it is the thing standing between the player and a
+	// written world. Once a key is set this is an ordinary row, because by then it
+	// is: a place to change the model, not a problem to fix.
+	if (onOptions) {
+		items.push({
+			id: "options",
+			label: "Options",
+			...(canUseModel ? {} : { detail: "no AI key yet" }),
+		});
+	}
 	items.push({ id: "quit", label: "Quit" });
 
 	const banner = rampRows(bannerFor(inner, rows - CHROME_ROWS), RAMP, depth);
@@ -124,6 +152,7 @@ export function Title({
 					onChoose={(item) => {
 						if (item.id === "continue") onContinue();
 						else if (item.id === "new") onNew();
+						else if (item.id === "options") onOptions?.();
 						else onQuit();
 					}}
 					// Esc on the front door is the way out; there is nothing behind it.
