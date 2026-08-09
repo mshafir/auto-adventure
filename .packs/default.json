@@ -46,66 +46,12 @@
 			"Thistlewood"
 		],
 		"heads": {
-			"wet": [
-				"mire",
-				"fen",
-				"marl",
-				"sedge",
-				"bog",
-				"reed",
-				"silt",
-				"drift"
-			],
-			"green": [
-				"thorn",
-				"brack",
-				"elder",
-				"haw",
-				"brier",
-				"wold",
-				"bram",
-				"willow"
-			],
-			"cold": [
-				"frost",
-				"cold",
-				"rime",
-				"hoar",
-				"snow",
-				"bleak",
-				"grim",
-				"north"
-			],
-			"dry": [
-				"ash",
-				"dust",
-				"scald",
-				"kiln",
-				"ember",
-				"sun",
-				"barren",
-				"salt"
-			],
-			"high": [
-				"crag",
-				"stone",
-				"scar",
-				"tor",
-				"iron",
-				"grey",
-				"cliff",
-				"pike"
-			],
-			"plain": [
-				"hart",
-				"oak",
-				"wheat",
-				"gold",
-				"long",
-				"fair",
-				"bell",
-				"mill"
-			]
+			"wet": ["mire", "fen", "marl", "sedge", "bog", "reed", "silt", "drift"],
+			"green": ["thorn", "brack", "elder", "haw", "brier", "wold", "bram", "willow"],
+			"cold": ["frost", "cold", "rime", "hoar", "snow", "bleak", "grim", "north"],
+			"dry": ["ash", "dust", "scald", "kiln", "ember", "sun", "barren", "salt"],
+			"high": ["crag", "stone", "scar", "tor", "iron", "grey", "cliff", "pike"],
+			"plain": ["hart", "oak", "wheat", "gold", "long", "fair", "bell", "mill"]
 		},
 		"tails": [
 			"ford",
@@ -123,187 +69,70 @@
 			"crest",
 			"bridge"
 		],
-		"ruinTails": [
-			"barrow",
-			"cairn",
-			"wrack",
-			"ruin",
-			"hush",
-			"remnant"
-		],
-		"fortTails": [
-			"keep",
-			"watch",
-			"hold",
-			"bastion",
-			"gate",
-			"ward"
-		],
-		"regionTails": [
-			"moor",
-			"wold",
-			"reach",
-			"vale",
-			"expanse",
-			"marches",
-			"downs",
-			"waste"
-		]
+		"ruinTails": ["barrow", "cairn", "wrack", "ruin", "hush", "remnant"],
+		"fortTails": ["keep", "watch", "hold", "bastion", "gate", "ward"],
+		"regionTails": ["moor", "wold", "reach", "vale", "expanse", "marches", "downs", "waste"]
 	},
 	"households": {
 		"inn": {
-			"count": [
-				2,
-				4
-			],
-			"roles": [
-				"cook",
-				"server",
-				"drover",
-				"traveller",
-				"harpist"
-			]
+			"count": [2, 4],
+			"roles": ["cook", "server", "drover", "traveller", "harpist"]
 		},
 		"shop": {
-			"count": [
-				1,
-				2
-			],
-			"roles": [
-				"shopkeeper",
-				"porter"
-			]
+			"count": [1, 2],
+			"roles": ["shopkeeper", "porter"]
 		},
 		"apothecary": {
-			"count": [
-				1,
-				2
-			],
-			"roles": [
-				"herbalist",
-				"apprentice"
-			]
+			"count": [1, 2],
+			"roles": ["herbalist", "apprentice"]
 		},
 		"smithy": {
-			"count": [
-				1,
-				2
-			],
-			"roles": [
-				"striker",
-				"apprentice"
-			]
+			"count": [1, 2],
+			"roles": ["striker", "apprentice"]
 		},
 		"temple": {
-			"count": [
-				1,
-				3
-			],
-			"roles": [
-				"priest",
-				"acolyte",
-				"mourner"
-			]
+			"count": [1, 3],
+			"roles": ["priest", "acolyte", "mourner"]
 		},
 		"shrine": {
-			"count": [
-				0,
-				1
-			],
-			"roles": [
-				"caretaker"
-			]
+			"count": [0, 1],
+			"roles": ["caretaker"]
 		},
 		"barracks": {
-			"count": [
-				2,
-				4
-			],
-			"roles": [
-				"soldier",
-				"sergeant",
-				"recruit",
-				"cook"
-			]
+			"count": [2, 4],
+			"roles": ["soldier", "sergeant", "recruit", "cook"]
 		},
 		"mill": {
-			"count": [
-				1,
-				2
-			],
-			"roles": [
-				"miller",
-				"carter"
-			]
+			"count": [1, 2],
+			"roles": ["miller", "carter"]
 		},
 		"stable": {
-			"count": [
-				1,
-				2
-			],
-			"roles": [
-				"groom",
-				"farrier"
-			]
+			"count": [1, 2],
+			"roles": ["groom", "farrier"]
 		},
 		"warehouse": {
-			"count": [
-				0,
-				2
-			],
-			"roles": [
-				"tallyman",
-				"porter"
-			]
+			"count": [0, 2],
+			"roles": ["tallyman", "porter"]
 		},
 		"barn": {
-			"count": [
-				0,
-				1
-			],
-			"roles": [
-				"farmhand"
-			]
+			"count": [0, 1],
+			"roles": ["farmhand"]
 		},
 		"tower": {
-			"count": [
-				1,
-				2
-			],
-			"roles": [
-				"watchman",
-				"signaller"
-			]
+			"count": [1, 2],
+			"roles": ["watchman", "signaller"]
 		},
 		"ruin": {
-			"count": [
-				0,
-				0
-			],
+			"count": [0, 0],
 			"roles": []
 		},
 		"cave": {
-			"count": [
-				0,
-				0
-			],
+			"count": [0, 0],
 			"roles": []
 		},
 		"house": {
-			"count": [
-				1,
-				3
-			],
-			"roles": [
-				"weaver",
-				"cooper",
-				"carpenter",
-				"widow",
-				"child",
-				"labourer",
-				"brewer",
-				"netmaker"
-			]
+			"count": [1, 3],
+			"roles": ["weaver", "cooper", "carpenter", "widow", "child", "labourer", "brewer", "netmaker"]
 		}
 	},
 	"appearance": {
@@ -418,15 +247,8 @@
 		"premise": "The old roads still run between the holdfasts, though fewer people walk them each year. Something in the weather has turned, and the villages have begun keeping their own counsel.",
 		"era": "the late years of a long decline",
 		"tone": "weatherbeaten and plainspoken",
-		"factions": [
-			"the Roadwardens",
-			"the Hollow Assembly",
-			"the Salt Factors"
-		],
-		"deities": [
-			"the Patient Sister",
-			"Ord of the Nine Gates"
-		]
+		"factions": ["the Roadwardens", "the Hollow Assembly", "the Salt Factors"],
+		"deities": ["the Patient Sister", "Ord of the Nine Gates"]
 	},
 	"ambient": [
 		"The wind moves across the country.",
@@ -436,447 +258,163 @@
 	"goods": {
 		"stores": {
 			"mill": [
-				[
-					"Sack of Flour",
-					"Coarse-ground, and still warm from the stones."
-				],
-				[
-					"Sack of Grain",
-					"Unmilled, with the chaff still in it."
-				],
-				[
-					"Timber",
-					"Rough-sawn planks, stacked and banded."
-				],
-				[
-					"Millstone Grit",
-					"Swept up from under the runner stone."
-				]
+				["Sack of Flour", "Coarse-ground, and still warm from the stones."],
+				["Sack of Grain", "Unmilled, with the chaff still in it."],
+				["Timber", "Rough-sawn planks, stacked and banded."],
+				["Millstone Grit", "Swept up from under the runner stone."]
 			],
 			"barn": [
-				[
-					"Bale of Hay",
-					"Tight-bound and dusty."
-				],
-				[
-					"Sack of Grain",
-					"Unmilled, with the chaff still in it."
-				],
-				[
-					"Timber",
-					"Rough-sawn planks, stacked and banded."
-				]
+				["Bale of Hay", "Tight-bound and dusty."],
+				["Sack of Grain", "Unmilled, with the chaff still in it."],
+				["Timber", "Rough-sawn planks, stacked and banded."]
 			],
 			"warehouse": [
-				[
-					"Timber",
-					"Rough-sawn planks, stacked and banded."
-				],
-				[
-					"Bolt of Cloth",
-					"Undyed linen, wound on a wooden core."
-				],
-				[
-					"Barrel of Salt",
-					"Heavy, and worth more than it looks."
-				],
-				[
-					"Iron Nails",
-					"A twist of paper holding two dozen."
-				]
+				["Timber", "Rough-sawn planks, stacked and banded."],
+				["Bolt of Cloth", "Undyed linen, wound on a wooden core."],
+				["Barrel of Salt", "Heavy, and worth more than it looks."],
+				["Iron Nails", "A twist of paper holding two dozen."]
 			],
 			"smithy": [
-				[
-					"Iron Ore",
-					"Rust-red lumps, unsmelted."
-				],
-				[
-					"Charcoal",
-					"A sack of it, light as nothing."
-				],
-				[
-					"Scrap Iron",
-					"Offcuts and failures, kept for remelting."
-				]
+				["Iron Ore", "Rust-red lumps, unsmelted."],
+				["Charcoal", "A sack of it, light as nothing."],
+				["Scrap Iron", "Offcuts and failures, kept for remelting."]
 			],
 			"stable": [
-				[
-					"Feed Sack",
-					"Oats, mostly."
-				],
-				[
-					"Leather Harness",
-					"Supple, and recently oiled."
-				]
+				["Feed Sack", "Oats, mostly."],
+				["Leather Harness", "Supple, and recently oiled."]
 			],
 			"inn": [
-				[
-					"Bottle of Ale",
-					"Cloudy, and stoppered with a rag."
-				],
-				[
-					"Wheel of Cheese",
-					"Rinded and heavy."
-				],
-				[
-					"Tallow Candles",
-					"A bundle of six."
-				]
+				["Bottle of Ale", "Cloudy, and stoppered with a rag."],
+				["Wheel of Cheese", "Rinded and heavy."],
+				["Tallow Candles", "A bundle of six."]
 			],
 			"shop": [
-				[
-					"Bolt of Cloth",
-					"Undyed linen, wound on a wooden core."
-				],
-				[
-					"Tallow Candles",
-					"A bundle of six."
-				],
-				[
-					"Coil of Rope",
-					"Forty feet of it, waxed against the wet."
-				]
+				["Bolt of Cloth", "Undyed linen, wound on a wooden core."],
+				["Tallow Candles", "A bundle of six."],
+				["Coil of Rope", "Forty feet of it, waxed against the wet."]
 			],
 			"apothecary": [
-				[
-					"Dried Herbs",
-					"Bundled and labelled in a small hand."
-				],
-				[
-					"Clay Vial",
-					"Empty, and stoppered with wax."
-				]
+				["Dried Herbs", "Bundled and labelled in a small hand."],
+				["Clay Vial", "Empty, and stoppered with wax."]
 			],
-			"temple": [
-				[
-					"Beeswax Candles",
-					"Better than tallow, and kept for feast days."
-				]
-			],
+			"temple": [["Beeswax Candles", "Better than tallow, and kept for feast days."]],
 			"barracks": [
-				[
-					"Iron Nails",
-					"A twist of paper holding two dozen."
-				],
-				[
-					"Whetstone",
-					"Worn hollow in the middle."
-				]
+				["Iron Nails", "A twist of paper holding two dozen."],
+				["Whetstone", "Worn hollow in the middle."]
 			],
 			"ruin": [
-				[
-					"Tarnished Coins",
-					"Old currency, of a mint nobody here uses."
-				],
-				[
-					"Rusted Key",
-					"It fits something. Not this."
-				]
+				["Tarnished Coins", "Old currency, of a mint nobody here uses."],
+				["Rusted Key", "It fits something. Not this."]
 			],
 			"farmhouse": [
-				[
-					"Sack of Grain",
-					"Unmilled, with the chaff still in it."
-				],
-				[
-					"Preserved Fruit",
-					"In a sealed crock, and still good."
-				]
+				["Sack of Grain", "Unmilled, with the chaff still in it."],
+				["Preserved Fruit", "In a sealed crock, and still good."]
 			],
-			"house": [
-				[
-					"Tallow Candles",
-					"A bundle of six."
-				],
-				[
-					"Woollen Blanket",
-					"Patched, and clean."
-				]
-			]
+			"house": [["Tallow Candles", "A bundle of six."], ["Woollen Blanket", "Patched, and clean."]]
 		},
 		"catalogue": {
 			"shop": [
-				[
-					"Coil of Rope",
-					"Forty feet of it, waxed against the wet."
-				],
-				[
-					"Tallow Candles",
-					"A bundle of six. They smell of the rendering shed."
-				],
-				[
-					"Tin Lantern",
-					"Dented, but the shutter still works."
-				],
-				[
-					"Travelling Cloak",
-					"Heavy wool, patched at one shoulder."
-				],
-				[
-					"Iron Nails",
-					"A twist of paper holding two dozen."
-				],
-				[
-					"Flint and Steel",
-					"Struck often enough to have worn a groove."
-				]
+				["Coil of Rope", "Forty feet of it, waxed against the wet."],
+				["Tallow Candles", "A bundle of six. They smell of the rendering shed."],
+				["Tin Lantern", "Dented, but the shutter still works."],
+				["Travelling Cloak", "Heavy wool, patched at one shoulder."],
+				["Iron Nails", "A twist of paper holding two dozen."],
+				["Flint and Steel", "Struck often enough to have worn a groove."]
 			],
 			"smithy": [
-				[
-					"Hand Axe",
-					"Well balanced, meant for wood rather than war."
-				],
-				[
-					"Iron Knife",
-					"Plain, sharp, and honestly made."
-				],
-				[
-					"Horseshoe",
-					"Fitted for a heavy animal."
-				],
-				[
-					"Steel Sword",
-					"Second-hand. Somebody's initials are on the pommel."
-				],
-				[
-					"Chain Shirt",
-					"Rust has been scoured off it more than once."
-				]
+				["Hand Axe", "Well balanced, meant for wood rather than war."],
+				["Iron Knife", "Plain, sharp, and honestly made."],
+				["Horseshoe", "Fitted for a heavy animal."],
+				["Steel Sword", "Second-hand. Somebody's initials are on the pommel."],
+				["Chain Shirt", "Rust has been scoured off it more than once."]
 			],
 			"apothecary": [
-				[
-					"Bitterroot Salve",
-					"Smells terrible. Closes a cut in a day."
-				],
-				[
-					"Fever Draught",
-					"Cloudy, and warm to the touch."
-				],
-				[
-					"Dried Yarrow",
-					"A paper packet, tied with thread."
-				],
-				[
-					"Sleeping Tincture",
-					"Three drops. No more, the label insists."
-				]
+				["Bitterroot Salve", "Smells terrible. Closes a cut in a day."],
+				["Fever Draught", "Cloudy, and warm to the touch."],
+				["Dried Yarrow", "A paper packet, tied with thread."],
+				["Sleeping Tincture", "Three drops. No more, the label insists."]
 			],
 			"inn": [
-				[
-					"Loaf and Cheese",
-					"Yesterday's bread, today's cheese."
-				],
-				[
-					"Skin of Ale",
-					"Thin, but cold."
-				],
-				[
-					"Bowl of Stew",
-					"Mostly turnip. Filling."
-				],
-				[
-					"A Bed for the Night",
-					"Straw mattress, shared room, no questions."
-				]
+				["Loaf and Cheese", "Yesterday's bread, today's cheese."],
+				["Skin of Ale", "Thin, but cold."],
+				["Bowl of Stew", "Mostly turnip. Filling."],
+				["A Bed for the Night", "Straw mattress, shared room, no questions."]
 			],
 			"stable": [
-				[
-					"Bag of Oats",
-					"Enough for a week on the road."
-				],
-				[
-					"Leather Halter",
-					"Softened with use."
-				],
-				[
-					"Saddle Blanket",
-					"Faded to no colour at all."
-				]
+				["Bag of Oats", "Enough for a week on the road."],
+				["Leather Halter", "Softened with use."],
+				["Saddle Blanket", "Faded to no colour at all."]
 			],
 			"warehouse": [
-				[
-					"Crate of Salt",
-					"Heavy, and worth carrying anyway."
-				],
-				[
-					"Bolt of Linen",
-					"Unbleached. Sold by the ell."
-				],
-				[
-					"Barrel Hoops",
-					"Six of them, banded together."
-				]
+				["Crate of Salt", "Heavy, and worth carrying anyway."],
+				["Bolt of Linen", "Unbleached. Sold by the ell."],
+				["Barrel Hoops", "Six of them, banded together."]
 			]
 		},
 		"trades": [
 			{
 				"kind": "smithy",
-				"roles": [
-					"smith",
-					"blacksmith",
-					"farrier",
-					"armourer",
-					"armorer"
-				]
+				"roles": ["smith", "blacksmith", "farrier", "armourer", "armorer"]
 			},
 			{
 				"kind": "apothecary",
-				"roles": [
-					"apothecary",
-					"herbalist",
-					"healer",
-					"physician"
-				]
+				"roles": ["apothecary", "herbalist", "healer", "physician"]
 			},
 			{
 				"kind": "inn",
-				"roles": [
-					"innkeep",
-					"innkeeper",
-					"inn",
-					"tavern",
-					"cook",
-					"baker"
-				]
+				"roles": ["innkeep", "innkeeper", "inn", "tavern", "cook", "baker"]
 			},
 			{
 				"kind": "stable",
-				"roles": [
-					"stable",
-					"ostler",
-					"groom"
-				]
+				"roles": ["stable", "ostler", "groom"]
 			},
 			{
 				"kind": "warehouse",
-				"roles": [
-					"factor",
-					"warehouse",
-					"quartermaster"
-				]
+				"roles": ["factor", "warehouse", "quartermaster"]
 			},
 			{
 				"kind": "shop",
-				"roles": [
-					"shop",
-					"merchant",
-					"trader",
-					"pedlar",
-					"peddler",
-					"grocer",
-					"chandler"
-				]
+				"roles": ["shop", "merchant", "trader", "pedlar", "peddler", "grocer", "chandler"]
 			}
 		],
 		"yields": {
 			"crops": [
-				[
-					"Sheaf of Barley",
-					"Cut green and tied with its own straw."
-				],
-				[
-					"Cushion Moss",
-					"Grows thick at the foot of the stalks, where the shade sits."
-				]
+				["Sheaf of Barley", "Cut green and tied with its own straw."],
+				["Cushion Moss", "Grows thick at the foot of the stalks, where the shade sits."]
 			],
 			"forestFloor": [
-				[
-					"Cushion Moss",
-					"Deep green, and damp all the way through."
-				],
-				[
-					"Wood Mushrooms",
-					"Pale, and growing in a rough ring."
-				],
-				[
-					"Kindling",
-					"Dry twigs, gathered by the handful."
-				]
+				["Cushion Moss", "Deep green, and damp all the way through."],
+				["Wood Mushrooms", "Pale, and growing in a rough ring."],
+				["Kindling", "Dry twigs, gathered by the handful."]
 			],
 			"marsh": [
-				[
-					"Sphagnum Moss",
-					"Sodden, and it holds far more water than it looks able to."
-				],
-				[
-					"Bog Myrtle",
-					"Bitter to the nose, and said to keep flies off."
-				]
+				["Sphagnum Moss", "Sodden, and it holds far more water than it looks able to."],
+				["Bog Myrtle", "Bitter to the nose, and said to keep flies off."]
 			],
 			"tallGrass": [
-				[
-					"Meadow Herbs",
-					"Whatever was worth taking from a hand's width of meadow."
-				],
-				[
-					"Seed Heads",
-					"Shaken loose into a twist of cloth."
-				]
+				["Meadow Herbs", "Whatever was worth taking from a hand's width of meadow."],
+				["Seed Heads", "Shaken loose into a twist of cloth."]
 			],
 			"reeds": [
-				[
-					"Cut Reeds",
-					"A bundle of them, still wet at the ends."
-				],
-				[
-					"Reed Mace",
-					"The brown heads, which burn slowly and smell of nothing."
-				]
+				["Cut Reeds", "A bundle of them, still wet at the ends."],
+				["Reed Mace", "The brown heads, which burn slowly and smell of nothing."]
 			],
 			"bush": [
-				[
-					"Bramble Berries",
-					"Dark, and they stain everything they touch."
-				],
-				[
-					"Thorn Cuttings",
-					"Springy, and awkward to carry."
-				]
+				["Bramble Berries", "Dark, and they stain everything they touch."],
+				["Thorn Cuttings", "Springy, and awkward to carry."]
 			],
-			"flowers": [
-				[
-					"Wildflowers",
-					"Picked with enough stem to be worth putting in water."
-				]
-			],
-			"deadTree": [
-				[
-					"Kindling",
-					"Split from a trunk that has been dead long enough to be dry."
-				]
-			],
+			"flowers": [["Wildflowers", "Picked with enough stem to be worth putting in water."]],
+			"deadTree": [["Kindling", "Split from a trunk that has been dead long enough to be dry."]],
 			"stump": [
-				[
-					"Kindling",
-					"Prised off a stump with a thumbnail."
-				],
-				[
-					"Tree Resin",
-					"Amber beads, tacky in the warmth."
-				]
+				["Kindling", "Prised off a stump with a thumbnail."],
+				["Tree Resin", "Amber beads, tacky in the warmth."]
 			],
 			"rock": [
-				[
-					"Flint",
-					"It takes a hard edge and a harder spark."
-				],
-				[
-					"Loose Stone",
-					"Heavier than it is useful."
-				]
+				["Flint", "It takes a hard edge and a harder spark."],
+				["Loose Stone", "Heavier than it is useful."]
 			],
-			"rubble": [
-				[
-					"Loose Stone",
-					"Somebody's wall, once."
-				]
-			],
-			"snow": [
-				[
-					"Packed Snow",
-					"It will not last, and it knows it."
-				]
-			]
+			"rubble": [["Loose Stone", "Somebody's wall, once."]],
+			"snow": [["Packed Snow", "It will not last, and it knows it."]]
 		},
 		"forageChance": {
 			"crops": 0.3,

@@ -52,7 +52,7 @@
 		"survey": "vite-node src/tools/survey.ts --",
 		"assemble": "vite-node src/tools/assemble.ts --",
 		"validate": "vite-node src/tools/validate.ts --",
-		"pack:emit": "vite-node src/tools/emit-pack.ts",
+		"pack:emit": "vite-node src/tools/emit-pack.ts && ./node_modules/.bin/biome format --write .packs/default.json",
 		"tiles:emit": "vite-node src/tools/emit-tiles.ts",
 		"prepack": "npm run build",
 		"prepublishOnly": "npm run check"
