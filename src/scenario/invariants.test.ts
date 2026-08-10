@@ -44,6 +44,35 @@ describe("structures-built", () => {
 		expect(violations[0]?.detail).toContain("hall");
 	});
 
+	it("reports every kind that came up short, in sorted order", () => {
+		clearFeatureCache();
+		// Two kinds this time, both oversubscribed, so the per-kind loop
+		// (`[...wanted.keys()].sort()`) actually iterates more than once and its
+		// alphabetical ordering — "hall" before "smithy" — is pinned by this test rather
+		// than merely implemented.
+		const artifact = withStructures([
+			...Array.from({ length: 12 }, (_, i) => ({
+				kind: "hall" as const,
+				size: "large" as const,
+				importance: 5,
+				name: `Hall ${i}`,
+			})),
+			...Array.from({ length: 12 }, (_, i) => ({
+				kind: "smithy" as const,
+				size: "large" as const,
+				importance: 5,
+				name: `Smithy ${i}`,
+			})),
+		]);
+
+		const violations = checkStructuresBuilt(artifact);
+		const kinds = violations.map((v) => v.detail);
+
+		expect(violations.length).toBe(2);
+		expect(kinds[0]).toContain("hall");
+		expect(kinds[1]).toContain("smithy");
+	});
+
 	it("is silent when every requested structure was built", () => {
 		clearFeatureCache();
 		// The fixture's settlement site is a small fort (radius 15) with room for exactly

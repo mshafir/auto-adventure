@@ -1,4 +1,4 @@
-import { featureKindFor } from "../core/gen/features/registry.js";
+import { featureKindFor, invalidateFeature } from "../core/gen/features/registry.js";
 import { generateSettlement } from "../core/gen/features/settlement.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
 import { siteIndex } from "./validate.js";
@@ -11,6 +11,14 @@ import { siteIndex } from "./validate.js";
  * second opinion that can disagree with the first, which is the failure mode
  * `validate.ts:80-86` describes — "a validator that disagrees with the thing it
  * validates is worse than no validator, because it is believed".
+ *
+ * `checkPlaces` (`validate.ts:1249`) is the closest relative and the one this is easiest
+ * to mistake for: it already warns `"asked for N structures, M fitted"` when some
+ * structure is named. What it measures is an aggregate count, so a substitution that
+ * swaps a house for a filler shack without changing the total slips past it unnoticed,
+ * and the gate on a named structure means an unnamed roster gets no check at all. What
+ * follows measures per kind, so that substitution is caught, and unconditionally, so an
+ * unnamed roster is measured the same as a named one.
  *
  * Every check below measures something no existing check measures. Their purpose is
  * attribution: a scenario that is hard to play should be explainable as a named
@@ -61,6 +69,14 @@ export function checkStructuresBuilt(artifact: ScenarioArtifact): Violation[] {
 		if (!spec || !site) continue;
 		if (featureKindFor(site.kind)?.id !== "settlement") continue;
 
+		// `generateFeature`/`generateSettlement` memoise by `(world, kind, siteId)` alone —
+		// the spec is not part of the cache key. That is right for a running game, where a
+		// site is generated once and every caller wants the same patch, but wrong here: a
+		// repair pass or a second authoring edit can leave a stale patch cached under this
+		// site's id, and measuring the current spec against it would report a verdict about
+		// a layout that is no longer the one on the artifact. Dropping the entry first makes
+		// this check describe the spec it was actually handed, matching `checkPlaces`.
+		invalidateFeature(world, site.id);
 		const patch = generateSettlement(world, site, spec.settlement);
 		const built = new Map<string, number>();
 		for (const building of patch.buildings) {
