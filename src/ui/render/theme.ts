@@ -28,6 +28,8 @@ import type { Sprite, SpriteTheme } from "./sprite.js";
  */
 export interface TileTheme {
 	readonly name: string;
+	/** One line for a chooser. Absent on the built-in look, which needs no selling. */
+	readonly description?: string;
 	readonly palette: Palette;
 	/** Dense by terrain id, so the render loop never does a string lookup. */
 	readonly terrain: readonly GlyphSource[];
@@ -46,6 +48,7 @@ export interface TileTheme {
 /** What a tile pack may say, once its files have been read and validated. */
 export interface TilePackContent {
 	readonly name: string;
+	readonly description?: string;
 	readonly palette?: Readonly<Record<string, string>>;
 	readonly glyphs?: {
 		readonly terrain?: Readonly<Record<string, GlyphDraft>>;
@@ -105,7 +108,16 @@ export function resolveTheme(pack: TilePackContent | undefined): TileTheme {
 		...Object.values(pack.sprites?.glyph ?? {}),
 	].some((sprite) => sprite.kind === "bitmap");
 
-	return { name: pack.name, palette: resolved, terrain, decor, player, sprites, hasBitmaps };
+	return {
+		name: pack.name,
+		...(pack.description ? { description: pack.description } : {}),
+		palette: resolved,
+		terrain,
+		decor,
+		player,
+		sprites,
+		hasBitmaps,
+	};
 }
 
 type RGBLike = readonly [number, number, number];

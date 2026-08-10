@@ -65,6 +65,8 @@ export const PackOverrideSchema = z.object({
 		.max(48)
 		.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case slug")
 		.optional(),
+	/** One line for somebody choosing between packs. See `ContentPack.description`. */
+	description: z.string().min(1).max(240).optional(),
 	// The one table that is not cosmetic. Validated by the recipe's own schema rather
 	// than by a copy of it, so a pack cannot ask the generator for something a recipe
 	// file could not.
@@ -107,6 +109,8 @@ export const PackOverrideSchema = z.object({
  */
 export const ContentPackSchema = z.object({
 	id: z.string().min(1),
+	/** One line for somebody choosing between packs. See `ContentPack.description`. */
+	description: z.string().min(1).max(240).optional(),
 	names: z.object({
 		given: words(24),
 		family: words(32),

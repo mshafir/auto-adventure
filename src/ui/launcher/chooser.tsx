@@ -1,7 +1,9 @@
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
 import { Rule } from "../panels/primitives.js";
+import { toHex } from "../render/color.js";
 import { wrapToLines } from "../render/text.js";
+import type { PreviewCell } from "../render/tile-preview.js";
 
 /**
  * A list you move a cursor down and pick from.
@@ -27,6 +29,15 @@ export interface ChoiceItem {
 	readonly detail?: string;
 	/** A sentence or two under it, for a choice that needs explaining. */
 	readonly body?: string;
+	/**
+	 * A few rows of colour under the body, for a choice that can be *shown*.
+	 *
+	 * Drawn only under the cursor, however much room the bodies have. A preview is
+	 * several rows and every choice having one at once would be a page of swatches with
+	 * the settings squeezed between them — and unlike a body, it answers a question only
+	 * about the row being decided.
+	 */
+	readonly preview?: readonly (readonly PreviewCell[])[];
 	/**
 	 * Shown, but not choosable, with `body` saying why.
 	 *
@@ -180,13 +191,19 @@ function bodyBudget(items: readonly ChoiceItem[], height: number): BodyBudget {
 	const rules = items.filter((item) => item.rule).length;
 	if (explained === 0) return { mode: "all", rows: 0 };
 
+	// The tallest preview any *one* item has, because only the selected item draws one.
+	// Charged against the budget whether or not the cursor is on that item, so that
+	// moving onto it cannot push the last choice off the bottom of the frame — a list
+	// whose height depends on where the cursor is would jump under the player's hands.
+	const preview = items.reduce((most, item) => Math.max(most, item.preview?.length ?? 0), 0);
+
 	// One row per label, and one blank under each body.
-	const spare = height - items.length - explained - rules;
+	const spare = height - items.length - explained - rules - preview;
 	const each = Math.floor(spare / explained);
 	if (each >= 1) return { mode: "all", rows: Math.min(BODY_ROWS, each) };
 	return {
 		mode: "selected",
-		rows: Math.max(0, Math.min(BODY_ROWS, height - items.length - rules - 1)),
+		rows: Math.max(0, Math.min(BODY_ROWS, height - items.length - rules - preview - 1)),
 	};
 }
 
@@ -225,7 +242,40 @@ function Row({
 					{`${" ".repeat(BODY_INDENT)}${line}`}
 				</Text>
 			))}
+			{selected && item.preview ? <Preview rows={item.preview} /> : null}
 		</Box>
+	);
+}
+
+/**
+ * A strip of world, drawn in the colours of whatever is under the cursor.
+ *
+ * Not dimmed the way a body is. The whole content of this row is its colour, and
+ * dimming it would be answering "what does this look like" with a washed-out version of
+ * the answer.
+ */
+function Preview({ rows }: { rows: readonly (readonly PreviewCell[])[] }) {
+	return (
+		<>
+			{rows.map((row, y) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional, not identities
+				<Text key={y} wrap="truncate">
+					{" ".repeat(BODY_INDENT)}
+					{row.map((cell, x) => (
+						<Text
+							// biome-ignore lint/suspicious/noArrayIndexKey: cells are positional
+							key={x}
+							color={toHex(cell.fg)}
+							{...(cell.bg ? { backgroundColor: toHex(cell.bg) } : {})}
+							bold={cell.bold ?? false}
+							dimColor={cell.dim ?? false}
+						>
+							{cell.ch}
+						</Text>
+					))}
+				</Text>
+			))}
+		</>
 	);
 }
 

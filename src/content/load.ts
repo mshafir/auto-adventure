@@ -92,3 +92,28 @@ export function resolveOverride(spec: string | undefined): PackOverride | undefi
 export function loadPack(spec: string | undefined): ContentPack {
 	return mergePack(DEFAULT_PACK, resolveOverride(spec));
 }
+
+/** A pack, as a chooser needs it: what it is called and what it is. */
+export interface PackEntry {
+	readonly name: string;
+	readonly description?: string;
+}
+
+/**
+ * Every pack on disk with its own description, for a list somebody has to choose from.
+ *
+ * Reads each file rather than only listing the directory, which is the whole point: a
+ * name is the least informative thing about a pack, and a chooser offering six of them
+ * by name alone is a chooser that cannot be answered without generating six worlds.
+ *
+ * A pack that cannot be read is *listed anyway*, with no description. It would be worse
+ * to hide it: the player can see the file, and a launcher that silently omits it looks
+ * broken in a way that points at the launcher rather than at the file. `readOverride`
+ * has already logged what is wrong with it.
+ */
+export function packCatalogue(): PackEntry[] {
+	return listPacks().map((name) => {
+		const description = readOverride(packPath(name))?.description;
+		return { name, ...(description ? { description } : {}) };
+	});
+}

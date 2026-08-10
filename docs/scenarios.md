@@ -1154,6 +1154,21 @@ today. A missing pack falls back to the built-in look and the world plays identi
 
 Everything is optional and everything merges by key, the same rule content packs use.
 
+**`description`** — one line about the look, for the chooser.
+
+```json
+"description": "Inked and warm: heavy outlines, autumn greens and a deep sea."
+```
+
+Worth writing, and worth knowing that it is the *consolation prize*. A look is the one
+setting on the generate page that is entirely visual, so a sentence about it is a
+description of a picture. The page also draws **three rows of an actual world** in the
+pack under the cursor — a coast, a wood, two roads and a building, chosen so a recolour
+shows up in every one of them — which answers the question that no amount of "warm,
+inked, high-contrast" ever will. The strip is `render/tile-preview.ts`, kept out of the
+component for the reason `minimap-data.ts` gives: what to draw and how to draw it are
+different questions and only one of them needs Ink.
+
 **`palette`** — any colour by name. Eleven lines recolours the entire game, because
 every glyph and every sprite draws in palette colours rather than in literals.
 
@@ -1288,6 +1303,27 @@ like the brief, and a world with one of its own ignores whatever is offered.
 | `ambient` | flavour lines for a region nobody wrote |
 | `goods` | what there is to find, buy and gather |
 | `world` | a recipe fragment: what the map is *built* of |
+| `description` | one line, for somebody choosing between packs |
+
+### description
+
+```json
+{ "id": "camelot", "description": "Chivalric romance. Knights, stewards and chaplains; oaths and obligation rather than coin." }
+```
+
+Not decoration. The generate page offers every installed pack by name, and a name is the
+least informative thing about a pack — `gramarye` and `inkwell` say nothing about which
+is warm and which is cold, and the only way to find out was to generate a world and read
+it. The chooser shows the *chosen pack's* line rather than a sentence about the setting.
+
+Optional, and a pack without one is listed with an admission that it has none rather than
+a blank row, because a blank row reads as a pack that failed to load.
+
+One rule worth knowing: **a description follows the id.** An override that gives itself an
+`id` is a different world and does not inherit the line underneath it — otherwise a
+drowned archipelago would be labelled as temperate smallholding country in the one place a
+player reads before choosing. An override with no id of its own is a tweak, and there the
+base's line still holds.
 
 ### goods
 

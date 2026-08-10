@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type InkHarness, KEY, renderInk } from "../../../test/harness/ink.js";
+import type { PackEntry } from "../../content/load.js";
+import type { TilePackEntry } from "../../content/tiles.js";
 import { hashString } from "../../core/rand/hash.js";
 import type { SaveSummary } from "../../persist/save-repo.js";
 import type { ScenarioSummary } from "../../scenario/repo.js";
@@ -58,8 +60,8 @@ function mount(
 		scenarios?: ScenarioSummary[];
 		canUseModel?: boolean;
 		unavailableNote?: string;
-		tilePacks?: string[];
-		contentPacks?: string[];
+		tilePacks?: TilePackEntry[];
+		contentPacks?: PackEntry[];
 		columns?: number;
 		rows?: number;
 		/** Absent means no Options page at all, which is the headless case. */
@@ -479,8 +481,62 @@ describe("configuring a world to be written", () => {
 		m.ink.unmount();
 	});
 
+	it("says what a pack is, rather than what the setting is for", async () => {
+		// Choosing a look from a list of names is choosing blind, and it was: the row used
+		// to explain the *knob* — the same sentence whichever pack the cursor had landed on.
+		const m = mount({
+			tilePacks: [
+				{ name: "gramarye", description: "Inked and warm, with a deep sea.", preview: [] },
+			],
+			contentPacks: [{ name: "camelot", description: "Knights and oaths rather than coin." }],
+		});
+		await toConfig(m);
+		await toRow(m, "Look");
+		await m.ink.type(KEY.right);
+		expect(m.ink.screen()).toContain("Inked and warm");
+		await toRow(m, "Names and trades");
+		await m.ink.type(KEY.right);
+		expect(m.ink.screen()).toContain("Knights and oaths");
+		m.ink.unmount();
+	});
+
+	it("still names a pack that describes nothing, rather than leaving the row blank", async () => {
+		const m = mount({ tilePacks: [{ name: "unlabelled", preview: [] }] });
+		await toConfig(m);
+		await toRow(m, "Look");
+		await m.ink.type(KEY.right);
+		// A blank body reads as a pack that failed to load, which is a worse lie than
+		// admitting the pack has no line of its own.
+		expect(m.ink.screen()).toContain("does not describe itself");
+		m.ink.unmount();
+	});
+
+	it("draws the chosen look, which is the only honest answer to what it looks like", async () => {
+		const m = mount({
+			tilePacks: [
+				{
+					name: "gramarye",
+					description: "Inked and warm.",
+					// Two rows of one distinctive cell each, so finding them on screen proves
+					// the preview was drawn rather than that some other row happened to match.
+					preview: [[{ ch: "≈", fg: [10, 20, 30] }], [{ ch: "▲", fg: [40, 50, 60] }]],
+				},
+			],
+		});
+		await toConfig(m);
+		await toRow(m, "Look");
+		await m.ink.type(KEY.right);
+		const screen = m.ink.screen();
+		expect(screen).toContain("≈");
+		expect(screen).toContain("▲");
+		m.ink.unmount();
+	});
+
 	it("carries the settings it was given into the request", async () => {
-		const m = mount({ tilePacks: ["gramarye"], contentPacks: ["camelot"] });
+		const m = mount({
+			tilePacks: [{ name: "gramarye", description: "Inked and warm.", preview: [] }],
+			contentPacks: [{ name: "camelot", description: "Knights and oaths." }],
+		});
 		await toConfig(m);
 		await m.ink.type(KEY.right); // length → long
 		await toRow(m, "Look");

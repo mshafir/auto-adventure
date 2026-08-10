@@ -55,6 +55,26 @@ describe("mergePack", () => {
 		expect(merged.names.heads.cold).toEqual(DEFAULT_PACK.names.heads.cold);
 	});
 
+	it("drops the base's description when the override renames the world", () => {
+		// The obvious `over ?? base` is wrong here and quietly so: a pack that gives itself
+		// an id is a different world, and inheriting the line underneath would label a
+		// drowned archipelago as temperate smallholding country in the one place a player
+		// reads before choosing.
+		const merged = mergePack(DEFAULT_PACK, { id: "saltmere" });
+		expect(merged.id).toBe("saltmere");
+		expect(merged.description).toBeUndefined();
+	});
+
+	it("keeps the base's description for an override that is only a tweak", () => {
+		const merged = mergePack(DEFAULT_PACK, { appearance: { cooper: "Pitch to the elbow." } });
+		expect(merged.description).toBe(DEFAULT_PACK.description);
+	});
+
+	it("takes the override's own description when it has one", () => {
+		const merged = mergePack(DEFAULT_PACK, { id: "saltmere", description: "Wet and mercantile." });
+		expect(merged.description).toBe("Wet and mercantile.");
+	});
+
 	it("takes the override's id, so a log says which pack is in play", () => {
 		expect(mergePack(DEFAULT_PACK, { id: "thornwick" }).id).toBe("thornwick");
 		expect(mergePack(DEFAULT_PACK, { appearance: {} }).id).toBe("default");

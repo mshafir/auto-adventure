@@ -15,6 +15,8 @@ import type { ContentPack } from "./pack.js";
  */
 export const DEFAULT_PACK: ContentPack = {
 	id: "default",
+	description:
+		"Temperate smallholding country: coopers, reeves and road-traders, and a market every place is a day from.",
 	names: {
 		given: [
 			"Alder",

@@ -2,8 +2,8 @@ import { render } from "ink";
 import { logTelemetry } from "../../ai/telemetry.js";
 import { clearTranscript, debugAi, setDebugAi } from "../../ai/transcript.js";
 import { CONFIG, gatewayKey, hasGatewayKey } from "../../config.js";
-import { listPacks } from "../../content/load.js";
-import { listTilePacks } from "../../content/tiles.js";
+import { packCatalogue } from "../../content/load.js";
+import { tilePackCatalogue } from "../../content/tiles.js";
 import { deleteSave, listSaves } from "../../persist/save-repo.js";
 import { displaySettingsPath, readSettings, writeSettings } from "../../persist/settings.js";
 import { type GenerationOutcome, generateScenario } from "../../scenario/generate.js";
@@ -23,6 +23,12 @@ import { Launcher } from "./launcher.js";
 export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 	const saves = listSaves();
 	const scenarios = listScenarios();
+	// Read once, here, rather than inside the config page. Resolving a tile pack means
+	// reading a manifest, decoding an atlas and building two glyph tables, and the page
+	// re-renders on every keypress — so doing it there would pay for all of them on each
+	// arrow key. It is also the rule the render layer is built on: components take values.
+	const tilePacks = tilePackCatalogue();
+	const contentPacks = packCatalogue();
 	const canUseModel = hasGatewayKey() && !CONFIG.noAi;
 	const settings = readSettings();
 	// A key in the environment outranks the settings file everywhere, so the page
@@ -68,8 +74,8 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 				noAi: CONFIG.noAi,
 			}}
 			{...(CONFIG.brief ? { initialBrief: CONFIG.brief } : {})}
-			tilePacks={listTilePacks()}
-			contentPacks={listPacks()}
+			tilePacks={tilePacks}
+			contentPacks={contentPacks}
 			onChoose={(choice) => {
 				chosen = choice;
 			}}

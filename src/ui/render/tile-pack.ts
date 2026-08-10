@@ -157,6 +157,8 @@ export const TilePackSchema = z
 			.min(1)
 			.max(64)
 			.regex(/^[a-z0-9][a-z0-9-]*$/, "lower-case letters, digits and dashes only"),
+		/** One line saying what this look is, for somebody choosing between packs. */
+		description: z.string().min(1).max(240).optional(),
 		/** Pixels per side the atlas was drawn at. Required if there is an atlas. */
 		tilePx: z.number().int().min(4).max(128).optional(),
 		palette: z.record(z.string().min(1).max(40), hexColour).optional(),
@@ -263,6 +265,7 @@ export function compilePack(
 
 	return {
 		name: manifest.name,
+		...(manifest.description ? { description: manifest.description } : {}),
 		...(manifest.palette ? { palette: manifest.palette } : {}),
 		...(manifest.player ? { player: manifest.player } : {}),
 		...(Object.keys(glyphs).length > 0 ? { glyphs } : {}),

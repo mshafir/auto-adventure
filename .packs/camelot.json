@@ -1,6 +1,6 @@
 {
 	"id": "camelot",
-
+	"description": "Chivalric romance. Knights, stewards and chaplains; oaths and obligation rather than coin.",
 	"names": {
 		"given": [
 			"Ector",
@@ -64,24 +64,52 @@
 		],
 		"regionTails": ["waste", "marches", "wold", "forest", "fells", "hundred"]
 	},
-
 	"households": {
 		"house": {
 			"count": [1, 3],
 			"roles": ["bondsman", "fowler", "brewster", "widow", "child", "harper", "carter"]
 		},
-		"inn": { "count": [2, 4], "roles": ["cook", "server", "pilgrim", "packman", "harper"] },
-		"tower": { "count": [1, 2], "roles": ["watchman", "porter"] },
-		"barracks": { "count": [2, 4], "roles": ["squire", "sergeant", "bowman", "cook"] },
-		"stable": { "count": [1, 2], "roles": ["groom", "farrier"] },
-		"smithy": { "count": [1, 2], "roles": ["armourer", "striker"] },
-		"temple": { "count": [1, 2], "roles": ["chaplain", "clerk"] },
-		"shrine": { "count": [0, 1], "roles": ["hermit"] },
-		"warehouse": { "count": [1, 2], "roles": ["steward", "porter"] },
-		"shop": { "count": [1, 2], "roles": ["ferryman", "netmaker", "packman"] },
-		"ruin": { "count": [0, 1], "roles": ["hermit"] }
+		"inn": {
+			"count": [2, 4],
+			"roles": ["cook", "server", "pilgrim", "packman", "harper"]
+		},
+		"tower": {
+			"count": [1, 2],
+			"roles": ["watchman", "porter"]
+		},
+		"barracks": {
+			"count": [2, 4],
+			"roles": ["squire", "sergeant", "bowman", "cook"]
+		},
+		"stable": {
+			"count": [1, 2],
+			"roles": ["groom", "farrier"]
+		},
+		"smithy": {
+			"count": [1, 2],
+			"roles": ["armourer", "striker"]
+		},
+		"temple": {
+			"count": [1, 2],
+			"roles": ["chaplain", "clerk"]
+		},
+		"shrine": {
+			"count": [0, 1],
+			"roles": ["hermit"]
+		},
+		"warehouse": {
+			"count": [1, 2],
+			"roles": ["steward", "porter"]
+		},
+		"shop": {
+			"count": [1, 2],
+			"roles": ["ferryman", "netmaker", "packman"]
+		},
+		"ruin": {
+			"count": [0, 1],
+			"roles": ["hermit"]
+		}
 	},
-
 	"appearance": {
 		"squire": "Sixteen, cold, and holding somebody else's helm as if it were an egg.",
 		"armourer": "Burn-marked to the elbow, and squinting at a rivet you cannot see.",
@@ -99,7 +127,6 @@
 		"steward": "A tally-stick in each hand and no patience in either.",
 		"netmaker": "Mending, with the work hooked over one bare toe."
 	},
-
 	"talksAbout": {
 		"squire": "who is riding out, and who is quietly not",
 		"armourer": "what a green axe is worth as metal, which is nothing",
@@ -112,26 +139,62 @@
 		"hermit": "a chapel out in the dale that nobody has consecrated",
 		"steward": "the stores, the winter, and the hunting that will not fill either"
 	},
-
 	"outdoorRoles": {
-		"barracks": { "role": "sergeant", "placement": "gate" },
-		"tower": { "role": "porter", "placement": "gate" },
-		"smithy": { "role": "armourer", "placement": "doorstep" },
-		"stable": { "role": "groom", "placement": "yard" },
-		"inn": { "role": "innkeeper", "placement": "doorstep" },
-		"temple": { "role": "chaplain", "placement": "doorstep" },
-		"shop": { "role": "ferryman", "placement": "doorstep" },
-		"warehouse": { "role": "steward", "placement": "yard" },
-		"shrine": { "role": "hermit", "placement": "doorstep" }
+		"barracks": {
+			"role": "sergeant",
+			"placement": "gate"
+		},
+		"tower": {
+			"role": "porter",
+			"placement": "gate"
+		},
+		"smithy": {
+			"role": "armourer",
+			"placement": "doorstep"
+		},
+		"stable": {
+			"role": "groom",
+			"placement": "yard"
+		},
+		"inn": {
+			"role": "innkeeper",
+			"placement": "doorstep"
+		},
+		"temple": {
+			"role": "chaplain",
+			"placement": "doorstep"
+		},
+		"shop": {
+			"role": "ferryman",
+			"placement": "doorstep"
+		},
+		"warehouse": {
+			"role": "steward",
+			"placement": "yard"
+		},
+		"shrine": {
+			"role": "hermit",
+			"placement": "doorstep"
+		}
 	},
-
 	"wanderers": [
-		{ "role": "squire", "placement": "well" },
-		{ "role": "harper", "placement": "bench" },
-		{ "role": "pilgrim", "placement": "stall" },
-		{ "role": "packman", "placement": "gate" }
+		{
+			"role": "squire",
+			"placement": "well"
+		},
+		{
+			"role": "harper",
+			"placement": "bench"
+		},
+		{
+			"role": "pilgrim",
+			"placement": "stall"
+		},
+		{
+			"role": "packman",
+			"placement": "gate"
+		}
 	],
-
 	"lore": {
 		"title": "A Blow for a Blow",
 		"premise": "A green man rode into the hall at New Year, let a knight take his head off, picked it up and asked for the return blow in a year. The year is up.",
@@ -140,7 +203,6 @@
 		"factions": ["The Round Table", "The House of Hautdesert", "The Waste"],
 		"deities": ["Mary of the Five Joys"]
 	},
-
 	"ambient": [
 		"The frost has not come off the north side of anything today.",
 		"Somewhere behind you a bird goes up out of the reeds, and nothing follows it.",

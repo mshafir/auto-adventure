@@ -1,5 +1,6 @@
 {
 	"name": "inkwell",
+	"description": "A sparse pen-and-ink study. Only a handful of tiles are drawn; the rest keep the built-in shapes in muted colour.",
 	"tilePx": 16,
 	"palette": {
 		"moss": "#6f7f4a",
@@ -31,8 +32,16 @@
 	},
 	"glyphs": {
 		"terrain": {
-			"grass": { "ch": ["░", "'", ".", "░"], "fg": "moss", "bg": "mossDark" },
-			"cobbleRoad": { "ch": [" ", "▒", " ", " "], "fg": "cobble", "bg": "cobbleDark" },
+			"grass": {
+				"ch": ["░", "'", ".", "░"],
+				"fg": "moss",
+				"bg": "mossDark"
+			},
+			"cobbleRoad": {
+				"ch": [" ", "▒", " ", " "],
+				"fg": "cobble",
+				"bg": "cobbleDark"
+			},
 			"stoneWall": {
 				"ch": ["▓"],
 				"fg": "stone",
@@ -42,7 +51,11 @@
 			}
 		},
 		"decor": {
-			"chest": { "ch": "▣", "fg": "brass", "bold": true }
+			"chest": {
+				"ch": "▣",
+				"fg": "brass",
+				"bold": true
+			}
 		}
 	},
 	"sprites": {
@@ -70,17 +83,29 @@
 			"conifer": {
 				"shape": {
 					"any": [
-						{ "cone": [0.5, 0.02, 0.62, 0.34] },
-						{ "cone": [0.5, 0.28, 0.88, 0.44] },
-						{ "box": [0.45, 0.86, 0.55, 1.0] }
+						{
+							"cone": [0.5, 0.02, 0.62, 0.34]
+						},
+						{
+							"cone": [0.5, 0.28, 0.88, 0.44]
+						},
+						{
+							"box": [0.45, 0.86, 0.55, 1.0]
+						}
 					]
 				}
 			},
-			"roof": { "atlas": [0, 0] },
-			"cobbleRoad": { "atlas": [1, 0] }
+			"roof": {
+				"atlas": [0, 0]
+			},
+			"cobbleRoad": {
+				"atlas": [1, 0]
+			}
 		},
 		"decor": {
-			"chest": { "atlas": [2, 0] }
+			"chest": {
+				"atlas": [2, 0]
+			}
 		}
 	}
 }

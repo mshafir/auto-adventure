@@ -1,6 +1,9 @@
 import { Box, Text } from "ink";
 import { useState } from "react";
 import { CATALOGUE, costLabel, costRatio, modelChoice, priceLine } from "../../ai/catalogue.js";
+import type { PackEntry } from "../../content/load.js";
+import { defaultTilePackEntry, type TilePackEntry } from "../../content/tiles.js";
+import { DEFAULT_PACK as BUILT_IN } from "../../core/content/default.js";
 import { type Duration, normalizeBrief } from "../../core/world/brief.js";
 import type { GenerateRequest } from "../../scenario/scenario.js";
 import { FRAME_CHROME, Frame } from "../panels/primitives.js";
@@ -73,14 +76,35 @@ const LENGTHS: Readonly<Record<Duration, string>> = {
 	long: "A large map and ten beats, with side errands and forks in it. The dearest by some way.",
 };
 
+/**
+ * A pack's own line, or an honest admission that it has none.
+ *
+ * A pack written before descriptions existed is still a good pack, so the fallback names
+ * it rather than leaving the row blank — which would read as a pack that failed to load.
+ */
+function describe(
+	entries: readonly { name: string; description?: string }[],
+	name: string,
+): string {
+	const found = entries.find((entry) => entry.name === name);
+	return found?.description ?? `“${name}”, which does not describe itself.`;
+}
+
 export interface GenerateConfigProps {
 	readonly columns: number;
 	readonly rows: number;
 	readonly depth: ColorDepth;
-	/** Tile packs found on disk. The default look is offered alongside them. */
-	readonly tilePacks: readonly string[];
+	/**
+	 * Tile packs found on disk, with their descriptions and previews already resolved.
+	 *
+	 * Resolved by the caller rather than here, because reading a pack means reading a
+	 * manifest, decoding a PNG and building two glyph tables — and this module is a
+	 * component. It is the same rule `content/tiles.ts` states from the other side:
+	 * `ui/render` has to stay callable with no `.packs` directory anywhere.
+	 */
+	readonly tilePacks: readonly TilePackEntry[];
 	/** Content packs found on disk, likewise. */
-	readonly contentPacks: readonly string[];
+	readonly contentPacks: readonly PackEntry[];
 	/** A premise from the environment, offered as a starting point. */
 	readonly initialPremise?: string;
 	/** The catalogue id currently in force. Absent means the built-in default. */
@@ -122,9 +146,21 @@ export function GenerateConfig({
 	const [editing, setEditing] = useState(false);
 
 	// The default is offered first in both lists, so ← from it wraps to a real pack
-	// rather than to nothing.
-	const tileChoices = [DEFAULT_PACK, ...tilePacks];
-	const packChoices = [DEFAULT_PACK, ...contentPacks];
+	// rather than to nothing. It carries a description and a preview of its own, so
+	// the built-in look is not the one option a player has to take on trust.
+	const tileEntries = [defaultTilePackEntry(DEFAULT_PACK), ...tilePacks];
+	// The built-in pack describes itself, so the line here is the same line a file would
+	// carry — rather than a second copy of it written for the launcher and free to drift.
+	const packEntries: readonly PackEntry[] = [
+		{
+			name: DEFAULT_PACK,
+			...(BUILT_IN.description ? { description: BUILT_IN.description } : {}),
+		},
+		...contentPacks,
+	];
+	const tileChoices = tileEntries.map((entry) => entry.name);
+	const packChoices = packEntries.map((entry) => entry.name);
+	const tilePreview = tileEntries.find((entry) => entry.name === tiles)?.preview ?? [];
 
 	const chosen = modelChoice(models);
 	const modelIds = CATALOGUE.map((entry) => entry.id);
@@ -168,10 +204,15 @@ export function GenerateConfig({
 			id: "tiles",
 			label: "Look",
 			detail: tiles,
+			// The chosen pack's own line, not a sentence about the setting. What a player
+			// needs here is "which of these six is the cold one", and a description of the
+			// *knob* answers that for none of them. The reminder that a look changes nothing
+			// about the world is appended, because it is the one thing the picture cannot say.
 			body:
 				tilePacks.length > 0
-					? "Which tile pack draws the map. Only affects what you see; the world is the same either way."
+					? `${describe(tileEntries, tiles)} Only affects what you see; the world is the same either way.`
 					: "Which tile pack draws the map. None are installed, so this is the built-in look.",
+			...(tilePreview.length > 0 ? { preview: tilePreview } : {}),
 			...(tilePacks.length === 0 ? { disabled: true } : {}),
 		},
 		{
@@ -180,7 +221,7 @@ export function GenerateConfig({
 			detail: pack,
 			body:
 				contentPacks.length > 0
-					? "Which content pack the people and places are named from, and what they deal in. A register rather than a language: this is what makes one world sound unlike another."
+					? `${describe(packEntries, pack)} A register rather than a language: this is what makes one world sound unlike another.`
 					: "Which content pack names the people and places. None are installed, so this is the built-in set.",
 			...(contentPacks.length === 0 ? { disabled: true } : {}),
 		},

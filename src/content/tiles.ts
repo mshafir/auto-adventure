@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { packRoot } from "../paths.js";
 import { DEFAULT_THEME, resolveTheme, type TileTheme } from "../ui/render/theme.js";
 import { compilePack, TilePackSchema } from "../ui/render/tile-pack.js";
+import { type PreviewCell, previewRows } from "../ui/render/tile-preview.js";
 import { logger } from "../utils/log.js";
 
 /**
@@ -94,4 +95,44 @@ export function resolveTileTheme(spec: string | undefined): TileTheme {
 		return DEFAULT_THEME;
 	}
 	return readTilePack(directory) ?? DEFAULT_THEME;
+}
+
+/** A tile pack, as a chooser needs it: what it is called, what it is, and what it looks like. */
+export interface TilePackEntry {
+	readonly name: string;
+	readonly description?: string;
+	/** A few rows of a world drawn in it. Empty only if the pack could not be read. */
+	readonly preview: readonly (readonly PreviewCell[])[];
+}
+
+/**
+ * Every tile pack on disk, with a description and a strip of world drawn in it.
+ *
+ * The preview is the point, and the description is the consolation prize. A look is the
+ * one setting on the page that is *entirely* visual, so a sentence about it is a
+ * description of a picture — and three rows of the actual thing answers the question
+ * that no amount of "warm, inked, high-contrast" ever will.
+ *
+ * Resolving a pack means reading its manifest, its atlas and building its glyph tables,
+ * which is real work per pack — so this is called once when the page mounts rather than
+ * per keystroke as the cursor moves along the list.
+ */
+export function tilePackCatalogue(): TilePackEntry[] {
+	return listTilePacks().map((name) => {
+		const theme = readTilePack(join(tilePackRoot(), name));
+		return {
+			name,
+			...(theme?.description ? { description: theme.description } : {}),
+			preview: theme ? previewRows(theme) : [],
+		};
+	});
+}
+
+/** The built-in look, offered alongside the packs so it can be previewed too. */
+export function defaultTilePackEntry(name: string): TilePackEntry {
+	return {
+		name,
+		description: "The built-in look: muted, readable, and what every world starts as.",
+		preview: previewRows(DEFAULT_THEME),
+	};
 }

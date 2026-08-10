@@ -1,5 +1,7 @@
 import { useApp, useStdout } from "ink";
 import { useState } from "react";
+import type { PackEntry } from "../../content/load.js";
+import type { TilePackEntry } from "../../content/tiles.js";
 import type { ScenarioBrief } from "../../core/world/brief.js";
 import type { SaveSummary } from "../../persist/save-repo.js";
 import type { ScenarioSummary } from "../../scenario/repo.js";
@@ -68,10 +70,10 @@ export interface LauncherProps {
 	readonly context: ChoiceContext;
 	/** A brief from the environment, offered as a starting point. */
 	readonly initialBrief?: ScenarioBrief;
-	/** Tile packs on disk, offered on the config page beside the built-in look. */
-	readonly tilePacks?: readonly string[];
+	/** Tile packs on disk, resolved, offered on the config page beside the built-in look. */
+	readonly tilePacks?: readonly TilePackEntry[];
 	/** Content packs on disk, likewise. */
-	readonly contentPacks?: readonly string[];
+	readonly contentPacks?: readonly PackEntry[];
 	/**
 	 * The player asked for a world to be written.
 	 *

@@ -54,6 +54,17 @@ export interface OutdoorRole {
 export interface ContentPack {
 	/** Names the pack in logs and in the save, so a mismatch can be reported. */
 	readonly id: string;
+	/**
+	 * One line saying what world this is, for somebody choosing between them.
+	 *
+	 * The id is the least informative thing about a pack — a list of names tells a
+	 * player nothing about which one is a fishing coast and which is a drowned
+	 * archipelago — and the cost of finding out was generating a world and reading it.
+	 *
+	 * Optional because a pack written before this existed is still a good pack, and a
+	 * missing line degrades to the pack's own name rather than to a blank row.
+	 */
+	readonly description?: string;
 	readonly names: NameTables;
 	/** Keyed by structure kind. `house` is the fallback for any kind not listed. */
 	readonly households: Readonly<Record<string, Household>>;
@@ -90,6 +101,7 @@ export interface ContentPack {
  */
 export interface PackOverride {
 	readonly id?: string;
+	readonly description?: string;
 	/**
 	 * What this pack does to the *map*, as a recipe fragment.
 	 *
@@ -139,10 +151,29 @@ export interface PackOverride {
  * world" — appending to the default would leave the very names the author was
  * trying to get rid of, which is the opposite of what writing the list meant.
  */
+/**
+ * Which description survives a merge: the one belonging to whoever named the result.
+ *
+ * Not `over.description ?? base.description`, which is the obvious answer and is wrong.
+ * A pack that gives itself an `id` is a *different world*, and inheriting the line
+ * underneath it would label a drowned archipelago as temperate smallholding country —
+ * quietly, and in the one place a player reads before choosing. An override with no id
+ * of its own is a tweak rather than a world, so there the base's line is still true.
+ */
+function describedBy(
+	base: { readonly id?: string; readonly description?: string },
+	over: { readonly id?: string; readonly description?: string },
+): { description?: string } {
+	const renamed = over.id !== undefined && over.id !== base.id;
+	const description = over.description ?? (renamed ? undefined : base.description);
+	return description ? { description } : {};
+}
+
 export function mergePack(base: ContentPack, override?: PackOverride): ContentPack {
 	if (!override) return base;
 	return {
 		id: override.id ?? base.id,
+		...describedBy(base, override),
 		names: {
 			given: override.names?.given ?? base.names.given,
 			family: override.names?.family ?? base.names.family,
@@ -199,6 +230,7 @@ export function mergeOverride(
 
 	return {
 		id: over.id ?? base.id,
+		...describedBy(base, over),
 		...(names ? { names } : {}),
 		...(world ? { world } : {}),
 		households: { ...base.households, ...over.households },
