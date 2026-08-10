@@ -8,9 +8,25 @@ const LEVELS: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error:
 /**
  * The TUI owns stdout, so logs go to a file. `LOG_LEVEL` gates them and
  * `LOG_FILE` relocates them; both default to something sane for a dev run.
+ *
+ * Mutable, because the level can now be asked for from inside the running program:
+ * turning on the prompt-by-prompt view is a thing somebody does from the launcher,
+ * having already started the process, and requiring them to have known to set an
+ * environment variable beforehand would make the switch useless in the one situation
+ * it exists for.
  */
-const threshold = LEVELS[(process.env.LOG_LEVEL as LogLevel) ?? "info"] ?? LEVELS.info;
+let threshold = LEVELS[(process.env.LOG_LEVEL as LogLevel) ?? "info"] ?? LEVELS.info;
 const logFile = process.env.LOG_FILE ?? "log.txt";
+
+/**
+ * Lower the bar, never raise it.
+ *
+ * `LOG_LEVEL=debug` on the command line is somebody saying they want everything, and a
+ * feature switched off later in the run must not quietly take that away from them.
+ */
+export function setLogLevel(level: LogLevel): void {
+	threshold = Math.min(threshold, LEVELS[level]);
+}
 
 let ensuredDir = false;
 

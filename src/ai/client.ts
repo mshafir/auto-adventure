@@ -1,8 +1,9 @@
-import { generateObject, NoObjectGeneratedError, streamObject } from "ai";
+import { generateObject, streamObject } from "ai";
 import type { z } from "zod";
 import { hasGatewayKey } from "../config.js";
 import { logger } from "../utils/log.js";
 import { type CallKind, recordCall, recordFailure } from "./telemetry.js";
+import { recordExchange } from "./transcript.js";
 
 /**
  * The only place the game talks to a model.
@@ -27,6 +28,15 @@ export interface StructuredRequest<T> {
 	readonly prompt: string;
 	readonly timeoutMs?: number;
 	readonly retries?: number;
+	/**
+	 * A dearer model to spend the last attempt on, when the catalogue offers one.
+	 *
+	 * Only the final attempt, and only once the ordinary model has already failed — so
+	 * this costs nothing on the calls that work, which is most of them. It exists because
+	 * a model that answers a schema two times in three is not a model that fails: it is a
+	 * model that loses a third of the world, silently, to the deterministic fallback.
+	 */
+	readonly escalateTo?: string;
 	readonly temperature?: number;
 	/**
 	 * The caller giving up, as distinct from this call timing out.
@@ -61,6 +71,46 @@ function abortWith(signal: AbortSignal | undefined, timeoutMs: number) {
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_RETRIES = 2;
+
+/**
+ * File the whole exchange, if anybody asked for one.
+ *
+ * Here rather than at the call sites because this is the only place that has all of
+ * it — the system prompt, the prompt, the answer and how long it took are together for
+ * exactly the width of this function and nowhere else. `recordExchange` returns
+ * immediately when debugging is off, so the cost of this on an ordinary run is a
+ * function call and a boolean.
+ *
+ * `attempt` is one-based on the way out, because "attempt 0" is a thing only the loop
+ * counter believes.
+ *
+ * `model` is passed rather than read off the request, because the last attempt may have
+ * gone to a dearer one — and a transcript that labelled an escalated call with the model
+ * that had already failed would be lying about the one line a reader is looking for.
+ */
+function keep<T>(
+	request: StructuredRequest<T>,
+	attempt: number,
+	millis: number,
+	outcome: {
+		readonly usage?: { inputTokens?: number | undefined; outputTokens?: number | undefined };
+		readonly object?: unknown;
+		readonly error?: unknown;
+	},
+	model: string,
+): void {
+	recordExchange({
+		kind: request.kind,
+		model,
+		system: request.system,
+		prompt: request.prompt,
+		millis,
+		attempt: attempt + 1,
+		...(outcome.usage ? { usage: outcome.usage } : {}),
+		...(outcome.object === undefined ? {} : { object: outcome.object }),
+		...(outcome.error === undefined ? {} : { error: outcome.error }),
+	});
+}
 
 export function aiAvailable(): boolean {
 	return hasGatewayKey();
@@ -109,10 +159,12 @@ export async function streamed<T>(request: StreamedRequest<T>): Promise<T | unde
 	const retries = request.retries ?? DEFAULT_RETRIES;
 	for (let attempt = 0; attempt <= retries; attempt++) {
 		const started = Date.now();
+		// The last attempt goes to the dearer model where there is one to go to.
+		const model = attempt === retries && request.escalateTo ? request.escalateTo : request.model;
 		const abort = abortWith(request.signal, request.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 		try {
 			const result = streamObject({
-				model: request.model,
+				model,
 				schema: request.schema,
 				system: request.system,
 				prompt: request.prompt,
@@ -125,12 +177,17 @@ export async function streamed<T>(request: StreamedRequest<T>): Promise<T | unde
 			// After the stream, not during: this is where a schema mismatch surfaces, and
 			// awaiting it is what makes the failure look like `structured`'s.
 			const object = (await result.object) as T;
-			recordCall(request.kind, request.model, await result.usage, Date.now() - started);
+			const usage = await result.usage;
+			recordCall(request.kind, model, usage, Date.now() - started);
+			keep(request, attempt, Date.now() - started, { usage, object }, model);
 			return object;
 		} catch (error) {
-			const permanent = NoObjectGeneratedError.isInstance(error);
-			if (permanent || attempt === retries || request.signal?.aborted) {
-				recordFailure(request.kind, request.model, error);
+			// Kept on every attempt, not only the last. A run that answers on the third try
+			// is telling you something about the first two, and that is exactly what somebody
+			// reading a transcript is trying to find out.
+			keep(request, attempt, Date.now() - started, { error }, model);
+			if (attempt === retries || request.signal?.aborted) {
+				recordFailure(request.kind, model, error);
 				return undefined;
 			}
 			logger.debug(`ai ${request.kind} attempt ${attempt + 1} failed streaming, retrying`);
@@ -148,25 +205,44 @@ export async function structured<T>(request: StructuredRequest<T>): Promise<T | 
 	const retries = request.retries ?? DEFAULT_RETRIES;
 	for (let attempt = 0; attempt <= retries; attempt++) {
 		const started = Date.now();
+		// The last attempt goes to the dearer model where there is one to go to.
+		const model = attempt === retries && request.escalateTo ? request.escalateTo : request.model;
 		const abort = abortWith(request.signal, request.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 		try {
 			const result = await generateObject({
-				model: request.model,
+				model,
 				schema: request.schema,
 				system: request.system,
 				prompt: request.prompt,
 				abortSignal: abort.signal,
 				...(request.temperature === undefined ? {} : { temperature: request.temperature }),
 			});
-			recordCall(request.kind, request.model, result.usage, Date.now() - started);
+			recordCall(request.kind, model, result.usage, Date.now() - started);
+			keep(
+				request,
+				attempt,
+				Date.now() - started,
+				{ usage: result.usage, object: result.object },
+				model,
+			);
 			return result.object as T;
 		} catch (error) {
-			// A schema mismatch will repeat; a timeout or a 429 will not. Retrying
-			// the former just burns tokens to get the same answer back. Nor is there
-			// anything to retry for once the caller has given up.
-			const permanent = NoObjectGeneratedError.isInstance(error);
-			if (permanent || attempt === retries || request.signal?.aborted) {
-				recordFailure(request.kind, request.model, error);
+			keep(request, attempt, Date.now() - started, { error }, model);
+			/*
+			 * A schema mismatch used to be treated as permanent — "it will repeat, so
+			 * retrying only burns tokens to be told the same thing" — and that turned out
+			 * to be measurably false. On a real run `openai/gpt-5-mini` answered the
+			 * dialogue schema 8 times out of 26 on the same shape of prompt: not a model
+			 * that cannot do it, a model that does it two times in three. Every one of the
+			 * other 18 conversations was thrown away on the first roll, and the symptom
+			 * was a world where most of the cast had nothing written for them.
+			 *
+			 * So every failure is retried now, and the last attempt is spent on a dearer
+			 * model where the catalogue names one. Both costs are bounded, and both are
+			 * paid only on a call that has already failed.
+			 */
+			if (attempt === retries || request.signal?.aborted) {
+				recordFailure(request.kind, model, error);
 				return undefined;
 			}
 			logger.debug(`ai ${request.kind} attempt ${attempt + 1} failed, retrying`);

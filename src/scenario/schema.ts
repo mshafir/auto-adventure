@@ -66,7 +66,7 @@ export const ScenarioBriefSchema = z.object({
 	tone: z.string().optional(),
 	protagonist: z.string().optional(),
 	avoid: z.string().optional(),
-	duration: z.enum(["short", "medium", "long"]).optional(),
+	duration: z.enum(["tiny", "short", "medium", "long"]).optional(),
 });
 
 export const StoredWorldLoreSchema = z.object({

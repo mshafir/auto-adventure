@@ -76,7 +76,7 @@ describe("the cursor", () => {
 		// which reads as the list having jumped.
 		const at = (cursor: number, delta: number) =>
 			hudReducer(
-				{ tab: "inventory", inList: true, cursor, zoom: 1 },
+				{ tab: "inventory", inList: true, cursor, detail: 0, zoom: 1 },
 				{ t: "MoveCursor", delta, count: 5 },
 			).cursor;
 		expect(at(0, -1)).toBe(0);
@@ -132,7 +132,7 @@ describe("hud state", () => {
 		// mid-action load permanently locked in the previous design; this type
 		// exists to keep that separation visible.
 		const state: HudState = initialHud();
-		expect(Object.keys(state).sort()).toEqual(["cursor", "inList", "zoom"]);
+		expect(Object.keys(state).sort()).toEqual(["cursor", "detail", "inList", "zoom"]);
 	});
 
 	/*
@@ -142,7 +142,13 @@ describe("hud state", () => {
 	 * taking the frame, and this is what says so.
 	 */
 	it("says what has the keys in two fields, where there were four", () => {
-		expect(initialHud("quests")).toEqual({ tab: "quests", inList: false, cursor: 0, zoom: 1 });
+		expect(initialHud("quests")).toEqual({
+			tab: "quests",
+			inList: false,
+			cursor: 0,
+			detail: 0,
+			zoom: 1,
+		});
 	});
 });
 

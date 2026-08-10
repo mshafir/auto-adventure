@@ -1,8 +1,10 @@
 import { Box, useApp, useStdout } from "ink";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { debugAi, transcript } from "../ai/transcript.js";
 import { CONFIG } from "../config.js";
 import { resolveTileTheme } from "../content/tiles.js";
 import { computeFov, lightAt } from "../core/geom/fov.js";
+import { storyNpcIds } from "../core/rules/arc.js";
 import { lightingRuns, weatherRuns } from "../core/rules/clock.js";
 import { facingDelta } from "../core/rules/effects.js";
 import { forageKey, isForageable } from "../core/rules/forage.js";
@@ -19,7 +21,15 @@ import { weatherAt } from "../core/world/weather.js";
 import type { GameEngine } from "../engine/engine.js";
 import type { WorldView } from "../engine/world-view.js";
 import { logger } from "../utils/log.js";
-import { hudReducer, initialHud, LIST_TABS, type PanelTab } from "./hud-state.js";
+import {
+	type HudAction,
+	type HudState,
+	hudReducer,
+	initialHud,
+	LIST_TABS,
+	type PanelTab,
+	panelTabs,
+} from "./hud-state.js";
 import { useGameInput } from "./input/use-game-input.js";
 import { CardScreen } from "./panels/card-screen.js";
 import { DialoguePanel, panelHeightFor } from "./panels/dialogue-panel.js";
@@ -79,11 +89,20 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	const state = useGameState();
 	const { width, height } = useTerminalSize();
 	const { exit } = useApp();
-	const [hud, hudDispatch] = useReducer(hudReducer, initialTab, (tab) => ({
-		// `ZOOM` is where zoom starts; the keys take it from there.
-		...initialHud(tab, envZoom()),
-		cursor: initialCursor,
-	}));
+	// Which pages the menu offers this run. The working is only on the strip when the
+	// recording is on, so it is never a tab most players have to step past.
+	const tabs = panelTabs(debugAi());
+	const [hud, hudDispatch] = useReducer(
+		// Bound to this run's tab list, so the strip the player sees and the ring the
+		// arrow keys walk are the same list by construction.
+		(current: HudState, action: HudAction) => hudReducer(current, action, tabs),
+		initialTab,
+		(tab) => ({
+			// `ZOOM` is where zoom starts; the keys take it from there.
+			...initialHud(tab, envZoom()),
+			cursor: initialCursor,
+		}),
+	);
 
 	// How long the open page's list is, so a cursor cannot survive the list
 	// shrinking under it — an item spent, a quest closed, a save reloaded.
@@ -94,7 +113,9 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 				? activeQuests(state).length
 				: hud.tab === "journal"
 					? state.journal.length
-					: 0;
+					: hud.tab === "debug"
+						? transcript().length
+						: 0;
 
 	// Only once the arrow keys are actually in the list. On the tab strip the
 	// cursor is not yet the player's — offering to destroy what it happens to be
@@ -146,6 +167,11 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 
 	const npcs = engine.getNpcs();
 
+	// Who the story hangs on, so the map can draw them as themselves. Derived once per
+	// arc rather than per tile: `entityAt` is asked for every visible cell of every
+	// frame, and walking the beat list there would be thousands of scans a frame.
+	const storyPeople = useMemo(() => storyNpcIds(state.arc), [state.arc]);
+
 	// The directory is mutated in place as site specs arrive, so its identity
 	// never changes and its revision counter is the only signal that its answers
 	// did.
@@ -171,9 +197,17 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 				// `personAt` rather than the outdoor directory: indoors the coordinates
 				// are interior-local and the people are the building's own residents.
 				const npc = engine.personAt(x, y);
+				if (!npc) return undefined;
 				// A letter per role is the classic roguelike answer and the only one
 				// with no glyph-width risk at all.
-				return npc ? { ch: npc.glyph, fg: dispositionColor(npc.spec.disposition) } : undefined;
+				//
+				// Except for the people the story turns on, who get their own colour and
+				// the weight that goes with it. Nothing else on screen said which of a
+				// town's six figures was the one an errand meant, and "walk into all of
+				// them" is not a search — it is the player doing the game's job.
+				return storyPeople.has(npc.id)
+					? { ch: npc.glyph, fg: PAL.story, bold: true }
+					: { ch: npc.glyph, fg: dispositionColor(npc.spec.disposition) };
 			},
 		});
 	}, [
@@ -181,6 +215,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		engine,
 		npcs,
 		npcs.revision,
+		storyPeople,
 		player.x,
 		player.y,
 		player.facing,
@@ -364,6 +399,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 					canDrop: held !== undefined,
 					hasList: LIST_TABS.has(hud.tab),
 					inList: hud.inList,
+					...(hud.tab === "debug" ? { canPage: true } : {}),
 				}
 			: state.dialogue
 				? { t: "dialogue" }
@@ -388,7 +424,14 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	if (hud.tab !== undefined) {
 		return (
 			<Box flexDirection="column" width={width} height={frameHeight}>
-				<Reader state={state} hud={hud} tab={hud.tab} width={width} height={bodyHeight} />
+				<Reader
+					state={state}
+					hud={hud}
+					tab={hud.tab}
+					tabs={tabs}
+					width={width}
+					height={bodyHeight}
+				/>
 				<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />
 			</Box>
 		);
@@ -434,6 +477,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 				looking={looking}
 				facing={player.facing}
 				{...(facedNpc ? { nearbyName: facedNpc.name } : {})}
+				{...(facedNpc && storyPeople.has(facedNpc.id) ? { nearbyIsStory: true } : {})}
 			/>
 			<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />
 		</Box>

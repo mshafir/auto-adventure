@@ -1,6 +1,6 @@
 import stringWidth from "string-width";
 import { describe, expect, it } from "vitest";
-import { clampLine, wrapToLines } from "./text.js";
+import { clampLine, wrapBlock, wrapToLines } from "./text.js";
 
 describe("wrapToLines", () => {
 	it("wraps on words and never exceeds the width", () => {
@@ -73,5 +73,46 @@ describe("wrapping and the ellipsis", () => {
 	it("keeps every word when there is room for them", () => {
 		const text = "the old roads still run between the holdfasts";
 		expect(wrapToLines(text, 12, 10).join(" ")).toBe(text);
+	});
+});
+
+/**
+ * A document rather than a paragraph.
+ *
+ * `wrapToLines` splits on `\s+`, which folds every newline into a space. That is right
+ * for a quest description and wrong for a prompt, which is a structured document —
+ * headed sections, one fact per line, a numbered list of a town's buildings. Read back
+ * as one flowed paragraph it is unreadable, which defeats the point of keeping it.
+ */
+describe("wrapping a whole document", () => {
+	it("keeps the line breaks it was given", () => {
+		expect(wrapBlock("one\ntwo\nthree", 20)).toEqual(["one", "two", "three"]);
+	});
+
+	it("keeps blank lines, which are what separate its sections", () => {
+		expect(wrapBlock("head\n\nbody", 20)).toEqual(["head", "", "body"]);
+	});
+
+	it("wraps a long line without joining it to the next one", () => {
+		const lines = wrapBlock("the old roads still run between the holdfasts\nnext", 20);
+		expect(lines.at(-1)).toBe("next");
+		expect(lines.length).toBeGreaterThan(2);
+		for (const line of lines) expect(line.length).toBeLessThanOrEqual(20);
+	});
+
+	it("breaks a word too long for the column rather than overflowing", () => {
+		// A hallucinated id or a URL in an answer. Left alone it would push the frame
+		// wider than the terminal, which Ink resolves by mangling the whole row.
+		for (const line of wrapBlock("x".repeat(50), 12)) {
+			expect(line.length).toBeLessThanOrEqual(12);
+		}
+	});
+
+	it("returns everything, because the caller is the one scrolling", () => {
+		// Unbounded on purpose: the reader needs the total to say "40 of 380" and to
+		// know where the bottom is.
+		expect(
+			wrapBlock(Array.from({ length: 200 }, (_, i) => `line ${i}`).join("\n"), 20),
+		).toHaveLength(200);
 	});
 });

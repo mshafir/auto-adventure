@@ -1,5 +1,5 @@
-import { MODELS } from "../../config.js";
-import { beatEffects, beatOpenedBy } from "../../core/rules/arc.js";
+import { escalationModel, MODELS } from "../../config.js";
+import { beatEffects, beatOpenedBy, storyNpcIds } from "../../core/rules/arc.js";
 import { weatherRuns } from "../../core/rules/clock.js";
 import { cachedTurn, turnKey } from "../../core/rules/dialogue-cache.js";
 import type { DomainEffect } from "../../core/rules/effects.js";
@@ -110,11 +110,23 @@ export function createDialogueService(deps: DialogueDeps) {
 					tree: deps.tree(npcId),
 					state: choice ? state : beforeBeat,
 					record,
-					spec: placed.spec,
-					site,
 					answered: choice,
 				})
 			: undefined;
+
+		// Whether this person is allowed to improvise at all.
+		//
+		// The people the story hangs on are not, ever. Talking to one *is* the story
+		// moving — the beat above has already opened, the errand is already in the log —
+		// and a model asked to greet the player will write a perfectly good line about the
+		// weather while the quest it was supposed to hand over sits behind it unmentioned.
+		// That is precisely the failure this guards: errands appearing in the journal with
+		// no conversation that could have produced them.
+		//
+		// The floor for them is `cannedTurn`, which is built from what this person knows
+		// and what the site's hooks say — the same material a model would be given, minus
+		// the licence to invent. Not silence, and not an error state.
+		const fixed = storyNpcIds(state.arc).has(npcId);
 
 		// A remembered reply is read whether or not a model is available, and that
 		// asymmetry with *writing* is deliberate. Once these words exist they are content
@@ -123,21 +135,27 @@ export function createDialogueService(deps: DialogueDeps) {
 		// rather than falling back to the canned menu. Only generating needs a model.
 		//
 		// A scripted turn still wins: an author's words outrank a model's, and a written
-		// tree is already the same every time, so there would be nothing to remember.
-		const key = scripted?.turn ? undefined : turnKey(state, npcId);
+		// tree is already the same every time, so there would be nothing to remember. Nor
+		// is there anything to remember for somebody who never improvises.
+		const key = scripted?.turn || fixed ? undefined : turnKey(state, npcId);
 		const remembered = key ? cachedTurn(state, key) : undefined;
 		if (remembered) logger.debug(`dialogue: replaying a remembered reply from ${record.name}`);
+		if (fixed && !scripted?.turn) {
+			logger.debug(`dialogue: ${record.name} anchors the story; answering without a model`);
+		}
 
 		const turn =
 			scripted?.turn ??
 			remembered ??
-			(enabled
+			(enabled && !fixed
 				? await generateTurn(state, record, placed, site, stock, choice, surroundings, engine)
 				: cannedTurn(record, placed.spec, site, choice));
 
 		// A node that closed with `goto: null` said its piece on the previous line, so
 		// there is nothing to add; dispatching it would put a blank row in the panel.
-		if (scripted && isSilentEnd(turn)) {
+		// Only the tree writes one of these — a canned or generated turn that ends the
+		// conversation still says goodbye.
+		if (scripted?.turn && isSilentEnd(turn)) {
 			engine.dispatch({ t: "CloseDialogue" });
 			return;
 		}
@@ -231,6 +249,18 @@ export function createDialogueService(deps: DialogueDeps) {
 			system: dialogueSystem(input),
 			prompt: dialoguePrompt(input, choice),
 			temperature: 0.85,
+			/*
+			 * One retry here, not the usual two, and it goes straight to the dearer model.
+			 *
+			 * This is the only model call in the game a player is actually sitting and
+			 * waiting on, and the retry policy that is right for offline authoring is
+			 * wrong here: three attempts at twenty seconds each is a minute of somebody
+			 * staring at a name and a spinner, which is worse than the canned line they
+			 * would have got immediately. So the wait is bounded at two attempts, and the
+			 * second is spent on the model most likely to end it.
+			 */
+			retries: 1,
+			...(escalationModel() ? { escalateTo: escalationModel() as string } : {}),
 			onPartial: (partial) => {
 				if (typeof partial.speech === "string" && partial.speech.length > 0) {
 					engine.dispatch({ t: "DialogueStreaming", npcId: placed.id, text: partial.speech });

@@ -154,6 +154,69 @@ describe("surveyWorld", () => {
 		);
 	});
 
+	/*
+	 * The smallest size, which is not for playing.
+	 *
+	 * It exists so a change to the pipeline can be tried without paying for a world
+	 * somebody wanted to keep, and that only works if it reliably produces a world with
+	 * a story in it. A radius small enough to be cheap is also small enough to enclose
+	 * one settlement, or none — at which point the arc pass reports "no story could be
+	 * plotted", every later pass carries on regardless, and the run has tested nothing.
+	 */
+	describe("a world small enough to throw away", () => {
+		// More seeds than the rest of this file uses, because the property being asserted
+		// is exactly the one that holds for most seeds and used to fail for the rest.
+		const MANY = [
+			"tiny-a",
+			"tiny-b",
+			"tiny-c",
+			"tiny-d",
+			"tiny-e",
+			"tiny-f",
+			"tiny-g",
+			"tiny-h",
+		].map(hashString);
+
+		it("finds a story on all but the barest seeds", () => {
+			// The claim that decides whether the size is worth offering. Left at its own
+			// radius most seeds enclose one settlement or none, and a test world that
+			// usually comes out storyless is a worse way to exercise the pipeline than
+			// paying for a short one — so this is what the growing is for, and it fails
+			// loudly if the growing stops working.
+			//
+			// Not *every* seed, and the exception is honest rather than a fudge: a corner
+			// of the world with no settlement inside the largest rectangle this size is
+			// allowed has nothing to offer, and no amount of logic invents one.
+			const withStory = MANY.filter(
+				(seed) => storySites(surveyWorld(worldSeed(seed), "tiny")).length >= 2,
+			);
+			expect(withStory.length).toBeGreaterThanOrEqual(MANY.length - 1);
+		});
+
+		it("never grows past the size it was chosen to be cheaper than", () => {
+			// Measured, not assumed: a real run grew a `tiny` world to 670 tiles — wider
+			// than `short` — and produced twenty people to write conversations for. The
+			// cheap size had quietly become the expensive one.
+			for (const seed of MANY) {
+				const tiny = surveyWorld(worldSeed(seed), "tiny");
+				const widest = DURATION_PLAN.short.radiusChunks * CHUNK * 2 + 2 * CHUNK;
+				expect(tiny.bounds.maxX - tiny.bounds.minX, `seed ${seed}`).toBeLessThanOrEqual(widest);
+			}
+		});
+
+		it("stays smaller than a short world wherever the ground allows", () => {
+			// Not "always smaller": a sparse corner has to be grown until it holds a
+			// story, and on a seed where `short` was already the answer the two meet. What
+			// must hold is that the usual case is genuinely cheaper.
+			const smaller = MANY.filter((seed) => {
+				const tiny = surveyWorld(worldSeed(seed), "tiny");
+				const short = surveyWorld(worldSeed(seed), "short");
+				return tiny.sites.length < short.sites.length;
+			});
+			expect(smaller.length).toBeGreaterThan(MANY.length / 2);
+		});
+	});
+
 	it("finds settlements a story could be hung on", () => {
 		for (const seed of SEEDS) {
 			const survey = surveyWorld(worldSeed(seed), "medium");

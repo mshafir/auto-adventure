@@ -229,12 +229,21 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 	// they take their first step.
 	director.request(toChunk(worldAnchor(state.player).x, worldAnchor(state.player).y));
 
-	// With no model the lore and the region are already known, so the card is
-	// complete now. With one, `getLore()` would answer with the deterministic
-	// fallback and the card would describe a world the game is about to replace — so
-	// it waits for `onLore`, which the director always fires, adopting its own
-	// fallback if the call fails.
-	if (!live || !hasGatewayKey()) showOpening();
+	// The card waits only on lore that does not exist yet.
+	//
+	// With no model the deterministic lore is already the final answer. With one and
+	// nothing written down, `getLore()` would hand back that fallback and the card
+	// would describe a world the game is about to replace — so it waits for `onLore`,
+	// which the director always fires, adopting its own fallback if the call fails.
+	//
+	// A world that arrived *with* its lore is the third case, and it used to fall
+	// through the crack between the other two: an authored scenario has every word of
+	// its lore in the artifact, so `ensureLore` returns it without ever calling the
+	// director — and a scenario generated with improvisation turned on therefore
+	// started with no card at all. No premise, no protagonist, and no line saying
+	// which way the first beat was, in the one flavour of world that has all three
+	// written down.
+	if (!live || !hasGatewayKey() || state.lore) showOpening();
 
 	let disposed = false;
 	return {

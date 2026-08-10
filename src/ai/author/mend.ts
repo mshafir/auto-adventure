@@ -50,10 +50,17 @@ export async function mendArtifact(input: MendInput): Promise<MendResult> {
 	const repairs: string[] = [];
 	let calls = 0;
 
-	// Nothing to mend in a world where nobody was written for in the first place: a
-	// scenario with no trees at all is a legitimate shape, and the fallback menu is a
-	// designed floor rather than a failure.
-	if (Object.keys(trees).length === 0) return { artifact, calls: 0, repairs: [] };
+	// A world where nobody was written for is usually a legitimate shape — the fallback
+	// menu is a designed floor, not a failure — so there is nothing here to mend.
+	//
+	// Unless it has a story. An arc whose anchors are *all* silent is not a design
+	// choice, it is a dialogue pass that failed from end to end, and this is the exact
+	// shape it leaves behind: every beat opens, every errand lands in the journal, and
+	// not one of the scenes that were supposed to be the reason exists. Bailing out here
+	// meant the one run that most needed repairing was the one run that got none.
+	if (Object.keys(trees).length === 0 && (artifact.arc?.beats.length ?? 0) === 0) {
+		return { artifact, calls: 0, repairs: [] };
+	}
 
 	const arms = unspokenForkArms(artifact);
 	// Forks first. A person with no conversation is a thinner world; a fork nobody speaks

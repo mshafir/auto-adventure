@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { render } from "ink";
+import { setDebugAi } from "./ai/transcript.js";
 import { CONFIG, installGatewayKey } from "./config.js";
 import type { LaunchChoice } from "./scenario/scenario.js";
 import { buildSession } from "./session.js";
@@ -132,6 +133,13 @@ async function startGame() {
 	// in the environment — this is the one place that gap gets closed for a run
 	// that starts with a key already stored.
 	installGatewayKey();
+
+	// `DEBUG_AI=1` is the same switch the generate page offers, for a run that starts
+	// without one — a scripted generation, or somebody who already knows the world they
+	// are about to open is the one behaving oddly. It covers play as well as authoring,
+	// which the page's own toggle cannot: by the time a world is being played the page
+	// that offered it is three screens ago.
+	if (CONFIG.debugAi) setDebugAi(true);
 
 	const choice = wantsLauncher() ? await pickLaunch() : choiceFromEnv();
 	if (!choice) return;

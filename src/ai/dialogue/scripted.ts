@@ -1,23 +1,28 @@
 import type { DomainEffect } from "../../core/rules/effects.js";
 import type { NpcRecord } from "../../core/rules/npc.js";
 import type { GameState } from "../../core/rules/state.js";
-import type { NpcSpec, SiteSpec } from "../../core/world/spec.js";
-import { cannedTurn } from "./canned.js";
 import type { DialogueTurnResponse } from "./schema.js";
 import { type DialogueTree, nodeAfter, nodeAsTurn, openingNode } from "./tree.js";
 
 /**
- * A turn of authored conversation.
+ * A turn of authored conversation, or nothing when nobody wrote one.
  *
- * Whatever cannot be answered from the tree falls through to `cannedTurn`, which
- * knows the same facts and builds a real dialogue tree out of them. That is not
- * damage control — it is the same floor `NO_AI` stands on, and it is why an
- * incomplete set of trees degrades one character at a time rather than leaving a
- * blank panel.
+ * "Nothing" is the important half, and it used to be missing: this returned a canned
+ * turn whenever the tree could not answer, which reads as a sensible floor and is
+ * really a decision taken in the wrong place. A conversation nobody wrote is not
+ * automatically a conversation nobody can have — it is the exact case a world with
+ * `liveInGame` set has paid a model to cover. Answering it here meant a scenario with
+ * *any* trees at all silenced improvisation for *everyone*, since the caller only
+ * asked whether a scripted turn came back and one always did.
+ *
+ * So the fall-through is the caller's to make. It knows whether a model is available
+ * and whether this particular person is allowed to use one; all this knows is whether
+ * an author wrote the line.
  */
 
 export interface ScriptedTurn {
-	readonly turn: DialogueTurnResponse;
+	/** Absent when the tree had nothing to say and the caller must decide. */
+	readonly turn?: DialogueTurnResponse;
 	/** Where the conversation now is, to be persisted against the NPC. */
 	readonly effects: readonly DomainEffect[];
 }
@@ -26,16 +31,11 @@ export function scriptedTurn(input: {
 	readonly tree: DialogueTree | undefined;
 	readonly state: GameState;
 	readonly record: NpcRecord;
-	readonly spec: NpcSpec | undefined;
-	readonly site: SiteSpec | undefined;
 	/** What the player just said, or undefined on the opening turn. */
 	readonly answered: string | undefined;
 }): ScriptedTurn {
-	const { tree, state, record, spec, site, answered } = input;
-	const fallback = (): ScriptedTurn => ({
-		turn: cannedTurn(record, spec, site, answered),
-		effects: [],
-	});
+	const { tree, state, record, answered } = input;
+	const fallback = (): ScriptedTurn => ({ effects: [] });
 	if (!tree) return fallback();
 
 	if (answered === undefined) {

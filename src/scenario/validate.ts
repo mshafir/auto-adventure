@@ -1395,6 +1395,39 @@ function checkTrees(artifact: ScenarioArtifact): Finding[] {
 		}
 	}
 
+	/*
+	 * The people the story hangs on, who are a different case entirely.
+	 *
+	 * Anyone else with no tree falls back to a deterministic conversation built from
+	 * what they know, and that is a real conversation — a warning at most. A *beat*
+	 * anchor with no tree is a hole in the story: walking into them opens the beat, so
+	 * the errand lands in the journal and the card goes up, and the scene that was
+	 * supposed to be the reason for all of it is a menu of "ask about their work".
+	 *
+	 * This is what a run whose dialogue pass failed outright looks like, and it used to
+	 * report *nothing at all*: the count below was suppressed when there were no trees,
+	 * which is precisely the case where every one of them is missing. The screen said
+	 * "wrote 0 conversations" in passing and the world was pronounced fine.
+	 *
+	 * A warning rather than an error, because the canned menu really does carry a beat
+	 * and a hand-written scenario is allowed to lean on it — `thornwick-road` ships five
+	 * anchors this way on purpose. What is not allowed is for it to happen *silently*,
+	 * which is the whole of what this fixes.
+	 */
+	for (const beat of artifact.arc?.beats ?? []) {
+		const id = beatNpcId(beat);
+		if (trees[id]) continue;
+		const spec = artifact.sites[String(beat.siteId)];
+		const npc = spec?.npcs.find((person) => person.slot === beat.npcSlot);
+		findings.push(
+			warning(
+				`beat ${beat.id} opens at ${npc?.name ?? id}${
+					spec ? ` in ${spec.name}` : ""
+				}, who has no written conversation — the errand lands in the journal with only the deterministic menu to account for it`,
+			),
+		);
+	}
+
 	const without = people.filter((id) => !trees[id]);
 	if (without.length > 0 && Object.keys(trees).length > 0)
 		findings.push(

@@ -1,9 +1,10 @@
 import stringWidth from "string-width";
 import stripAnsi from "strip-ansi";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { KEY, renderInk } from "../../test/harness/ink.js";
 import { createDialogueService } from "../ai/dialogue/dialogue.js";
 import { fallbackLore, fallbackSite } from "../ai/director/fallback.js";
+import { clearTranscript, recordExchange, setDebugAi } from "../ai/transcript.js";
 import { hashString } from "../core/rand/hash.js";
 import type { ScenarioArc } from "../core/rules/arc.js";
 import { createInitialState } from "../core/rules/state.js";
@@ -682,5 +683,103 @@ describe("reading a list in full", () => {
 		harness.unmount();
 		expect(read).toContain("Up/Dn read");
 		expect(read).toContain("Esc back to map");
+	});
+});
+
+/**
+ * The two things the story's own people get that nobody else does.
+ *
+ * Both follow from one fact — walking into them *is* the story moving — and both exist
+ * because of the same report: errands turning up in the journal with no conversation
+ * that could have handed them over, and no way to tell which of a town's six figures
+ * the bearing on the map was pointing at.
+ */
+describe("the people the story turns on", () => {
+	function arcAnchoring(site: { id: number }, slot: number): ScenarioArc {
+		return {
+			title: "The Tally",
+			premise: "Somebody has to count the sacks.",
+			beats: [
+				{
+					id: "first",
+					order: 0,
+					siteId: site.id,
+					npcSlot: slot,
+					requires: [],
+					setsFlag: "arc:first",
+				},
+			],
+		};
+	}
+
+	it("says so when you look at one", () => {
+		const plain = engineBesideSomeone();
+		const staged = engineBesideSomeone(arcAnchoring(plain.site, plain.target.spec.slot));
+		bindEngine(staged.engine);
+		// Already facing them: the helper stands the player one tile above. Walking on
+		// would open the conversation, and looking is what is being tested.
+		const { lastFrame, unmount } = renderInk(<App />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("the story turns on them");
+	});
+
+	it("says nothing of the kind about an ordinary resident", () => {
+		const plain = engineBesideSomeone();
+		bindEngine(plain.engine);
+		const { lastFrame, unmount } = renderInk(<App />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).not.toContain("the story turns on them");
+	});
+});
+
+/**
+ * The working, readable from inside the game.
+ *
+ * A page rather than a log line, and only a page when somebody asked for one: a tab
+ * that is always there and always empty is a tab everybody steps past forever.
+ */
+describe("the working page", () => {
+	afterEach(() => {
+		setDebugAi(false);
+		clearTranscript();
+	});
+
+	it("is not on the strip unless the prompts are being kept", () => {
+		const { engine } = engineBesideSomeone();
+		bindEngine(engine);
+		const { lastFrame, unmount } = renderInk(<App initialTab="key" />);
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("Key");
+		expect(text).not.toContain("Working");
+	});
+
+	it("shows what was asked and what came back, once they are", () => {
+		setDebugAi(true);
+		clearTranscript();
+		recordExchange({
+			kind: "site",
+			model: "google/gemini-2.5-flash",
+			system: "You name places.",
+			prompt: "A village on a river called SLUICEFORD.",
+			millis: 800,
+			attempt: 1,
+			usage: { inputTokens: 2000, outputTokens: 400 },
+			object: { name: "Millford" },
+		});
+
+		const { engine } = engineBesideSomeone();
+		bindEngine(engine);
+		const { lastFrame, unmount } = renderInk(<App initialTab="debug" />, {
+			columns: 100,
+			rows: 40,
+		});
+		const text = stripAnsi(lastFrame() ?? "");
+		unmount();
+		expect(text).toContain("Working");
+		expect(text).toContain("SLUICEFORD");
+		expect(text).toContain("Millford");
 	});
 });

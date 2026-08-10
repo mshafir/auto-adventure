@@ -108,7 +108,7 @@ describe("a conversation", () => {
 
 describe("a question that cannot be undone", () => {
 	const asking = (confirm: NonNullable<HudState["confirm"]>): RouteContext =>
-		context({ hud: { tab: "inventory", inList: true, cursor: 0, zoom: 1, confirm } });
+		context({ hud: { tab: "inventory", inList: true, cursor: 0, detail: 0, zoom: 1, confirm } });
 
 	const dropTimber = asking({
 		action: { t: "drop", name: "Timber", quantity: 3 },

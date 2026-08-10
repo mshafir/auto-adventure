@@ -38,8 +38,25 @@ export interface DurationPlan {
  * In a bounded world narrative length and spatial extent are the same knob, so one
  * choice sets both. The numbers are a starting point that `validate.ts` measures
  * rather than trusts.
+ *
+ * `tiny` is not a length anybody would choose to play — two beats across a world four
+ * macro cells wide is a walk of a couple of minutes. It exists because the shortest
+ * real world still costs thirty model calls and several minutes, which is a bad price
+ * for finding out whether a change to the *pipeline* works: a run that has to be paid
+ * for is a run that gets made once, and the pass that broke is discovered on the next
+ * world somebody wanted to keep. Two beats and a handful of places exercises every pass
+ * — shape, lore, regions, sites, arc, reactions, dialogue, repair — for about a tenth
+ * of the bill.
+ *
+ * Two chunks of radius is 128 tiles, and `MACRO` is one chunk, so the boundary encloses
+ * about sixteen macro cells. On a dense seed that is three or four places and a walk of
+ * a couple of minutes; on a sparse one it is nothing at all, which is why the boundary
+ * grows until it holds a story — see {@link GROWTH_LIMIT_CHUNKS}. Deliberately the
+ * smallest radius that works rather than a safe one, so the cheap case stays cheap and
+ * only the seeds that need the room pay for it.
  */
 export const DURATION_PLAN: Readonly<Record<Duration, DurationPlan>> = {
+	tiny: { beats: 2, radiusChunks: 2 },
 	short: { beats: 3, radiusChunks: 4 },
 	medium: { beats: 6, radiusChunks: 6 },
 	long: { beats: 10, radiusChunks: 9 },
@@ -230,13 +247,77 @@ export function styleForEdge(
 	return "cliffs";
 }
 
+/**
+ * How far the boundary may be pushed out to find somewhere for the story to happen.
+ *
+ * A radius is a request for a *size*, and how many towns fit inside it is the seed's
+ * business — so a sparse corner of the world can enclose one settlement, or none, at
+ * any duration. The consequence is not a thin world, it is no world: the arc pass needs
+ * at least two places to plot between, and below that it reports "no story could be
+ * plotted" and every later pass carries on as though that were what was asked for.
+ *
+ * Growing is the right answer rather than moving the spawn, because the spawn was
+ * chosen for the ground under it.
+ *
+ * Bounded twice over, and the second bound is the one that matters. Three chunks is
+ * enough to reach the next ring of macro cells; but three chunks on top of `tiny`'s two
+ * is five, which is larger than `short` — and a run measured on a real seed did exactly
+ * that, producing a "tiny" world 670 tiles across with twenty people in it, dearer than
+ * the size it was chosen to be cheaper than. So a duration may never grow past the next
+ * size up. A `tiny` world that has to reach `short` to find a story has stopped being a
+ * bargain and should stop growing rather than quietly become expensive.
+ */
+const GROWTH_LIMIT_CHUNKS = 3;
+
+/** Durations by extent, so "the next size up" is a lookup rather than a guess. */
+const BY_EXTENT: readonly Duration[] = ["tiny", "short", "medium", "long"];
+
+function growthCeiling(duration: Duration | undefined): number {
+	const plan = planFor(duration);
+	const at = BY_EXTENT.indexOf(duration ?? "medium");
+	const next = at >= 0 ? BY_EXTENT[at + 1] : undefined;
+	const nextUp = next ? DURATION_PLAN[next].radiusChunks : Number.POSITIVE_INFINITY;
+	return Math.min(plan.radiusChunks + GROWTH_LIMIT_CHUNKS, nextUp);
+}
+
 export function surveyWorld(world: WorldSeed, duration: Duration | undefined): Survey {
 	const plan = planFor(duration);
-	const radiusTiles = plan.radiusChunks * CHUNK;
 
 	// Spawn first, unbounded: the bounds are drawn around wherever the world offers
 	// a reasonable start, not the other way round.
 	const spawn = findSpawn(world);
+
+	// Then outward until there is a story's worth of somewhere, and no further. The
+	// first radius that holds enough wins, so an ordinary seed — which has plenty at
+	// the requested size — is surveyed exactly once and comes out exactly as before.
+	let survey = surveyAt(world, spawn, plan.radiusChunks);
+	const ceiling = growthCeiling(duration);
+	for (let radius = plan.radiusChunks + 1; radius <= ceiling; radius++) {
+		if (storySites(survey).length >= Math.min(plan.beats, MIN_STORY_SITES)) break;
+		const wider = surveyAt(world, spawn, radius);
+		// Never smaller than what we already had: growing the rectangle can move the
+		// boundary onto a different settlement and push one *out*, and taking that would
+		// be searching for a story by walking away from one.
+		if (storySites(wider).length > storySites(survey).length) survey = wider;
+	}
+	return survey;
+}
+
+/**
+ * The fewest settlements a story can be told across.
+ *
+ * Two: somewhere to be given the errand and somewhere to take it. One is a story that
+ * happens entirely in the room it started in, which `validate.ts` already complains
+ * about by name.
+ */
+const MIN_STORY_SITES = 2;
+
+function surveyAt(
+	world: WorldSeed,
+	spawn: { readonly x: number; readonly y: number },
+	radiusChunks: number,
+): Survey {
+	const radiusTiles = radiusChunks * CHUNK;
 	const style = styleForEdge(world, spawn, radiusTiles);
 	const { bounds, adjustment } = solveBounds(world, spawn, radiusTiles, style);
 

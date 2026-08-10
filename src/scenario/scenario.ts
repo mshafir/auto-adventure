@@ -103,4 +103,12 @@ export interface GenerateRequest {
 	readonly dayAndNight: boolean;
 	/** Whether a model runs during play, for conversations nobody wrote a tree for. */
 	readonly liveInGame: boolean;
+	/**
+	 * Keep every prompt and every answer, readable from the game as it happens.
+	 *
+	 * Off by default: a run holds tens of megabytes of strings with this on, and a
+	 * player writing a world to play does not want them. It is for the run where
+	 * somebody is trying to find out why the last world came out the way it did.
+	 */
+	readonly debug?: boolean;
 }

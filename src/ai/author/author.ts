@@ -1,7 +1,12 @@
-import { MODELS } from "../../config.js";
+import { escalationModel, MODELS } from "../../config.js";
 import { DEFAULT_PACK } from "../../core/content/default.js";
 import { mergePack, type PackOverride } from "../../core/content/pack.js";
-import type { ArcEnding, ScenarioArc, ScenarioBeat } from "../../core/rules/arc.js";
+import {
+	type ArcEnding,
+	beatNpcId,
+	type ScenarioArc,
+	type ScenarioBeat,
+} from "../../core/rules/arc.js";
 import type { Placement } from "../../core/rules/placement.js";
 import type { QuestObjective } from "../../core/rules/state.js";
 import type { ScenarioBrief } from "../../core/world/brief.js";
@@ -112,7 +117,33 @@ const DEFAULT_CONCURRENCY = 4;
  * already watching a progress screen, and the alternative to waiting two minutes is a
  * world with no story in it.
  */
-const ARC_TIMEOUT_MS = 120_000;
+const ARC_TIMEOUT_MS = 240_000;
+
+/**
+ * How long any *other* authoring call may take.
+ *
+ * The client's default is twenty seconds, and it is twenty seconds for a reason that
+ * does not apply here: it is tuned for the live director, where a call has to resolve
+ * before the player walks into the chunk that needs it. Nothing is walking anywhere
+ * during authoring. The player is watching a progress screen that already says the
+ * elapsed time.
+ *
+ * Left at the default, that mismatch is silent and expensive. A reasoning model —
+ * `openai/gpt-5-mini` among them — routinely spends more than twenty seconds on a
+ * prompt this size, so every attempt timed out, every retry timed out, and the run
+ * came out with fallback lore, procedural place names and *no conversations at all*:
+ * a world where every beat opens, drops an errand in the journal, and has nothing to
+ * say for it. Nothing failed loudly. It simply cost four minutes and produced a
+ * degraded world, and the only trace was a wall of `WARN ai … aborted` in a log file.
+ *
+ * Three minutes, measured rather than guessed. A `tiny` world on `openai/gpt-5-nano`
+ * — the *cheap* half of that pair, on the smallest world this tool can produce — spent
+ * between 25 and 90 seconds per site call, with one landing at 89.9s. A ceiling the
+ * slowest observed call grazes is a ceiling that will be crossed by the next prompt
+ * that happens to be a little longer, and the symptom is not an error but a quietly
+ * thinner world.
+ */
+const AUTHOR_TIMEOUT_MS = 180_000;
 
 /**
  * The kinds the default world has none of, so worth reporting when one appears.
@@ -182,6 +213,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			system: SHAPE_SYSTEM,
 			prompt: shapePrompt(options.brief),
 			temperature: 0.8,
+			timeoutMs: AUTHOR_TIMEOUT_MS,
 			...abortable,
 		});
 		if (shape) {
@@ -247,6 +279,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			system: LORE_SYSTEM,
 			prompt: lorePrompt(options.brief),
 			temperature: 1,
+			timeoutMs: AUTHOR_TIMEOUT_MS,
 			...abortable,
 		})) ?? fallbackLore();
 	calls++;
@@ -263,6 +296,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			system: REGION_SYSTEM,
 			prompt: regionPrompt(lore, context, options.brief),
 			temperature: 0.9,
+			timeoutMs: AUTHOR_TIMEOUT_MS,
 			...abortable,
 		});
 		calls++;
@@ -295,6 +329,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 					system: SITE_SYSTEM,
 					prompt: sitePrompt(lore, region, entry.context, options.brief),
 					temperature: 0.9,
+					timeoutMs: AUTHOR_TIMEOUT_MS,
 					...abortable,
 				})
 			: undefined;
@@ -384,7 +419,34 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	// --- pass 5: dialogue ----------------------------------------------------
 	const trees: Record<string, DialogueTree> = {};
 	if (!options.skipTrees) {
-		const people = Object.values(sites).flatMap((spec) => spec.npcs.map((npc) => ({ spec, npc })));
+		const everyone = Object.values(sites).flatMap((spec) =>
+			spec.npcs.map((npc) => ({ spec, npc })),
+		);
+		/*
+		 * Who is worth paying a prose model to write for.
+		 *
+		 * Everybody, normally: a town where only the plot speaks in its own voice is a
+		 * town of shopfronts. But this pass is one call per person and it dominates the
+		 * bill — a measured `tiny` run spent 20 of its 40 calls here, which is most of
+		 * the reason the cheap size was not cheap.
+		 *
+		 * So the smallest size writes for the people the story hangs on and nobody else.
+		 * That is the size whose whole purpose is to exercise the pipeline rather than to
+		 * be played, and it still exercises this pass — the anchors go through exactly the
+		 * same call. Everyone else falls back to the deterministic menu, which is built
+		 * from what they know and is a real conversation, and which `tiny` was never
+		 * going to be judged on.
+		 */
+		const anchors = new Set((arc?.beats ?? []).map((beat) => beatNpcId(beat)));
+		const brief = options.brief.duration === "tiny";
+		const people = brief
+			? everyone.filter(({ spec, npc }) => anchors.has(npcId(spec.siteId, npc.slot)))
+			: everyone;
+		if (brief && people.length < everyone.length) {
+			say(
+				`writing conversations for the ${people.length} the story turns on, not all ${everyone.length}`,
+			);
+		}
 		await pooled(people, concurrency, async ({ spec, npc }) => {
 			const id = npcId(spec.siteId, npc.slot);
 			const beat = arc?.beats.find(
@@ -410,7 +472,22 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			calls++;
 			if (tree) trees[id] = tree;
 		});
-		say(`wrote ${Object.keys(trees).length} conversations`);
+		const written = Object.keys(trees).length;
+		// Against what was *attempted*, not against the whole cast: the smallest size
+		// deliberately writes for a handful of people, and measuring that against twenty
+		// would report a healthy run as a failed one every single time.
+		// Said as a fraction, and said loudly when the fraction is bad. "wrote 12
+		// conversations" reads as success whether the world has twelve people or ninety,
+		// and a run where every single call failed reported "wrote 0 conversations" in the
+		// same even tone as everything else — one line, scrolled past, and the player was
+		// handed a story whose every scene was missing.
+		say(`wrote ${written} of ${people.length} conversations`);
+		if (written < people.length / 2) {
+			const unwritten = (arc?.beats ?? []).filter((beat) => !trees[beatNpcId(beat)]).length;
+			say(
+				`most of the dialogue pass failed — ${unwritten} of ${arc?.beats.length ?? 0} story scenes are unwritten`,
+			);
+		}
 	}
 	// Last check, before anything is assembled. Past here the artifact exists and is
 	// worth keeping: stopping would throw away a finished world to save nothing.
@@ -739,6 +816,11 @@ export async function writeTree(input: WriteTreeInput): Promise<DialogueTree | u
 			...(input.insist ? { insist: input.insist } : {}),
 		}),
 		temperature: 0.85,
+		timeoutMs: AUTHOR_TIMEOUT_MS,
+		// The one call in the pipeline that is both expensive to lose and measurably
+		// flaky: a conversation nobody wrote is a person with nothing to say, and the
+		// tree schema is the largest thing any model here is asked to fill in.
+		...(escalationModel() ? { escalateTo: escalationModel() as string } : {}),
 		...(input.signal ? { signal: input.signal } : {}),
 	});
 	if (!response) return undefined;

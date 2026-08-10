@@ -1,4 +1,6 @@
 import { Text } from "ink";
+import { telemetrySnapshot } from "../../ai/telemetry.js";
+import { debugAi, transcript } from "../../ai/transcript.js";
 import { arcOutline } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { describeObjective, questNeeding, questRows } from "../../core/rules/quests.js";
@@ -8,6 +10,7 @@ import { type HudState, PANEL_TABS, type PanelTab } from "../hud-state.js";
 import { tileMode } from "../viewport.js";
 import { mapLegend } from "./legend.js";
 import { Bullet, Field, FRAME_CHROME, Frame, Prose, Rule, ScrollList } from "./primitives.js";
+import { TranscriptView } from "./transcript-view.js";
 
 /**
  * A page, given the whole frame.
@@ -32,6 +35,14 @@ export interface ReaderProps {
 	readonly height: number;
 	/** Which page to draw. The caller has already decided one is open. */
 	readonly tab: PanelTab;
+	/**
+	 * Which tabs the strip should show.
+	 *
+	 * Passed in rather than read from the module because the debug page comes and goes,
+	 * and a strip drawing four while the reducer cycles five leaves one tab that can be
+	 * reached and not seen.
+	 */
+	readonly tabs?: readonly PanelTab[];
 }
 
 /** How much of the frame the list of entries gets before the detail below it. */
@@ -51,9 +62,10 @@ const TAB_LABELS: Readonly<Record<PanelTab, string>> = {
 	quests: "Errands",
 	journal: "Journal",
 	key: "Key",
+	debug: "Working",
 };
 
-export function Reader({ state, hud, width, height, tab }: ReaderProps) {
+export function Reader({ state, hud, width, height, tab, tabs = PANEL_TABS }: ReaderProps) {
 	// The border, the padding inside it and the tab strip all come off before
 	// anything is laid out. Every component here is told its size rather than
 	// measuring, because a pane that grows to fit reaches the terminal height, and
@@ -62,11 +74,12 @@ export function Reader({ state, hud, width, height, tab }: ReaderProps) {
 	const rows = Math.max(3, height - FRAME_CHROME - STRIP_ROWS);
 	return (
 		<Frame style="reader" width={width} height={height}>
-			<TabStrip tab={tab} inList={hud.inList} />
+			<TabStrip tab={tab} inList={hud.inList} tabs={tabs} />
 			{tab === "quests" && <QuestReader state={state} hud={hud} width={inner} rows={rows} />}
 			{tab === "journal" && <JournalReader state={state} hud={hud} width={inner} rows={rows} />}
 			{tab === "inventory" && <InventoryReader state={state} hud={hud} width={inner} rows={rows} />}
 			{tab === "key" && <KeyReader width={inner} rows={rows} />}
+			{tab === "debug" && <WorkingReader hud={hud} width={inner} rows={rows} />}
 		</Frame>
 	);
 }
@@ -80,10 +93,18 @@ export function Reader({ state, hud, width, height, tab }: ReaderProps) {
  * handed to the list below, which is what makes "down goes in" visible rather
  * than something to be discovered.
  */
-function TabStrip({ tab, inList }: { tab: PanelTab; inList: boolean }) {
+function TabStrip({
+	tab,
+	inList,
+	tabs,
+}: {
+	tab: PanelTab;
+	inList: boolean;
+	tabs: readonly PanelTab[];
+}) {
 	return (
 		<Text wrap="truncate">
-			{PANEL_TABS.map((each, index) => {
+			{tabs.map((each, index) => {
 				const here = each === tab;
 				return (
 					<Text key={each}>
@@ -127,6 +148,45 @@ function KeyReader({ width, rows }: { width: number; rows: number }) {
 		</>
 	);
 }
+
+/**
+ * Every model call this session, and what it cost.
+ *
+ * A page rather than a log line, because the log is a file the player has no reason to
+ * know about and every reason not to be reading while inside a full-screen program.
+ * Only on the strip when the recording is on, so this is never a tab most people have
+ * to step past.
+ *
+ * The question and the answer are drawn as one document rather than as two panes to be
+ * switched between: what a reader actually does is find where the prompt described the
+ * town and then check what came back about it, and that is one continuous read.
+ */
+function WorkingReader({
+	hud,
+	width,
+	rows,
+}: {
+	readonly hud: HudState;
+	readonly width: number;
+	readonly rows: number;
+}) {
+	const exchanges = transcript();
+	return (
+		<TranscriptView
+			exchanges={exchanges}
+			cursor={hud.cursor}
+			offset={hud.detail * DETAIL_PAGE}
+			part="both"
+			width={width}
+			rows={rows}
+			totals={telemetrySnapshot()}
+			recording={debugAi()}
+		/>
+	);
+}
+
+/** Lines a page-down moves. Two thirds of a short pane, so context carries over. */
+const DETAIL_PAGE = 12;
 
 /**
  * The story in full, then the errands, then the one under the cursor in full.

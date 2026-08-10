@@ -71,6 +71,15 @@ export const PAL = {
 	neutral: rgb("#e8e2d6"),
 	wary: rgb("#e8c96a"),
 	hostile: rgb("#ff7b6a"),
+	/**
+	 * Somebody the story hangs on, drawn as themselves rather than as a mood.
+	 *
+	 * Deliberately not on the warm-to-cool disposition ramp the other four sit on: this
+	 * has to be legible as a *different question* being answered, not as a fifth degree
+	 * of how much somebody likes you. A player who has been told to ask for Lune
+	 * Harrowgate needs to be able to pick her out of a street.
+	 */
+	story: rgb("#d98ce0"),
 } as const;
 
 /**

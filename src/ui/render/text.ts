@@ -65,3 +65,50 @@ export function wrapToLines(text: string, width: number, maxLines: number): stri
 export function clampLine(text: string, width: number): string {
 	return wrapToLines(text, width, 1)[0] ?? "";
 }
+
+/**
+ * Wrap a whole document, keeping the line breaks it came with.
+ *
+ * The difference from {@link wrapToLines} is the only thing that matters about it:
+ * that one splits on `\s+`, which folds every newline into a space. That is right for
+ * a quest description and catastrophic for a prompt, which is a structured document —
+ * headed sections, one fact per line, a numbered list of the buildings a town has.
+ * Read back as a single flowed paragraph it is unreadable, which defeats the point of
+ * being able to read it.
+ *
+ * Unbounded, because the caller is scrolling: it needs to know how many lines there
+ * are in order to say `40/380` and to stop at the bottom.
+ */
+export function wrapBlock(text: string, width: number): string[] {
+	if (width <= 0) return [];
+	const lines: string[] = [];
+	// Tabs, because a prompt assembled from JSON is full of them and a tab in a
+	// fixed-width cell grid is a hole of unpredictable size.
+	for (const source of text.replace(/\t/g, "  ").split("\n")) {
+		if (source.trim().length === 0) {
+			lines.push("");
+			continue;
+		}
+		let current = "";
+		for (let word of source.split(" ")) {
+			// A single word wider than the column — a URL, a long id — is broken at the
+			// column rather than allowed to overflow the frame.
+			while (stringWidth(word) > width) {
+				if (current.length > 0) {
+					lines.push(current);
+					current = "";
+				}
+				lines.push(word.slice(0, width));
+				word = word.slice(width);
+			}
+			if (current.length === 0) current = word;
+			else if (stringWidth(`${current} ${word}`) <= width) current = `${current} ${word}`;
+			else {
+				lines.push(current);
+				current = word;
+			}
+		}
+		lines.push(current);
+	}
+	return lines;
+}

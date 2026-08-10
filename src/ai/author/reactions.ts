@@ -45,6 +45,9 @@ export interface Reactions {
 
 const EMPTY: Reactions = { triggers: [], barriers: [] };
 
+/** As long as the rest of the offline passes get. See `AUTHOR_TIMEOUT_MS`. */
+const REACTIONS_TIMEOUT_MS = 180_000;
+
 export async function authorReactions(
 	input: ReactionsInput,
 ): Promise<{ reactions: Reactions; called: boolean }> {
@@ -70,6 +73,10 @@ export async function authorReactions(
 			})),
 		}),
 		temperature: 0.9,
+		// The same generous ceiling every other authoring pass runs on: nothing is
+		// waiting on this, and the client's twenty-second default is tuned for the live
+		// director, where something is.
+		timeoutMs: REACTIONS_TIMEOUT_MS,
 		...(input.signal ? { signal: input.signal } : {}),
 	});
 	if (!response) return { reactions: EMPTY, called: true };
