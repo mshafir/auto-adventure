@@ -1,9 +1,9 @@
 import { featureKindFor, invalidateFeature } from "../core/gen/features/registry.js";
 import { generateSettlement } from "../core/gen/features/settlement.js";
 import { reachableFrom } from "../core/gen/features/terraform.js";
-import { beatNpcId, orderedBeats } from "../core/rules/arc.js";
+import { orderedBeats } from "../core/rules/arc.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
-import { siteIndex } from "./validate.js";
+import { beatsWithoutTrees, siteIndex } from "./validate.js";
 
 /**
  * Mechanical properties a playable world has, measured one at a time.
@@ -22,9 +22,19 @@ import { siteIndex } from "./validate.js";
  * follows measures per kind, so that substitution is caught, and unconditionally, so an
  * unnamed roster is measured the same as a named one.
  *
- * Every check below measures something no existing check measures. Their purpose is
- * attribution: a scenario that is hard to play should be explainable as a named
- * violated invariant rather than as a feeling, both before a change and after it.
+ * The rule is not "every check below measures something nothing else measures" — that
+ * was true once and stopped being true the moment two of these checks turned out to be
+ * asking a question `validate.ts` already had an answer for. The actual rule: measure
+ * what nothing else measures (`structures-built`, `buildings-reachable`, and the
+ * journal half of `scenes-written`); share a question something else already asks
+ * rather than re-asking it independently (the tree half of `scenes-written`, via
+ * `beatsWithoutTrees`); or roll up a computation something else already does
+ * (`legs-walkable`, over `storyWalk`). What is never allowed is asking the identical
+ * question twice by two separate routes, because the two routes can drift and produce
+ * two answers, and a check that disagrees with the thing it validates is worse than no
+ * check, because it is believed. Their purpose is attribution: a scenario that is hard
+ * to play should be explainable as a named violated invariant rather than as a feeling,
+ * both before a change and after it.
  */
 
 export type InvariantId =
@@ -183,12 +193,23 @@ export function checkScenesWritten(artifact: ScenarioArtifact): Violation[] {
 	const arc = artifact.arc;
 	if (!arc) return [];
 
+	// The "no tree" question is `checkTrees`' question too, and asked once, through
+	// `beatsWithoutTrees`, so the two cannot answer it differently. The scope narrows
+	// here on purpose: `checkTrees` warns about every beat missing a tree, side errands
+	// included, because an author reading that report wants to know about all of them;
+	// this counts only the main line, because a player goes looking for a side errand by
+	// choice, and a beat nobody is required to reach is not the hole in the story that a
+	// main-line one is.
+	const withoutTree = new Set(
+		beatsWithoutTrees(artifact)
+			.filter(({ beat }) => !beat.optional)
+			.map(({ beat }) => beat.id),
+	);
+
 	const violations: Violation[] = [];
 	for (const beat of orderedBeats(arc)) {
 		if (beat.optional) continue;
-		const tree = artifact.trees?.[beatNpcId(beat)];
-		const spoken = Object.keys(tree?.nodes ?? {}).length;
-		if (spoken === 0) {
+		if (withoutTree.has(beat.id)) {
 			violations.push({
 				invariant: "scenes-written",
 				where: `beat ${beat.id}`,

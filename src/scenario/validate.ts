@@ -22,7 +22,7 @@ import {
 import type { TerrainId } from "../core/tiles/terrain.js";
 import { isWellInside } from "../core/world/bounds.js";
 import { HALO } from "../core/world/coords.js";
-import { MACRO, type MacroSite, macroSite, maxFeatureRadius } from "../core/world/macro.js";
+import { MACRO, type MacroSite, maxFeatureRadius, sitesInside } from "../core/world/macro.js";
 import { type PlaceRecipe, placeKey, type WorldRules } from "../core/world/recipe.js";
 import { npcId } from "../core/world/spec.js";
 import { resolveBarriers } from "../engine/barriers.js";
@@ -31,6 +31,7 @@ import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
 import { checkCompleteness } from "./completeness.js";
 import { conditionSatisfiable, flagsWritten, unsatisfiableFlags } from "./flag-sources.js";
 import { gridFor, isPassable, type PassabilityGrid, pathLength, terrainOf } from "./passability.js";
+import { journeys, toldWhereToGo } from "./wayfinding.js";
 
 /**
  * The goods this scenario is written against.
@@ -90,10 +91,33 @@ export type Severity = "error" | "warning";
 export interface Finding {
 	readonly severity: Severity;
 	readonly message: string;
+	/**
+	 * The conversation this is about, by `npcId`, where it is about one.
+	 *
+	 * Carried structurally so that a pass which *fixes* faults can find the ones it is able
+	 * to fix without reading the message. Every repair in `repair.ts` re-derives its own
+	 * condition for exactly that reason — parsing a sentence written for a person couples
+	 * the fix to the wording, so improving a message would silently disable it — and this is
+	 * the same rule kept while making the findings addressable.
+	 *
+	 * What the message is still for: telling a model what went wrong. A rewrite briefed with
+	 * "this scene opens while the player is carrying the thing and then takes it, so every
+	 * later hello asks for it again" produces a better second attempt than one asked to try
+	 * again, and that sentence already exists here.
+	 */
+	readonly tree?: string;
 }
 
-const error = (message: string): Finding => ({ severity: "error", message });
-const warning = (message: string): Finding => ({ severity: "warning", message });
+const error = (message: string, tree?: string): Finding => ({
+	severity: "error",
+	message,
+	...(tree ? { tree } : {}),
+});
+const warning = (message: string, tree?: string): Finding => ({
+	severity: "warning",
+	message,
+	...(tree ? { tree } : {}),
+});
 
 export function hasErrors(findings: readonly Finding[]): boolean {
 	return findings.some((finding) => finding.severity === "error");
@@ -130,19 +154,7 @@ function anchorAliasFor(placement: AnchorKind): AnchorKind {
  * searching for itself.
  */
 export function siteIndex(artifact: ScenarioArtifact): Map<number, MacroSite> {
-	const { bounds } = artifact;
-	const found = new Map<number, MacroSite>();
-	const minMx = Math.floor(bounds.minX / MACRO) - 1;
-	const maxMx = Math.floor(bounds.maxX / MACRO) + 1;
-	const minMy = Math.floor(bounds.minY / MACRO) - 1;
-	const maxMy = Math.floor(bounds.maxY / MACRO) + 1;
-	for (let my = minMy; my <= maxMy; my++) {
-		for (let mx = minMx; mx <= maxMx; mx++) {
-			const site = macroSite(artifactWorld(artifact), mx, my);
-			if (site.kind !== "none") found.set(site.id, site);
-		}
-	}
-	return found;
+	return sitesInside(artifactWorld(artifact), artifact.bounds);
 }
 
 /**
@@ -225,6 +237,8 @@ export function validateArtifact(artifact: ScenarioArtifact): Finding[] {
 	findings.push(...checkTrees(artifact));
 	findings.push(...checkGates(artifact, grid, sites));
 	findings.push(...checkPlacements(artifact, grid, sites));
+	findings.push(...checkSigns(artifact, grid, sites));
+	findings.push(...checkWayfinding(artifact, sites));
 	findings.push(...checkConditions(artifact));
 	findings.push(...checkFindability(artifact));
 	findings.push(...checkBranches(artifact));
@@ -810,6 +824,95 @@ function nearestStop(
 }
 
 /**
+ * Every signpost, and whether anybody can read it.
+ *
+ * A board fails in exactly two ways and both are silent. It can stand somewhere nobody can
+ * get in front of — in the water, in the cliffs closing the world, walled into a plot —
+ * in which case the generator declines to put a post up at all and the tile is bare
+ * ground with a promise attached to it. Or an arm can name a site this world does not
+ * have, in which case the arm is dropped at read time and the board says less than it
+ * claims to.
+ *
+ * Warnings throughout, deliberately. A missing signpost is a world that is harder to
+ * follow, never a world that cannot be finished, and refusing a scenario over one would
+ * be refusing it over a convenience.
+ */
+function checkSigns(
+	artifact: ScenarioArtifact,
+	grid: PassabilityGrid,
+	sites: Map<number, MacroSite>,
+): Finding[] {
+	const findings: Finding[] = [];
+	const signs = artifact.signs ?? [];
+	if (signs.length === 0) return findings;
+
+	const seen = new Map<string, string>();
+	for (const sign of signs) {
+		if (seen.has(sign.id)) findings.push(warning(`signpost ${sign.id} is defined twice`));
+		seen.set(sign.id, sign.id);
+
+		const tile = `${sign.x},${sign.y}`;
+		const other = [...signs].find((each) => each !== sign && `${each.x},${each.y}` === tile);
+		if (other) {
+			findings.push(
+				warning(
+					`signposts ${sign.id} and ${other.id} stand on the same tile at ${tile}; only one board is there`,
+				),
+			);
+		}
+
+		if (!isWellInside(artifact.bounds, sign.x, sign.y)) {
+			findings.push(
+				warning(`signpost ${sign.id} is outside the world, or inside its boundary band`),
+			);
+		} else if (!isPassable(grid, sign.x, sign.y)) {
+			findings.push(
+				warning(
+					`signpost ${sign.id} is on ground nobody can stand on, so no post goes up there and nothing can be read`,
+				),
+			);
+		}
+
+		for (const arm of sign.arms) {
+			if (sites.has(arm.siteId) && artifact.sites[String(arm.siteId)]) continue;
+			findings.push(
+				warning(
+					`signpost ${sign.id} has an arm pointing at site ${arm.siteId}, which is not in this scenario; that arm is left off the board`,
+				),
+			);
+		}
+	}
+	return findings;
+}
+
+/**
+ * Whether the story ever says where to go next.
+ *
+ * The fault a playthrough found and no check could see. Every beat opened, every errand
+ * landed in the log, every flag was written and read — and the player finished a scene,
+ * looked at an errand that said "find out what happened to the tallies", and had no idea
+ * which of six towns to walk to. The next beat was forty minutes' walk away in a place
+ * nothing had named.
+ *
+ * What counts as having been told lives in `wayfinding.ts`, because the repair that appends
+ * a direction has to ask the identical question — a check and its fix that disagree are
+ * worse than either alone.
+ */
+function checkWayfinding(artifact: ScenarioArtifact, sites: Map<number, MacroSite>): Finding[] {
+	const findings: Finding[] = [];
+	for (const journey of journeys(artifact, sites)) {
+		if (toldWhereToGo(artifact, journey)) continue;
+		findings.push(
+			warning(
+				`after beat ${journey.from.id} the player is expected at ${journey.destination.name}, and nothing tells them so — no journal line, errand or conversation up to that point names it, and no signpost points there. A player who has not been there has no bearing on the map either`,
+				beatNpcId(journey.from),
+			),
+		);
+	}
+	return findings;
+}
+
+/**
  * Conditions that can never come true.
  *
  * The single most valuable check on the whole new surface, because the runtime symptom
@@ -1049,6 +1152,7 @@ function checkEarlyCast(artifact: ScenarioArtifact): Finding[] {
 					.join(
 						" and ",
 					)}, which nothing about their presence requires. A player who reaches them early gets the scene with nothing behind it; gate them on the same condition, or give their tree an opening that says the time has not come`,
+				beatNpcId(beat),
 			),
 		);
 	}
@@ -1113,6 +1217,7 @@ function checkHandovers(artifact: ScenarioArtifact): Finding[] {
 						.join(
 							" and ",
 						)}, and then takes it — so the scene plays once and every later hello falls back to asking for it again. Set a flag here and give the revisit an opening that reads it`,
+					key,
 				),
 			);
 		}
@@ -1355,6 +1460,23 @@ function checkStory(
 	return findings;
 }
 
+/**
+ * The beat anchors nobody wrote a conversation for.
+ *
+ * Exported and shared rather than asked twice. `checkTrees` turns these into warnings an
+ * author reads; `checkScenesWritten` turns them into a counted invariant violation. The
+ * rule `wayfinding.ts` was split out for, and for the same reason: two passes asking the
+ * identical question must not be able to answer it differently.
+ */
+export function beatsWithoutTrees(
+	artifact: ScenarioArtifact,
+): { readonly beat: ScenarioBeat; readonly npcId: string }[] {
+	const trees = artifact.trees ?? {};
+	return (artifact.arc?.beats ?? [])
+		.map((beat) => ({ beat, npcId: beatNpcId(beat) }))
+		.filter(({ npcId: id }) => !trees[id]);
+}
+
 function checkTrees(artifact: ScenarioArtifact): Finding[] {
 	const findings: Finding[] = [];
 	const people = Object.values(artifact.sites).flatMap((spec) =>
@@ -1364,7 +1486,7 @@ function checkTrees(artifact: ScenarioArtifact): Finding[] {
 
 	for (const [key, tree] of Object.entries(trees)) {
 		if (Object.keys(tree.nodes).length < 2)
-			findings.push(warning(`tree ${key} is a single line, not a conversation`));
+			findings.push(warning(`tree ${key} is a single line, not a conversation`, key));
 
 		/*
 		 * A line that hands something over must not be reachable twice.
@@ -1390,6 +1512,7 @@ function checkTrees(artifact: ScenarioArtifact): Finding[] {
 			findings.push(
 				warning(
 					`tree ${key} node ${node.id} hands something over and nothing stops it happening twice; gate the node or the choice that leads to it, e.g. { "not": { "item": "..." } }`,
+					key,
 				),
 			);
 		}
@@ -1414,9 +1537,7 @@ function checkTrees(artifact: ScenarioArtifact): Finding[] {
 	 * anchors this way on purpose. What is not allowed is for it to happen *silently*,
 	 * which is the whole of what this fixes.
 	 */
-	for (const beat of artifact.arc?.beats ?? []) {
-		const id = beatNpcId(beat);
-		if (trees[id]) continue;
+	for (const { beat, npcId: id } of beatsWithoutTrees(artifact)) {
 		const spec = artifact.sites[String(beat.siteId)];
 		const npc = spec?.npcs.find((person) => person.slot === beat.npcSlot);
 		findings.push(
@@ -1424,6 +1545,7 @@ function checkTrees(artifact: ScenarioArtifact): Finding[] {
 				`beat ${beat.id} opens at ${npc?.name ?? id}${
 					spec ? ` in ${spec.name}` : ""
 				}, who has no written conversation — the errand lands in the journal with only the deterministic menu to account for it`,
+				id,
 			),
 		);
 	}
