@@ -162,6 +162,7 @@ export function Chooser({
 					// In `selected` mode only the choice under the cursor explains itself,
 					// which is what keeps a four-paragraph page usable on a short terminal.
 					rows={budget.mode === "all" || index === at ? budget.rows : 0}
+					previewRows={budget.preview}
 					selected={index === at && isActive}
 				/>
 			))}
@@ -172,6 +173,17 @@ export function Chooser({
 interface BodyBudget {
 	readonly mode: "all" | "selected";
 	readonly rows: number;
+	/**
+	 * Preview rows the selected choice may draw, which is not the same as how many it has.
+	 *
+	 * Handed out explicitly rather than merely *reserved*, and that distinction is the bug
+	 * this field exists to fix. Subtracting the preview from the paragraph budget is enough
+	 * while there are paragraphs to shrink; once they are already at nothing there is
+	 * nothing left to give, and a preview drawn anyway pushes the last choice off the
+	 * bottom — where Ink clips it rather than scrolling, so the row that vanishes is the
+	 * one that writes the world.
+	 */
+	readonly preview: number;
 }
 
 /**
@@ -189,22 +201,26 @@ function bodyBudget(items: readonly ChoiceItem[], height: number): BodyBudget {
 	// there is room for the paragraphs, so it comes off the budget before they are shared
 	// out rather than being the thing that overflows the frame.
 	const rules = items.filter((item) => item.rule).length;
-	if (explained === 0) return { mode: "all", rows: 0 };
+	if (explained === 0) return { mode: "all", rows: 0, preview: 0 };
 
 	// The tallest preview any *one* item has, because only the selected item draws one.
-	// Charged against the budget whether or not the cursor is on that item, so that
-	// moving onto it cannot push the last choice off the bottom of the frame — a list
-	// whose height depends on where the cursor is would jump under the player's hands.
-	const preview = items.reduce((most, item) => Math.max(most, item.preview?.length ?? 0), 0);
+	// Charged whether or not the cursor is on that item, so that moving onto it cannot
+	// change the height of the list — one that grew under the cursor would jump under the
+	// player's hands.
+	const wanted = items.reduce((most, item) => Math.max(most, item.preview?.length ?? 0), 0);
 
 	// One row per label, and one blank under each body.
-	const spare = height - items.length - explained - rules - preview;
+	const spare = height - items.length - explained - rules - wanted;
 	const each = Math.floor(spare / explained);
-	if (each >= 1) return { mode: "all", rows: Math.min(BODY_ROWS, each) };
-	return {
-		mode: "selected",
-		rows: Math.max(0, Math.min(BODY_ROWS, height - items.length - rules - preview - 1)),
-	};
+	if (each >= 1) return { mode: "all", rows: Math.min(BODY_ROWS, each), preview: wanted };
+
+	// Only the selected choice explains itself now: one paragraph, one blank under it, and
+	// whatever is left over for the preview. Everything is clamped at zero and taken from
+	// the same total, so the sum of what is handed out can never exceed the height.
+	const forOne = Math.max(0, height - items.length - rules);
+	const rows = Math.max(0, Math.min(BODY_ROWS, forOne - wanted - 1));
+	const preview = Math.max(0, Math.min(wanted, forOne - rows - (rows > 0 ? 1 : 0)));
+	return { mode: "selected", rows, preview };
 }
 
 /** Room the body has once the four columns of indent are taken off. */
@@ -214,11 +230,14 @@ function Row({
 	item,
 	width,
 	rows,
+	previewRows,
 	selected,
 }: {
 	item: ChoiceItem;
 	width: number;
 	rows: number;
+	/** How many rows of preview there is room for, which may be fewer than it has. */
+	previewRows: number;
 	selected: boolean;
 }) {
 	const color = item.disabled ? "gray" : selected ? "cyan" : item.accent;
@@ -242,7 +261,11 @@ function Row({
 					{`${" ".repeat(BODY_INDENT)}${line}`}
 				</Text>
 			))}
-			{selected && item.preview ? <Preview rows={item.preview} /> : null}
+			{selected && item.preview && previewRows > 0 ? (
+				// Truncated rather than dropped whole: two rows of a coast still says what
+				// colour the sea is, which is most of what the strip is for.
+				<Preview rows={item.preview.slice(0, previewRows)} />
+			) : null}
 		</Box>
 	);
 }
