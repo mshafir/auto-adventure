@@ -1,0 +1,122 @@
+{
+	"name": "saltmere",
+	"description": "Grey-green weather over a working harbour. Choppy water, slate roofs and gorse; the piers and decks are drawn crisply because this is a pack about being on them.",
+	"palette": {
+		"abyss": "#12303a",
+		"deep": "#2a6472",
+		"shallow": "#356f7c",
+		"foam": "#cfe8e4",
+		"sand": "#d4c8a8",
+		"sandDark": "#9a8e68",
+		"loam": "#3e3828",
+		"dirt": "#6a6048",
+		"dirtDark": "#453f30",
+		"mud": "#38352a",
+		"gravel": "#8e8c80",
+		"gravelDark": "#4e4c46",
+		"moss": "#5f8a52",
+		"mossDark": "#2e4a2c",
+		"leaf": "#4e7a44",
+		"leafDark": "#264024",
+		"pine": "#2f6248",
+		"pineDark": "#163126",
+		"oak": "#4a7a48",
+		"oakDark": "#233c24",
+		"reed": "#8a9058",
+		"reedDark": "#454a2c",
+		"wheat": "#cbb96a",
+		"wheatDark": "#6a5e32",
+		"stone": "#b0b4b0",
+		"stoneDark": "#3a3e3e",
+		"slate": "#7e868a",
+		"slateDark": "#42484c",
+		"timber": "#96703f",
+		"timberDark": "#42301a",
+		"plank": "#b8925c",
+		"plankDark": "#5a4222",
+		"tile": "#565e64",
+		"tileDark": "#2e3438",
+		"cobble": "#93968f",
+		"cobbleDark": "#54574f",
+		"brass": "#c99a3f",
+		"lamplight": "#e8c96a",
+		"bone": "#e4e0d0",
+		"ash": "#26282a",
+		"soot": "#1c1a18"
+	},
+	"glyphs": {
+		"terrain": {
+			"water": {
+				"ch": ["≈", "~"],
+				"fg": "foam",
+				"bg": "shallow",
+				"autotile": "waterEdge"
+			},
+			"roof": {
+				"ch": ["▬", "="],
+				"fg": "tile",
+				"bg": "tileDark"
+			},
+			"bush": {
+				"ch": "▒",
+				"fg": "wheat",
+				"bg": "leafDark",
+				"bold": true
+			},
+			"pier": {
+				"ch": ["═", "─"],
+				"fg": "plank",
+				"bg": "abyss",
+				"bold": true
+			},
+			"deck": {
+				"ch": ["─", "═"],
+				"fg": "plank",
+				"bg": "plankDark"
+			}
+		}
+	},
+	"sprites": {
+		"terrain": {
+			"pier": {
+				"shape": {
+					"any": [
+						{ "box": [0, 0.08, 1, 0.28] },
+						{ "box": [0, 0.4, 1, 0.6] },
+						{ "box": [0, 0.72, 1, 0.92] }
+					]
+				}
+			},
+			"deck": {
+				"shape": {
+					"any": [
+						{ "box": [0, 0.14, 1, 0.22] },
+						{ "box": [0, 0.46, 1, 0.54] },
+						{ "box": [0, 0.78, 1, 0.86] }
+					]
+				}
+			},
+			"bush": {
+				"shape": {
+					"any": [
+						{ "disc": [0.3, 0.62, 0.14] },
+						{ "disc": [0.66, 0.56, 0.13] },
+						{ "disc": [0.48, 0.36, 0.11] },
+						{ "disc": [0.2, 0.34, 0.06] },
+						{ "disc": [0.78, 0.3, 0.06] }
+					]
+				}
+			},
+			"roof": {
+				"shape": {
+					"any": [
+						{ "box": [0, 0.06, 1, 0.12] },
+						{ "box": [0, 0.36, 1, 0.42] },
+						{ "box": [0, 0.66, 1, 0.72] },
+						{ "box": [0, 0.94, 1, 1] }
+					]
+				}
+			}
+		}
+	}
+}

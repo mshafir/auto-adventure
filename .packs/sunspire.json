@@ -1,0 +1,454 @@
+{
+	"id": "sunspire",
+	"description": "A caravan desert. Salt pans, saguaro scrub and days between wells; water and salt are the currency and everybody talks about the road.",
+	"world": {
+		"bounds": {
+			"style": "cliffs"
+		},
+		"climate": {
+			"seaLevel": 0.36,
+			"shoreLevel": 0.4,
+			"alpineLevel": 0.82,
+			"elevationBias": 0.16,
+			"elevationScale": 420,
+			"temperatureBias": 0.45,
+			"moistureBias": -0.45,
+			"latitudeBand": 24000,
+			"roughnessScale": 60
+		},
+		"biomes": {
+			"desert": {
+				"name": "the sand",
+				"scatterDensity": 0.1,
+				"scatter": [["saguaro", 3], ["rock", 4], ["palm", 1], ["deadTree", 1]]
+			},
+			"shrubland": {
+				"name": "the scrub",
+				"ground": "gravel",
+				"groundAlt": "dirt",
+				"scatterDensity": 0.22,
+				"scatter": [["bush", 5], ["saguaro", 3], ["rock", 3]]
+			},
+			"moor": {
+				"name": "salt pan",
+				"ground": "gravel",
+				"groundAlt": "sand",
+				"scatterDensity": 0.05,
+				"scatter": [["rock", 3]]
+			},
+			"marsh": {
+				"name": "oasis",
+				"groundAlt": "reeds",
+				"scatterDensity": 0.3,
+				"scatter": [["palm", 6], ["reeds", 4], ["bush", 2]]
+			},
+			"savanna": {
+				"name": "the hardpan",
+				"ground": "dirt",
+				"groundAlt": "gravel",
+				"scatterDensity": 0.08,
+				"scatter": [["bush", 3], ["saguaro", 2], ["rock", 3]]
+			},
+			"badlands": {
+				"name": "the burnt hills"
+			},
+			"grassland": {
+				"name": "the green strip",
+				"ground": "dirt",
+				"groundAlt": "grass"
+			}
+		},
+		"sites": {
+			"weights": {
+				"town": 1,
+				"village": 1.5,
+				"fort": 1,
+				"hamlet": 2,
+				"camp": 3,
+				"ruins": 3,
+				"landmark": 3
+			},
+			"radius": {
+				"town": {
+					"base": 26,
+					"perImportance": 3
+				},
+				"village": {
+					"base": 20,
+					"perImportance": 2
+				},
+				"hamlet": {
+					"base": 12,
+					"perImportance": 1
+				},
+				"camp": {
+					"base": 8
+				},
+				"ruins": {
+					"base": 12,
+					"perImportance": 1
+				}
+			},
+			"civilizationFloor": 0.2,
+			"roads": {
+				"major": "dirtRoad",
+				"minor": "path"
+			},
+			"roster": {
+				"town": {
+					"count": {
+						"base": 10,
+						"perImportance": 1
+					},
+					"walled": 3,
+					"structures": [
+						["inn", 8],
+						["shop", 8],
+						["warehouse", 6],
+						["stable", 5],
+						["smithy", 4],
+						["temple", 4],
+						["hall", 3],
+						["house", 12]
+					]
+				},
+				"village": {
+					"count": {
+						"base": 6,
+						"perImportance": 0.5
+					},
+					"structures": [
+						["inn", 6],
+						["stable", 5],
+						["shop", 5],
+						["warehouse", 4],
+						["smithy", 3],
+						["house", 10]
+					]
+				},
+				"hamlet": {
+					"count": {
+						"base": 3,
+						"perImportance": 0.5
+					},
+					"structures": [["house", 10], ["stable", 4], ["farmhouse", 3], ["shrine", 2]]
+				},
+				"camp": {
+					"count": {
+						"base": 3
+					},
+					"structures": [["house", 4], ["stable", 3], ["shop", 1]]
+				}
+			},
+			"filler": [["house", 10], ["stable", 4], ["warehouse", 2], ["shop", 1]]
+		}
+	},
+	"names": {
+		"given": [
+			"Sabir",
+			"Yusra",
+			"Halim",
+			"Nadir",
+			"Zayda",
+			"Tarek",
+			"Amina",
+			"Rashad",
+			"Leyla",
+			"Kadar",
+			"Samira",
+			"Idris",
+			"Nawal",
+			"Bashir",
+			"Hafsa",
+			"Jamil",
+			"Rukiya",
+			"Salim",
+			"Dhalia",
+			"Mansur"
+		],
+		"family": [
+			"al-Qarra",
+			"of the Long Well",
+			"ibn Suhayl",
+			"al-Mizan",
+			"of Two Roads",
+			"Bint Harun",
+			"al-Ghurab",
+			"of the Salt",
+			"Tammuz",
+			"al-Wadi",
+			"of the Third Cistern",
+			"Nasiri"
+		],
+		"heads": {
+			"wet": ["ain", "wadi", "birk", "sabil"],
+			"green": ["nakhl", "bustan", "khadra"],
+			"cold": ["shita", "bard", "nasim"],
+			"dry": ["ram", "sahra", "qafr", "jamr", "shams"],
+			"high": ["jabal", "qasr", "tal", "sinn"],
+			"plain": ["suq", "manzil", "darb", "qafila", "hadd"]
+		},
+		"tails": ["well", "gate", "waystation", "reach", "crossing", "hollow", "spire", "camp"],
+		"ruinTails": ["cistern", "dryhold", "bones", "stump"],
+		"fortTails": ["watch", "qasr", "gate", "hold"],
+		"regionTails": ["waste", "pans", "reach", "erg", "hardpan"]
+	},
+	"households": {
+		"house": {
+			"count": [1, 3],
+			"roles": ["water-seller", "date-farmer", "weaver", "widow", "child", "muleteer"]
+		},
+		"inn": {
+			"count": [2, 4],
+			"roles": ["cook", "server", "caravan-master", "traveller", "muleteer"]
+		},
+		"stable": {
+			"count": [1, 3],
+			"roles": ["drover", "farrier", "muleteer"]
+		},
+		"shop": {
+			"count": [1, 2],
+			"roles": ["saltman", "glassblower", "porter"]
+		},
+		"warehouse": {
+			"count": [1, 2],
+			"roles": ["factor", "tallyman"]
+		},
+		"smithy": {
+			"count": [1, 2],
+			"roles": ["blacksmith", "striker"]
+		},
+		"temple": {
+			"count": [1, 2],
+			"roles": ["reader", "acolyte"]
+		},
+		"shrine": {
+			"count": [0, 1],
+			"roles": ["well-keeper"]
+		},
+		"hall": {
+			"count": [1, 3],
+			"roles": ["headman", "reader", "harpist"]
+		},
+		"farmhouse": {
+			"count": [1, 2],
+			"roles": ["date-farmer", "farmhand"]
+		}
+	},
+	"appearance": {
+		"water-seller": "A skin under each arm and a tin cup on a string, and he has counted both.",
+		"saltman": "Hands cracked white to the wrist, which he no longer notices.",
+		"glassblower": "Eyebrows gone, and a squint that does not come off between jobs.",
+		"caravan-master": "Doing sums about you before the greeting is finished.",
+		"muleteer": "Smells of animal, dust and animal. Talks to you over his shoulder.",
+		"date-farmer": "Up a ladder somewhere in the shade, and staying there.",
+		"well-keeper": "Sat with his back to the shaft, in the only cold place for a day's ride.",
+		"headman": "Old, still, and the only person here not doing something.",
+		"reader": "Following a line with one finger and losing it whenever you speak.",
+		"drover": "Smells of the road and of somebody else's animals.",
+		"weaver": "At the loom, in the dark, because the dark is where it is cool."
+	},
+	"talksAbout": {
+		"water-seller": "the price this week, and who is watering short",
+		"well-keeper": "the level in the shaft, and what it was at this time last year",
+		"caravan-master": "the road east, what it costs, and who is not coming back on it",
+		"saltman": "the pans, the season, and the weight that is lost in carriage",
+		"headman": "the wells, the road tax, and who has stopped paying it",
+		"muleteer": "the animals, the flies, and the last three waystations"
+	},
+	"outdoorRoles": {
+		"inn": {
+			"role": "caravan-master",
+			"placement": "doorstep"
+		},
+		"shop": {
+			"role": "saltman",
+			"placement": "doorstep"
+		},
+		"stable": {
+			"role": "drover",
+			"placement": "yard"
+		},
+		"warehouse": {
+			"role": "factor",
+			"placement": "yard"
+		},
+		"hall": {
+			"role": "headman",
+			"placement": "doorstep"
+		},
+		"temple": {
+			"role": "reader",
+			"placement": "doorstep"
+		},
+		"shrine": {
+			"role": "well-keeper",
+			"placement": "doorstep"
+		},
+		"farmhouse": {
+			"role": "date-farmer",
+			"placement": "yard"
+		}
+	},
+	"wanderers": [
+		{
+			"role": "water-seller",
+			"placement": "well"
+		},
+		{
+			"role": "glassblower",
+			"placement": "stall"
+		},
+		{
+			"role": "muleteer",
+			"placement": "bench"
+		},
+		{
+			"role": "caravan-master",
+			"placement": "gate"
+		}
+	],
+	"lore": {
+		"title": "The Dry Season",
+		"premise": "Two of the four wells on the eastern road have gone brackish in one season, and the caravans have started taking a longer way that nobody has surveyed. The waystations between are still expecting them.",
+		"era": "the eleventh year of the long drought",
+		"tone": "patient, mercantile, and quietly desperate",
+		"factions": ["the Well Keepers", "the Caravan Houses", "the Salt Company"],
+		"deities": ["the Open Hand", "the One Who Counts the Days"]
+	},
+	"ambient": [
+		"The heat comes up off the ground as much as down onto it.",
+		"Something has been dragged across the road here, and the wind is halfway through hiding it.",
+		"A saguaro throws the only shade for a hundred paces, and it is the wrong shape to sit in.",
+		"The air over the pan is moving in a way that is not wind.",
+		"Nothing has walked this stretch since the last time it blew."
+	],
+	"goods": {
+		"stores": {
+			"warehouse": [
+				["Block of Salt", "Cut square, and heavier than it looks."],
+				["Bale of Indigo", "Wrapped twice, and it has stained the wrapping."],
+				["Coil of Rope", "Sisal, and stiff with dust."]
+			],
+			"shop": [
+				["Glass Beads", "A string of them, blue, against the eye."],
+				["Pressed Dates", "In a block, wrapped in leaf."]
+			],
+			"stable": [
+				["Camel Tack", "Repaired more often than it was made."],
+				["Feed Sack", "Barley and chaff, mostly chaff."]
+			],
+			"inn": [
+				["Skin of Water", "Filled here, and they watched you watch them do it."],
+				["Flat Bread", "Cooked on the stones an hour ago."]
+			],
+			"house": [
+				["Clay Water Jar", "Sweating, which is how it works."],
+				["Woven Mat", "Tight enough to hold water, and it has."]
+			],
+			"hall": [
+				["Road Tally", "Notched for every caravan through, and the notches stop."],
+				["Jar of Oil", "For lamps, and rationed like everything else."]
+			],
+			"ruin": [
+				["Tarnished Coins", "Struck by a house that no longer exists."],
+				["Dry Waterskin", "Empty a long time. Somebody kept it anyway."]
+			],
+			"smithy": [
+				["Iron Ore", "Rust-red lumps, unsmelted."],
+				["Charcoal", "A sack of it, light as nothing."]
+			]
+		},
+		"catalogue": {
+			"shop": [
+				["Skin of Water", "Two days of it, if you are honest with yourself."],
+				["Block of Salt", "Sold by weight, and the weight is the argument."],
+				["Pressed Dates", "Sweet enough to make you thirsty, which is the trade."],
+				["Glass Beads", "Blue, against the eye. Everybody wears one."],
+				["Head Cloth", "Undyed. The dyed ones cost twice and burn the same."],
+				["Tin Lantern", "Dented, but the shutter still works."]
+			],
+			"smithy": [
+				["Iron Knife", "Plain, sharp, and honestly made."],
+				["Water Hook", "For getting a bucket back out of a shaft."],
+				["Camel Bell", "Flat-toned, so it carries over sand."],
+				["Steel Sword", "Second-hand. Somebody's initials are on the pommel."]
+			],
+			"stable": [
+				["Camel Tack", "Repaired more often than it was made."],
+				["Bag of Barley", "Enough for a week on the road."],
+				["Hide Blanket", "Faded to no colour at all."]
+			],
+			"inn": [
+				["Bowl of Lentils", "With something salted in it."],
+				["Flat Bread", "Cooked on the stones an hour ago."],
+				["Cup of Mint Tea", "Poured from a height, for no reason anybody will explain."],
+				["A Bed for the Night", "A roof, a mat, and the animals audible all night."]
+			],
+			"warehouse": [
+				["Bale of Indigo", "Sold by the bale and stolen by the handful."],
+				["Crate of Salt", "Heavy, and worth carrying anyway."],
+				["Coil of Rope", "Sisal, and stiff with dust."]
+			]
+		},
+		"trades": [
+			{
+				"kind": "smithy",
+				"roles": ["smith", "blacksmith", "farrier", "armourer"]
+			},
+			{
+				"kind": "apothecary",
+				"roles": ["apothecary", "herbalist", "healer"]
+			},
+			{
+				"kind": "inn",
+				"roles": ["innkeep", "innkeeper", "tavern", "cook"]
+			},
+			{
+				"kind": "stable",
+				"roles": ["stable", "ostler", "groom", "drover", "muleteer"]
+			},
+			{
+				"kind": "warehouse",
+				"roles": ["factor", "warehouse", "tallyman"]
+			},
+			{
+				"kind": "shop",
+				"roles": ["shop", "saltman", "glassblower", "merchant", "trader", "seller"]
+			}
+		],
+		"yields": {
+			"bush": [
+				["Bitter Gourd", "Edible under duress, which the road provides."],
+				["Thorn Cuttings", "Springy, and awkward to carry."]
+			],
+			"saguaro": [
+				["Cactus Water", "Cloudy, and it will keep you upright for an afternoon."],
+				["Cactus Fruit", "Split it and it is better than it looks."]
+			],
+			"palm": [
+				["Green Dates", "Astringent, and they will be better in a month."],
+				["Palm Fibre", "Twists into cord if you have the evening."]
+			],
+			"rock": [
+				["Flint", "It takes a hard edge and a harder spark."],
+				["Salt Crust", "Prised off in a sheet, and it tastes of the ground."]
+			],
+			"gravel": [["Salt Crust", "Swept up where the pan has dried and dried again."]],
+			"marsh": [
+				["Reed Shoots", "The pale ends, which are worth the wet feet."],
+				["Sphagnum Moss", "Sodden, and it holds far more water than it looks able to."]
+			],
+			"deadTree": [["Kindling", "Split from a trunk that has been dead longer than the road."]]
+		},
+		"forageChance": {
+			"bush": 0.3,
+			"saguaro": 0.4,
+			"palm": 0.45,
+			"rock": 0.2,
+			"gravel": 0.12,
+			"marsh": 0.35,
+			"deadTree": 0.6
+		}
+	}
+}

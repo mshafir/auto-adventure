@@ -1,0 +1,432 @@
+{
+	"id": "ashfall",
+	"description": "After the collapse. Waste, ash flats and far more ruins than people; nothing is minted, almost nothing is sold, and what you need is scavenged or gathered.",
+	"world": {
+		"bounds": {
+			"style": "cliffs"
+		},
+		"climate": {
+			"temperatureBias": 0.12,
+			"moistureBias": -0.28,
+			"elevationScale": 260,
+			"roughnessScale": 46
+		},
+		"biomes": {
+			"grassland": {
+				"name": "the waste",
+				"ground": "dirt",
+				"groundAlt": "gravel",
+				"scatterDensity": 0.16,
+				"scatter": [["bush", 4], ["deadTree", 4], ["rubble", 3], ["rock", 2]]
+			},
+			"meadow": {
+				"name": "the green patch",
+				"ground": "grass",
+				"groundAlt": "dirt",
+				"scatterDensity": 0.18,
+				"scatter": [["bush", 4], ["flowers", 3], ["deadTree", 2]]
+			},
+			"badlands": {
+				"name": "the ash flats",
+				"ground": "gravel",
+				"groundAlt": "dirt",
+				"scatterDensity": 0.22,
+				"scatter": [["rubble", 6], ["rock", 5], ["deadTree", 3]]
+			},
+			"moor": {
+				"name": "the sour ground",
+				"scatterDensity": 0.2,
+				"scatter": [["deadTree", 5], ["bush", 3], ["rock", 3]]
+			},
+			"shrubland": {
+				"name": "the scrub",
+				"scatterDensity": 0.28,
+				"scatter": [["bush", 6], ["deadTree", 3], ["rubble", 2], ["rock", 2]]
+			},
+			"forest": {
+				"name": "the standing wood",
+				"scatterDensity": 0.58,
+				"scatter": [["broadleaf", 6], ["deadTree", 4], ["bush", 3], ["stump", 2]]
+			},
+			"savanna": {
+				"name": "the burn",
+				"ground": "dirt",
+				"groundAlt": "gravel",
+				"scatter": [["deadTree", 5], ["bush", 3], ["rubble", 2]]
+			}
+		},
+		"sites": {
+			"weights": {
+				"town": 0.3,
+				"village": 0.8,
+				"fort": 0.8,
+				"hamlet": 2,
+				"camp": 4,
+				"ruins": 12,
+				"landmark": 6
+			},
+			"wildWeights": {
+				"ruins": 10,
+				"landmark": 6,
+				"camp": 1
+			},
+			"radius": {
+				"ruins": {
+					"base": 14,
+					"perImportance": 2
+				},
+				"camp": {
+					"base": 7
+				}
+			},
+			"civilizationFloor": 0.34,
+			"roads": {
+				"major": "dirtRoad",
+				"minor": "path"
+			},
+			"roster": {
+				"town": {
+					"count": {
+						"base": 8,
+						"perImportance": 1
+					},
+					"walled": 1,
+					"structures": [
+						["house", 12],
+						["warehouse", 6],
+						["hall", 4],
+						["smithy", 4],
+						["inn", 3],
+						["barracks", 3],
+						["ruin", 6]
+					]
+				},
+				"village": {
+					"count": {
+						"base": 5,
+						"perImportance": 0.5
+					},
+					"walled": 1,
+					"structures": [["house", 12], ["warehouse", 4], ["smithy", 3], ["hall", 2], ["ruin", 6]]
+				},
+				"hamlet": {
+					"count": {
+						"base": 3,
+						"perImportance": 0.5
+					},
+					"structures": [["house", 10], ["farmhouse", 4], ["ruin", 6]]
+				},
+				"camp": {
+					"count": {
+						"base": 3
+					},
+					"structures": [["house", 5], ["ruin", 3]]
+				},
+				"ruins": {
+					"count": {
+						"base": 6,
+						"perImportance": 1
+					},
+					"structures": [["ruin", 10]]
+				},
+				"landmark": {
+					"count": {
+						"base": 1
+					},
+					"structures": [["shrine", 1]]
+				}
+			},
+			"filler": [["ruin", 6], ["house", 5], ["warehouse", 1]]
+		}
+	},
+	"names": {
+		"given": [
+			"Wren",
+			"Corvin",
+			"Sable",
+			"Tam",
+			"Juno",
+			"Grist",
+			"Marrow",
+			"Peg",
+			"Odis",
+			"Vetch",
+			"Sull",
+			"Rooke",
+			"Bry",
+			"Ferris",
+			"Nim",
+			"Ash",
+			"Halloway",
+			"Meed",
+			"Cinder",
+			"Rill"
+		],
+		"family": [
+			"of the Standpipe",
+			"Scrapmaker",
+			"Ninefingers",
+			"of Under",
+			"Hollow",
+			"Cobb",
+			"of the Third Camp",
+			"Tarn",
+			"Wickerman",
+			"of the Long Wall",
+			"Slater",
+			"Grieve"
+		],
+		"heads": {
+			"wet": ["seep", "sump", "drip", "wash"],
+			"green": ["green", "vetch", "willow"],
+			"cold": ["cold", "grey", "hoar"],
+			"dry": ["ash", "cinder", "scorch", "dust", "slag", "dry"],
+			"high": ["stack", "rig", "mast", "girder"],
+			"plain": ["camp", "wall", "sixteen", "under", "middle"]
+		},
+		"tails": ["camp", "hold", "wall", "yard", "works", "stop", "row", "pit"],
+		"ruinTails": ["works", "yards", "stack", "hulk", "spoil"],
+		"fortTails": ["wall", "gate", "hold", "watch"],
+		"regionTails": ["waste", "flats", "spoil", "reach", "quarter"]
+	},
+	"households": {
+		"house": {
+			"count": [1, 3],
+			"roles": ["scavenger", "water-carrier", "mender", "widow", "child", "digger"]
+		},
+		"hall": {
+			"count": [1, 3],
+			"roles": ["camp boss", "keeper of the list", "mender"]
+		},
+		"warehouse": {
+			"count": [1, 2],
+			"roles": ["keeper of the list", "digger"]
+		},
+		"smithy": {
+			"count": [1, 2],
+			"roles": ["scrapsmith", "striker"]
+		},
+		"inn": {
+			"count": [1, 3],
+			"roles": ["cook", "still-keeper", "traveller"]
+		},
+		"barracks": {
+			"count": [1, 3],
+			"roles": ["watch", "camp boss"]
+		},
+		"farmhouse": {
+			"count": [1, 2],
+			"roles": ["grower", "digger"]
+		},
+		"ruin": {
+			"count": [0, 1],
+			"roles": ["scavenger"]
+		},
+		"shrine": {
+			"count": [0, 1],
+			"roles": ["marker"]
+		}
+	},
+	"appearance": {
+		"scavenger": "Wearing four things that were once other things, all of them mended.",
+		"water-carrier": "Two cans on a yoke, and she does not put them down to talk.",
+		"scrapsmith": "Working cold metal because the fuel is worth more than the heat.",
+		"camp boss": "Not standing up, and not going to.",
+		"keeper of the list": "Guarding a book that is the only reason anything here is shared out.",
+		"still-keeper": "Watching a drip, and counting it.",
+		"digger": "Filthy to the shoulder, and pleased about something you cannot see.",
+		"mender": "Halfway through fixing a thing you would have thrown away.",
+		"grower": "Kneeling over about a square yard of green and shading it with her body.",
+		"watch": "Armed with something improvised and holding it correctly.",
+		"marker": "Painting a sign on a wall for people who are not here yet."
+	},
+	"talksAbout": {
+		"camp boss": "what the camp has, what it needs, and which of the two is shorter",
+		"keeper of the list": "the list, who is on it, and what being taken off it means",
+		"scavenger": "which works are stripped, which are not, and why the difference",
+		"water-carrier": "the standpipe, the ration, and the days between",
+		"grower": "the soil, which is the wrong soil, and what will grow in it anyway",
+		"marker": "the road signs, and the people they were painted for",
+		"still-keeper": "the still, and what it is currently being fed"
+	},
+	"outdoorRoles": {
+		"hall": {
+			"role": "camp boss",
+			"placement": "doorstep"
+		},
+		"warehouse": {
+			"role": "keeper of the list",
+			"placement": "yard"
+		},
+		"smithy": {
+			"role": "scrapsmith",
+			"placement": "doorstep"
+		},
+		"inn": {
+			"role": "still-keeper",
+			"placement": "doorstep"
+		},
+		"barracks": {
+			"role": "watch",
+			"placement": "gate"
+		},
+		"farmhouse": {
+			"role": "grower",
+			"placement": "yard"
+		},
+		"shrine": {
+			"role": "marker",
+			"placement": "doorstep"
+		}
+	},
+	"wanderers": [
+		{
+			"role": "water-carrier",
+			"placement": "well"
+		},
+		{
+			"role": "scavenger",
+			"placement": "stall"
+		},
+		{
+			"role": "mender",
+			"placement": "bench"
+		},
+		{
+			"role": "watch",
+			"placement": "gate"
+		}
+	],
+	"lore": {
+		"title": "What Is Left Over",
+		"premise": "Whatever ended it ended it quickly, and everybody alive now was born after. The camps hold what they can carry and the works hold everything else, and the works are nearly stripped.",
+		"era": "two generations after, and nobody agrees after what",
+		"tone": "spare, practical, and unsentimental about the dead",
+		"factions": ["the Camp at the Long Wall", "the Diggers", "the Standpipe Kin"],
+		"deities": ["the One Who Left the Lights On"]
+	},
+	"ambient": [
+		"Nothing here was built to be looked at, and most of it has stopped being anything.",
+		"There is a smell of wet ash that comes and goes with the wind.",
+		"Somebody has been through this already, and recently, and left the heavy things.",
+		"A wall stands on its own, painted, with three arrows and two of them scratched out.",
+		"Green, low down, in the one place the rain collects."
+	],
+	"goods": {
+		"stores": {
+			"warehouse": [
+				["Sorted Scrap", "Graded, tied, and worth an argument."],
+				["Jerry Can", "Empty. It is the can that is worth something."],
+				["Bolt of Patched Cloth", "Six garments' worth of somebody's before."]
+			],
+			"hall": [
+				["The List", "Everybody in the camp and what they are owed. Not for sale."],
+				["Jar of Still Spirit", "Clear, and it will clean a wound or end an evening."]
+			],
+			"house": [
+				["Mended Blanket", "More patch than blanket, and warm."],
+				["Tin of Fat", "Rendered from something. It does not say what."]
+			],
+			"smithy": [
+				["Sorted Scrap", "Cold-worked, because fuel costs more than iron."],
+				["Bundle of Wire", "Straightened by hand, and coiled again."]
+			],
+			"farmhouse": [
+				["Seed Packet", "Folded paper, labelled in pencil, kept dry at all costs."],
+				["Root Vegetables", "Small, forked, and gritty however they are washed."]
+			],
+			"inn": [
+				["Jar of Still Spirit", "Clear, and it will clean a wound or end an evening."],
+				["Boiled Roots", "Hot, and there is salt if you ask."]
+			],
+			"barracks": [
+				["Sharpened Rebar", "Ground to a point on somebody's step."],
+				["Whetstone", "Worn hollow in the middle."]
+			],
+			"ruin": [
+				["Bundle of Wire", "Pulled out of a wall, and worth the afternoon."],
+				["Sealed Tin", "No label. It has not swollen, which is the only test there is."],
+				["Working Battery", "It holds something. Nobody here can say how much."],
+				["Handful of Screws", "Assorted, and every one of them useful."]
+			],
+			"shrine": [["Painted Sign", "An arrow, a number, and a name scratched out."]]
+		},
+		"catalogue": {
+			"smithy": [
+				["Sharpened Rebar", "Ground to a point. It is what everyone carries."],
+				["Cut-down Blade", "Was something longer. Is now something better balanced."],
+				["Handful of Screws", "Assorted, and every one of them useful."],
+				["Bundle of Wire", "Straightened by hand, and coiled again."]
+			],
+			"warehouse": [
+				["Sorted Scrap", "Graded, tied, and priced in favours."],
+				["Jerry Can", "Empty, sound, and the most useful thing here."],
+				["Bolt of Patched Cloth", "Six garments' worth of somebody's before."],
+				["Sealed Tin", "No label. Sold as a wager rather than as food."]
+			],
+			"inn": [
+				["Jar of Still Spirit", "Clear, and it will clean a wound or end an evening."],
+				["Boiled Roots", "Hot, and there is salt if you ask."],
+				["Somewhere Out of the Wind", "Not a bed. A corner, and nobody stepping over you."]
+			]
+		},
+		"trades": [
+			{
+				"kind": "smithy",
+				"roles": ["scrapsmith", "smith", "striker", "mender"]
+			},
+			{
+				"kind": "warehouse",
+				"roles": ["keeper", "list", "warehouse", "digger", "factor"]
+			},
+			{
+				"kind": "inn",
+				"roles": ["still", "keeper", "cook", "innkeep", "innkeeper"]
+			}
+		],
+		"yields": {
+			"rubble": [
+				["Bundle of Wire", "Pulled out of a wall, and worth the afternoon."],
+				["Handful of Screws", "Assorted, and every one of them useful."],
+				["Loose Stone", "Somebody's wall, once."]
+			],
+			"deadTree": [
+				["Kindling", "Split from a trunk that has been dead longer than you have."],
+				["Bark Strips", "They will boil down into something you can chew."]
+			],
+			"bush": [
+				["Bramble Berries", "Dark, and they stain everything they touch."],
+				["Bitter Leaf", "Edible, barely, and it grows where nothing else will."]
+			],
+			"forestFloor": [
+				["Wood Mushrooms", "Pale, and growing in a rough ring."],
+				["Cushion Moss", "Deep green, and damp all the way through."],
+				["Kindling", "Dry twigs, gathered by the handful."]
+			],
+			"grass": [["Seed Heads", "Shaken loose into a twist of cloth."]],
+			"dirt": [
+				["Root Vegetables", "Small, forked, and gritty however they are washed."],
+				["Buried Tin", "Somebody put this here on purpose. It is still sealed."]
+			],
+			"gravel": [
+				["Scrap Metal", "Flat, rusted, and it will still make something."],
+				["Flint", "It takes a hard edge and a harder spark."]
+			],
+			"rock": [["Flint", "It takes a hard edge and a harder spark."]],
+			"flowers": [["Wildflowers", "The first thing anybody has seen worth picking in a week."]],
+			"marsh": [["Sphagnum Moss", "Sodden, and it will dress a wound better than cloth."]]
+		},
+		"forageChance": {
+			"rubble": 0.55,
+			"deadTree": 0.7,
+			"bush": 0.45,
+			"forestFloor": 0.4,
+			"grass": 0.2,
+			"dirt": 0.3,
+			"gravel": 0.35,
+			"rock": 0.3,
+			"flowers": 0.5,
+			"marsh": 0.35
+		}
+	}
+}

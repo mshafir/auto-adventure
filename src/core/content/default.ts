@@ -100,6 +100,7 @@ export const DEFAULT_PACK: ContentPack = {
 		smithy: { count: [1, 2], roles: ["striker", "apprentice"] },
 		temple: { count: [1, 3], roles: ["priest", "acolyte", "mourner"] },
 		shrine: { count: [0, 1], roles: ["caretaker"] },
+		hall: { count: [1, 3], roles: ["reeve", "server", "harpist", "old resident"] },
 		barracks: { count: [2, 4], roles: ["soldier", "sergeant", "recruit", "cook"] },
 		mill: { count: [1, 2], roles: ["miller", "carter"] },
 		stable: { count: [1, 2], roles: ["groom", "farrier"] },
@@ -156,6 +157,7 @@ export const DEFAULT_PACK: ContentPack = {
 		watchman: "Awake at the wrong end of the day, and making sure you know it.",
 		signaller: "One eye on the window the whole time.",
 		caretaker: "Sweeping something that does not need it, slowly.",
+		reeve: "At the head of the table with the tally in front of them, unread.",
 	},
 	talksAbout: {
 		child: "the dog, the roof, and whatever you are carrying",
@@ -168,6 +170,7 @@ export const DEFAULT_PACK: ContentPack = {
 		tallyman: "what came in, what went out, and the difference",
 		miller: "the grain, the water, and whoever is late",
 		shopkeeper: "stock, and what nobody will buy",
+		reeve: "who owes what, and how long they have owed it",
 	},
 	outdoorRoles: {
 		shop: { role: "shopkeeper", placement: "doorstep" },
@@ -180,6 +183,7 @@ export const DEFAULT_PACK: ContentPack = {
 		mill: { role: "miller", placement: "yard" },
 		farmhouse: { role: "farmer", placement: "yard" },
 		warehouse: { role: "factor", placement: "yard" },
+		hall: { role: "reeve", placement: "doorstep" },
 	},
 	wanderers: [
 		{ role: "carter", placement: "well" },

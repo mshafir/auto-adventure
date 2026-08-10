@@ -1,6 +1,7 @@
 import type { StructureKind } from "../gen/features/patch.js";
-import type { TerrainId } from "../tiles/terrain.js";
+import { T, type TerrainId } from "../tiles/terrain.js";
 import { type BiomeDef, type BiomeId, DEFAULT_BIOME_TABLE } from "./biome-table.js";
+import type { BoundaryStyle } from "./bounds.js";
 import { CHUNK } from "./coords.js";
 import type { SiteKind } from "./macro.js";
 
@@ -37,6 +38,22 @@ export interface WorldRecipe {
 	readonly sites?: SiteRecipe;
 	readonly places?: readonly PlaceRecipe[];
 	readonly zones?: readonly ZoneRecipe[];
+	readonly bounds?: BoundsRecipe;
+}
+
+/**
+ * What the edge of a bounded world is made of.
+ *
+ * The survey picks a style from the ground it finds — ocean where the rim is wet,
+ * cliffs otherwise — which is a good default and was the only answer available.
+ * `mountains` existed in {@link BoundaryStyle} from the beginning and was unreachable,
+ * because nothing ever chose it: a world ringed in ice could not ask to be.
+ *
+ * Saying nothing keeps the survey's choice, so this is purely an override and no
+ * existing world moves.
+ */
+export interface BoundsRecipe {
+	readonly style?: BoundaryStyle;
 }
 
 /**
@@ -126,6 +143,20 @@ export interface SiteRecipe {
 	 */
 	readonly roster?: Partial<Record<SettledKind, RosterRule>>;
 	/**
+	 * What the routes between sites are surfaced with.
+	 *
+	 * Roads are the only thing in the world that is a *line* rather than a scatter or a
+	 * footprint: the MST between settlements is laid down tile by tile, and until this
+	 * existed the two terrains it laid were literals in the chunk pipeline. So a world
+	 * could re-ground every biome it had and still have cobbles running through the
+	 * desert — and a rail line, which is a route and nothing else, could not be expressed
+	 * at all. A scatter table can put rails on the map; only this can put them in a line.
+	 *
+	 * `major` is the route between two important places and `minor` is everything else,
+	 * which is the distinction the pipeline already drew.
+	 */
+	readonly roads?: RoadRecipe;
+	/**
 	 * What fills a plot nobody asked for.
 	 *
 	 * Separate from {@link roster} because it is consulted for a different reason: a
@@ -162,6 +193,11 @@ export interface RosterRule {
 	readonly walled?: boolean | number;
 	/** Weighted, and drawn from with replacement: `[kind, weight]`. */
 	readonly structures: readonly (readonly [StructureKind, number])[];
+}
+
+export interface RoadRecipe {
+	readonly major?: TerrainId;
+	readonly minor?: TerrainId;
 }
 
 /** Every site kind except `none`, which is the absence of one. */
@@ -264,6 +300,9 @@ export function mergeRecipe(
 					...(base.sites?.roster || over.sites?.roster
 						? { roster: { ...base.sites?.roster, ...over.sites?.roster } }
 						: {}),
+					...(base.sites?.roads || over.sites?.roads
+						? { roads: { ...base.sites?.roads, ...stripUndefined(over.sites?.roads) } }
+						: {}),
 				}
 			: undefined;
 
@@ -275,6 +314,9 @@ export function mergeRecipe(
 		...(sites ? { sites } : {}),
 		...((over.places ?? base.places) ? { places: over.places ?? base.places } : {}),
 		...((over.zones ?? base.zones) ? { zones: over.zones ?? base.zones } : {}),
+		...(base.bounds || over.bounds
+			? { bounds: { ...base.bounds, ...stripUndefined(over.bounds) } }
+			: {}),
 	};
 }
 
@@ -307,6 +349,15 @@ export interface WorldRules {
 	readonly zones: readonly ZoneRecipe[];
 	/** True when no zone can affect anything, so the field functions can skip them. */
 	readonly flatFields: boolean;
+	/**
+	 * What the edge is, when the world says rather than the survey deciding.
+	 *
+	 * Left undefined rather than defaulted, and that is the whole of the contract: the
+	 * survey's answer depends on the ground it samples, so there is no constant that
+	 * could stand in for "whatever suits the rim" — a default here would silently
+	 * replace the ground-following choice with a fixed one in every world at once.
+	 */
+	readonly bounds: BoundsRecipe;
 }
 
 export interface ResolvedSites {
@@ -320,6 +371,7 @@ export interface ResolvedSites {
 	readonly maxSlope: number;
 	readonly roster: Readonly<Record<SettledKind, RosterRule>>;
 	readonly filler: readonly (readonly [StructureKind, number])[];
+	readonly roads: Required<RoadRecipe>;
 }
 
 /**
@@ -565,6 +617,10 @@ export function resolveRecipe(recipe?: WorldRecipe): WorldRules {
 		// place neither of them described.
 		roster: { ...DEFAULT_ROSTER, ...stripUndefined(recipe?.sites?.roster) },
 		filler: recipe?.sites?.filler ?? DEFAULT_FILLER,
+		roads: {
+			major: recipe?.sites?.roads?.major ?? T.cobbleRoad,
+			minor: recipe?.sites?.roads?.minor ?? T.dirtRoad,
+		},
 	};
 
 	const places = new Map<string, PlaceRecipe>();
@@ -575,7 +631,16 @@ export function resolveRecipe(recipe?: WorldRecipe): WorldRules {
 	const zones = (recipe?.zones ?? []).filter((zone) => zone.radius > 0);
 	const flatFields = zones.every((zone) => !zone.moisture && !zone.temperature);
 
-	return { key: recipeKey(recipe), climate, biomes, sites, places, zones, flatFields };
+	return {
+		key: recipeKey(recipe),
+		climate,
+		biomes,
+		sites,
+		places,
+		zones,
+		flatFields,
+		bounds: { ...stripUndefined(recipe?.bounds) },
+	};
 }
 
 /**

@@ -231,6 +231,12 @@ export function styleForEdge(
 	centre: { readonly x: number; readonly y: number },
 	radiusTiles: number,
 ): BoundaryStyle {
+	// A world that says what its edge is gets it, without the samples being taken. This
+	// is the only way `mountains` is ever reached — the ground-following rule below has
+	// no branch that returns it — so a world ringed in ice has to ask.
+	const asked = world.rules.bounds.style;
+	if (asked) return asked;
+
 	let wet = 0;
 	let samples = 0;
 	for (let angle = 0; angle < 16; angle++) {

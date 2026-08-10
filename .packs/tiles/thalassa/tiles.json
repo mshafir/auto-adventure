@@ -1,0 +1,122 @@
+{
+	"name": "thalassa",
+	"description": "Sun-bleached limestone and a very blue sea. Olive-grey foliage, white stone and pantile roofs; the brightest of the packs and the only one where the water is the point.",
+	"palette": {
+		"abyss": "#0a3a6e",
+		"deep": "#1f7fc4",
+		"shallow": "#2f9ad0",
+		"foam": "#d8f2ff",
+		"sand": "#f0e2b8",
+		"sandDark": "#c9b076",
+		"loam": "#6a5a3a",
+		"dirt": "#a89264",
+		"dirtDark": "#7a6540",
+		"gravel": "#c4bda8",
+		"gravelDark": "#8a8270",
+		"moss": "#94a860",
+		"mossDark": "#5a6a38",
+		"leaf": "#8fa869",
+		"leafDark": "#4e5f38",
+		"oak": "#8a9c62",
+		"oakDark": "#4a5734",
+		"pine": "#5f7a4a",
+		"pineDark": "#2f3f26",
+		"reed": "#9aa85e",
+		"reedDark": "#57603a",
+		"wheat": "#e6cf7a",
+		"wheatDark": "#8a7434",
+		"stone": "#efe9dc",
+		"stoneDark": "#8e877a",
+		"slate": "#c8c0ae",
+		"slateDark": "#7a7263",
+		"cobble": "#ded6c4",
+		"cobbleDark": "#9a927f",
+		"timber": "#b98f52",
+		"timberDark": "#5f451f",
+		"plank": "#d4ab6f",
+		"plankDark": "#6f5228",
+		"tile": "#c2643f",
+		"tileDark": "#8a3f28",
+		"brass": "#e8b552",
+		"lamplight": "#f5dc86",
+		"bone": "#f4efe0",
+		"ash": "#3a352c",
+		"soot": "#332a1e"
+	},
+	"glyphs": {
+		"terrain": {
+			"broadleaf": {
+				"ch": ["▒", "░"],
+				"fg": "leaf",
+				"bg": "leafDark",
+				"autotile": "massEdge"
+			},
+			"roof": {
+				"ch": ["≡", "="],
+				"fg": "tile",
+				"bg": "tileDark"
+			},
+			"stoneWall": {
+				"ch": ["█"],
+				"fg": "stone",
+				"bg": "stoneDark",
+				"bold": true,
+				"autotile": "heavyWall"
+			}
+		}
+	},
+	"sprites": {
+		"terrain": {
+			"broadleaf": {
+				"shape": {
+					"any": [
+						{ "disc": [0.3, 0.36, 0.17] },
+						{ "disc": [0.68, 0.32, 0.15] },
+						{ "disc": [0.5, 0.6, 0.16] },
+						{ "box": [0.46, 0.6, 0.54, 0.98] }
+					]
+				}
+			},
+			"roof": {
+				"shape": {
+					"any": [
+						{ "wave": [0.22, 0.05, 3, 0.05] },
+						{ "wave": [0.52, 0.05, 3, 0.05] },
+						{ "wave": [0.82, 0.05, 3, 0.05] }
+					]
+				}
+			},
+			"stoneWall": {
+				"shape": {
+					"any": [
+						{ "box": [0, 0.3, 1, 0.36] },
+						{ "box": [0, 0.66, 1, 0.72] },
+						{ "box": [0.44, 0, 0.5, 0.3] },
+						{ "box": [0.2, 0.36, 0.26, 0.66] },
+						{ "box": [0.72, 0.36, 0.78, 0.66] },
+						{ "box": [0.44, 0.72, 0.5, 1] }
+					]
+				}
+			},
+			"grass": {
+				"shape": {
+					"any": [
+						{ "box": [0.24, 0.56, 0.29, 0.78] },
+						{ "box": [0.58, 0.46, 0.63, 0.7] },
+						{ "disc": [0.8, 0.72, 0.05] }
+					]
+				}
+			},
+			"cliff": {
+				"shape": {
+					"any": [
+						{ "box": [0, 0.12, 1, 0.2] },
+						{ "box": [0, 0.52, 1, 0.6] },
+						{ "box": [0.3, 0.2, 0.36, 0.52] },
+						{ "box": [0.66, 0.6, 0.72, 1] }
+					]
+				}
+			}
+		}
+	}
+}

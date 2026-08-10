@@ -1,0 +1,116 @@
+{
+	"name": "hollowfrost",
+	"description": "Blue dusk and heavy conifers. Everything is pulled towards grey-blue, the snow carries the light, and the roofs are pitched steep enough to shed it.",
+	"palette": {
+		"abyss": "#0a1c30",
+		"deep": "#20455f",
+		"shallow": "#2c5c74",
+		"foam": "#bcd8e4",
+		"ice": "#d6e8f0",
+		"iceDark": "#7f97a8",
+		"sand": "#c4c0b0",
+		"sandDark": "#8c887a",
+		"loam": "#33301f",
+		"dirt": "#544c3c",
+		"dirtDark": "#38332a",
+		"mud": "#2c2a20",
+		"gravel": "#7c8088",
+		"gravelDark": "#454a50",
+		"moss": "#4c7248",
+		"mossDark": "#263a26",
+		"leaf": "#3f6a44",
+		"leafDark": "#1e3320",
+		"pine": "#1e5a3c",
+		"pineDark": "#0e2a1e",
+		"oak": "#3f6a48",
+		"oakDark": "#1c3222",
+		"reed": "#6a7550",
+		"reedDark": "#333a26",
+		"wheat": "#b8a664",
+		"wheatDark": "#5c5230",
+		"stone": "#a8aeb4",
+		"stoneDark": "#33383e",
+		"slate": "#78808a",
+		"slateDark": "#3c424a",
+		"snow": "#f4fafe",
+		"snowShadow": "#b4c8dc",
+		"timber": "#8a6a44",
+		"timberDark": "#3c2c1c",
+		"plank": "#a68352",
+		"plankDark": "#4a3620",
+		"tile": "#4e4a52",
+		"tileDark": "#2c2a30",
+		"cobble": "#8a8e94",
+		"cobbleDark": "#4e5258",
+		"brass": "#c9963c",
+		"lamplight": "#f0cd6a",
+		"glass": "#cfe6f5",
+		"bone": "#e4e8ec",
+		"ash": "#22242a",
+		"soot": "#181a1e"
+	},
+	"glyphs": {
+		"terrain": {
+			"conifer": {
+				"ch": "▲",
+				"fg": "pine",
+				"bg": "pineDark",
+				"bold": true
+			},
+			"roof": {
+				"ch": ["▓", "▒"],
+				"fg": "tile",
+				"bg": "tileDark"
+			},
+			"rock": {
+				"ch": "▲",
+				"fg": "slate",
+				"bg": "slateDark"
+			},
+			"marsh": {
+				"ch": ["░", "▒", "░", "·"],
+				"fg": "iceDark",
+				"bg": "mud"
+			},
+			"snow": {
+				"ch": ["░", " ", "░", "."],
+				"fg": "snow",
+				"bg": "snowShadow",
+				"bold": true
+			}
+		}
+	},
+	"sprites": {
+		"terrain": {
+			"conifer": {
+				"shape": {
+					"any": [
+						{ "cone": [0.5, 0.0, 0.46, 0.28] },
+						{ "cone": [0.5, 0.22, 0.7, 0.38] },
+						{ "cone": [0.5, 0.48, 0.9, 0.46] },
+						{ "box": [0.45, 0.88, 0.55, 1.0] }
+					]
+				}
+			},
+			"roof": {
+				"shape": {
+					"any": [{ "cone": [0.5, 0.02, 1.0, 0.5] }, { "box": [0, 0.9, 1, 1] }]
+				}
+			},
+			"rock": {
+				"shape": {
+					"any": [
+						{ "disc": [0.5, 0.74, 0.24] },
+						{ "disc": [0.42, 0.48, 0.16] },
+						{ "disc": [0.56, 0.28, 0.11] }
+					]
+				}
+			},
+			"marsh": {
+				"shape": {
+					"any": [{ "wave": [0.36, 0.04, 2, 0.035] }, { "wave": [0.72, 0.04, 2, 0.035] }]
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,124 @@
+{
+	"name": "redgulch",
+	"description": "Red dust and sun-bleached timber. Sage rather than hedgerow, split-rail fences, shingle roofs and a sky-blue that only shows up in the water.",
+	"palette": {
+		"abyss": "#274a5a",
+		"deep": "#3f7f96",
+		"shallow": "#4e8ea0",
+		"foam": "#d8eef0",
+		"sand": "#e0bd8a",
+		"sandDark": "#a8834f",
+		"loam": "#5a3c26",
+		"dirt": "#a06a44",
+		"dirtDark": "#6e452a",
+		"mud": "#4a3020",
+		"gravel": "#d0b78e",
+		"gravelDark": "#8e7855",
+		"moss": "#8a9a62",
+		"mossDark": "#4e5834",
+		"leaf": "#8a9a68",
+		"leafDark": "#4a5434",
+		"pine": "#4e6a44",
+		"pineDark": "#28361f",
+		"oak": "#7f8a54",
+		"oakDark": "#444a2a",
+		"reed": "#a09456",
+		"reedDark": "#544c2c",
+		"wheat": "#dcb85f",
+		"wheatDark": "#7f662c",
+		"stone": "#c4a888",
+		"stoneDark": "#6e5840",
+		"slate": "#a08a70",
+		"slateDark": "#5c4a38",
+		"timber": "#b8946a",
+		"timberDark": "#5c4428",
+		"plank": "#cdaa78",
+		"plankDark": "#6a4f2c",
+		"tile": "#8a5a3c",
+		"tileDark": "#5a3822",
+		"cobble": "#b09a7c",
+		"cobbleDark": "#6a5a44",
+		"rail": "#8a8078",
+		"railDark": "#3e352e",
+		"brass": "#d9a441",
+		"lamplight": "#f0cf74",
+		"bone": "#eee2c8",
+		"ash": "#332a20",
+		"soot": "#2a1e14"
+	},
+	"glyphs": {
+		"terrain": {
+			"bush": {
+				"ch": "▒",
+				"fg": "moss",
+				"bg": "dirtDark"
+			},
+			"deadTree": {
+				"ch": "†",
+				"fg": "bone",
+				"bg": "dirtDark",
+				"bold": true
+			},
+			"fence": {
+				"ch": ["─"],
+				"fg": "timber",
+				"bg": "dirt",
+				"autotile": "lightFence"
+			},
+			"roof": {
+				"ch": ["▒", "▓"],
+				"fg": "tile",
+				"bg": "tileDark"
+			},
+			"track": {
+				"ch": ["‡", "═", "‡", " "],
+				"fg": "rail",
+				"bg": "railDark",
+				"bold": true
+			}
+		}
+	},
+	"sprites": {
+		"terrain": {
+			"bush": {
+				"shape": {
+					"any": [
+						{ "disc": [0.32, 0.58, 0.11] },
+						{ "disc": [0.62, 0.62, 0.1] },
+						{ "disc": [0.48, 0.4, 0.09] },
+						{ "disc": [0.76, 0.42, 0.07] },
+						{ "disc": [0.22, 0.38, 0.07] }
+					]
+				}
+			},
+			"deadTree": {
+				"shape": {
+					"any": [
+						{ "box": [0.46, 0.1, 0.54, 0.98] },
+						{ "box": [0.2, 0.28, 0.46, 0.34] },
+						{ "box": [0.54, 0.44, 0.8, 0.5] },
+						{ "box": [0.18, 0.26, 0.24, 0.34] }
+					]
+				}
+			},
+			"fence": {
+				"shape": {
+					"any": [
+						{ "box": [0, 0.32, 1, 0.38] },
+						{ "box": [0, 0.6, 1, 0.66] },
+						{ "box": [0.44, 0.16, 0.52, 0.92] }
+					]
+				}
+			},
+			"crops": {
+				"shape": {
+					"any": [
+						{ "box": [0.18, 0.34, 0.26, 1] },
+						{ "box": [0.46, 0.26, 0.54, 1] },
+						{ "box": [0.74, 0.36, 0.82, 1] }
+					]
+				}
+			}
+		}
+	}
+}

@@ -164,6 +164,10 @@ export const SiteRecipeSchema = z
 		wildWeights: weightTable.optional(),
 		roster: z.partialRecord(settledKind, RosterRuleSchema).optional(),
 		filler: structureTable.optional(),
+		roads: z
+			.object({ major: terrainId.optional(), minor: terrainId.optional() })
+			.strict()
+			.optional(),
 		radius: z
 			.partialRecord(
 				settledKind,
@@ -222,8 +226,16 @@ export const ZoneRecipeSchema = z
 	})
 	.strict();
 
+export const BoundsRecipeSchema = z
+	.object({
+		style: z.enum(["ocean", "cliffs", "mountains"]),
+	})
+	.strict()
+	.partial();
+
 export const WorldRecipeSchema = z
 	.object({
+		bounds: BoundsRecipeSchema.optional(),
 		climate: ClimateRecipeSchema.optional(),
 		biomes: z
 			.partialRecord(z.enum(ALL_BIOMES as [string, ...string[]]), BiomeOverrideSchema)

@@ -1,0 +1,125 @@
+{
+	"name": "sunspire",
+	"description": "Sand, adobe and hard shadow. Everything is bleached towards ochre, walls are mud brick rather than timber, and the only green in the world is a cactus.",
+	"palette": {
+		"abyss": "#1a4a5c",
+		"deep": "#2f88a0",
+		"shallow": "#3f9cb0",
+		"foam": "#d0f0f0",
+		"sand": "#f8e8bc",
+		"sandDark": "#dcc389",
+		"loam": "#7a5a32",
+		"dirt": "#c48a4e",
+		"dirtDark": "#9c6836",
+		"mud": "#5e4526",
+		"gravel": "#e4d3ac",
+		"gravelDark": "#b8a077",
+		"moss": "#9aa055",
+		"mossDark": "#5e6030",
+		"leaf": "#7f9a4a",
+		"leafDark": "#48592a",
+		"oak": "#8a9448",
+		"oakDark": "#4e5228",
+		"pine": "#5f8452",
+		"pineDark": "#31462b",
+		"reed": "#a8a453",
+		"reedDark": "#5e5c2c",
+		"wheat": "#e4c66a",
+		"wheatDark": "#8a712c",
+		"stone": "#d8c49a",
+		"stoneDark": "#8a7048",
+		"slate": "#b8a279",
+		"slateDark": "#6f5c3c",
+		"snow": "#f4ead4",
+		"snowShadow": "#c9b48c",
+		"timber": "#c09256",
+		"timberDark": "#6a4a24",
+		"plank": "#d8ac68",
+		"plankDark": "#6f5124",
+		"tile": "#b06a44",
+		"tileDark": "#7a452a",
+		"cobble": "#cbb890",
+		"cobbleDark": "#8a7852",
+		"adobe": "#dcb075",
+		"adobeDark": "#8a5f30",
+		"brass": "#e6b348",
+		"lamplight": "#f6dc82",
+		"bone": "#f2e6ca",
+		"ash": "#3d3324",
+		"soot": "#332818"
+	},
+	"glyphs": {
+		"terrain": {
+			"woodWall": {
+				"ch": ["█"],
+				"fg": "adobe",
+				"bg": "adobeDark",
+				"bold": true,
+				"autotile": "heavyWall"
+			},
+			"grass": {
+				"ch": [" ", ".", " ", "·", " ", " "],
+				"fg": "moss",
+				"bg": "mossDark"
+			},
+			"bush": {
+				"ch": "⋔",
+				"fg": "pine",
+				"bg": "sandDark",
+				"bold": true
+			},
+			"broadleaf": {
+				"ch": "¥",
+				"fg": "leaf",
+				"bg": "sandDark",
+				"bold": true
+			},
+			"roof": {
+				"ch": ["▒", "░"],
+				"fg": "adobe",
+				"bg": "adobeDark"
+			}
+		}
+	},
+	"sprites": {
+		"terrain": {
+			"broadleaf": {
+				"shape": {
+					"any": [
+						{ "box": [0.46, 0.3, 0.54, 0.98] },
+						{ "disc": [0.26, 0.24, 0.13] },
+						{ "disc": [0.74, 0.24, 0.13] },
+						{ "disc": [0.5, 0.16, 0.14] }
+					]
+				}
+			},
+			"bush": {
+				"shape": {
+					"any": [
+						{ "box": [0.44, 0.16, 0.58, 0.98] },
+						{ "box": [0.2, 0.46, 0.3, 0.8] },
+						{ "box": [0.2, 0.46, 0.46, 0.54] },
+						{ "box": [0.72, 0.34, 0.82, 0.68] },
+						{ "box": [0.56, 0.6, 0.82, 0.68] }
+					]
+				}
+			},
+			"grass": {
+				"shape": {
+					"any": [{ "disc": [0.3, 0.62, 0.05] }, { "disc": [0.72, 0.4, 0.04] }]
+				}
+			},
+			"woodWall": {
+				"density": 0.85
+			},
+			"roof": {
+				"density": 0.6
+			},
+			"sand": {
+				"shape": {
+					"any": [{ "disc": [0.34, 0.44, 0.04] }, { "disc": [0.7, 0.68, 0.035] }]
+				}
+			}
+		}
+	}
+}

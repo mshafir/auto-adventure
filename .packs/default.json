@@ -99,6 +99,10 @@
 			"count": [0, 1],
 			"roles": ["caretaker"]
 		},
+		"hall": {
+			"count": [1, 3],
+			"roles": ["reeve", "server", "harpist", "old resident"]
+		},
 		"barracks": {
 			"count": [2, 4],
 			"roles": ["soldier", "sergeant", "recruit", "cook"]
@@ -169,7 +173,8 @@
 		"farmhand": "Up to the shins in straw, and glad of a reason to stand still.",
 		"watchman": "Awake at the wrong end of the day, and making sure you know it.",
 		"signaller": "One eye on the window the whole time.",
-		"caretaker": "Sweeping something that does not need it, slowly."
+		"caretaker": "Sweeping something that does not need it, slowly.",
+		"reeve": "At the head of the table with the tally in front of them, unread."
 	},
 	"talksAbout": {
 		"child": "the dog, the roof, and whatever you are carrying",
@@ -181,7 +186,8 @@
 		"priest": "the season, the dead, and the collection",
 		"tallyman": "what came in, what went out, and the difference",
 		"miller": "the grain, the water, and whoever is late",
-		"shopkeeper": "stock, and what nobody will buy"
+		"shopkeeper": "stock, and what nobody will buy",
+		"reeve": "who owes what, and how long they have owed it"
 	},
 	"outdoorRoles": {
 		"shop": {
@@ -223,6 +229,10 @@
 		"warehouse": {
 			"role": "factor",
 			"placement": "yard"
+		},
+		"hall": {
+			"role": "reeve",
+			"placement": "doorstep"
 		}
 	},
 	"wanderers": [
@@ -299,6 +309,11 @@
 				["Clay Vial", "Empty, and stoppered with wax."]
 			],
 			"temple": [["Beeswax Candles", "Better than tallow, and kept for feast days."]],
+			"hall": [
+				["Bottle of Ale", "Cloudy, and stoppered with a rag."],
+				["Tallow Candles", "A bundle of six."],
+				["Tally Stick", "Notched, split, and half of it kept elsewhere."]
+			],
 			"barracks": [
 				["Iron Nails", "A twist of paper holding two dozen."],
 				["Whetstone", "Worn hollow in the middle."]

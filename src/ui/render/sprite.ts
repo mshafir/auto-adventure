@@ -268,6 +268,63 @@ const FIGURE_FACING: Readonly<Record<Facing, Shape>> = {
 };
 
 /**
+ * Shapes wanted under two names: as a glyph, and as the tile the glyph stands for.
+ *
+ * Named rather than written twice because they are one drawing. `AUTHORED` is keyed by
+ * character and is what the *glyph* vocabulary can draw; `BY_TERRAIN` and `BY_DECOR` are
+ * keyed by what the tile is, and are what actually gets picked when the map is drawn.
+ * Both have to be populated — a tile with only the second reads as the fallback lozenge
+ * wherever its character turns up on its own, which `spriteCoverage` refuses.
+ */
+const PALM: Shape = any(
+	box(0.46, 0.3, 0.54, 0.98),
+	disc(0.28, 0.26, 0.14),
+	disc(0.72, 0.26, 0.14),
+	disc(0.5, 0.18, 0.15),
+);
+
+const SAGUARO: Shape = any(
+	box(0.44, 0.14, 0.58, 0.98),
+	box(0.2, 0.44, 0.3, 0.78),
+	box(0.2, 0.44, 0.46, 0.52),
+	box(0.72, 0.32, 0.82, 0.66),
+	box(0.56, 0.58, 0.82, 0.66),
+);
+
+const TRACK: Shape = any(
+	box(0, 0.3, 1, 0.38),
+	box(0, 0.62, 1, 0.7),
+	box(0.12, 0.24, 0.22, 0.76),
+	box(0.62, 0.24, 0.72, 0.76),
+);
+
+const TOTEM: Shape = any(
+	box(0.34, 0.06, 0.66, 0.96),
+	disc(0.5, 0.26, 0.1),
+	box(0.22, 0.44, 0.78, 0.54),
+);
+
+const KEG: Shape = any(
+	ring(0.5, 0.44, 0.32, 0.09),
+	box(0.2, 0.4, 0.8, 0.48),
+	box(0.38, 0.76, 0.62, 0.9),
+);
+
+const LOOM: Shape = any(
+	box(0.14, 0.08, 0.24, 0.94),
+	box(0.76, 0.08, 0.86, 0.94),
+	box(0.14, 0.08, 0.86, 0.18),
+	box(0.34, 0.18, 0.4, 0.8),
+	box(0.52, 0.18, 0.58, 0.8),
+	box(0.68, 0.18, 0.74, 0.8),
+);
+
+const CAULDRON: Shape = any(
+	both(disc(0.5, 0.5, 0.36), (_u, v) => v > 0.44),
+	box(0.14, 0.4, 0.86, 0.5),
+);
+
+/**
  * Hand-drawn sprites, for everything that is not a box-drawing line.
  *
  * Specks stay deliberately small. A speck's job is to break up a flat colour,
@@ -369,6 +426,15 @@ const AUTHORED: Readonly<Record<string, Sprite>> = {
 	"▟": shape(
 		any(box(0.18, 0.3, 0.86, 0.5), box(0.36, 0.5, 0.64, 0.72), box(0.22, 0.72, 0.78, 0.88)),
 	),
+
+	// --- the pack batch's additions ----------------------------------------
+	"¥": shape(PALM),
+	"⋔": shape(SAGUARO),
+	"‡": shape(TRACK),
+	"╥": shape(TOTEM),
+	"◉": shape(KEG),
+	"▥": shape(LOOM),
+	"∪": shape(CAULDRON),
 };
 
 const BOX = derivedBoxSprites();
@@ -440,6 +506,14 @@ const BY_TERRAIN: Readonly<Record<string, Sprite>> = {
 	// An arch of rock with darkness under it.
 	caveMouth: shape(both(disc(0.5, 0.9, 0.44), (_u, v) => v > 0.2)),
 	caveFloor: shape(any(disc(0.28, 0.36, 0.06), disc(0.72, 0.7, 0.05))),
+	// A crown of fronds on a bare stem, which is the whole silhouette of a palm and the
+	// entire reason it is not a recoloured oak: the mass is at the top and there is sky
+	// under it. A column with two arms for the saguaro, one lower than the other,
+	// because symmetry reads as a candlestick. Rails and sleepers across the run, so a
+	// line of track joins up the way a road does.
+	palm: shape(PALM),
+	saguaro: shape(SAGUARO),
+	track: shape(TRACK),
 };
 
 const BY_DECOR: Readonly<Record<string, Sprite>> = {
@@ -464,6 +538,12 @@ const BY_DECOR: Readonly<Record<string, Sprite>> = {
 	),
 	mooring: shape(any(box(0.42, 0.24, 0.58, 0.92), box(0.32, 0.2, 0.68, 0.3))),
 	banner: shape(any(box(0.16, 0.06, 0.24, 0.96), box(0.24, 0.12, 0.78, 0.58))),
+	// A post with a carved face on it; a tapped keg on its stand; an upright frame with
+	// the warp strung down it; a pot with a bail over it.
+	totem: shape(TOTEM),
+	keg: shape(KEG),
+	loom: shape(LOOM),
+	cauldron: shape(CAULDRON),
 };
 
 /**

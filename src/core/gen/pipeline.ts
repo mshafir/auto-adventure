@@ -224,10 +224,13 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 			// S5 -- roads, and bridges where they meet a channel.
 			if (elevation >= world.rules.climate.seaLevel) {
 				const roadMask = maskAt(masks.roads, lx, ly);
+				// A channel is still crossed by a bridge whatever the route is surfaced
+				// with: the recipe says what a road is made of, not what happens where
+				// there is no ground under it.
 				if (roadMask === MASK_MAJOR) {
-					terrain = riverMask === MASK_CHANNEL ? T.bridge : T.cobbleRoad;
+					terrain = riverMask === MASK_CHANNEL ? T.bridge : world.rules.sites.roads.major;
 				} else if (roadMask === MASK_MINOR) {
-					terrain = riverMask === MASK_CHANNEL ? T.bridge : T.dirtRoad;
+					terrain = riverMask === MASK_CHANNEL ? T.bridge : world.rules.sites.roads.minor;
 				}
 			}
 

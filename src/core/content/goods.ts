@@ -156,6 +156,11 @@ export const DEFAULT_GOODS: GoodsTables = {
 			["Clay Vial", "Empty, and stoppered with wax."],
 		],
 		temple: [["Beeswax Candles", "Better than tallow, and kept for feast days."]],
+		hall: [
+			["Bottle of Ale", "Cloudy, and stoppered with a rag."],
+			["Tallow Candles", "A bundle of six."],
+			["Tally Stick", "Notched, split, and half of it kept elsewhere."],
+		],
 		barracks: [
 			["Iron Nails", "A twist of paper holding two dozen."],
 			["Whetstone", "Worn hollow in the middle."],

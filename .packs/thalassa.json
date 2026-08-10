@@ -1,0 +1,424 @@
+{
+	"id": "thalassa",
+	"description": "Classical antiquity on a drowned coast. Olive country, marble hills and a sea between every two places; oil, wine and tribute rather than coin.",
+	"world": {
+		"bounds": {
+			"style": "ocean"
+		},
+		"climate": {
+			"seaLevel": 0.47,
+			"shoreLevel": 0.52,
+			"temperatureBias": 0.28,
+			"moistureBias": -0.12,
+			"elevationScale": 150,
+			"roughnessScale": 32
+		},
+		"biomes": {
+			"savanna": {
+				"name": "olive country",
+				"ground": "grass",
+				"groundAlt": "dirt",
+				"scatterDensity": 0.16,
+				"scatter": [["broadleaf", 6], ["bush", 4], ["rock", 3]]
+			},
+			"meadow": {
+				"name": "thyme meadow",
+				"scatterDensity": 0.22
+			},
+			"grassland": {
+				"name": "the low fields",
+				"scatter": [["broadleaf", 3], ["bush", 3], ["flowers", 2], ["rock", 2]]
+			},
+			"shrubland": {
+				"name": "maquis",
+				"scatter": [["bush", 7], ["rock", 3], ["broadleaf", 1]]
+			},
+			"beach": {
+				"name": "white shore",
+				"scatterDensity": 0.08,
+				"scatter": [["rock", 3], ["palm", 1]]
+			},
+			"highland": {
+				"name": "the marble hills",
+				"scatter": [["rock", 8], ["bush", 2], ["broadleaf", 1]]
+			}
+		},
+		"sites": {
+			"weights": {
+				"town": 2,
+				"village": 3,
+				"fort": 1,
+				"hamlet": 4,
+				"camp": 2,
+				"ruins": 3.5,
+				"landmark": 3.5,
+				"docks": 3
+			},
+			"radius": {
+				"town": {
+					"base": 22,
+					"perImportance": 3
+				}
+			},
+			"roster": {
+				"town": {
+					"count": {
+						"base": 11,
+						"perImportance": 1
+					},
+					"walled": 4,
+					"structures": [
+						["temple", 7],
+						["hall", 6],
+						["shop", 9],
+						["inn", 7],
+						["smithy", 5],
+						["warehouse", 5],
+						["stable", 3],
+						["house", 12]
+					]
+				},
+				"village": {
+					"count": {
+						"base": 6,
+						"perImportance": 0.5
+					},
+					"structures": [
+						["temple", 3],
+						["hall", 3],
+						["shop", 6],
+						["inn", 5],
+						["smithy", 4],
+						["mill", 3],
+						["house", 12]
+					]
+				},
+				"hamlet": {
+					"count": {
+						"base": 3,
+						"perImportance": 0.5
+					},
+					"structures": [["house", 12], ["farmhouse", 4], ["shrine", 3], ["barn", 3]]
+				},
+				"docks": {
+					"count": {
+						"base": 5,
+						"perImportance": 0.5
+					},
+					"structures": [["warehouse", 8], ["inn", 4], ["shop", 4], ["hall", 2], ["house", 6]]
+				},
+				"ruins": {
+					"count": {
+						"base": 4
+					},
+					"structures": [["ruin", 10]]
+				}
+			},
+			"filler": [["house", 10], ["shop", 2], ["warehouse", 2], ["stable", 1]]
+		}
+	},
+	"names": {
+		"given": [
+			"Nikias",
+			"Ariston",
+			"Theron",
+			"Kallias",
+			"Damon",
+			"Hylas",
+			"Timon",
+			"Lysias",
+			"Alkaios",
+			"Melas",
+			"Phaidra",
+			"Iole",
+			"Klymene",
+			"Aglaia",
+			"Praxilla",
+			"Theano",
+			"Myrrhine",
+			"Kleio",
+			"Eirene",
+			"Xanthe"
+		],
+		"family": [
+			"of Skyros",
+			"of the Narrows",
+			"Metanides",
+			"Pyrrhon",
+			"Kallistrate",
+			"Aithonides",
+			"of the White Shore",
+			"Halikarnos",
+			"Deinomache",
+			"of the Third Boat",
+			"Perimene",
+			"Straton"
+		],
+		"heads": {
+			"wet": ["hali", "limen", "naus", "pelag", "brizo"],
+			"green": ["elai", "dendra", "thym", "myrt", "chlo"],
+			"cold": ["cheim", "boreas", "psychro"],
+			"dry": ["xer", "ammo", "kaus", "aithra"],
+			"high": ["akro", "oros", "skop", "petra"],
+			"plain": ["mesos", "agora", "stoa", "chora", "argos"]
+		},
+		"tails": ["polis", "kome", "limen", "akra", "nisos", "stoa", "chora", "pyrgos"],
+		"ruinTails": ["heroon", "tholos", "stele", "wrack"],
+		"fortTails": ["teichos", "phylax", "pyrgos", "akra"],
+		"regionTails": ["archipelago", "chora", "isles", "strait", "sound"]
+	},
+	"households": {
+		"house": {
+			"count": [1, 3],
+			"roles": ["potter", "dyer", "netmender", "widow", "child", "oarsman", "vintner"]
+		},
+		"hall": {
+			"count": [1, 3],
+			"roles": ["archon", "herald", "harpist"]
+		},
+		"temple": {
+			"count": [1, 2],
+			"roles": ["priestess", "acolyte"]
+		},
+		"shrine": {
+			"count": [0, 1],
+			"roles": ["priestess"]
+		},
+		"shop": {
+			"count": [1, 2],
+			"roles": ["potter", "dyer"]
+		},
+		"warehouse": {
+			"count": [1, 2],
+			"roles": ["factor", "porter"]
+		},
+		"inn": {
+			"count": [2, 4],
+			"roles": ["cook", "server", "oarsman", "traveller"]
+		},
+		"smithy": {
+			"count": [1, 2],
+			"roles": ["bronzesmith", "striker"]
+		},
+		"mill": {
+			"count": [1, 2],
+			"roles": ["olive-presser"]
+		},
+		"stable": {
+			"count": [1, 2],
+			"roles": ["groom"]
+		},
+		"barn": {
+			"count": [0, 1],
+			"roles": ["farmhand"]
+		}
+	},
+	"appearance": {
+		"potter": "Wet to the elbow, and turning something that will not be interrupted.",
+		"dyer": "Purple to the second knuckle, and it does not wash off between seasons.",
+		"olive-presser": "Standing on the beam because his own weight is part of the machine.",
+		"shipwright": "Sighting down a plank with one eye shut, ignoring you entirely.",
+		"netmender": "Mending, with the work hooked over one bare toe.",
+		"sponge-diver": "Salt-dried, short of breath, and younger than the scars suggest.",
+		"archon": "Seated, unhurried, and letting the silence do the asking.",
+		"herald": "Out of breath and pretending otherwise.",
+		"oarsman": "Hands like tackle, and sat down the moment he was allowed to.",
+		"priestess": "Barefoot on cold stone, and unbothered by it.",
+		"stonecutter": "White to the eyebrows, deaf on the side nearest the work.",
+		"vintner": "Tastes, spits, and looks at you as though you had asked something rude.",
+		"bronzesmith": "Green-stained at the cuff, weighing scrap that used to be a votive."
+	},
+	"talksAbout": {
+		"archon": "the tribute, the ships that owe it, and the ones that will not come",
+		"priestess": "the offerings, the season, and what the sea has not returned",
+		"oarsman": "the crossing, the wind, and who is short a rower",
+		"sponge-diver": "the deep ground off the point, and what else is down there",
+		"shipwright": "keels, and the timber nobody can get any more",
+		"dyer": "the price of purple, and the smell, which he cannot smell",
+		"herald": "what was announced in the last three harbours"
+	},
+	"outdoorRoles": {
+		"temple": {
+			"role": "priestess",
+			"placement": "doorstep"
+		},
+		"hall": {
+			"role": "archon",
+			"placement": "doorstep"
+		},
+		"shop": {
+			"role": "potter",
+			"placement": "doorstep"
+		},
+		"smithy": {
+			"role": "bronzesmith",
+			"placement": "doorstep"
+		},
+		"warehouse": {
+			"role": "shipwright",
+			"placement": "yard"
+		},
+		"mill": {
+			"role": "olive-presser",
+			"placement": "yard"
+		},
+		"shrine": {
+			"role": "priestess",
+			"placement": "doorstep"
+		}
+	},
+	"wanderers": [
+		{
+			"role": "sponge-diver",
+			"placement": "well"
+		},
+		{
+			"role": "herald",
+			"placement": "stall"
+		},
+		{
+			"role": "stonecutter",
+			"placement": "bench"
+		},
+		{
+			"role": "oarsman",
+			"placement": "gate"
+		}
+	],
+	"lore": {
+		"title": "The Long Crossing",
+		"premise": "The tribute ships are three seasons late and the harbours have begun quietly arming. Something is taking them between the islands, and nobody who has seen it has come back to be asked about it.",
+		"era": "the last summers of the old harbour league",
+		"tone": "bright, dry, and about to become political",
+		"factions": ["the Harbour Council", "the Sea Priesthood", "the Outer Isles"],
+		"deities": ["the Sea-Shaker", "the Grey-Eyed", "the Lady of the Threshing Floor"]
+	},
+	"ambient": [
+		"The light comes off the water and up under everything.",
+		"Cicadas, and then all of them stopping at once.",
+		"There is thyme crushed underfoot, and the smell arrives before you notice why.",
+		"A sail on the strait, too far out to be going anywhere near here.",
+		"The stone holds the heat long after the sun has gone off it."
+	],
+	"goods": {
+		"stores": {
+			"warehouse": [
+				["Amphora of Oil", "Sealed with pitch and stamped at the shoulder."],
+				["Bale of Dyed Wool", "Purple, and the dye is worth more than the wool."],
+				["Bar of Tin", "Come a very long way to be here."]
+			],
+			"hall": [
+				["Bronze Tripod", "A prize for something, awarded to somebody now dead."],
+				["Jar of Wine", "Resinated, and older than it should be."]
+			],
+			"temple": [["Votive Lamp", "Terracotta, sooted at the lip, still half full."]],
+			"smithy": [
+				["Tin Ingot", "Traded up the coast, and hoarded."],
+				["Scrap Bronze", "Somebody's offering, and now somebody's stock."]
+			],
+			"shop": [
+				["Painted Cup", "Black figures on red. One of a pair, once."],
+				["Skein of Dyed Wool", "Wound tight and kept out of the light."]
+			],
+			"house": [
+				["Loom Weights", "A dozen of them, all differently chipped."],
+				["Jar of Figs", "Pressed into a cake and wrapped in leaves."]
+			],
+			"mill": [
+				["Amphora of Oil", "Sealed with pitch and stamped at the shoulder."],
+				["Sack of Olives", "Bruised, and destined for the beam."]
+			],
+			"ruin": [
+				["Tarnished Coins", "Owls on one face, a mint nobody here uses."],
+				["Fragment of Stele", "Six letters of a name, and the rest gone."]
+			]
+		},
+		"catalogue": {
+			"shop": [
+				["Jar of Olive Oil", "First pressing, and the seller says so twice."],
+				["Cake of Figs", "Pressed, wrapped, and good for a week on the road."],
+				["Painted Cup", "Black figures on red. Chipped at the foot."],
+				["Wick Lamp", "Terracotta, and it comes with a thumb of oil in it."],
+				["Length of Cord", "Twisted flax, sold by the arm-span."]
+			],
+			"smithy": [
+				["Bronze Knife", "Softer than iron and holds an edge better than it should."],
+				["Bronze Fittings", "For a boat, a door, or an argument."],
+				["Fish Hooks", "A dozen, barbed, on a twist of line."],
+				["Ox Goad", "Bronze tipped, and worn smooth at the grip."]
+			],
+			"press": [
+				["Amphora of Oil", "Sealed at the shoulder and heavy as a child."],
+				["Jar of Resinated Wine", "It tastes of the jar, which is the point."],
+				["Table Olives", "In brine, in a stoppered pot."]
+			],
+			"inn": [
+				["Bread and Oil", "Yesterday's bread. Today's oil."],
+				["Cup of Watered Wine", "Three parts to one, and they mixed it in front of you."],
+				["Bowl of Lentils", "With something salted in it."],
+				["A Bed for the Night", "A roof, a mat, and the harbour noise all night."]
+			],
+			"warehouse": [
+				["Crate of Salt Fish", "Packed in layers, and it announces itself."],
+				["Bolt of Sailcloth", "Heavy linen, sold by the ell."],
+				["Bar of Tin", "Heavy, and worth carrying anyway."]
+			],
+			"stable": [["Bag of Barley", "Enough for a week."], ["Leather Halter", "Softened with use."]]
+		},
+		"trades": [
+			{
+				"kind": "smithy",
+				"roles": ["bronzesmith", "smith", "armourer"]
+			},
+			{
+				"kind": "apothecary",
+				"roles": ["apothecary", "herbalist", "healer"]
+			},
+			{
+				"kind": "inn",
+				"roles": ["innkeep", "innkeeper", "tavern", "cook"]
+			},
+			{
+				"kind": "stable",
+				"roles": ["stable", "groom", "ostler"]
+			},
+			{
+				"kind": "warehouse",
+				"roles": ["factor", "warehouse", "shipwright"]
+			},
+			{
+				"kind": "shop",
+				"roles": ["shop", "potter", "dyer", "merchant", "trader"]
+			},
+			{
+				"kind": "press",
+				"roles": ["presser", "vintner"]
+			}
+		],
+		"yields": {
+			"bush": [
+				["Wild Thyme", "Grey-green, and it releases in the hand."],
+				["Caper Buds", "Prised out of a wall, which is where they prefer to be."]
+			],
+			"flowers": [["Crocus Heads", "Three threads apiece, and worth the stooping."]],
+			"forestFloor": [
+				["Fallen Olives", "Bitter as they are, which is very."],
+				["Kindling", "Dry twigs, gathered by the handful."]
+			],
+			"rock": [
+				["Sea Flint", "It takes a hard edge and a harder spark."],
+				["Marble Chip", "Somebody was working here, a long time ago."]
+			],
+			"sand": [["Murex Shell", "Purple in the lip, and worth more than the fish it held."]],
+			"tallGrass": [["Meadow Herbs", "Whatever was worth taking from a hand's width of hillside."]]
+		},
+		"forageChance": {
+			"bush": 0.32,
+			"flowers": 0.5,
+			"forestFloor": 0.2,
+			"rock": 0.25,
+			"sand": 0.08,
+			"tallGrass": 0.12
+		}
+	}
+}

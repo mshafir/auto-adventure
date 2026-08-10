@@ -194,6 +194,41 @@ const DEFS = [
 		flags: WALL | S,
 		describe: "Solid rock, cold to the touch.",
 	},
+
+	// --- appended for the pack batch -----------------------------------------
+	//
+	// Four terrains a recipe could not otherwise reach. Each is here because a
+	// specific world could not be written without it and no recolour of an existing
+	// tile would do: a desert scattered with yellow oaks is the failure mode a palette
+	// cannot fix, and a rail line is neither a road nor a river.
+	//
+	// Appended, never inserted. Ids are the wire format.
+	{
+		key: "palm",
+		name: "palm",
+		flags: S,
+		describe: "A palm, its fronds rattling like paper.",
+	},
+	{
+		key: "saguaro",
+		name: "saguaro",
+		flags: S,
+		describe: "A branched cactus, taller than a man and older than the road.",
+	},
+	{
+		key: "track",
+		name: "rail track",
+		// Flagged Road: it is a made way through the country, and everything that reads
+		// the flag — pathing, the map's sense of a route — wants it counted as one.
+		flags: P | R,
+		describe: "Rails on rotting sleepers, ballast washed out between them.",
+	},
+	{
+		key: "adobeWall",
+		name: "adobe wall",
+		flags: WALL | S,
+		describe: "Mud brick, rendered smooth and cracked by the sun.",
+	},
 ] as const satisfies readonly Omit<TerrainDef, "id">[];
 
 export const TERRAIN: readonly TerrainDef[] = DEFS.map((def, id) => ({ ...def, id }));

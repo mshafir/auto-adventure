@@ -1,0 +1,446 @@
+{
+	"id": "saltmere",
+	"description": "An age-of-sail archipelago. Wet islands, tar and cordage, and a port every few hours' sail; an errand here is a cargo and everybody is owed something.",
+	"world": {
+		"bounds": {
+			"style": "ocean"
+		},
+		"climate": {
+			"seaLevel": 0.5,
+			"shoreLevel": 0.54,
+			"elevationScale": 130,
+			"moistureBias": 0.18,
+			"temperatureBias": -0.05,
+			"roughnessScale": 30
+		},
+		"biomes": {
+			"beach": {
+				"name": "the strand",
+				"scatterDensity": 0.1,
+				"scatter": [["rock", 3], ["bush", 1]]
+			},
+			"marsh": {
+				"name": "the saltings",
+				"scatterDensity": 0.32,
+				"scatter": [["reeds", 7], ["deadTree", 2], ["bush", 2]]
+			},
+			"moor": {
+				"name": "the gorse",
+				"scatterDensity": 0.22,
+				"scatter": [["bush", 7], ["rock", 3], ["deadTree", 1]]
+			},
+			"grassland": {
+				"name": "the sheep ground",
+				"scatterDensity": 0.1,
+				"scatter": [["bush", 4], ["rock", 2], ["flowers", 1]]
+			},
+			"forest": {
+				"name": "the shelter wood",
+				"scatterDensity": 0.5
+			},
+			"highland": {
+				"name": "the headland"
+			}
+		},
+		"sites": {
+			"weights": {
+				"town": 1.5,
+				"village": 2,
+				"fort": 0.5,
+				"hamlet": 3,
+				"camp": 1,
+				"ruins": 2,
+				"landmark": 2,
+				"docks": 5
+			},
+			"radius": {
+				"docks": {
+					"base": 16,
+					"perImportance": 2
+				}
+			},
+			"roads": {
+				"major": "cobbleRoad",
+				"minor": "path"
+			},
+			"roster": {
+				"docks": {
+					"count": {
+						"base": 7,
+						"perImportance": 1
+					},
+					"structures": [
+						["warehouse", 10],
+						["inn", 6],
+						["shop", 6],
+						["hall", 3],
+						["smithy", 3],
+						["house", 8]
+					]
+				},
+				"town": {
+					"count": {
+						"base": 10,
+						"perImportance": 1
+					},
+					"walled": 4,
+					"structures": [
+						["warehouse", 9],
+						["shop", 8],
+						["inn", 7],
+						["hall", 4],
+						["smithy", 4],
+						["apothecary", 3],
+						["temple", 3],
+						["house", 11]
+					]
+				},
+				"village": {
+					"count": {
+						"base": 6,
+						"perImportance": 0.5
+					},
+					"structures": [
+						["warehouse", 5],
+						["inn", 5],
+						["shop", 5],
+						["smithy", 3],
+						["house", 12],
+						["farmhouse", 4]
+					]
+				},
+				"hamlet": {
+					"count": {
+						"base": 3,
+						"perImportance": 0.5
+					},
+					"structures": [["house", 12], ["warehouse", 4], ["farmhouse", 4], ["shop", 2]]
+				}
+			},
+			"filler": [["house", 10], ["warehouse", 5], ["shop", 2], ["barn", 1]]
+		}
+	},
+	"names": {
+		"given": [
+			"Josiah",
+			"Tamsin",
+			"Ephraim",
+			"Merryn",
+			"Zebedee",
+			"Loveday",
+			"Silas",
+			"Keziah",
+			"Barnaby",
+			"Thomasine",
+			"Amos",
+			"Jenifry",
+			"Nathaniel",
+			"Grace",
+			"Obadiah",
+			"Wilmot",
+			"Reuben",
+			"Honor",
+			"Caleb",
+			"Prudence"
+		],
+		"family": [
+			"Trewin",
+			"Halyard",
+			"Pengelly",
+			"Sculley",
+			"Oakum",
+			"Tregarth",
+			"Marlin",
+			"Bosworthy",
+			"Rennard",
+			"Cargill",
+			"Vosper",
+			"Kittow",
+			"Sarrell",
+			"Hollowell"
+		],
+		"heads": {
+			"wet": ["salt", "tide", "mere", "creek", "hav", "brine", "sound"],
+			"green": ["gorse", "holm", "kelp", "withy"],
+			"cold": ["rime", "hoar", "sleet"],
+			"dry": ["shingle", "wrack", "kiln"],
+			"high": ["stack", "beacon", "carn", "lookout"],
+			"plain": ["quay", "hard", "reach", "market", "bond"]
+		},
+		"tails": ["quay", "haven", "pool", "strand", "hard", "roads", "sound", "wharf"],
+		"ruinTails": ["wrack", "hulk", "kiln", "stump"],
+		"fortTails": ["battery", "watch", "point", "castle"],
+		"regionTails": ["isles", "roads", "sound", "narrows", "banks"]
+	},
+	"households": {
+		"house": {
+			"count": [1, 3],
+			"roles": ["cooper", "sailmaker", "netmender", "widow", "child", "ropewalker", "pilot"]
+		},
+		"warehouse": {
+			"count": [1, 3],
+			"roles": ["factor", "tallyman", "porter"]
+		},
+		"inn": {
+			"count": [2, 4],
+			"roles": ["cook", "server", "boatswain", "traveller", "pilot"]
+		},
+		"shop": {
+			"count": [1, 2],
+			"roles": ["chandler", "cooper"]
+		},
+		"smithy": {
+			"count": [1, 2],
+			"roles": ["blacksmith", "striker"]
+		},
+		"hall": {
+			"count": [1, 3],
+			"roles": ["harbour master", "clerk", "server"]
+		},
+		"apothecary": {
+			"count": [1, 2],
+			"roles": ["herbalist", "apprentice"]
+		},
+		"temple": {
+			"count": [1, 2],
+			"roles": ["priest", "mourner"]
+		},
+		"farmhouse": {
+			"count": [1, 2],
+			"roles": ["farmhand", "netmender"]
+		}
+	},
+	"appearance": {
+		"chandler": "Everything a ship needs behind him, and he knows where all of it is.",
+		"cooper": "Hands pale with shavings, a half-hooped barrel between the knees.",
+		"sailmaker": "A palm strapped to one hand, pushing a needle through weather.",
+		"ropewalker": "Backing away down the length of the shed while he talks to you.",
+		"boatswain": "Ashore, unhappy about it, and dressed for a wind that is not blowing.",
+		"pilot": "Watching the water past your shoulder the whole time.",
+		"harbour master": "A book, a pen, and a list you are not yet on.",
+		"clerk": "Ink to the knuckle and half an ear on the door.",
+		"netmender": "Mending, with the work hooked over one bare toe.",
+		"tallyman": "A slate, a stub of chalk, and a very poor opinion of your timing."
+	},
+	"talksAbout": {
+		"harbour master": "what is in the roads, what is owed on it, and what is not coming back",
+		"pilot": "the bar, the tide over it, and the three men who got it wrong",
+		"chandler": "prices, and the tar, which has not come up from the south this year",
+		"boatswain": "the crew he had, and the crew he has been given",
+		"sailmaker": "canvas, and the difference between the two sorts nobody else can see",
+		"factor": "the manifest, the shortfall, and whose signature is on both",
+		"cooper": "the staves, and who is buying barrels for what"
+	},
+	"outdoorRoles": {
+		"warehouse": {
+			"role": "factor",
+			"placement": "yard"
+		},
+		"shop": {
+			"role": "chandler",
+			"placement": "doorstep"
+		},
+		"hall": {
+			"role": "harbour master",
+			"placement": "doorstep"
+		},
+		"inn": {
+			"role": "innkeeper",
+			"placement": "doorstep"
+		},
+		"smithy": {
+			"role": "blacksmith",
+			"placement": "doorstep"
+		},
+		"apothecary": {
+			"role": "apothecary",
+			"placement": "doorstep"
+		},
+		"temple": {
+			"role": "priest",
+			"placement": "doorstep"
+		},
+		"farmhouse": {
+			"role": "farmhand",
+			"placement": "yard"
+		}
+	},
+	"wanderers": [
+		{
+			"role": "pilot",
+			"placement": "well"
+		},
+		{
+			"role": "boatswain",
+			"placement": "bench"
+		},
+		{
+			"role": "sailmaker",
+			"placement": "stall"
+		},
+		{
+			"role": "ropewalker",
+			"placement": "gate"
+		}
+	],
+	"lore": {
+		"title": "The Standing Charter",
+		"premise": "A charter that gave three families the whole trade of these islands has lapsed, and nobody can find the copy that says when. Two ships are sitting in the roads waiting to hear whose cargo they are carrying.",
+		"era": "the last year of the old charter",
+		"tone": "wet, mercantile, and litigious",
+		"factions": ["the Charter Houses", "the Free Bottoms", "the Saltings Men"],
+		"deities": ["the Drowned Lady", "Saint Cadoc of the Bar"]
+	},
+	"ambient": [
+		"The wind has been in the same quarter for three days and everyone has stopped mentioning it.",
+		"Tar, rope and low tide, in that order.",
+		"Something is knocking against a hull out in the dark, patiently.",
+		"The gulls have gone quiet, which is worse than the noise.",
+		"Every roof here faces the same way, and it is not the way the road runs."
+	],
+	"goods": {
+		"stores": {
+			"warehouse": [
+				["Coil of Cordage", "Three-strand, tarred, and heavy as a person."],
+				["Bolt of Sailcloth", "Number four canvas, and stiff with new."],
+				["Barrel of Tar", "Stoppered, and sweating in the warm."],
+				["Cask of Salt Cod", "Packed in layers, and it announces itself."]
+			],
+			"shop": [
+				["Ship's Lantern", "Horn panes, and one of them mended with wax."],
+				["Coil of Rope", "Forty feet of it, waxed against the wet."]
+			],
+			"hall": [
+				["Signed Charter", "Wax, ribbon, and a date somebody has been at with a knife."],
+				["Harbour Book", "Every keel in and out, in three hands, none of them tidy."]
+			],
+			"inn": [
+				["Bottle of Rum", "Cut with something. Everything here is."],
+				["Wheel of Cheese", "Rinded and heavy."]
+			],
+			"house": [
+				["Netting Needle", "Bone, and worn to a shine at the grip."],
+				["Woollen Blanket", "Patched, and clean."]
+			],
+			"smithy": [
+				["Boat Nails", "A twist of them, clenched square."],
+				["Scrap Iron", "Offcuts and failures, kept for remelting."]
+			],
+			"ruin": [
+				["Sodden Ledger", "The ink has run, but the amounts have not."],
+				["Tarnished Coins", "Old currency, of a mint nobody here uses."]
+			]
+		},
+		"catalogue": {
+			"shop": [
+				["Coil of Cordage", "Three-strand, tarred, sold by the fathom."],
+				["Barrel of Tar", "For the seams, the standing rigging, and the boots."],
+				["Ship's Lantern", "Horn panes, and one of them mended with wax."],
+				["Oilskin Coat", "Stiff, foul-smelling, and the only dry thing you will own."],
+				["Tin of Blacking", "For the hull, and for anything you would rather was not seen."]
+			],
+			"cooper": [
+				["Watertight Cask", "Sound, sworn to, and it will be your problem if it is not."],
+				["Barrel Hoops", "Six of them, banded together."],
+				["Firkin of Small Beer", "Weak enough to drink all day, which is the point."]
+			],
+			"sailmaker": [
+				["Bolt of Sailcloth", "Number four canvas. Sold by the ell and cut in front of you."],
+				["Sail Needle and Palm", "Leather, brass, and shaped to one hand only."],
+				["Length of Bolt Rope", "For the edge of anything that has to hold."]
+			],
+			"warehouse": [
+				["Cask of Salt Cod", "Packed in layers, and it announces itself."],
+				["Loaf of Sugar", "Cone-shaped, blue-papered, worth stealing."],
+				["Billet of Logwood", "Bleeds red into water. The dyers pay well for it."],
+				["Letter of Charter", "Signed and sealed, and worth exactly what it says."]
+			],
+			"inn": [
+				["Bowl of Fish Stew", "Mostly fish. Entirely hot."],
+				["Tot of Rum", "Cut with something."],
+				["Ship's Biscuit", "Older than the voyage it was baked for."],
+				["A Bed for the Night", "Straw mattress, shared room, no questions."]
+			],
+			"smithy": [
+				["Iron Knife", "Plain, sharp, and honestly made."],
+				["Boat Nails", "A twist of them, clenched square."],
+				["Grapnel", "Four flukes, and a ring worn oval."]
+			],
+			"apothecary": [
+				["Bitterroot Salve", "Smells terrible. Closes a cut in a day."],
+				["Fever Draught", "Cloudy, and warm to the touch."],
+				["Lime Cordial", "Sharp enough to make your ears ring. Keeps the teeth in."]
+			]
+		},
+		"trades": [
+			{
+				"kind": "smithy",
+				"roles": ["smith", "blacksmith", "farrier", "armourer"]
+			},
+			{
+				"kind": "apothecary",
+				"roles": ["apothecary", "herbalist", "healer", "surgeon"]
+			},
+			{
+				"kind": "inn",
+				"roles": ["innkeep", "innkeeper", "tavern", "cook"]
+			},
+			{
+				"kind": "stable",
+				"roles": ["stable", "ostler", "groom"]
+			},
+			{
+				"kind": "warehouse",
+				"roles": ["factor", "warehouse", "tallyman", "master", "quartermaster"]
+			},
+			{
+				"kind": "shop",
+				"roles": ["shop", "chandler", "merchant", "trader", "grocer"]
+			},
+			{
+				"kind": "cooper",
+				"roles": ["cooper"]
+			},
+			{
+				"kind": "sailmaker",
+				"roles": ["sailmaker", "ropewalker"]
+			}
+		],
+		"yields": {
+			"marsh": [
+				["Samphire", "Salt already, which saves carrying any."],
+				["Sphagnum Moss", "Sodden, and it holds far more water than it looks able to."]
+			],
+			"reeds": [
+				["Cut Reeds", "A bundle of them, still wet at the ends."],
+				["Withy Rods", "Whippy, and they will bend into anything."]
+			],
+			"bush": [
+				["Gorse Flowers", "Coconut, unaccountably, and they sting to gather."],
+				["Sloes", "Sour past the point of comedy. They keep."]
+			],
+			"sand": [
+				["Cockles", "Raked up in a minute, and worth the wet knees."],
+				["Driftwood", "Salt-dried, and it burns green."]
+			],
+			"rock": [
+				["Limpets", "Prised off with a stone, and about as good as that sounds."],
+				["Flint", "It takes a hard edge and a harder spark."]
+			],
+			"gravel": [["Driftwood", "Piled in the tideline, sorted by the sea."]],
+			"forestFloor": [
+				["Wood Mushrooms", "Pale, and growing in a rough ring."],
+				["Kindling", "Dry twigs, gathered by the handful."]
+			]
+		},
+		"forageChance": {
+			"marsh": 0.34,
+			"reeds": 0.32,
+			"bush": 0.3,
+			"sand": 0.3,
+			"rock": 0.25,
+			"gravel": 0.2,
+			"forestFloor": 0.22
+		}
+	}
+}

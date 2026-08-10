@@ -1,0 +1,465 @@
+{
+	"id": "redgulch",
+	"description": "An industrial frontier. Sage flats and badlands with a rail line through them; the store keeps the credit, the post keeps the peace, and something was here before either.",
+	"world": {
+		"bounds": {
+			"style": "cliffs"
+		},
+		"climate": {
+			"temperatureBias": 0.22,
+			"moistureBias": -0.3,
+			"elevationScale": 300,
+			"elevationBias": 0.14,
+			"roughnessScale": 52
+		},
+		"biomes": {
+			"shrubland": {
+				"name": "sage flats",
+				"ground": "dirt",
+				"groundAlt": "gravel",
+				"scatterDensity": 0.24,
+				"scatter": [["bush", 7], ["saguaro", 2], ["rock", 3], ["deadTree", 1]]
+			},
+			"badlands": {
+				"name": "the breaks",
+				"scatterDensity": 0.2,
+				"scatter": [["rock", 8], ["rubble", 4], ["deadTree", 2], ["saguaro", 1]]
+			},
+			"grassland": {
+				"name": "the range",
+				"groundAlt": "dirt",
+				"scatterDensity": 0.1,
+				"scatter": [["bush", 5], ["rock", 2], ["deadTree", 1]]
+			},
+			"savanna": {
+				"name": "the flats",
+				"ground": "dirt",
+				"groundAlt": "grass",
+				"scatter": [["bush", 4], ["saguaro", 2], ["rock", 3]]
+			},
+			"desert": {
+				"name": "the alkali",
+				"scatter": [["rock", 4], ["saguaro", 2], ["deadTree", 1]]
+			},
+			"highland": {
+				"name": "the rim"
+			},
+			"forest": {
+				"name": "the timber",
+				"scatterDensity": 0.5,
+				"scatter": [["conifer", 8], ["stump", 3], ["bush", 2]]
+			}
+		},
+		"sites": {
+			"weights": {
+				"town": 1.5,
+				"village": 1.5,
+				"fort": 1.5,
+				"hamlet": 2,
+				"camp": 3,
+				"ruins": 5,
+				"landmark": 3
+			},
+			"radius": {
+				"town": {
+					"base": 18,
+					"perImportance": 3
+				},
+				"camp": {
+					"base": 8
+				}
+			},
+			"civilizationFloor": 0.3,
+			"roads": {
+				"major": "track",
+				"minor": "dirtRoad"
+			},
+			"roster": {
+				"town": {
+					"count": {
+						"base": 10,
+						"perImportance": 1
+					},
+					"structures": [
+						["shop", 10],
+						["inn", 8],
+						["smithy", 6],
+						["barracks", 5],
+						["warehouse", 5],
+						["hall", 3],
+						["stable", 3],
+						["house", 12]
+					]
+				},
+				"village": {
+					"count": {
+						"base": 6,
+						"perImportance": 0.5
+					},
+					"structures": [
+						["shop", 7],
+						["inn", 6],
+						["smithy", 5],
+						["stable", 3],
+						["house", 12],
+						["farmhouse", 4]
+					]
+				},
+				"hamlet": {
+					"count": {
+						"base": 3,
+						"perImportance": 0.5
+					},
+					"structures": [["house", 12], ["farmhouse", 6], ["barn", 4], ["shop", 3]]
+				},
+				"camp": {
+					"count": {
+						"base": 3
+					},
+					"structures": [["house", 5], ["warehouse", 2], ["smithy", 1]]
+				},
+				"fort": {
+					"count": {
+						"base": 5,
+						"perImportance": 0.5
+					},
+					"walled": true,
+					"structures": [
+						["barracks", 8],
+						["stable", 5],
+						["warehouse", 4],
+						["smithy", 3],
+						["tower", 3]
+					]
+				},
+				"ruins": {
+					"count": {
+						"base": 4
+					},
+					"structures": [["ruin", 10]]
+				}
+			},
+			"filler": [["house", 10], ["shop", 3], ["stable", 2], ["warehouse", 2]]
+		}
+	},
+	"names": {
+		"given": [
+			"Wesley",
+			"Etta",
+			"Clay",
+			"Odessa",
+			"Marlon",
+			"Ruby",
+			"Isham",
+			"Delia",
+			"Beau",
+			"Winnie",
+			"Judah",
+			"Verna",
+			"Emmett",
+			"Cordelia",
+			"Otis",
+			"Hattie",
+			"Rafe",
+			"Ione",
+			"Cyrus",
+			"Pearl"
+		],
+		"family": [
+			"Callahan",
+			"Vance",
+			"Brody",
+			"Whitlock",
+			"Redmond",
+			"Sallis",
+			"Harker",
+			"Coleridge",
+			"Dunn",
+			"Mercer",
+			"Ives",
+			"Stroud",
+			"Fenwick",
+			"Rowe"
+		],
+		"heads": {
+			"wet": ["mud", "sink", "seep", "wash"],
+			"green": ["cotton", "willow", "sage"],
+			"cold": ["frost", "bitter", "north"],
+			"dry": ["red", "dust", "alkali", "burnt", "dry", "cinder"],
+			"high": ["mesa", "rim", "lookout", "sentinel"],
+			"plain": ["junction", "siding", "depot", "cross", "claim"]
+		},
+		"tails": ["gulch", "junction", "flats", "siding", "wells", "crossing", "camp", "bend"],
+		"ruinTails": ["diggings", "workings", "boneyard", "stack"],
+		"fortTails": ["post", "station", "battery", "watch"],
+		"regionTails": ["territory", "breaks", "basin", "flats", "range"]
+	},
+	"households": {
+		"house": {
+			"count": [1, 3],
+			"roles": ["prospector", "seamstress", "widow", "child", "teamster", "cattleman"]
+		},
+		"shop": {
+			"count": [1, 2],
+			"roles": ["storekeeper", "clerk"]
+		},
+		"inn": {
+			"count": [2, 4],
+			"roles": ["barkeep", "cook", "cardsharp", "traveller"]
+		},
+		"smithy": {
+			"count": [1, 2],
+			"roles": ["blacksmith", "farrier"]
+		},
+		"barracks": {
+			"count": [2, 4],
+			"roles": ["marshal", "deputy", "trooper", "cook"]
+		},
+		"warehouse": {
+			"count": [1, 2],
+			"roles": ["freight agent", "tallyman"]
+		},
+		"stable": {
+			"count": [1, 2],
+			"roles": ["liveryman", "farrier"]
+		},
+		"hall": {
+			"count": [1, 3],
+			"roles": ["assayer", "clerk", "cardsharp"]
+		},
+		"farmhouse": {
+			"count": [1, 2],
+			"roles": ["cattleman", "farmhand"]
+		},
+		"barn": {
+			"count": [0, 1],
+			"roles": ["farmhand"]
+		}
+	},
+	"appearance": {
+		"storekeeper": "Between you and the shelves, with the credit book already open.",
+		"prospector": "Burnt the same colour all over, and carrying more than he can lift twice.",
+		"assayer": "Weighing something very small and refusing to say what it came to.",
+		"marshal": "Standing where he can see the door and the window at once.",
+		"deputy": "Young, armed, and standing a half-step behind somebody older.",
+		"barkeep": "Wiping the same six inches of counter through the entire conversation.",
+		"cardsharp": "Dealing to nobody, one-handed, while he decides about you.",
+		"teamster": "Smells of mules and axle grease, and is not apologising for either.",
+		"freight agent": "A manifest, a pencil, and a train that is late again.",
+		"liveryman": "Talking to a horse in the voice most people save for children.",
+		"cattleman": "Sun-cut at the eyes, and looking past you at the weather.",
+		"seamstress": "At the machine, and it does not stop for you.",
+		"trooper": "Off duty, boots off, belt hung on the bedpost."
+	},
+	"talksAbout": {
+		"storekeeper": "what is owed, by whom, and since when",
+		"prospector": "the claim, the assay, and the man who jumped it",
+		"assayer": "the samples, and the ones he has been told not to discuss",
+		"marshal": "who has come in on the rail this week, and who has not left",
+		"freight agent": "the schedule, the washout at the bend, and whose freight is sitting in it",
+		"cardsharp": "the game, the house, and what a stranger is good for",
+		"cattleman": "the water, the fence, and the survey nobody agrees with"
+	},
+	"outdoorRoles": {
+		"shop": {
+			"role": "storekeeper",
+			"placement": "doorstep"
+		},
+		"inn": {
+			"role": "barkeep",
+			"placement": "doorstep"
+		},
+		"smithy": {
+			"role": "blacksmith",
+			"placement": "doorstep"
+		},
+		"barracks": {
+			"role": "marshal",
+			"placement": "gate"
+		},
+		"warehouse": {
+			"role": "freight agent",
+			"placement": "yard"
+		},
+		"stable": {
+			"role": "liveryman",
+			"placement": "yard"
+		},
+		"hall": {
+			"role": "assayer",
+			"placement": "doorstep"
+		},
+		"farmhouse": {
+			"role": "cattleman",
+			"placement": "yard"
+		}
+	},
+	"wanderers": [
+		{
+			"role": "prospector",
+			"placement": "well"
+		},
+		{
+			"role": "cardsharp",
+			"placement": "bench"
+		},
+		{
+			"role": "teamster",
+			"placement": "stall"
+		},
+		{
+			"role": "deputy",
+			"placement": "gate"
+		}
+	],
+	"lore": {
+		"title": "The Line to Nowhere",
+		"premise": "The company laid forty miles of rail towards a strike that has since been quietly written off, and stopped paying the crews in the middle of the flats. The towns along it were built for a traffic that is not coming.",
+		"era": "the second year after the strike played out",
+		"tone": "dry, transactional, and one bad week from violence",
+		"factions": ["the Company", "the Claim Holders", "the Marshal's Office"],
+		"deities": ["the Circuit Preacher's God"]
+	},
+	"ambient": [
+		"The rail runs straight through all of this without appearing to notice it.",
+		"Dust comes up off the flats and hangs at about the height of a rider.",
+		"Something metal is ticking as it cools, and there is nothing here that should be warm.",
+		"Sage, after the rain, which is the one thing this country does well.",
+		"A survey stake, painted, in the middle of a great deal of nothing."
+	],
+	"goods": {
+		"stores": {
+			"shop": [
+				["Sack of Coffee", "Green beans. You roast them yourself or you go without."],
+				["Tinned Peaches", "Dented, in syrup, and the most valuable thing on the shelf."],
+				["Box of Cartridges", "Fifty, and the box has been opened once."]
+			],
+			"warehouse": [
+				["Crate of Blasting Powder", "Stencilled, and stacked away from the lamp."],
+				["Bundle of Rail Spikes", "Heavy, and there are a great many of them."],
+				["Bolt of Duck Cloth", "Undyed, and stiff enough to stand up on its own."]
+			],
+			"hall": [
+				["Assay Report", "Two ounces to the ton, which is not enough and everyone knows it."],
+				["Claim Deed", "Filed, stamped, and contested."]
+			],
+			"smithy": [
+				["Scrap Iron", "Offcuts and failures, kept for remelting."],
+				["Iron Ore", "Rust-red lumps, unsmelted."]
+			],
+			"stable": [
+				["Feed Sack", "Oats, mostly."],
+				["Leather Harness", "Supple, and recently oiled."]
+			],
+			"inn": [
+				["Bottle of Whiskey", "Cut, coloured, and sold as neither."],
+				["Deck of Cards", "Worn soft, and short by one."]
+			],
+			"house": [["Tallow Candles", "A bundle of six."], ["Woollen Blanket", "Patched, and clean."]],
+			"barracks": [
+				["Box of Cartridges", "Fifty, and the box has been opened once."],
+				["Whetstone", "Worn hollow in the middle."]
+			],
+			"ruin": [
+				["Rusted Rail Spike", "Somebody drove this, once, and was paid for it."],
+				["Tarnished Coins", "Company scrip. Nobody within a hundred miles will take it."]
+			]
+		},
+		"catalogue": {
+			"shop": [
+				["Sack of Coffee", "Green beans. Everything else here is a luxury; this is not."],
+				["Tinned Peaches", "In syrup. Worth twice what the sign says and they know it."],
+				["Box of Cartridges", "Fifty. Sold to anybody, noted against everybody."],
+				["Coil of Rope", "Forty feet of it, waxed against the wet."],
+				["Tin Lantern", "Dented, but the shutter still works."],
+				["Line of Credit", "A page in the book with your name at the top of it."]
+			],
+			"smithy": [
+				["Iron Knife", "Plain, sharp, and honestly made."],
+				["Horseshoe", "Fitted for a heavy animal."],
+				["Crowbar", "Long enough for the job and the argument after it."],
+				["Repeating Rifle", "Second-hand. Somebody's initials are on the stock."]
+			],
+			"warehouse": [
+				["Crate of Blasting Powder", "Sold by weight, carried by the careful."],
+				["Bundle of Rail Spikes", "The company paid for these once already."],
+				["Bolt of Duck Cloth", "For a tent, a wagon cover, or a pair of trousers."]
+			],
+			"inn": [
+				["Shot of Whiskey", "Cut, coloured, and sold as neither."],
+				["Plate of Beans", "With something salted in it."],
+				["Pot of Coffee", "Boiled twice and stood since."],
+				["A Bed for the Night", "Straw mattress, shared room, no questions."]
+			],
+			"stable": [
+				["Bag of Oats", "Enough for a week on the road."],
+				["Saddle Blanket", "Faded to no colour at all."],
+				["Leather Harness", "Supple, and recently oiled."]
+			],
+			"apothecary": [
+				["Bitterroot Salve", "Smells terrible. Closes a cut in a day."],
+				["Laudanum", "Two drops. The label does not say how many are too many."],
+				["Fever Draught", "Cloudy, and warm to the touch."]
+			]
+		},
+		"trades": [
+			{
+				"kind": "smithy",
+				"roles": ["smith", "blacksmith", "farrier", "gunsmith"]
+			},
+			{
+				"kind": "apothecary",
+				"roles": ["apothecary", "herbalist", "healer", "doctor"]
+			},
+			{
+				"kind": "inn",
+				"roles": ["innkeep", "innkeeper", "barkeep", "tavern", "saloon", "cook"]
+			},
+			{
+				"kind": "stable",
+				"roles": ["stable", "ostler", "groom", "liveryman"]
+			},
+			{
+				"kind": "warehouse",
+				"roles": ["freight", "agent", "warehouse", "tallyman", "quartermaster"]
+			},
+			{
+				"kind": "shop",
+				"roles": ["shop", "storekeeper", "merchant", "trader", "grocer", "outfitter"]
+			}
+		],
+		"yields": {
+			"bush": [
+				["Sage Bundle", "It will make anything smell of the flats, including you."],
+				["Thorn Cuttings", "Springy, and awkward to carry."]
+			],
+			"saguaro": [
+				["Cactus Fruit", "Split it and it is better than it looks."],
+				["Cactus Water", "Cloudy, and it will keep you upright for an afternoon."]
+			],
+			"rock": [
+				["Ore Sample", "Streaked, heavy, and worth an assay if you ever get to one."],
+				["Flint", "It takes a hard edge and a harder spark."]
+			],
+			"rubble": [
+				["Bent Nails", "Pulled out of something that was worth pulling apart."],
+				["Loose Stone", "Somebody's wall, once."]
+			],
+			"deadTree": [["Kindling", "Split from a trunk that has been dead long enough to be dry."]],
+			"gravel": [["Ore Sample", "Panned out of the wash, and mostly disappointment."]],
+			"crops": [
+				["Sheaf of Barley", "Cut green and tied with its own straw."],
+				["Ears of Corn", "Small, tough, and grown where corn should not be."]
+			]
+		},
+		"forageChance": {
+			"bush": 0.3,
+			"saguaro": 0.4,
+			"rock": 0.28,
+			"rubble": 0.3,
+			"deadTree": 0.6,
+			"gravel": 0.15,
+			"crops": 0.3
+		}
+	}
+}

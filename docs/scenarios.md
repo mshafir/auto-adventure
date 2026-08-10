@@ -598,6 +598,33 @@ more densely settled, it is one continuous suburb.
 Also here: `radius` per kind (`{ base, perImportance }`), `maxImportance`,
 `civilizationFloor` and `maxSlope`.
 
+### roads
+
+What the routes *between* sites are surfaced with:
+
+```json
+{ "sites": { "roads": { "major": "track", "minor": "path" } } }
+```
+
+`major` is the route between two important places, `minor` is everything else. This is
+the only way to put a *line* on the map — a scatter table can put rails all over the
+country, but only this can put them where a route goes, which is what makes a rail line
+a rail line. `redgulch` uses it for exactly that.
+
+It governs the routes between settlements, not the streets inside one: a settlement
+paves its own square out of the patch it builds.
+
+### bounds
+
+```json
+{ "bounds": { "style": "mountains" } }
+```
+
+The survey picks an edge from the ground it samples — sea where the rim is wet, cliffs
+otherwise — which is a good default and was the *only* answer available, so `mountains`
+existed in the code from the beginning and nothing ever chose it. Say nothing and the
+survey still decides. `hollowfrost` asks to be ringed in ice.
+
 ### roster and filler
 
 What each kind of settlement is actually built out of:
@@ -783,6 +810,14 @@ it as the mouth of a volume.
 process — which the launcher does routinely — that key would be wrong. A registered kind
 is a build-time fact, identical in every world. A *world* that wants different buildings
 says so in its recipe's [`roster`](#roster-and-filler), where it hashes into a key.
+
+The newest kind is **`hall`**, and it exists because `temple` was the only large room in
+the game without beds in it — so every civic building in every world came out a
+sanctuary with a statue in it, whether or not that world had a religion. A longhouse, a
+stoa and a guild hall were all the same nave. A hall is a long table, benches down both
+sides and a fire at one end, and the difference is not decoration: `temple` puts its
+statue on the `hearth` anchor, which is where a scenario stands the person it wants
+found.
 
 ## Buildings with more than one room
 
@@ -1235,7 +1270,29 @@ Everything else degrades: a missing palette name draws in loud magenta, an atlas
 that is not there falls back to the built-in sprite, and an unparseable manifest logs
 and leaves the game looking ordinary. The player asked to play, not to debug JSON.
 
-### The two shipped packs
+### The shipped packs
+
+Eight, one for each content pack that wanted a look of its own.
+
+`thalassa`, `sunspire`, `hollowfrost`, `saltmere`, `redgulch` and `ashfall` are all the
+same shape: a forty-odd-key palette recolour plus a handful of shape overrides where a
+recolour is not enough — an olive rather than an oak, a saguaro rather than a bush, a
+steep-pitched roof, split-rail fencing, sharpened pier boards. No atlases: a shape stays
+crisp at eight pixels and at forty-eight, and it can be reviewed in a diff.
+
+**Look at one before shipping it.** The failure these are most likely to have is not an
+error, it is *mud* — two grounds landing on the same value, so a whole world reads as one
+brown. Nothing catches that but looking:
+
+```
+npm run pixel-shot -- --seed 771 --at 4,4 --width 30 --height 14 --zoom 4 --flat \
+  --recipe my-recipe.json --tiles my-pack --out /tmp/look.png
+```
+
+Use `--flat`. Lighting and relief tint the frame, and judging a palette through them is
+judging the weather. Two of the six in this repo were repaletted on the strength of that
+shot and nothing else: what a tile is *mostly* painted in is its `…Dark` colour, so
+those are the entries that decide whether a world is legible.
 
 `.packs/tiles/inkwell/` is the small one: three glyph overrides, three sprites, an
 eleven-colour palette and a three-cell atlas. It is what a pack looks like when it only
@@ -1392,6 +1449,38 @@ generators always have a complete set of tables with no filesystem in the path �
 is the same data as a file, for authors to copy, and a test pins the two together so
 they cannot drift. A missing or invalid pack logs and falls back to the default
 rather than refusing to start: a player asked to play, not to debug their JSON.
+
+### The gallery
+
+Nine packs ship, chosen to be as far apart as they can be on ground, on social
+vocabulary and on what there is to want — two worlds that differ only in adjective are
+one world:
+
+| pack | era | ground | what money is | tile pack |
+|---|---|---|---|---|
+| `default` | medieval | temperate lowland | coin, smallholding | — |
+| `thornwick` | medieval | marsh and timber road | the levy | `gramarye` |
+| `camelot` | medieval | meadow and forest | oath and obligation | — |
+| `thalassa` | ancient | savanna, meadow, beach | olive, marble, tribute | `thalassa` |
+| `sunspire` | medieval | desert, badlands | water and salt | `sunspire` |
+| `hollowfrost` | dark age | taiga, glacier, moor | furs and iron | `hollowfrost` |
+| `saltmere` | early modern | archipelago, marsh | cargo and charter | `saltmere` |
+| `redgulch` | industrial | shrubland, badlands | credit at the store | `redgulch` |
+| `ashfall` | post-collapse | badlands, ruins | barter, nothing minted | `ashfall` |
+
+Six of them ship a `world` fragment, so they change the map and not only its
+vocabulary. `ashfall` is the one written to *starve* the errand machinery — its
+catalogue is nearly empty and its stores carry salvage — because a pack that can break
+`obtainableItems` is the only way to find out whether the completeness checks work.
+
+**Every shipped pack is held to more than the schema.** `content/gallery.test.ts` reads
+each file in `.packs/` strictly, and refuses one whose households name a building the
+generator cannot build, whose placements name an anchor nothing emits, whose forage
+table names ground that does not exist, whose trade sends a shopkeeper to a catalogue
+nobody stocks, or whose appearance lines describe a role nobody in the world holds. It
+also requires a `description`, which the schema does not: the loaders are deliberately
+lenient so a bad pack can never stop a player getting into a game, and that policy is
+exactly wrong for an author, who needs the typo to be loud.
 
 ## Dialogue trees
 

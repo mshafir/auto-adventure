@@ -161,8 +161,8 @@ rather than a broken one.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CONTENT_PACK` | — | A flavour pack: a shipped name (`thornwick`) or a path (`./my-pack.json`). Names, households, trades and ambient lines. Steers a **new** world only — a save keeps the pack it was made with, because adopting another would rename everybody already met while keeping their memories. |
-| `TILE_PACK` | — | A directory under `.packs/tiles/`, or a path to one. Chooses how the map *looks*; the world is identical either way. |
+| `CONTENT_PACK` | — | A flavour pack: a shipped name or a path (`./my-pack.json`). Names, households, trades, goods and ambient lines, and for most of them the shape of the map too. Nine ship: `default`, `thornwick`, `camelot`, `thalassa`, `sunspire`, `hollowfrost`, `saltmere`, `redgulch`, `ashfall`. Steers a **new** world only — a save keeps the pack it was made with, because adopting another would rename everybody already met while keeping their memories. |
+| `TILE_PACK` | — | A directory under `.packs/tiles/`, or a path to one. Chooses how the map *looks*; the world is identical either way. Eight ship, one per pack that wanted a look of its own. |
 | `AUTO_ADVENTURE_HOME` | `~/.auto-adventure` | Where saves live. |
 | `AUTO_ADVENTURE_PACKS` | `./.packs` | Where content and tile packs are read from. |
 | `AUTO_ADVENTURE_SCENARIOS` | `./.scenarios` | Where pre-generated scenarios are read from, and where a generated one is written. |

@@ -28,6 +28,7 @@ const EVERY_KIND: readonly StructureKind[] = [
 	"apothecary",
 	"ruin",
 	"shrine",
+	"hall",
 	"cave",
 ];
 

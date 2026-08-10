@@ -40,6 +40,8 @@ export type StructureKind =
 	| "apothecary"
 	| "ruin"
 	| "shrine"
+	/** A long room with benches and no altar: the civic building of a world with no church. */
+	| "hall"
 	/** The mouth of a cave. A "building" only in that you walk into it through a door. */
 	| "cave";
 

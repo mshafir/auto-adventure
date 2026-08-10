@@ -62,6 +62,18 @@ export const PAL = {
 	soot: rgb("#2a1f14"),
 	ash: rgb("#2a2620"),
 	bone: rgb("#e8e2d6"),
+	/**
+	 * Sun-dried mud brick, and steel on rotten sleepers.
+	 *
+	 * Their own names rather than borrowed ones, even though adobe is nearly `sand` and
+	 * rail is nearly `slate`. A palette key is the unit a tile pack recolours by, so a
+	 * wall that shared `sand` would be a wall no desert pack could darken away from the
+	 * ground it stands on — which is the one thing an adobe wall has to do.
+	 */
+	adobe: rgb("#c9a06a"),
+	adobeDark: rgb("#6e4c2c"),
+	rail: rgb("#7a736b"),
+	railDark: rgb("#3b342e"),
 
 	// accents
 	blood: rgb("#b23a3a"),

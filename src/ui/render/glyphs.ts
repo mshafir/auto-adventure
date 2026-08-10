@@ -148,6 +148,16 @@ export const TERRAIN_GLYPH_DRAFTS: Readonly<Record<string, GlyphDraft>> = {
 	caveMouth: stat("∩", "stoneDark", "soot", { bold: true }),
 	caveFloor: vary(["░", " ", "·"], "gravelDark", "ash"),
 	caveWall: auto(HEAVY_WALL, "slateDark", "soot", { bold: true }),
+
+	// Drawn over sand rather than over moss: these are the tiles that exist so a hot
+	// world stops looking like a temperate one recoloured, and putting them on a green
+	// ground would put the problem straight back.
+	palm: stat("¥", "leaf", "sandDark", { bold: true }),
+	saguaro: stat("⋔", "pine", "sandDark", { bold: true }),
+	// Sleepers across the run, and the same near-untextured band every other road is,
+	// for the reason given above them: a route has to be followable across a busy map.
+	track: vary(["‡", "═", "‡", " "], "rail", "railDark"),
+	adobeWall: auto(HEAVY_WALL, "adobe", "adobeDark", { bold: true }),
 };
 
 export const DECOR_GLYPH_DRAFTS: Readonly<Record<string, GlyphDraft>> = {
@@ -176,6 +186,10 @@ export const DECOR_GLYPH_DRAFTS: Readonly<Record<string, GlyphDraft>> = {
 	boat: stat("◄", "timber", undefined, { bold: true }),
 	mooring: stat("¡", "timberDark"),
 	banner: stat("▮", "blood", undefined, { bold: true }),
+	totem: stat("╥", "timberDark", undefined, { bold: true }),
+	keg: stat("◉", "timber"),
+	loom: stat("▥", "timber"),
+	cauldron: stat("∪", "slateDark", undefined, { bold: true }),
 };
 
 const MISSING: GlyphDraft = stat("?", "blood");

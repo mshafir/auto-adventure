@@ -1,0 +1,126 @@
+{
+	"name": "ashfall",
+	"description": "Desaturated to nearly nothing, with the green kept back for the few places anything grows. Burnt trees, heavy rubble and cracked masonry; the bleakest pack here on purpose.",
+	"palette": {
+		"abyss": "#141c22",
+		"deep": "#2e4a52",
+		"shallow": "#3a5a60",
+		"foam": "#9ab4b4",
+		"ice": "#b4c0c0",
+		"iceDark": "#6a7474",
+		"sand": "#a8a08c",
+		"sandDark": "#6e6858",
+		"loam": "#332b20",
+		"dirt": "#6e5a40",
+		"dirtDark": "#453626",
+		"mud": "#2e2a22",
+		"gravel": "#8a8c84",
+		"gravelDark": "#4a4e48",
+		"moss": "#5a7a44",
+		"mossDark": "#2e3c22",
+		"leaf": "#4e6a3c",
+		"leafDark": "#26331c",
+		"pine": "#3a5a3a",
+		"pineDark": "#1c2a1c",
+		"oak": "#5a6a44",
+		"oakDark": "#2c3422",
+		"reed": "#6e6a4a",
+		"reedDark": "#383626",
+		"wheat": "#9a8e5c",
+		"wheatDark": "#4e4830",
+		"stone": "#8e8a80",
+		"stoneDark": "#302e2a",
+		"slate": "#6a6660",
+		"slateDark": "#383632",
+		"snow": "#cfd0cc",
+		"snowShadow": "#8e9290",
+		"timber": "#6e5a40",
+		"timberDark": "#332818",
+		"plank": "#7f6a4c",
+		"plankDark": "#3a2e1e",
+		"tile": "#5a4a40",
+		"tileDark": "#332a24",
+		"cobble": "#7a766e",
+		"cobbleDark": "#464440",
+		"brass": "#a08442",
+		"lamplight": "#c9ac5e",
+		"bone": "#c4bfae",
+		"ash": "#22201c",
+		"soot": "#151310"
+	},
+	"glyphs": {
+		"terrain": {
+			"rubble": {
+				"ch": ["▓", "▒", "▓", "░"],
+				"fg": "slate",
+				"bg": "stoneDark"
+			},
+			"deadTree": {
+				"ch": "†",
+				"fg": "soot",
+				"bg": "dirtDark",
+				"bold": true
+			},
+			"stoneWall": {
+				"ch": ["▓"],
+				"fg": "stone",
+				"bg": "stoneDark",
+				"autotile": "heavyWall"
+			},
+			"crops": {
+				"ch": ["=", "-"],
+				"fg": "wheatDark",
+				"bg": "dirtDark"
+			},
+			"grass": {
+				"ch": [" ", ".", " ", "·", " ", " "],
+				"fg": "moss",
+				"bg": "dirtDark"
+			}
+		}
+	},
+	"sprites": {
+		"terrain": {
+			"rubble": {
+				"shape": {
+					"any": [
+						{ "box": [0.08, 0.52, 0.36, 0.78] },
+						{ "box": [0.44, 0.62, 0.72, 0.9] },
+						{ "box": [0.56, 0.24, 0.78, 0.48] },
+						{ "box": [0.22, 0.2, 0.4, 0.4] }
+					]
+				}
+			},
+			"deadTree": {
+				"shape": {
+					"any": [
+						{ "box": [0.44, 0.24, 0.56, 1] },
+						{ "box": [0.24, 0.34, 0.44, 0.4] },
+						{ "box": [0.56, 0.5, 0.74, 0.56] }
+					]
+				}
+			},
+			"stoneWall": {
+				"shape": {
+					"not": {
+						"any": [
+							{ "box": [0.36, 0, 0.44, 0.42] },
+							{ "box": [0.44, 0.42, 0.52, 0.62] },
+							{ "box": [0.52, 0.62, 0.6, 1] },
+							{ "box": [0, 0.72, 0.3, 0.8] }
+						]
+					}
+				}
+			},
+			"crops": {
+				"shape": {
+					"any": [
+						{ "box": [0.2, 0.62, 0.28, 0.92] },
+						{ "box": [0.48, 0.7, 0.56, 0.94] },
+						{ "box": [0.72, 0.66, 0.8, 0.9] }
+					]
+				}
+			}
+		}
+	}
+}

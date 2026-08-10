@@ -58,6 +58,32 @@ const DEFS = [
 	},
 	{ key: "mooring", name: "mooring post", blocks: true, describe: "A tarred post, rope-worn." },
 	{ key: "banner", name: "banner", blocks: true, describe: "A banner, faded by weather." },
+
+	// --- appended for the pack batch -----------------------------------------
+	//
+	// Furniture that says what a room is *for*. A cooper's shop and a dyer's differ
+	// only in the sign over the door while both are furnished out of the same four
+	// crates, and a waystone is the one thing a world of longhouses has that a world
+	// of cottages does not.
+	{
+		key: "totem",
+		name: "waystone",
+		blocks: true,
+		describe: "A standing post, carved down one face and weathered past reading.",
+	},
+	{ key: "keg", name: "keg", blocks: true, describe: "A tapped keg on a low stand." },
+	{
+		key: "loom",
+		name: "loom",
+		blocks: true,
+		describe: "An upright loom, warped and half worked.",
+	},
+	{
+		key: "cauldron",
+		name: "cauldron",
+		blocks: true,
+		describe: "A black cauldron on a tripod, and something in it.",
+	},
 ] as const satisfies readonly Omit<DecorDef, "id">[];
 
 export const DECOR: readonly DecorDef[] = DEFS.map((def, id) => ({ ...def, id }));

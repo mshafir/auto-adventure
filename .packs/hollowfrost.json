@@ -1,0 +1,420 @@
+{
+	"id": "hollowfrost",
+	"description": "A northern saga in the dark half of the year. Pinewood, fell and ice ringed by mountains; there are no shops, and everything is settled at the hall.",
+	"world": {
+		"bounds": {
+			"style": "mountains"
+		},
+		"climate": {
+			"alpineLevel": 0.72,
+			"temperatureBias": -0.45,
+			"moistureBias": 0.08,
+			"latitudeBand": 2048,
+			"elevationScale": 200,
+			"roughnessScale": 34
+		},
+		"biomes": {
+			"taiga": {
+				"name": "the pinewood",
+				"scatterDensity": 0.66,
+				"scatter": [["conifer", 12], ["rock", 2], ["deadTree", 1], ["bush", 1]]
+			},
+			"moor": {
+				"name": "the fell",
+				"ground": "tallGrass",
+				"groundAlt": "snow",
+				"scatterDensity": 0.18,
+				"scatter": [["rock", 5], ["bush", 3], ["deadTree", 2]]
+			},
+			"glacier": {
+				"name": "the ice"
+			},
+			"forest": {
+				"name": "the black wood",
+				"scatterDensity": 0.66,
+				"scatter": [["conifer", 10], ["broadleaf", 1], ["bush", 2], ["stump", 1]]
+			},
+			"grassland": {
+				"name": "the home field",
+				"groundAlt": "snow"
+			},
+			"highland": {
+				"name": "the screes",
+				"groundAlt": "snow"
+			},
+			"marsh": {
+				"name": "the bog",
+				"scatterDensity": 0.3,
+				"scatter": [["reeds", 5], ["deadTree", 3], ["bush", 1]]
+			}
+		},
+		"sites": {
+			"weights": {
+				"town": 1,
+				"village": 2.5,
+				"fort": 1.5,
+				"hamlet": 4.5,
+				"camp": 3.5,
+				"ruins": 3,
+				"landmark": 4
+			},
+			"civilizationFloor": 0.18,
+			"roads": {
+				"major": "dirtRoad",
+				"minor": "path"
+			},
+			"roster": {
+				"town": {
+					"count": {
+						"base": 9,
+						"perImportance": 1
+					},
+					"walled": 4,
+					"structures": [
+						["hall", 8],
+						["inn", 6],
+						["smithy", 5],
+						["barn", 5],
+						["warehouse", 4],
+						["tower", 3],
+						["shrine", 3],
+						["house", 14]
+					]
+				},
+				"village": {
+					"count": {
+						"base": 6,
+						"perImportance": 0.5
+					},
+					"structures": [
+						["hall", 6],
+						["inn", 4],
+						["smithy", 4],
+						["barn", 5],
+						["shrine", 2],
+						["house", 14]
+					]
+				},
+				"hamlet": {
+					"count": {
+						"base": 3,
+						"perImportance": 0.5
+					},
+					"structures": [["house", 14], ["barn", 6], ["farmhouse", 5], ["shrine", 2]]
+				},
+				"fort": {
+					"count": {
+						"base": 4,
+						"perImportance": 0.5
+					},
+					"walled": true,
+					"structures": [["hall", 6], ["tower", 6], ["barracks", 5], ["smithy", 3], ["barn", 3]]
+				},
+				"camp": {
+					"count": {
+						"base": 2
+					},
+					"structures": [["house", 4], ["barn", 2]]
+				},
+				"landmark": {
+					"count": {
+						"base": 1
+					},
+					"structures": [["shrine", 1]]
+				}
+			},
+			"filler": [["house", 10], ["barn", 5], ["farmhouse", 3], ["warehouse", 1]]
+		}
+	},
+	"names": {
+		"given": [
+			"Hravn",
+			"Ingr",
+			"Sigrun",
+			"Thorkel",
+			"Aslaug",
+			"Gunnar",
+			"Halla",
+			"Ospak",
+			"Bergthora",
+			"Ketil",
+			"Yrsa",
+			"Vigdis",
+			"Steinar",
+			"Ragnhild",
+			"Ulfar",
+			"Thordis",
+			"Snorri",
+			"Gudrun",
+			"Eyvind",
+			"Solveig"
+		],
+		"family": [
+			"Hravnsdottir",
+			"Ketilsson",
+			"of the Long Hall",
+			"Frostbeard",
+			"Ospaksdottir",
+			"Greyfell",
+			"of the Ice Ford",
+			"Thorkelsson",
+			"Winterbourne",
+			"of the Nine Cairns",
+			"Snorrisdottir",
+			"Blacksled"
+		],
+		"heads": {
+			"wet": ["myr", "fen", "sund", "vik", "os"],
+			"green": ["skog", "lund", "bjork", "gran"],
+			"cold": ["rim", "frost", "hjarn", "vetr", "isa", "kald"],
+			"dry": ["brand", "aska", "svid"],
+			"high": ["fjall", "berg", "hamar", "varde", "klett"],
+			"plain": ["hus", "gard", "stad", "thing", "hof"]
+		},
+		"tails": ["hall", "garth", "ness", "fell", "dale", "holt", "ford", "stead"],
+		"ruinTails": ["cairn", "barrow", "wrack", "howe"],
+		"fortTails": ["watch", "hold", "burg", "gate"],
+		"regionTails": ["fells", "marches", "wastes", "dales", "iceland"]
+	},
+	"households": {
+		"house": {
+			"count": [1, 3],
+			"roles": ["weaver", "fisher", "trapper", "widow", "child", "boatwright", "cooper"]
+		},
+		"hall": {
+			"count": [2, 4],
+			"roles": ["hallkeeper", "law-speaker", "skald", "server"]
+		},
+		"inn": {
+			"count": [2, 4],
+			"roles": ["hallkeeper", "cook", "skald", "traveller"]
+		},
+		"barn": {
+			"count": [0, 2],
+			"roles": ["herdsman", "farmhand"]
+		},
+		"smithy": {
+			"count": [1, 2],
+			"roles": ["blacksmith", "striker"]
+		},
+		"shrine": {
+			"count": [0, 1],
+			"roles": ["stone-keeper"]
+		},
+		"tower": {
+			"count": [1, 2],
+			"roles": ["watchman", "signaller"]
+		},
+		"barracks": {
+			"count": [2, 4],
+			"roles": ["housecarl", "sergeant", "cook"]
+		},
+		"warehouse": {
+			"count": [0, 2],
+			"roles": ["tallyman", "porter"]
+		},
+		"farmhouse": {
+			"count": [1, 2],
+			"roles": ["herdsman", "farmhand"]
+		}
+	},
+	"appearance": {
+		"hallkeeper": "Between you and the fire, and staying there until asked properly.",
+		"law-speaker": "Reciting under her breath while you talk, and not losing her place.",
+		"skald": "Half a verse in, watching to see whether you are worth the other half.",
+		"trapper": "Furs to the chin, and a smell that arrived before he did.",
+		"fisher": "Hands split at every knuckle, and entirely used to it.",
+		"herdsman": "Counting something over your shoulder, twice.",
+		"housecarl": "Armed indoors, which nobody here appears to find odd.",
+		"stone-keeper": "Clearing snow off a carving that is beyond reading anyway.",
+		"boatwright": "Steaming a plank, and will not leave it for you.",
+		"weaver": "At the loom with the shutters closed against the cold.",
+		"cooper": "Hands pale with shavings, a half-hooped barrel between the knees."
+	},
+	"talksAbout": {
+		"law-speaker": "what was settled at the last thing, and who has not abided by it",
+		"skald": "the winter, the dead, and which of the two is longer",
+		"hallkeeper": "who is drinking on credit, and how much of it there is",
+		"trapper": "the trapline, the wolves, and what the wolves have been doing lately",
+		"stone-keeper": "the waystones, and the road they are supposed to mark",
+		"herdsman": "the fodder, the frost, and how far it is to spring",
+		"housecarl": "the watch, and the ships that came up the fjord in the autumn"
+	},
+	"outdoorRoles": {
+		"hall": {
+			"role": "hallkeeper",
+			"placement": "doorstep"
+		},
+		"inn": {
+			"role": "hallkeeper",
+			"placement": "doorstep"
+		},
+		"smithy": {
+			"role": "blacksmith",
+			"placement": "doorstep"
+		},
+		"barn": {
+			"role": "herdsman",
+			"placement": "yard"
+		},
+		"tower": {
+			"role": "watchman",
+			"placement": "gate"
+		},
+		"barracks": {
+			"role": "housecarl",
+			"placement": "gate"
+		},
+		"shrine": {
+			"role": "stone-keeper",
+			"placement": "doorstep"
+		},
+		"farmhouse": {
+			"role": "herdsman",
+			"placement": "yard"
+		}
+	},
+	"wanderers": [
+		{
+			"role": "skald",
+			"placement": "bench"
+		},
+		{
+			"role": "trapper",
+			"placement": "gate"
+		},
+		{
+			"role": "fisher",
+			"placement": "well"
+		},
+		{
+			"role": "law-speaker",
+			"placement": "stall"
+		}
+	],
+	"lore": {
+		"title": "The Second Winter",
+		"premise": "The summer failed and did not come back, and the halls have been eating their seed corn since the equinox. The waystones on the high road have started being found turned to face the wrong way.",
+		"era": "the winter that has lasted two years",
+		"tone": "hard, plainspoken, and superstitious about it",
+		"factions": ["the Hall of Ketilsgarth", "the Fell Trappers", "the Ice Ford Kin"],
+		"deities": ["the One-Eyed Walker", "the Lady of the Deep Water"]
+	},
+	"ambient": [
+		"Your breath goes ahead of you and hangs there.",
+		"The snow has gone blue, which means the light is nearly finished for today.",
+		"Something crossed here on four feet, unhurried, since the last fall.",
+		"The pines take the wind and give back a sound like water.",
+		"There is a cairn off the track, and somebody has kept the snow off it."
+	],
+	"goods": {
+		"stores": {
+			"hall": [
+				["Horn of Mead", "Sweet, strong, and poured for guests before it is asked for."],
+				["Bolt of Homespun", "Undyed wool, wound on a shaved stick."],
+				["Tally Stick", "Notched, split, and half of it kept elsewhere."]
+			],
+			"house": [
+				["Bundle of Furs", "Fox and hare, badly cured but warm."],
+				["Dried Fish", "Split, hung, and hard as a board."]
+			],
+			"barn": [
+				["Bale of Hay", "Tight-bound and dusty."],
+				["Seal Oil", "In a stoppered horn. It is for the lamps, mostly."]
+			],
+			"smithy": [
+				["Bog Iron", "Dug out of the fen, and half of it is not iron."],
+				["Charcoal", "A sack of it, light as nothing."]
+			],
+			"warehouse": [
+				["Bundle of Furs", "Graded and tied in tens."],
+				["Barrel of Salt Fish", "Heavy, and worth more than it looks."]
+			],
+			"tower": [
+				["Whetstone", "Worn hollow in the middle."],
+				["Tallow Candles", "A bundle of six."]
+			],
+			"ruin": [
+				["Amber Bead", "Warm to the hand before it should be."],
+				["Rusted Key", "It fits something. Not this."]
+			],
+			"shrine": [["Offering of Salt", "Left in the lee of the stone, and not taken."]]
+		},
+		"catalogue": {
+			"inn": [
+				["Horn of Mead", "Sweet, strong, and it arrives whether or not you asked."],
+				["Bowl of Fish Stew", "Mostly fish. Entirely hot."],
+				["Bundle of Furs", "Fox and hare. Warm rather than fine."],
+				["Dried Fish", "Split, hung, and hard as a board."],
+				["Seal Oil", "In a stoppered horn, for a lamp or a boot."],
+				["A Place by the Fire", "Nearer than a stranger is usually given."]
+			],
+			"smithy": [
+				["Iron Knife", "Bog iron, and better than that sounds."],
+				["Axe Head", "Meant for wood. It would do for other things."],
+				["Boat Nails", "A twist of them, clenched square."],
+				["Ice Creepers", "Iron spikes on a strap, for the fell in the wrong month."]
+			],
+			"stable": [
+				["Bag of Oats", "Enough for a week on the road."],
+				["Hide Blanket", "Greased against the wet."]
+			]
+		},
+		"trades": [
+			{
+				"kind": "smithy",
+				"roles": ["smith", "blacksmith", "farrier", "striker"]
+			},
+			{
+				"kind": "inn",
+				"roles": [
+					"innkeep",
+					"innkeeper",
+					"hallkeeper",
+					"tavern",
+					"cook",
+					"trader",
+					"merchant",
+					"factor"
+				]
+			},
+			{
+				"kind": "stable",
+				"roles": ["stable", "ostler", "groom", "herdsman"]
+			}
+		],
+		"yields": {
+			"conifer": [
+				["Pine Resin", "Amber beads, tacky even in this cold."],
+				["Kindling", "Dead branches from under the skirt of a pine, and dry."]
+			],
+			"marsh": [
+				["Bog Iron", "Rust-red lumps, dug out with the hands."],
+				["Cloudberries", "Late, few, and the best thing on the fell."]
+			],
+			"bush": [
+				["Crowberries", "Black, watery, and better than nothing."],
+				["Thorn Cuttings", "Springy, and awkward to carry."]
+			],
+			"snow": [
+				["Packed Snow", "It will not last, and it knows it."],
+				["Frozen Hare", "Somebody's snare, and they are not here to argue."]
+			],
+			"rock": [
+				["Flint", "It takes a hard edge and a harder spark."],
+				["Lichen", "Scraped off in flakes. It will boil down into something."]
+			],
+			"deadTree": [["Kindling", "Split from a trunk dead long enough to be dry."]],
+			"stump": [["Pine Resin", "Weeping still, out of a cut made years ago."]]
+		},
+		"forageChance": {
+			"conifer": 0.28,
+			"marsh": 0.3,
+			"bush": 0.3,
+			"snow": 0.18,
+			"rock": 0.25,
+			"deadTree": 0.6,
+			"stump": 0.5
+		}
+	}
+}

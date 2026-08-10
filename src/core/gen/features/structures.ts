@@ -133,7 +133,15 @@ export function authorableStructureKinds(): readonly StructureKind[] {
 const WOOD: BuildingMaterials = { wall: T.woodWall, cover: T.roof };
 const STONE: BuildingMaterials = { wall: T.stoneWall, cover: T.roof };
 
-/** The room a building has when it is somewhere people live. */
+/**
+ * The room a building has when it is somewhere people live.
+ *
+ * The loom is not decoration. `house` is the commonest building in every world and its
+ * room was five pieces of furniture that said only "somebody sleeps here" — while the
+ * default pack's householders are weavers, coopers and brewers, so the room contradicted
+ * the person standing in it. One piece of work in the corner is the difference between a
+ * dwelling and a *living*, and it costs a tile.
+ */
 const HOUSEHOLD: Plan = {
 	size: [11, 9],
 	floor: T.floorWood,
@@ -144,6 +152,7 @@ const HOUSEHOLD: Plan = {
 		{ decor: D.table, count: 1 },
 		{ decor: D.chair, count: 2 },
 		{ decor: D.shelf, count: 1 },
+		{ decor: D.loom, count: 1 },
 	],
 };
 
@@ -221,6 +230,7 @@ registerStructure({
 			{ decor: D.chair, count: 4 },
 			{ decor: D.bed, count: 3, anchor: "backroom" },
 			{ decor: D.barrel, count: 2 },
+			{ decor: D.keg, count: 2 },
 		],
 		// Rooms over the taproom, which is where an inn keeps the people worth
 		// finding: a guest is upstairs, not standing in the common room all day.
@@ -401,7 +411,13 @@ registerStructure({
 	materials: WOOD,
 	sign: true,
 	anchors: ["counter", "backroom"],
-	plan: COUNTER_ROOM,
+	// The counter room with something boiling on it. An apothecary and a general shop
+	// shared a plan exactly, so the one building in the world whose whole business is
+	// preparation looked like a place that sells rope.
+	plan: {
+		...COUNTER_ROOM,
+		furnishings: [...COUNTER_ROOM.furnishings, { decor: D.cauldron, count: 1 }],
+	},
 	authorable: true,
 });
 
@@ -422,6 +438,14 @@ registerStructure({
 	authorable: true,
 });
 
+/**
+ * A roadside shrine, which is a marker and a bench and not a small cathedral.
+ *
+ * It shared `SANCTUARY` with the temple, so the thing a `landmark` puts in an empty
+ * stretch of moor — the one building a player is most likely to meet alone, miles from
+ * anywhere — was a fifteen-by-eleven nave with lamps and six pews in it. A waystone in a
+ * one-room hut is what a shrine is, and it is why `totem` exists.
+ */
 registerStructure({
 	id: "shrine",
 	size: "small",
@@ -429,7 +453,53 @@ registerStructure({
 	materials: WOOD,
 	sign: false,
 	anchors: ["hearth"],
-	plan: SANCTUARY,
+	plan: {
+		size: [9, 7],
+		floor: T.floorStone,
+		wall: T.stoneWall,
+		furnishings: [
+			{ decor: D.totem, count: 1, anchor: "hearth" },
+			{ decor: D.bench, count: 2 },
+			{ decor: D.lamp, count: 1 },
+		],
+	},
+	authorable: true,
+});
+
+/**
+ * Somewhere a settlement gathers that is not a church.
+ *
+ * `temple` was the only large room without beds in it, so every world's civic building
+ * was a sanctuary with a statue in it whether or not the world had a religion — a
+ * longhouse, a stoa and a guild hall all came out as the same nave. A hall is a long
+ * table, benches down both sides and a fire at one end, and the difference is not
+ * decoration: `temple` puts a statue at the `hearth` anchor, which is where a scenario
+ * stands the person it wants found.
+ *
+ * Registered last so it is last in the prompt's list of kinds, which leaves the order
+ * every existing scenario was authored against untouched.
+ */
+registerStructure({
+	id: "hall",
+	size: "large",
+	importance: 5,
+	materials: WOOD,
+	sign: false,
+	anchors: ["hearth", "counter", "backroom"],
+	plan: {
+		size: [19, 11],
+		floor: T.floorWood,
+		wall: T.woodWall,
+		furnishings: [
+			{ decor: D.hearth, count: 1, anchor: "hearth" },
+			{ decor: D.table, count: 4, anchor: "counter" },
+			{ decor: D.bench, count: 8 },
+			{ decor: D.keg, count: 2 },
+			{ decor: D.banner, count: 2 },
+			{ decor: D.chest, count: 1, anchor: "backroom" },
+		],
+	},
+	plotPad: { x: 3, y: 1 },
 	authorable: true,
 });
 
