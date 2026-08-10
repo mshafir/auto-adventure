@@ -47,21 +47,23 @@ describe("structures-built", () => {
 	it("reports every kind that came up short, in sorted order", () => {
 		clearFeatureCache();
 		// Two kinds this time, both oversubscribed, so the per-kind loop
-		// (`[...wanted.keys()].sort()`) actually iterates more than once and its
-		// alphabetical ordering — "hall" before "smithy" — is pinned by this test rather
-		// than merely implemented.
+		// (`[...wanted.keys()].sort()`) actually iterates more than once. Smithies are
+		// listed before halls, so `wanted`'s insertion order is ["smithy", "hall"] — the
+		// opposite of the alphabetical order asserted below. Without the `.sort()` at
+		// `invariants.ts:91` this test would see "smithy" first and fail, which is what
+		// makes it a check of the sort rather than an accident of construction order.
 		const artifact = withStructures([
-			...Array.from({ length: 12 }, (_, i) => ({
-				kind: "hall" as const,
-				size: "large" as const,
-				importance: 5,
-				name: `Hall ${i}`,
-			})),
 			...Array.from({ length: 12 }, (_, i) => ({
 				kind: "smithy" as const,
 				size: "large" as const,
 				importance: 5,
 				name: `Smithy ${i}`,
+			})),
+			...Array.from({ length: 12 }, (_, i) => ({
+				kind: "hall" as const,
+				size: "large" as const,
+				importance: 5,
+				name: `Hall ${i}`,
 			})),
 		]);
 
