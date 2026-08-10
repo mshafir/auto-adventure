@@ -44,7 +44,7 @@ through the arc, and its only caller is the offline CLI at `src/tools/validate.t
 
 ## What makes the fix possible
 
-Two properties of the existing generator carry the whole design.
+Four properties of the existing generator carry the whole design.
 
 **A feature patch is a pure function of `(world, site, spec)`.** `src/core/gen/features/patch.ts:69-88`:
 a settlement is generated once in its own frame, cached by site id, and clipped into every
@@ -60,6 +60,20 @@ which is what turns "regenerate until it fits" from an aspiration into an algori
 importance and radius into a macro cell, and `macroSite:75-90` honours it over the roll
 while keeping the cell's id and region, so roads, rivers, specs and the halo treat it as
 native. Up to 64 (`src/core/world/recipe-schema.ts:244`).
+
+**The fields will accept direction, under one rule.** `src/core/world/fields.ts:4-18` states
+it exactly:
+
+> Every one is `f(world, x, y)` with no state, no caching keyed on a chunk, and no per-chunk
+> parameters — which is precisely why biome boundaries, coastlines and mountain ranges run
+> across chunk borders without any stitching code existing anywhere. The recipe is
+> world-constant and its zones are smooth radial fields, so it changes what the function
+> computes without giving it a notion of a chunk — the property that matters is preserved.
+> Nothing that varies per chunk may ever reach this layer.
+
+So anything **world-constant and continuous** may be injected into the fields. That is the
+licence for the layout described below: it is not a new philosophy but the existing `zones`
+mechanism generalised from a sparse set of radial blobs to a dense coarse lattice.
 
 ## The law
 
@@ -101,17 +115,17 @@ Thornwick scenarios are untouched.
 | --- | --- | --- | --- |
 | A | brief → story bible | 1 | schema retry |
 | B | bible → requirements | 0 | mechanical, cannot fail |
-| C | tier-1 world solve | 0 | **reports and stops** |
-| D | tier-2 place solve, per stage site | 0 | returns to C with that site excluded |
-| E | name and populate | parallel | falls back to deterministic specs |
-| F | lower to artifact | 0 | mechanical, cannot fail |
-| G | prose: serial along the spine, then parallel | serial + pooled | a missing tree is a finding |
-| H | judge: validate, repair, mend, **walk** | mend only | findings, and a bounded retry on a failed walk |
+| C | sketch the layout from the seed | 0 | mechanical, cannot fail |
+| D | tier-1: edit the layout, place the stage, verify | 0 | **reports and stops** |
+| E | tier-2 place solve, per stage site | 0 | returns to D with that site excluded |
+| F | name and populate | parallel | falls back to deterministic specs |
+| G | lower to artifact | 0 | mechanical, cannot fail |
+| H | prose: serial along the spine, then parallel | serial + pooled | a missing tree is a finding |
+| I | judge: validate, repair, mend, **walk** | mend only | findings, and a bounded retry on a failed walk |
 
-The expensive half is E and G. Everything that can make a world unplayable is decided in C
-and D, which cost nothing, so the floor on a failed generation is **one model call**. That
-one call is unavoidable: requirements come from the story, and there is no story before
-pass A.
+The expensive half is F and H. Everything that can make a world unplayable is decided in C, D
+and E, which cost nothing, so the floor on a failed generation is **one model call**. That one
+call is unavoidable: requirements come from the story, and there is no story before pass A.
 
 ## Data model
 
@@ -204,7 +218,7 @@ type Yield =
 
 `Yield` being typed is what makes causality machine-checkable rather than a sentence
 somebody hopes is true. Beat N's prerequisite is derived from beat N-1's `Yield`, and the
-flag, item placement or lock that implements it is *generated* in pass F rather than
+flag, item placement or lock that implements it is *generated* in pass G rather than
 authored. A spine whose beat 3 claims to open a door that no earlier beat yielded access to
 is rejected in pass B, before a map is even consulted.
 
@@ -258,46 +272,136 @@ type Relaxation =
 the test suite can enumerate it, and applying one is a pure function that re-enters the
 solver.
 
-## Tier 1: the world solver
+## Tier 0: the layout, and what the seed is for
 
-Given `WorldRequirement` — the places, their kinds and qualities, leg-length bounds,
-connectivity, region spread — search over `(seed, recipe)` for a world that satisfies every
-one. Layered so that cost is only paid by survivors.
+The seed is currently a lottery ticket on whether the story is tellable at all. Every field
+is noise, so the only way to get a harbour is to find a seed whose noise happens to put a
+coast where the story needs one. That is the root of the seeding problem, and it is why
+tier 1 was originally specified as an escalating search.
 
-1. **Field prefilter.** Microseconds. Samples `elevationAt`, `slopeAt`, `civilizationAt`,
-   `moistureAt` on a coarse lattice over the candidate bounds. Rejects a seed with no
-   coastline when the story needs a harbour, no high ground when it needs a stronghold, no
-   habitable land when it needs four settlements. No chunk is generated and no site is
-   built.
-2. **Macro match.** Milliseconds. `macroSite` per cell over the bounds; match place
-   requirements to rolled sites in spine order under hard constraints — distance from spawn
-   roughly increasing, no single leg longer than `LONG_MARCH` (320 tiles) and the whole walk
-   no shorter than `SHORT_STORY` (60 tiles). Both numbers come from
-   `src/scenario/validate.ts:135-136`, where they were learned from real playthroughs: a long
-   single leg is what actually spoils a session, and a total walk that short is a story that
-   never leaves the room it started in. They are used at the same altitude here as there —
-   `LONG_MARCH` per leg (`validate.ts:1432`), `SHORT_STORY` against the total
-   (`validate.ts:1438`) — so the solver and the judge cannot disagree about pacing.
-   Region spread where asked for.
-3. **Recipe nudge and pin.** Milliseconds. An unmatched requirement first tries a weight
-   nudge (a world that wants two more villages can have them), then a `PlaceRecipe` pin.
-   A pin must itself pass the ground test `siteKindAt` would have applied — above
-   `seaLevel`, under `maxSlope`, shoreline for docks, hillside for caves — because
-   `macroSite:75-90` honours a pin **outright and unchecked**, and a bad pin puts a village
-   in the sea. The pin's radius is clamped so `maxFeatureRadius` cannot exceed `HALO`
-   (`macro.ts:198-215`).
-4. **Finalist verify.** Seconds, and only for the best few candidates. Full passability
-   sweep of the bounded world; `reachableFrom` the spawn; `roadBetween` for every leg,
-   including bridges. This is the only stage that generates chunks.
+Invert it. **The seed sketches; the solver edits; the seed then fills in texture.**
 
-The search starts at `resolveSeed(id)` (`src/scenario/generate.ts:134`) and walks outward
-deterministically. Reproducibility survives because the artifact already records the answer
-in `artifact.seed`; what changes is that the id names *where the search began* rather than
-the world itself, and that needs saying in `artifact.ts` where the current contract is
+1. **Sketch.** The seed produces a coarse layout at macro resolution — where the sea is,
+   where the high ground is, which regions are wooded — by sampling the existing fields.
+   Nothing new is invented here; this is today's world, read at low resolution.
+2. **Edit.** The solver changes the sketch to satisfy the story's requirements: carve a bay
+   against the cell chosen for the harbour, raise ground for the stronghold, lift a small
+   rise under every stage site, cut valleys along the rivers.
+3. **Texture.** The seed decides everything below the lattice — which trees, which cliff,
+   which jitter, which interior.
+
+The consequence is that the seed regains a useful meaning: **the same story, in the same
+geography, with different texture.** A reroll changes how a world looks without changing
+whether it works, which is a better product than today's all-or-nothing reroll.
+
+### The control lattice
+
+A coarse lattice over the bounded world carrying **offsets, not absolute values** — noise
+still provides the texture, the lattice decides the large-scale shape:
+
+```
+elevationAt(x, y) = unit( warped_fbm(…) · detailScale + controlElevation(world, x, y) )
+```
+
+`controlElevation` is a **bicubic** sample of the lattice. Bicubic and not bilinear, and this
+is not a cosmetic preference: `slopeAt` (`fields.ts:140-148`) is a finite difference of
+`elevationAt`, so a merely-C0 lattice makes slope show lattice-aligned ridges. Roads cost
+`slopeAt * 220` (`roads.ts:41`) and cliffs read slope and roughness, so the visible symptom
+of getting this wrong is a **grid-aligned road network and cliff pattern** — a world that
+looks generated in exactly the way `elevationAt`'s domain warp exists to prevent
+(`fields.ts:38-41`). C1 continuity is a requirement.
+
+Three further constraints, each with a reason:
+
+- **It fades to zero at the bounds.** A lattice is finite and the live unbounded director has
+  no bounds, so the outermost ring tapers to zero and the world outside the boundary
+  generates exactly as it does today.
+- **There is a free path when there is no lattice.** `flatFields` (`fields.ts:158-166`) is the
+  existing pattern, and it exists because these functions are called once per tile per field
+  and the empty case had been costing 8700 allocations per chunk. A lattice lookup must cost
+  a single length check when there is no lattice.
+- **It is on the hottest path in the engine.** `fields.ts:44-47` records that elevation is
+  sampled ~4400 times per chunk and *is* the chunk budget; `slopeAt` multiplies that by five.
+  A bicubic sample is sixteen lattice reads — cheap against a warped fbm stack, but not free.
+  Flat `Float32Array` with integer indexing, and measured rather than assumed.
+
+### What is persisted
+
+Not the lattice. Twenty thousand floats would be the first part of a `.scenarios/*.json` that
+a person cannot read, and readability is a stated value of the format. Persist the small
+declarative thing that generates it:
+
+```ts
+interface WorldLayout {
+  readonly cell: number;                          // tiles per control cell
+  readonly seas: readonly AreaShape[];            // pushed below seaLevel
+  readonly highlands: readonly AreaShape[];
+  readonly woods: readonly AreaShape[];           // moisture, not elevation
+  readonly rises: readonly { readonly at: Vec2; readonly lift: number }[];
+  readonly valleys: readonly { readonly along: readonly Vec2[]; readonly depth: number }[];
+}
+```
+
+`controlFieldsFor(layout)` builds the `Float32Array` deterministically and is memoised per
+world. The same reasoning as `BuildingPlacement.lock` (`patch.ts:59-66`): the thing travels
+with the spec rather than with the tiles, "which is what makes it free to persist".
+
+## Tier 1: the world constructor
+
+With a layout, tier 1 stops searching for a world that happens to fit and constructs one that
+does. Three steps, not four escalating ones.
+
+1. **Place the stage.** `macroSite` per cell over the sketched world; match place requirements
+   to rolled sites in spine order under hard constraints — distance from spawn roughly
+   increasing, no single leg longer than `LONG_MARCH` (320 tiles), the whole walk no shorter
+   than `SHORT_STORY` (60 tiles). Both numbers come from `src/scenario/validate.ts:135-136`,
+   where they were learned from real playthroughs: a long single leg is what spoils a session,
+   and a total walk that short is a story that never leaves the room it started in. They are
+   used at the same altitude here as there — `LONG_MARCH` per leg (`validate.ts:1432`),
+   `SHORT_STORY` against the total (`validate.ts:1438`) — so the solver and the judge cannot
+   disagree about pacing.
+2. **Edit the layout to close the gaps.** A requirement with no suitable rolled site is
+   satisfied by construction rather than by rerolling: edit the lattice so the ground suits
+   it, and pin the site with a `PlaceRecipe`. A pin must still pass the ground test
+   `siteKindAt` would have applied — above `seaLevel`, under `maxSlope`, shoreline for docks,
+   hillside for caves — because `macroSite:75-90` honours a pin **outright and unchecked**,
+   and a bad pin puts a village in the sea. Pin radius is clamped so `maxFeatureRadius`
+   cannot exceed `HALO` (`macro.ts:198-215`). Because the lattice is edited *before* sites are
+   resolved, the ground test passes by construction rather than by luck.
+3. **Verify.** Seconds, once. Full passability sweep of the bounded world; `reachableFrom` the
+   spawn; `roadBetween` for every leg, bridges included. The only step that generates chunks.
+
+Rerolling the seed remains available as a fallback, starting at `resolveSeed(id)`
+(`src/scenario/generate.ts:134`) and walking outward deterministically — but it is now the
+exception rather than the mechanism. Reproducibility survives because the artifact records
+both `seed` and `layout`; what changes is that the id names *where the search began* rather
+than the world itself, which needs saying in `artifact.ts` where the current contract is
 documented.
 
-**Bounded.** A trial budget per stage, and a wall-clock ceiling. Exhaustion is a
-`SolveFailure`, never a compromise.
+## Rivers
+
+Rivers are traced by steepest descent over macro-cell elevation from highland springs
+(`src/core/world/rivers.ts:44-90`), so **they are already a consequence of elevation**: decide
+the lattice and the rivers are decided with it. Each of the four things wanted here lands
+differently.
+
+- **A specific procedural flow** already exists, and is already the right kind: one
+  world-space polyline, cached per world, clipped per chunk, so banks line up with no
+  stitching code.
+- **Going around structures** is the real gap — nothing today stops a river running through a
+  town. The fix is not a special case. The `rises` in the layout lift the ground under each
+  stage site, and steepest descent then routes around them using the existing physics, which
+  also makes towns look right: a settlement on a rise with water below it. A hard deflection
+  guard in `traceRiver` stays as a backstop only, because a guard alone can strand a river in
+  the middle of the map with no mouth.
+- **Altering the topography around them** is a cycle: rivers derive from elevation, and the
+  valleys want to alter elevation. It is broken by being explicitly one-pass — trace on the
+  lattice, write the `valleys` offsets back, retrace **once**, keep that. No fixpoint
+  iteration. The rivers that ship must be the ones traced against the *final* lattice, or the
+  channel and its banks disagree.
+- **Bridges where they cross a path** already work: `src/core/gen/pipeline.ts:242-244` stamps
+  `T.bridge` where a road meets `MASK_CHANNEL`. Only sea crossings are missing, which is the
+  change below.
 
 ## Tier 2: the place solver
 
@@ -355,11 +459,11 @@ failure with the binding constraint named. The invariants are the specification:
 - every leg's destination is named to the player before they need it
 
 `validateArtifact`'s existing checks stay, in their existing role — the net that catches
-what nobody predicted — plus **`walkTheStory` promoted into the pipeline** as pass H's gate.
+what nobody predicted — plus **`walkTheStory` promoted into the pipeline** as pass I's gate.
 A walk that does not finish is the one condition that earns a bounded retry.
 
 The point of moving these earlier is not that the final pass is wrong. It is that a fault
-found in pass C costs nothing and a fault found in pass H costs a whole generation.
+found in pass D costs nothing and a fault found in pass I costs a whole generation.
 
 ### Additions to `ScenarioArtifact`
 
@@ -367,6 +471,9 @@ Additive only.
 
 - `arc.beats[].because?: string` — the causal reason, so the journal can say it and
   `checkCausality` can check it
+- `recipe.layout?: WorldLayout` — the declarative layout, from which the control lattice is
+  rebuilt on load. It belongs in the recipe rather than beside it, because the recipe is
+  already the thing the fields consult and is already world-constant
 - `forge?: { bible, requirements, solution }` — kept for debuggability, for regenerating a
   world from the same story, and so that a failure can be reported against what was asked
   for rather than what was produced
@@ -391,6 +498,13 @@ Rules:
   inputs alone
 - every solver gets a golden test in the manner of `src/core/gen/golden.test.ts`
 
+The lattice adds a second, subtler requirement. `controlFieldsFor(layout)` must produce a
+bit-identical `Float32Array` from the same layout every time, on every platform — because the
+lattice reaches the *fields*, and a field that differs in the last bit between two runs is a
+coastline that differs between two chunks generated in different sessions. So the builder
+accumulates in a fixed order, and the river writeback runs its single pass over `valleys`
+sorted on a stable key rather than in trace order.
+
 ## Testing
 
 The heart of this design is that the parts which decide playability need no model to test.
@@ -403,7 +517,13 @@ The heart of this design is that the parts which decide playability need no mode
 - **Property tests, tier 2.** For every solution above: every required structure exists, is
   the right kind, is reachable, was never filler, was never demolished, and every required
   anchor is present.
-- **Golden tests.** Byte-identical patches for fixed inputs, before and after.
+- **Lattice tests.** Three separate properties, because they fail separately. *Continuity*:
+  sample `slopeAt` along a line crossing many lattice boundaries and assert no spike at the
+  boundaries — the test that catches bilinear-instead-of-bicubic. *Fade*: fields outside the
+  bounds are identical with and without a layout. *Cost*: a benchmark on `elevationAt` and
+  `slopeAt` with and without a lattice, with a budget, since this is the chunk's hottest path.
+- **Golden tests.** Byte-identical patches for fixed inputs, before and after, and a
+  bit-identical control lattice from a fixed layout.
 - **Failure tests.** A deliberately unsatisfiable bible produces a `SolveFailure` whose
   `binding` names the right requirement and whose `relaxations`, when applied, produce a
   solvable bible.
@@ -414,18 +534,24 @@ The heart of this design is that the parts which decide playability need no mode
 
 ## Failure: report, do not compromise
 
-When tier 1 exhausts its budget, generation stops and reports. It does not quietly deliver a
-smaller story, because quiet degradation is the whole class of fault this design exists to
-remove.
+When tier 1 cannot construct a world that satisfies every requirement, generation stops and
+reports. It does not quietly deliver a smaller story, because quiet degradation is the whole
+class of fault this design exists to remove.
+
+Because the layout is edited rather than searched for, this path should be **rare** — it fires
+on requirements that contradict each other rather than on an unlucky seed. A stronghold that
+must be both remote and reachable on foot within 320 tiles is a contradiction no terrain can
+resolve, and that is the kind of thing worth telling a person about.
 
 The report must be actionable rather than a dead end:
 
 ```
-This premise needs a harbour and a stronghold within 320 tiles of each other.
-No world in 300 seeds had both. What the ground offered instead:
+This premise needs a stronghold that is remote and within 320 tiles on foot.
+No layout satisfies both — "remote" pushes it past the walk you asked for.
 
   · a harbour, 210 tiles out                    ✓
-  · a stronghold — nothing within 640 tiles     ✗  ← binding
+  · three settlements                           ✓
+  · a stronghold, remote, ≤320 tiles            ✗  ← binding
 
   1. the stronghold becomes a fortified village      (SubstituteKind)
   2. drop "remote" from the stronghold               (DropQuality)
@@ -443,25 +569,36 @@ Each is independently shippable and each is verifiable on its own.
 
 1. **Requirements and invariants, no behaviour change.** Define the types; implement the
    invariant checks as functions; run them against the three scenarios that prompted this so
-   that each observed symptom is attributed to a named violated invariant. Measurement
-   before rewrite.
-2. **Bridges.** `roads.ts` cost function, `pipeline.ts` S5 stamping, `gridFor` passability.
-   Golden tests for the seam.
-3. **Tier-1 world solver.** Pure, property-tested, zero tokens.
-4. **Tier-2 place solver.** Pure, property-tested, zero tokens. This is the phase that most
-   directly fixes "the location cannot be found".
-5. **`src/forge/` pipeline.** Passes A–H wired, behind a flag in `generate.ts`, with the old
+   that each observed symptom is attributed to a named violated invariant. Measurement before
+   rewrite, and the only way to know afterwards whether any of this worked.
+2. **Tier-2 place solver.** Reservation before decoration in `settlement.ts`. Pure,
+   property-tested, zero tokens, and independent of everything else in this document. First
+   because it is the single change that most directly fixes "the location cannot be found",
+   and it can ship while the rest is still being designed.
+3. **Bridges.** `roads.ts` cost function, `pipeline.ts` S5 stamping, `gridFor` passability.
+   Golden tests for the seam. Small, contained, and it widens what tier 1 can solve.
+4. **The control lattice.** Field plumbing only, with no story anywhere near it:
+   `WorldLayout`, `controlFieldsFor`, bicubic sampling, fade at the bounds, the free path when
+   there is no layout. Continuity, fade and cost tests. This is the riskiest phase and it is
+   deliberately isolated, so that when a coastline goes wrong there is exactly one new thing
+   it can be.
+5. **Tier-1 world constructor.** Sketch, edit, verify. Pure, property-tested, zero tokens.
+6. **Rivers.** Rises under stage sites, the one-pass valley writeback, the deflection
+   backstop. After tier 1 because it needs to know where the stage is.
+7. **`src/forge/` pipeline.** Passes A–I wired, behind a flag in `generate.ts`, with the old
    path kept until the walk-gate pass rate on a fixed seed corpus beats it.
-6. **Non-rectangular buildings.** `BuildingPlacement.rect` becomes the bounding box beside
-   a new `footprint?: readonly Rect[]` — a union of rectangles giving L, T, U and courtyard
+8. **Non-rectangular buildings.** `BuildingPlacement.rect` becomes the bounding box beside a
+   new `footprint?: readonly Rect[]` — a union of rectangles giving L, T, U and courtyard
    shapes — so every existing reader keeps working unchanged. Wall stamping becomes the
    boundary of the union; door choice becomes the union edge tile nearest the street.
    Interiors are already separate grids keyed by `interiorId`, so their room graphs are
    independent work.
 
-Phase 6 is deliberately last. It is the least reliability-critical thing in this document,
-and attempting it inside a solver that is not yet proven would mean debugging geometry and
-constraint satisfaction at the same time.
+Two orderings are deliberate. **Phase 2 comes before all the world work** because it is
+independent of it, needs no model, and addresses the loudest symptom — there is no reason to
+wait for terrain to fix a building that was never binding. **Phase 8 is last** because it is
+the least reliability-critical thing in this document, and attempting novel geometry inside a
+solver that is not yet proven means debugging both at once.
 
 ## What is retired, once forge is proven
 
@@ -480,3 +617,7 @@ constraint satisfaction at the same time.
 - The live in-game director. It has a different problem — it cannot see the future — and
   nothing here applies to it.
 - Free-form branching narrative. The spine-and-leaves shape is a deliberate constraint.
+- Changing how unbounded worlds generate. A layout exists only inside a scenario's bounds and
+  fades to zero at them, so a world with no layout — which is every live world, and every
+  existing test fixture — generates exactly as it does today. That is a property the lattice
+  tests assert rather than a hope.
