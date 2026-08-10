@@ -1,5 +1,7 @@
 import { featureKindFor, invalidateFeature } from "../core/gen/features/registry.js";
 import { generateSettlement } from "../core/gen/features/settlement.js";
+import { reachableFrom } from "../core/gen/features/terraform.js";
+import { beatNpcId, orderedBeats } from "../core/rules/arc.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
 import { siteIndex } from "./validate.js";
 
@@ -96,6 +98,109 @@ export function checkStructuresBuilt(artifact: ScenarioArtifact): Violation[] {
 				invariant: "structures-built",
 				where: `${spec.name} (site ${id})`,
 				detail: `asked for ${asked} ${kind}, built ${got}`,
+			});
+		}
+	}
+	return violations;
+}
+
+/**
+ * Every building in a settlement can be walked into from its own town square.
+ *
+ * `carveConnections` routes to every anchor and `pruneUnreachable` demolishes the
+ * buildings it could not reach (`settlement.ts:339-375`), so in principle nothing
+ * unreachable survives. This measures whether that holds in practice, because the
+ * demolition is bounded at four rounds and gives up quietly afterwards — and because
+ * demolition is itself a fault when the building was one the story needed.
+ *
+ * `reachableFrom` returns `undefined` when the square itself is not walkable, which is
+ * a different fault and is reported as its own violation rather than as "every building
+ * is unreachable".
+ */
+export function checkBuildingsReachable(artifact: ScenarioArtifact): Violation[] {
+	const world = artifactWorld(artifact);
+	const sites = siteIndex(artifact);
+	const violations: Violation[] = [];
+
+	for (const id of Object.keys(artifact.sites).sort()) {
+		const spec = artifact.sites[id];
+		const site = sites.get(Number(id));
+		if (!spec || !site) continue;
+		if (featureKindFor(site.kind)?.id !== "settlement") continue;
+
+		// See `checkStructuresBuilt` above: the settlement patch is cached by `(world,
+		// kind, siteId)` alone, not by the spec, so a stale patch from an earlier spec for
+		// this same site can otherwise be handed back here instead of the one the current
+		// artifact actually describes.
+		invalidateFeature(world, site.id);
+		const patch = generateSettlement(world, site, spec.settlement);
+		const square = patch.anchors.find((anchor) => anchor.kind === "square");
+		if (!square) {
+			violations.push({
+				invariant: "buildings-reachable",
+				where: `${spec.name} (site ${id})`,
+				detail: "the settlement has no square to measure from",
+			});
+			continue;
+		}
+
+		const reached = reachableFrom(patch, { x: square.x, y: square.y }, patch.anchors);
+		if (!reached) {
+			violations.push({
+				invariant: "buildings-reachable",
+				where: `${spec.name} (site ${id})`,
+				detail: "the square itself is not walkable",
+			});
+			continue;
+		}
+
+		for (const anchor of patch.anchors) {
+			if (anchor.kind !== "doorstep" || anchor.building === undefined) continue;
+			if (reached.has(anchor)) continue;
+			const building = patch.buildings.find((entry) => entry.index === anchor.building);
+			violations.push({
+				invariant: "buildings-reachable",
+				where: `${spec.name} (site ${id})`,
+				detail: `${building?.name ?? building?.kind ?? `building ${anchor.building}`} cannot be reached from the square`,
+			});
+		}
+	}
+	return violations;
+}
+
+/**
+ * Every main-line beat has words to say and something to write down.
+ *
+ * A beat with no tree still opens, still sets its flag and still lands an errand in the
+ * journal — so nothing reports it and the story simply has a hole where a scene should
+ * be. That is one of the two things a player experiences as "the events do not connect";
+ * the other is a beat with no journal, which leaves nothing behind to connect *to*.
+ *
+ * Side errands are exempt. A player goes looking for one by choice, and warning about
+ * every optional beat in every world is how an author learns to stop reading a report.
+ */
+export function checkScenesWritten(artifact: ScenarioArtifact): Violation[] {
+	const arc = artifact.arc;
+	if (!arc) return [];
+
+	const violations: Violation[] = [];
+	for (const beat of orderedBeats(arc)) {
+		if (beat.optional) continue;
+		const tree = artifact.trees?.[beatNpcId(beat)];
+		const spoken = Object.keys(tree?.nodes ?? {}).length;
+		if (spoken === 0) {
+			violations.push({
+				invariant: "scenes-written",
+				where: `beat ${beat.id}`,
+				detail: "no conversation was written for the person this beat hangs on",
+			});
+		}
+		const written = beat.journal ?? beat.quest?.description ?? "";
+		if (written.trim() === "") {
+			violations.push({
+				invariant: "scenes-written",
+				where: `beat ${beat.id}`,
+				detail: "nothing is written down, so the next beat has nothing to follow from",
 			});
 		}
 	}

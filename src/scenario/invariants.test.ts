@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
 	demoArtifact,
+	demoJourneyArtifact,
 	demoSiteSpec,
 	FIXTURE_SEED,
 	findSettlement,
 } from "../../test/fixtures/scenario.js";
 import { clearFeatureCache } from "../core/gen/features/registry.js";
 import type { SettlementSpec } from "../core/gen/features/settlement.js";
+import { beatNpcId } from "../core/rules/arc.js";
 import type { ScenarioArtifact } from "./artifact.js";
-import { checkStructuresBuilt } from "./invariants.js";
+import { checkBuildingsReachable, checkScenesWritten, checkStructuresBuilt } from "./invariants.js";
 
 /** The one-town fixture, with its settlement asking for exactly these buildings. */
 function withStructures(structures: SettlementSpec["structures"]): ScenarioArtifact {
@@ -88,5 +90,45 @@ describe("structures-built", () => {
 			{ kind: "inn", size: "medium", importance: 5, name: "The Drowned Lamp" },
 		]);
 		expect(checkStructuresBuilt(artifact)).toEqual([]);
+	});
+});
+
+describe("buildings-reachable", () => {
+	it("is silent on a settlement whose buildings all open onto the square", () => {
+		clearFeatureCache();
+		expect(checkBuildingsReachable(demoArtifact())).toEqual([]);
+	});
+});
+
+describe("scenes-written", () => {
+	it("reports a main-line beat with no conversation", () => {
+		// `demoJourneyArtifact` has two beats, each with a journal and neither with a tree
+		// — which is exactly the fault: the beat opens, the errand lands in the journal,
+		// and the person it hangs on has nothing to say.
+		const violations = checkScenesWritten(demoJourneyArtifact());
+
+		expect(violations).toHaveLength(2);
+		expect(violations[0]?.invariant).toBe("scenes-written");
+		expect(violations[0]?.detail).toContain("no conversation");
+	});
+
+	it("is silent when every beat has words and a journal", () => {
+		const artifact = demoJourneyArtifact();
+		// A one-line tree per beat: enough to be a conversation, which is all this checks.
+		const trees = Object.fromEntries(
+			(artifact.arc?.beats ?? []).map((beat) => {
+				const id = beatNpcId(beat);
+				return [
+					id,
+					{
+						npcId: id,
+						entry: ["hello"],
+						nodes: { hello: { id: "hello", speech: "Aye?", choices: [] } },
+					},
+				];
+			}),
+		);
+
+		expect(checkScenesWritten({ ...artifact, trees })).toEqual([]);
 	});
 });
