@@ -1,0 +1,977 @@
+{
+	"artifactVersion": 1,
+	"id": "an-interesting-spin-on-the",
+	"title": "The Ash-Stained Crown",
+	"blurb": "Princess Elara lives in the soot of a charcoal burner's hut, a living currency for her father's debts. With the King dead, the valley fills with dukes and brigands eager to claim a throne built on mud and broken promises.",
+	"brief": {
+		"premise": "an interesting spin on the story of a princess",
+		"duration": "tiny"
+	},
+	"seed": 2731803644,
+	"pack": "hollowfrost",
+	"recipe": {
+		"climate": {
+			"alpineLevel": 0.72,
+			"elevationScale": 200,
+			"moistureBias": -0.24,
+			"temperatureBias": 0.28,
+			"latitudeBand": 2048,
+			"roughnessScale": 34,
+			"seaLevel": 0.3,
+			"shoreLevel": 0.34
+		},
+		"biomes": {
+			"taiga": {
+				"scatterDensity": 0.14
+			},
+			"moor": {
+				"name": "the fell",
+				"ground": 6,
+				"groundAlt": 13,
+				"scatterDensity": 0.18,
+				"scatter": [[25, 5], [21, 3], [20, 2]]
+			},
+			"glacier": {
+				"name": "the ice"
+			},
+			"forest": {
+				"scatterDensity": 0.16
+			},
+			"grassland": {
+				"name": "the home field",
+				"groundAlt": 13
+			},
+			"highland": {
+				"name": "the screes",
+				"groundAlt": 13
+			},
+			"marsh": {
+				"name": "the bog",
+				"scatterDensity": 0.3,
+				"scatter": [[11, 5], [20, 3], [21, 1]]
+			},
+			"rainforest": {
+				"scatterDensity": 0.19
+			}
+		},
+		"sites": {
+			"weights": {
+				"town": 0.9,
+				"village": 1.5,
+				"fort": 0.9,
+				"hamlet": 2.7,
+				"camp": 1.8,
+				"ruins": 1.5,
+				"landmark": 1.5,
+				"castle": 0.4,
+				"cave": 1.2
+			},
+			"roster": {
+				"town": {
+					"count": {
+						"base": 9,
+						"perImportance": 1
+					},
+					"walled": 4,
+					"structures": [
+						["hall", 8],
+						["inn", 6],
+						["smithy", 5],
+						["barn", 5],
+						["warehouse", 4],
+						["tower", 3],
+						["shrine", 3],
+						["house", 14]
+					]
+				},
+				"village": {
+					"count": {
+						"base": 6,
+						"perImportance": 0.5
+					},
+					"structures": [
+						["hall", 6],
+						["inn", 4],
+						["smithy", 4],
+						["barn", 5],
+						["shrine", 2],
+						["house", 14]
+					]
+				},
+				"hamlet": {
+					"count": {
+						"base": 3,
+						"perImportance": 0.5
+					},
+					"structures": [["house", 14], ["barn", 6], ["farmhouse", 5], ["shrine", 2]]
+				},
+				"fort": {
+					"count": {
+						"base": 4,
+						"perImportance": 0.5
+					},
+					"walled": true,
+					"structures": [["hall", 6], ["tower", 6], ["barracks", 5], ["smithy", 3], ["barn", 3]]
+				},
+				"camp": {
+					"count": {
+						"base": 2
+					},
+					"structures": [["house", 4], ["barn", 2]]
+				},
+				"landmark": {
+					"count": {
+						"base": 1
+					},
+					"structures": [["shrine", 1]]
+				}
+			},
+			"filler": [["house", 10], ["barn", 5], ["farmhouse", 3], ["warehouse", 1]],
+			"roads": {
+				"major": 14,
+				"minor": 16
+			},
+			"civilizationFloor": 0.18,
+			"wildWeights": {
+				"cave": 1.2
+			}
+		},
+		"bounds": {
+			"style": "mountains"
+		}
+	},
+	"spawn": {
+		"x": 32,
+		"y": 32
+	},
+	"bounds": {
+		"minX": -202,
+		"minY": -202,
+		"maxX": 266,
+		"maxY": 266,
+		"style": "mountains",
+		"thickness": 8
+	},
+	"lore": {
+		"title": "The Thistle Throne",
+		"premise": "Princess Elara was traded to a charcoal burner to pay a gambling debt and now lives in a soot-stained hut at the edge of the woods. Word of the King's death has reached the valley, and a dozen self-proclaimed dukes are currently trampling the local barley to claim her as their trophy bride.",
+		"era": "The Season of Rusted Crowns",
+		"tone": "Cynical and mud-spattered",
+		"factions": ["The Burner's Kin", "The Third-Son Brigands", "The King's Last Taxman"],
+		"deities": ["The Mother of Embers", "The God of Small Debts"]
+	},
+	"regions": {
+		"1109659045": {
+			"id": "1109659045",
+			"name": "The Calcified Flats",
+			"blurb": "A sun-bleached expanse of cracked earth where the salt crust crunches like broken glass beneath your boots, offering no shade and even less water.",
+			"tone": "Cynical and mud-spattered",
+			"culture": "Nomadic scavengers pick through the skeletal remains of past caravans while dodging the territorial skirmishes of petty warlords.",
+			"factionName": "The Third-Son Brigands",
+			"lore": [
+				"The ruins of a border fort sit at the center of the flats, its stone walls scorched black from a siege that ended decades ago.",
+				"Travelers leave cairns of bleached cattle bone to mark the only reliable path between the desert dunes and the mountain foothills.",
+				"The Third-Son Brigands hold the only deep-well spring, charging a heavy toll in scrap metal or fresh horse meat for a single bucket of brackish water."
+			],
+			"ambient": [
+				"You taste the metallic tang of dry wind against your cracked lips.",
+				"A vulture circles low, its shadow sweeping over the salt-crusted ground.",
+				"You step over a sun-bleached ribcage partially buried in the dust.",
+				"The heat shimmers against the jagged horizon, turning distant ruins into liquid mirages.",
+				"You hear the distant, rhythmic clatter of a brigand patrol scouting for fresh prey."
+			]
+		},
+		"2543810181": {
+			"id": "2543810181",
+			"name": "The Sallow Flats",
+			"blurb": "A sun-scoured stretch of cracked earth where the only harvest is the salt gathered from dried riverbeds and the occasional discarded chain link.",
+			"tone": "Cynical and mud-spattered",
+			"culture": "They survive by scavenging the rusted remnants of the old wars and trading scrap for water at the fortified wells.",
+			"factionName": "The King's Last Taxman",
+			"lore": [
+				"The ground is littered with calcified barley stalks that crack like bone under your boots.",
+				"A makeshift fort constructed from hollowed-out siege engines sits atop the only rise for miles.",
+				"The taxmen here operate under the delusion that the crown still holds legal weight even while they demand payment in dried meat.",
+				"Deep in the badlands, the cave dwellers keep watch with telescopes scavenged from abandoned watchtowers."
+			],
+			"ambient": [
+				"The hot wind rasps against your dry throat.",
+				"You step over a pile of rusted iron rings.",
+				"A distant hawk circles a cluster of stone huts.",
+				"Your shadow stretches long and thin across the salt crust.",
+				"Dust coats your tongue with the taste of copper."
+			]
+		},
+		"3484558411": {
+			"id": "3484558411",
+			"name": "Cinder-Waste",
+			"blurb": "A sun-scoured expanse where the wind carries grit that tastes of iron and old graves, dominated by shifting dunes and the jagged, inhospitable teeth of the Godless Peaks.",
+			"tone": "Cynical and mud-spattered.",
+			"culture": "They survive by scavenging the rusted iron remnants of fallen crusades and bartering scrap for water.",
+			"factionName": "The King's Last Taxman",
+			"lore": [
+				"The fort at the base of the peaks was once a royal mint, now a hollowed-out collection point for extortion.",
+				"The hamlet is constructed entirely from the ribcages of giant desert scavengers bleached white by the relentless sun.",
+				"Rain has not touched the valley in seven years, leaving the soil cracked into geometric patterns that look like maps to nowhere."
+			],
+			"ambient": [
+				"You brush a layer of grey ash from your collar.",
+				"The dry wind whistles through a hollow skull embedded in the sand.",
+				"Your boots crunch on something that rings like copper.",
+				"The horizon shimmers with a heat that turns distant cliffs into ghosts."
+			]
+		}
+	},
+	"sites": {
+		"1278240940": {
+			"siteId": 1278240940,
+			"name": "Rust-Hollow",
+			"shortName": "Rust-Hollow",
+			"description": "A cluster of two structures huddled in a basin of iron-rich sand where the wind strips paint from wood and skin from bone. The ground is littered with the jagged, oxidized scraps of a failed invasion, and the air carries the metallic tang of blood and rust.",
+			"settlement": {
+				"name": "Rust-Hollow",
+				"walled": false,
+				"structures": [
+					{
+						"kind": "shop",
+						"size": "large",
+						"importance": 5,
+						"name": "The Scrap-Sieve",
+						"signText": "We Trade Iron for Water"
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 2,
+						"name": "The Taxman's Lean-to"
+					}
+				]
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Vargus the Filcher",
+					"role": "shopkeeper",
+					"glyph": "S",
+					"appearance": "A man with teeth filed to points and a leather apron stiff with dried grease.",
+					"persona": "He speaks in clipped, suspicious sentences and stares intently at the player's boots for any sign of hidden metal.",
+					"disposition": 3,
+					"placement": "doorstep",
+					"knows": [
+						"A caravan of would-be dukes lost their lead wagon in the dunes east of here and likely left a crate of silver behind.",
+						"The fort to the southwest is currently being stripped of its copper wiring by deserters."
+					]
+				},
+				{
+					"slot": 1,
+					"name": "Kaelen the Ledger-Keeper",
+					"role": "taxman",
+					"glyph": "T",
+					"appearance": "Dressed in a moth-eaten doublet with ink-stained fingers and eyes that constantly dart toward the horizon.",
+					"persona": "Fidgety and prone to reciting tax codes to drown out the sound of the wind, he is terrified of the encroaching lords.",
+					"disposition": 2,
+					"placement": "bench",
+					"structureName": "The Taxman's Lean-to",
+					"knows": [
+						"The King is dead, but his debts are being collected by men who don't care for coin.",
+						"Farther down the road, the village of Oakhaven has been burned to the ground by a pretender looking for the Princess."
+					]
+				}
+			],
+			"hooks": [
+				"Locate the abandoned wagon in the dunes before the scavengers from the fort find it.",
+				"Escort the Taxman to the safety of the Godless Peaks before a duke arrives and demands his head."
+			]
+		},
+		"1677355018": {
+			"siteId": 1677355018,
+			"name": "Salt-Tooth Outpost",
+			"shortName": "Salt-Tooth",
+			"description": "A wind-scoured pile of timber and salvaged iron perched at the high mountain pass where the road to the salt flats meets the northern ascent. The air tastes of grit and ozone, and the structures here are held together by rusted nails and the desperate hope that the Third-Son brigands are currently busy elsewhere.",
+			"settlement": {
+				"name": "Salt-Tooth Outpost",
+				"walled": false,
+				"structures": [
+					{
+						"kind": "inn",
+						"size": "medium",
+						"importance": 5,
+						"name": "The Dry Throat",
+						"signText": "Water is a myth"
+					}
+				]
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Kaelen of the Flats",
+					"role": "Scavenger",
+					"glyph": "S",
+					"appearance": "Wrapped in moth-eaten goat wool, skin mapped with salt-blisters and deep, sun-darkened lines.",
+					"persona": "Speaks in raspy fragments, obsessed with the weight of his coin pouch and the direction of the wind.",
+					"disposition": 4,
+					"placement": "bench",
+					"knows": [
+						"The Third-Son Brigands are currently hoarding grain in the ruins to the southwest",
+						"A caravan of refugees recently vanished near the cave to the northeast, leaving only broken carts behind"
+					]
+				},
+				{
+					"slot": 1,
+					"name": "Brann the Mute",
+					"role": "Watchman",
+					"glyph": "W",
+					"appearance": "Broad-shouldered, wearing a dented sallet helmet and a cloak stained with the white dust of the flats.",
+					"persona": "Utterly silent, communicates through aggressive gestures and the rhythmic sharpening of a long, jagged billhook.",
+					"disposition": 2,
+					"placement": "gate",
+					"knows": [
+						"The village to the northeast has been taken over by a duke's vanguard, and they are hanging anyone who looks like a royalist",
+						"The water source in the canyon is poisoned by dead cattle"
+					]
+				}
+			],
+			"hooks": [
+				"Infiltrate the bandit camp in the ruins to recover the supplies they took from the last caravan",
+				"Investigate the abandoned carts in the northeastern cave to find out what happened to the missing families"
+			]
+		},
+		"3676251433": {
+			"siteId": 3676251433,
+			"name": "Salt-Spit Junction",
+			"shortName": "Salt-Spit",
+			"description": "A wind-scoured crossroads where the dust never truly settles. Scavengers huddle within the bleached ribcage of an ancient, collapsed watchtower to shelter from the relentless glare of the Flats.",
+			"settlement": {
+				"name": "Salt-Spit Junction",
+				"walled": false,
+				"structures": [
+					{
+						"kind": "ruin",
+						"size": "large",
+						"importance": 5,
+						"name": "The Hollow Ribs"
+					},
+					{
+						"kind": "shop",
+						"size": "small",
+						"importance": 3,
+						"name": "Vane’s Canteen",
+						"signText": "Water for Coin"
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1,
+						"name": "The Sleeper's Shack"
+					}
+				]
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Vane",
+					"role": "shopkeeper",
+					"glyph": "V",
+					"appearance": "A sun-cracked face obscured by a grease-stained rebreather mask.",
+					"persona": "Speaks in short, dry rasps. Only cares about the weight of your water skins.",
+					"disposition": 4,
+					"placement": "doorstep",
+					"knows": [
+						"The Third-Son Brigands are demanding a toll at the northern pass.",
+						"A caravan of refugees was slaughtered two miles east; their salvage is still out there for the taking."
+					]
+				},
+				{
+					"slot": 1,
+					"name": "Krell",
+					"role": "scavenger",
+					"glyph": "K",
+					"appearance": "Wrapped in moth-eaten rags, missing three fingers on his left hand.",
+					"persona": "Paranoid and twitchy, constantly scanning the horizon for raiding parties.",
+					"disposition": 2,
+					"placement": "well",
+					"knows": [
+						"The ruins to the southeast are haunted by a sound like grinding teeth.",
+						"Princess Elara’s shadow is growing, and the dukes are getting closer to this road."
+					]
+				},
+				{
+					"slot": 2,
+					"name": "Jessa",
+					"role": "lookout",
+					"glyph": "J",
+					"appearance": "Lean, wearing a dented breastplate looted from a soldier long dead.",
+					"persona": "Bored and cynical, spitting tobacco into the salt-crust at her feet.",
+					"disposition": 3,
+					"placement": "bench",
+					"knows": [
+						"The Third-Son camp in the northeast has a cache of stolen charcoal.",
+						"Travelers heading west usually don't come back, even if they claim to have gold."
+					]
+				}
+			],
+			"hooks": [
+				"Secure a safe passage through the northern pass by bribing the Third-Son Brigands.",
+				"Investigate the slaughtered caravan to the east before the scavengers strip it bare."
+			]
+		},
+		"3986944761": {
+			"siteId": 3986944761,
+			"name": "Rustgutter",
+			"shortName": "Rustgutter",
+			"description": "A collection of shacks built from riveted plating and warped timber, huddled around a brackish well in the center of the Sallow Flats. The air tastes of metallic dust and old rot.",
+			"settlement": {
+				"name": "Rustgutter",
+				"walled": false,
+				"structures": [
+					{
+						"kind": "inn",
+						"size": "large",
+						"importance": 5,
+						"name": "The Dry Throat",
+						"signText": "Water for coin, nothing for free."
+					},
+					{
+						"kind": "smithy",
+						"size": "medium",
+						"importance": 4,
+						"name": "The Scrap Anvil"
+					},
+					{
+						"kind": "warehouse",
+						"size": "medium",
+						"importance": 4,
+						"name": "Taxman's Storehouse"
+					},
+					{
+						"kind": "shop",
+						"size": "small",
+						"importance": 3,
+						"name": "Gristle's Sundries",
+						"signText": "Scrap traded for rations."
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 2,
+						"name": "Elias's Shack"
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 2,
+						"name": "The Widow's Hovel"
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1,
+						"name": "Soot-Stained Hut"
+					},
+					{
+						"kind": "house",
+						"size": "small",
+						"importance": 1,
+						"name": "Collapsed Dwelling"
+					}
+				]
+			},
+			"npcs": [
+				{
+					"slot": 0,
+					"name": "Vane",
+					"role": "tax collector",
+					"glyph": "V",
+					"appearance": "Wears a coat of piecemeal chainmail and carries a ledger bound in cracked skin.",
+					"persona": "Cold, precise, and obsessed with documentation in a place without laws.",
+					"disposition": 2,
+					"placement": "doorstep",
+					"knows": [
+						"The King is dead but his debts remain active.",
+						"The local dukes are idiots who don't know how to track an asset.",
+						"The road east to the cave is blocked by a rockslide, find a detour."
+					]
+				},
+				{
+					"slot": 1,
+					"name": "Old Mags",
+					"role": "innkeeper",
+					"glyph": "O",
+					"appearance": "Has a glass eye that doesn't track and fingers stained permanently grey from handling charcoal.",
+					"persona": "Grumpy, speaks in short, barked sentences.",
+					"disposition": 4,
+					"placement": "doorstep",
+					"structureName": "The Dry Throat",
+					"knows": [
+						"The charcoal burner's girl is hiding in the hut at the edge of the woods.",
+						"The water in the well is turning sour again.",
+						"Don't trust the soldiers camped to the southwest, they haven't paid their tab."
+					]
+				},
+				{
+					"slot": 2,
+					"name": "Kael",
+					"role": "scavenger",
+					"glyph": "K",
+					"appearance": "Wrapped in oil-slicked rags, smelling of rusted iron and stagnant water.",
+					"persona": "Twitchy, perpetually checking over his shoulder for thieves.",
+					"disposition": 3,
+					"placement": "well",
+					"structureName": "The Scrap Anvil",
+					"knows": [
+						"The ruins three days north have been picked clean by the local lords.",
+						"Steel is worth more than silver in the Sallow Flats right now.",
+						"If you want to live, avoid the shadow of the cliff."
+					]
+				},
+				{
+					"slot": 3,
+					"name": "Bram",
+					"role": "blacksmith",
+					"glyph": "B",
+					"appearance": "Massive, scarred arms and a leather apron stiff with old grease.",
+					"persona": "Quiet, observes everything while hammering away at junk metal.",
+					"disposition": 5,
+					"placement": "yard",
+					"structureName": "The Scrap Anvil",
+					"knows": [
+						"A caravan from the capital stopped here two weeks ago, looking for a royal crest.",
+						"The swords the dukes carry are rusted brittle; one solid strike and they snap.",
+						"Nobody has heard from the outposts in the southern canyon for a month."
+					]
+				},
+				{
+					"slot": 4,
+					"name": "Jessa",
+					"role": "merchant",
+					"glyph": "J",
+					"appearance": "A thin woman with a sharp, bird-like nose and quick eyes.",
+					"persona": "Always looking for a bargain, quick to suggest a trade.",
+					"disposition": 3,
+					"placement": "doorstep",
+					"structureName": "Gristle's Sundries",
+					"knows": [
+						"Fresh salt is selling for three coppers a pound in the next town.",
+						"The duke's men are fighting over who gets the better sleeping quarters.",
+						"A blind man in the camp to the southwest claims he can smell the princess's perfume."
+					]
+				},
+				{
+					"slot": 5,
+					"name": "Silas",
+					"role": "drifter",
+					"glyph": "S",
+					"appearance": "Sun-bleached beard and skin that looks like cured leather.",
+					"persona": "Philosophical but hopeless, drinks whenever he can.",
+					"disposition": 4,
+					"placement": "bench",
+					"structureName": "The Dry Throat",
+					"knows": [
+						"The cave to the east is haunted by more than just echoes.",
+						"The kingdom is falling apart, but the taxman still has his ink.",
+						"The next town down the road is burning, don't bother going there."
+					]
+				}
+			],
+			"hooks": [
+				"The taxman is hiring mercenaries to forcibly extract taxes from the self-proclaimed dukes.",
+				"A group of soldiers is looking for a way to enter the soot-stained hut without triggering a trap."
+			]
+		}
+	},
+	"arc": {
+		"title": "The Ash-Stained Crown",
+		"premise": "Princess Elara lives in the soot of a charcoal burner's hut, a living currency for her father's debts. With the King dead, the valley fills with dukes and brigands eager to claim a throne built on mud and broken promises.",
+		"beats": [
+			{
+				"id": "scavengers-bargain",
+				"order": 0,
+				"siteId": 3986944761,
+				"npcSlot": 2,
+				"requires": [],
+				"setsFlag": "arc:scavengers-bargain",
+				"optional": true,
+				"quest": {
+					"id": "scavengers-bargain",
+					"name": "A Sallow Bribe",
+					"description": "Recover the scavenger's tools from the warehouse in Rustgutter to secure the Princess's temporary safety.",
+					"objectives": [
+						{
+							"kind": "have",
+							"target": "Rusted Toolset",
+							"quantity": 1,
+							"done": false
+						},
+						{
+							"kind": "have",
+							"target": "Rusted Toolset",
+							"done": false
+						}
+					]
+				},
+				"journal": "Kael will lead the brigands into the flats for a price; I need to fetch his tools from the rusted warehouse."
+			},
+			{
+				"id": "the-king-s-ledger",
+				"order": 1,
+				"siteId": 1278240940,
+				"npcSlot": 1,
+				"requires": [],
+				"setsFlag": "arc:the-king-s-ledger",
+				"quest": {
+					"id": "the-king-s-ledger",
+					"name": "The Price of a Crown",
+					"description": "Locate the damp ledger in the ruins of Rust-Hollow and bring the truth to Kaelen the Ledger-Keeper the taxman.",
+					"objectives": [
+						{
+							"kind": "talk",
+							"target": "Kaelen the Ledger-Keeper",
+							"quantity": 1,
+							"done": false
+						},
+						{
+							"kind": "have",
+							"target": "Damp Ledger",
+							"done": false
+						}
+					]
+				},
+				"journal": "The taxman in Rust-Hollow knows the Princess was never legally sold; the proof is rotting in the iron sands."
+			}
+		]
+	},
+	"triggers": [
+		{
+			"id": "the-wolves-follow",
+			"when": {
+				"flag": "arc:scavengers-bargain"
+			},
+			"effects": [
+				{
+					"t": "RecordJournal",
+					"entry": {
+						"kind": "event",
+						"text": "The forest path is marked by fresh blood and Kael is nowhere to be seen.",
+						"source": "trigger:the-wolves-follow"
+					}
+				},
+				{
+					"t": "ShowCard",
+					"card": {
+						"id": "trigger:the-wolves-follow",
+						"title": "A trail of ash",
+						"sections": [
+							{
+								"heading": "What has changed",
+								"body": "The rusted warehouse stands wide, its hinges ripped clean from the rotted wood. Scraps of Kael's leather apron are pinned to the doorframe by a jagged knife, and the heavy thud of boots echoes from the deeper brush. The brigands have already started their march, and they are not looking for a guide."
+							}
+						]
+					}
+				}
+			]
+		},
+		{
+			"id": "tide-of-iron",
+			"when": {
+				"flag": "arc:the-king-s-ledger"
+			},
+			"effects": [
+				{
+					"t": "RecordJournal",
+					"entry": {
+						"kind": "event",
+						"text": "The taxman has vanished, but his ledger is stained with enough salt to bury the truth.",
+						"source": "trigger:tide-of-iron"
+					}
+				},
+				{
+					"t": "ShowCard",
+					"card": {
+						"id": "trigger:tide-of-iron",
+						"title": "Rust-Hollow is quiet",
+						"sections": [
+							{
+								"heading": "What has changed",
+								"body": "The iron sands have shifted, exposing the taxman's office to the rising tide. The ledgers lay scattered in the surf, pages bloated and black with brine, rendering the proof of royal debt illegible. A line of mounted men sits motionless on the ridge, watching the shoreline for a sign of the girl."
+							}
+						]
+					}
+				}
+			]
+		}
+	],
+	"placements": [
+		{
+			"id": "find:scavengers-bargain",
+			"at": {
+				"kind": "site",
+				"siteId": 3986944761,
+				"structure": "The Dry Throat"
+			},
+			"item": {
+				"name": "Rusted Toolset",
+				"description": "A heavy iron box filled with blackened wrenches and a jagged hacksaw."
+			},
+			"showDecor": true
+		},
+		{
+			"id": "find:the-king-s-ledger",
+			"at": {
+				"kind": "site",
+				"siteId": 1278240940,
+				"structure": "barn"
+			},
+			"item": {
+				"name": "Damp Ledger",
+				"description": "A book of accounts stained with salt and ink, proving the King's debt was a fabrication."
+			},
+			"showDecor": true
+		}
+	],
+	"trees": {
+		"npc:3986944761:2": {
+			"npcId": "npc:3986944761:2",
+			"entry": ["kael-intro"],
+			"revisit": ["kael-intro"],
+			"nodes": {
+				"kael-intro": {
+					"id": "kael-intro",
+					"speech": "Keep your hands where I can see them. The mud here has a habit of swallowing fingers that stray too close to a man's kit.",
+					"choices": [
+						{
+							"text": "What's the word from the north?",
+							"goto": "kael-north"
+						},
+						{
+							"text": "I hear the dukes are fighting over the charcoal burner's hut.",
+							"goto": "kael-dukes"
+						},
+						{
+							"text": "I'll leave you to your filth.",
+							"goto": null
+						}
+					]
+				},
+				"kael-north": {
+					"id": "kael-north",
+					"speech": "The ruins are picked clean. The self-proclaimed lords scoured every stone for silver, but steel is the only thing worth holding now. If you're heading that way, stay out of the cliff's shadow.",
+					"choices": [
+						{
+							"text": "I need a guide to lead some men through the flats.",
+							"goto": "kael-deal"
+						},
+						{
+							"text": "I'm looking for the King's ledger.",
+							"goto": "kael-ledger",
+							"requires": ["arc:the-king-s-ledger"]
+						},
+						{
+							"text": "I've heard enough.",
+							"goto": null
+						}
+					]
+				},
+				"kael-dukes": {
+					"id": "kael-dukes",
+					"speech": "The taxman is hiring blades to bleed those dukes dry. Meanwhile, soldiers are scratching their heads outside that soot-stained hut, terrified of the traps the burner set.",
+					"choices": [
+						{
+							"text": "I'm more interested in the brigands needing a guide.",
+							"goto": "kael-deal"
+						},
+						{
+							"text": "I have business elsewhere.",
+							"goto": null
+						}
+					]
+				},
+				"kael-ledger": {
+					"id": "kael-ledger",
+					"speech": "That old book? I saw a man in oil-slicked rags heading toward the warehouse with something heavy under his arm. Probably looking to trade it for a pint of clean water.",
+					"choices": [
+						{
+							"text": "Tell me about the guide work.",
+							"goto": "kael-deal"
+						},
+						{
+							"text": "I'll check the warehouse.",
+							"goto": null
+						}
+					]
+				},
+				"kael-deal": {
+					"id": "kael-deal",
+					"speech": "I'll lead your brigands through the Sallow Flats, but I'm not doing it empty-handed. My tools are locked in the rusted warehouse; bring them to me, and I'll show them the path.",
+					"choices": [
+						{
+							"text": "I'll fetch your tools.",
+							"goto": null
+						},
+						{
+							"text": "Forget it. I'll find another way.",
+							"goto": null
+						}
+					],
+					"actions": [
+						{
+							"kind": "createQuest",
+							"item": null,
+							"description": "Kael will guide the brigands if you retrieve his tools from the rusted warehouse.",
+							"quantity": null,
+							"questId": "a_sallow_bribe",
+							"questName": "A Sallow Bribe",
+							"note": "Kael needs his heavy wrenches and prybar from the warehouse.",
+							"objectives": [
+								{
+									"kind": "reach",
+									"target": "Rusted Warehouse",
+									"quantity": 1
+								},
+								{
+									"kind": "have",
+									"target": "Kael's Tools",
+									"quantity": 1
+								}
+							],
+							"key": null,
+							"value": null
+						}
+					]
+				}
+			}
+		},
+		"npc:1278240940:1": {
+			"npcId": "npc:1278240940:1",
+			"entry": ["secret", "start"],
+			"revisit": ["start"],
+			"nodes": {
+				"start": {
+					"id": "start",
+					"speech": "Paragraph nine: the Ledger-Keeper shall remain at his post until the ink freezes. The ink is not frozen, but my blood is, with the Dukes riding this way.",
+					"choices": [
+						{
+							"text": "Why are the Dukes coming to this godforsaken basin?",
+							"goto": "lords"
+						},
+						{
+							"text": "You look like the wind is about to take you. Goodbye.",
+							"goto": null
+						}
+					]
+				},
+				"lords": {
+					"id": "lords",
+					"speech": "They aren't here for the sand. They're here for the girl at the burner's hut. Oakhaven is a charcoal smudge now because they thought she was hiding in the wells.",
+					"choices": [
+						{
+							"text": "She was sold to pay the King's debts. Isn't that the end of it?",
+							"goto": "secret"
+						},
+						{
+							"text": "I've seen the King's own ledger. It doesn't mention a sale.",
+							"goto": "secret",
+							"requires": ["arc:the-king-s-ledger"]
+						},
+						{
+							"text": "I heard the village was destroyed. Who did it?",
+							"goto": "warinfo"
+						},
+						{
+							"text": "Keep your books, taxman. I'm moving on.",
+							"goto": null
+						}
+					]
+				},
+				"warinfo": {
+					"id": "warinfo",
+					"speech": "A pretender from the south, smelling of perfume and wet horse. He's looking for a bride to legitimize his theft of the Thistle Throne.",
+					"choices": [
+						{
+							"text": "The Princess belongs to the burner now.",
+							"goto": "secret"
+						},
+						{
+							"text": "I need to go.",
+							"goto": null
+						}
+					]
+				},
+				"secret": {
+					"id": "secret",
+					"speech": "That's the lie they've swallowed. The Thistle Law is absolute: royal blood cannot be traded for coin or card. The deed they hold is a forgery, signed in a coward's hand.",
+					"choices": [
+						{
+							"text": "If the sale was illegal, where is the real record?",
+							"goto": "quest-node"
+						},
+						{
+							"text": "A forgery? That would make her the rightful Queen.",
+							"goto": "quest-node"
+						}
+					]
+				},
+				"quest-node": {
+					"id": "quest-node",
+					"speech": "In the dunes, buried under the rusted hull of a failed invasion ship. Find the wagon before the scavengers pick the lock, and you hold the fate of the valley.",
+					"choices": [
+						{
+							"text": "I'll find the wagon.",
+							"goto": null
+						},
+						{
+							"text": "And what about you? The Dukes won't like you keeping secrets.",
+							"goto": "escort"
+						}
+					],
+					"actions": [
+						{
+							"kind": "createQuest",
+							"item": null,
+							"description": "Find the true deed in the dunes.",
+							"quantity": null,
+							"questId": "price_of_a_crown",
+							"questName": "The Price of a Crown",
+							"note": "The Princess was never legally sold.",
+							"objectives": [
+								{
+									"kind": "reach",
+									"target": "Abandoned Wagon",
+									"quantity": 1
+								}
+							],
+							"key": null,
+							"value": null
+						}
+					]
+				},
+				"escort": {
+					"id": "escort",
+					"speech": "The Godless Peaks. No Duke will climb those heights for a man with ink on his fingers. I'll pay you in stamps and seals, the only things I have left.",
+					"choices": [
+						{
+							"text": "I'll take you there.",
+							"goto": null
+						},
+						{
+							"text": "I travel alone.",
+							"goto": null
+						}
+					]
+				}
+			}
+		}
+	},
+	"authoredWith": {
+		"models": {
+			"bible": "google/gemini-3-flash",
+			"director": "google/gemini-3.1-flash-lite",
+			"dialogue": "google/gemini-3-flash"
+		},
+		"calls": 13,
+		"at": "2026-08-10T18:24:44.231Z"
+	},
+	"tiles": "saltmere",
+	"time": {
+		"enabled": false
+	}
+}

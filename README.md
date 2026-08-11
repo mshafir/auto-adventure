@@ -691,6 +691,14 @@ any other failure, and the last attempt is spent on a dearer model from the same
 provider where the catalogue names one. Both are paid only on a call that has already
 failed, and both are visible in the cost line.
 
+A written world puts up its own signposts, and they cost nothing: the arc knows which
+towns the story walks between, so a board goes up on the road out of each one with the
+next place on it. The direction and the distance are worked out from where that place
+actually is, every time you face the post — there is no field in a scenario file for a
+compass point, which is the only way to be sure a board never points the wrong way. It
+matters because an open errand only gets a bearing on the map once you have *been* to the
+town it is in, so the case with no marker at all is exactly the case you need one for.
+
 Add `--debug` to keep every prompt and every answer in the log, at full length. The
 launcher offers the same thing as **keep the working**, which additionally makes them
 readable inside the game: `D` on the writing screen, and a `Working` tab in the menu

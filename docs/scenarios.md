@@ -139,6 +139,7 @@ interface ScenarioArtifact {
   readonly triggers?: Trigger[];          // condition -> effects
   readonly barriers?: Barrier[];          // gates across the world
   readonly placements?: Placement[];      // particular things in particular places
+  readonly signs?: Sign[];                // boards on posts, saying which way
   readonly time?: TimeOptions;            // whether this world has a clock at all
 
   readonly authoredWith: {
@@ -288,6 +289,49 @@ after every command rather than only during a conversation:
 ```json
 { "id": "the-porters-gate", "opensOn": { "visited": "Hautdesert" } }
 ```
+
+## Signposts
+
+The player's problem is not that the world is confusing; it is that they do not know
+which way. An open errand gets a bearing on the map — but only once its site is in
+`discovered`, which means the one case with no marker at all is the case that needs one:
+a town they have never been to. So the third scene ends, the log says the clerk who
+countersigned it has not been seen since, and there are six towns on the compass.
+
+A signpost is the diegetic answer, and it is better than a marker for the reason a
+signpost is better than a map in life: it stands *where the decision is made*.
+
+```json
+{ "id": "sign:site-2528282773",
+  "x": 412, "y": -96,
+  "arms": [{ "siteId": 1841772045 }, { "siteId": 903112, "label": "the weighing station" }],
+  "note": "Toll paid at the bridge, no exceptions." }
+```
+
+**A board cannot point the wrong way, because there is nowhere to write a direction.**
+An arm names a *site*; the compass point and the distance are computed from where that
+site actually is, every time the player faces the post. So moving a town in the recipe
+turns every arm pointing at it, with nothing to keep in step by hand — and a model
+cannot be asked for a bearing it has no coordinates to work out. Prose can lie about a
+compass and a subtraction cannot, and a signpost that lies is worse than none: the
+player believes it and walks for two minutes.
+
+Three arms at most, and the limit is the panel rather than the fiction — what you are
+facing is described in two lines of a fixed-height frame. `note` is where flavour goes,
+and it is the only free text on a board.
+
+The generator stamps `D.signpost` on the tile, and only where the ground is standable —
+a post is read by *facing* it, so one in the water is a promise attached to bare ground.
+It is decor rather than terrain, so it takes no passability away and cannot wall off a
+road however badly it is placed.
+
+A generated world gets its boards for free, without a model call: `signpostsFor` walks
+the arc's legs, marches the road out of each place the player is leaving, and plants a
+post on the first verge it finds — nearest first, since a board twenty tiles out is one
+the player reaches after they have already guessed. `checkWayfinding` is the check on
+the other side of it, and it accepts any of the three honest answers: the destination
+named in prose the player has read by then, an objective the map can mark, or an arm
+pointing there.
 
 ## Special items in specific places
 

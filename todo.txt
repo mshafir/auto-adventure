@@ -1,0 +1,9 @@
+(A) 2026-08-09 richer debug logging during generation (in file and in view), full prompt transcriptions
+2026-08-09 multi-world gen background goal
+2026-08-09 richer structures and biomes
+2026-08-09 fast travel (horse, boat, airship), unlockable
+2026-08-09 battle scenes (rougelike battles / enemies) if enabled
+2026-08-09 fast travel to visited towns by name
+2026-08-10 larger interiors (castles with many rooms, longer caves)
+2026-08-11 buildsSomething cannot reject a settlement that builds nothing — survey.ts:121-129 accepts any patch with an anchor, and buildSettlement always emits square+well, so buildingless towns get named, populated and given story beats (see invariants baseline: Wodedesert, Wain Keep)
+2026-08-11 finish the dialogue-directions half of wayfinding: nextStop/sendsTo is still uncommitted and entangled with polish.ts and the prompts.ts rework. The signpost half is done and wired (derive -> stamp -> read -> render), covered end to end incl. the chunk-manager threading.

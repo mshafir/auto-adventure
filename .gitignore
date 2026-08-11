@@ -9,3 +9,6 @@ state.json
 *.raw
 .claude/worktrees
 .tokensave
+
+# Subagent-driven development scratch: ledgers, briefs, review packages.
+.superpowers/
