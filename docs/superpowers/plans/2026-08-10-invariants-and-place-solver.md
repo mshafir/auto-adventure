@@ -2071,9 +2071,9 @@ reassignment cost Stubchapel ground elsewhere: its house ask regressed from buil
 built 1 (still a violation either way, so the total there is unaffected, but it is the same
 trade-off as the other two below and should not be left out). On `a-secret-lies-in-the` it
 fixes Bedrock's End's inn ask outright. On `thornwick-road` it net-fixes two asks at
-Harrowmere, trading an apothecary ask and a shop ask fixed for a stable ask newly broken.
-`an-interesting-spin-on-the` held flat at 6 for the same kind of trade, just netting to
-zero: Salt-Spit Junction's shop ask is now satisfied but its house ask, satisfied at
+Harrowmere, trading an apothecary ask, a shop ask, and a smithy ask fixed for a stable ask
+newly broken. `an-interesting-spin-on-the` held flat at 6 for the same kind of trade, just
+netting to zero: Salt-Spit Junction's shop ask is now satisfied but its house ask, satisfied at
 baseline, is not, and Rustgutter's house count improved from built 1 to built 2 but is still
 short — churn, not progress, because the plots this town has are still outnumbered by what
 it asks for. None of this required anything to be `required: true` — nothing on disk sets
