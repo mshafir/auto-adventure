@@ -15,7 +15,10 @@ them what came out. They are independent to build.
 - **C. Generation integrity.** The placement solver knows when it has failed and nobody
   asks; the repair pass deletes story to make faults go away; and the two checks that
   would prove a world playable are CLI-only. Result: a player can be handed a world whose
-  main story cannot be finished.
+  main story cannot be finished. The answer is to walk the story in the real engine as part
+  of writing it, fixing the map and the placements beat by beat until each one works — so
+  that by the end either everything was accommodated, or we know the beat that defeated us
+  and can ask the player whether to try a fresh seed.
 
 C is much the largest. A is self-contained and makes C's failures readable while C is
 being built, so A lands first. C depends on B only for the reseed's "keep the bundle"
@@ -285,7 +288,7 @@ The **target** differs by stage, because at survey time no roster has been writt
 - At survey time it is the unclamped `buildingBudget` formula — what we are about to tell
   the model it may ask for. Growing to meet it is how the promise in the prompt becomes
   true.
-- At repair time (C4) it is the *authored* roster's required structures for that site,
+- During the walk (C5) it is the *authored* roster's required structures for that site,
   which is a smaller and more specific number.
 
 The **ceiling** is `min(next size up on the ladder, 1.5 × the site's computed radius)`,
@@ -319,87 +322,137 @@ building for kinds the settlement builder claims, rather than accepting the `squ
 A site that cannot reach one plot even at its ceiling is dropped from the survey, so
 nothing downstream names it, peoples it or hangs a beat on it.
 
-### C4. Repair policy: the main line is sacred
+### C4. Repair policy: the main line is sacred, and repairs split in two
+
+The organising rule: **static repairs fix what the artifact *says*; the walk (C5) fixes
+*where things are*.** Today's `REPAIRS` list mixes the two, which is why the same fault can
+be answered by a deletion in one place and a relocation in another.
 
 `mainLine(artifact): ReadonlySet<string>` — the ids of non-optional beats — added to
-`repair.ts`. Every dropping repair takes it:
+`repair.ts`. Every dropping repair takes it and, for a main-line beat, emits an
+error-severity finding instead of deleting. Optional beats keep today's behaviour exactly.
 
-- `dropObjectivesNothingCanTick`, `dropErrandsForThingsThatDoNotExist`,
-  `forgetPeopleWhoAreNotHere`: skip main-line beats and emit an error-severity finding
-  instead of deleting. Optional beats keep today's behaviour exactly.
-- `dropOneArmedForks` is unchanged: a lone arm is not a choice, and dropping the branch
-  leaves the beat exactly as it plays.
+**Stays in the static pass** (nothing spatial about any of it):
 
-New repair `growSitesForTheStory`, ordered **before** the droppers: given a main-line
-fault naming a site whose required structure went unplaced (now visible via C1's
-`unplaced`) or whose named building was not built, grow that site's radius on the
-artifact's recipe and re-stamp. Bounded by the same ceiling and the same two hard
-constraints as C3.
+- `dropObjectivesNothingCanTick` — a flag nothing writes is a fact about the artifact.
+- `forgetPeopleWhoAreNotHere` — a condition naming somebody the roster does not contain.
+- `dropOneArmedForks` — unchanged and unguarded: a lone arm is not a choice, and dropping
+  the branch leaves the beat exactly as it plays.
+- `sayWhereToGoNext`, `gateTheCastOnTheirOwnScene` — both about what the prose says.
+
+**Moves into the walk as a fix tier** — these are the spatial ones, and running them both
+statically and again during the walk would be two answers to one question:
+
+- `standTheCastSomewhereReal`
+- `hideThingsWhereThereIsSomewhereToHideThem`
+- `spellObjectivesAsTheWorldDoes`
+- `dropErrandsForThingsThatDoNotExist` — and on the main line it becomes a *failure* rather
+  than a drop.
+
+**The loop collapses to a single pass.** `repairUntilClean`'s two rounds and its
+`score(after) >= score(before)` judging existed because static findings were the only
+available measure of "better", and a repair with an unforeseen consequence had to be caught
+somehow. The walk is now that check and a far stronger one, so the static repairs run once,
+in order, unjudged. This also removes the scoring subtlety that forbidding main-line drops
+would otherwise have introduced — a round whose findings deliberately persist can no longer
+be thrown away along with the good repairs inside it.
 
 Re-layout is safe for the cast: `NpcSpec.placement` is an anchor *kind* and
 `structureName` is a name, both resolved at runtime, so a changed layout re-places people
 rather than orphaning them.
 
-One consequence to watch in implementation: forbidding a drop leaves its finding standing,
-and `repairUntilClean` throws away a round whose score did not improve — including the good
-repairs in it. So `growSitesForTheStory` has to be able to improve the score on its own,
-and the round-scoring needs a test that a grow-only round is kept.
+### C5. `settleTheStory` — a forward walk that fixes as it goes
 
-### C5. Structural gate, inside the loop
+This is the pass that makes a world playable rather than merely checking whether it is. The
+insight that makes it cheaper as well as stronger than checking the whole world and starting
+over: `repair.ts:71-76` notes each repair round **generates the bounded world twice**, while
+a forward walk visits only the sites the story actually uses, and after a local fix every
+untouched site's patch is still cached.
 
-`inspect()` (`repair.ts:118`) gains:
+```
+settleTheStory(draft):
+  session = buildSession(draft, { persist: false })
+  for beat of orderedBeats(draft.arc):
+      reach it, open it, satisfy it
+      ok                    -> advance
+      not ok                -> diagnose; apply the narrowest fix; retry (<= 3)
+      attempts spent, optional beat   -> drop the beat, advance
+      attempts spent, main-line beat  -> stop here; report the beat and what was tried
+```
 
-- `checkStructuresBuilt` and `checkBuildingsReachable`, moved from tool-only reach.
-- New `checkKeyPlacements`: every main-line beat's NPC resolves to somebody the world
-  places, and every main-line `have` objective resolves to something the world contains.
-  This is the "after item/NPC placement, make sure all the key ones are placed" check.
+**Ephemeral session, and a bug this uncovers.** `buildSession` constructs a
+`SaveRepository` and `dispose()` *flushes* it (`save-repo.ts:186-192`), so today's
+`walkTheStory` writes a save under `walk-<id>`; `listSaves` has no filter
+(`save-repo.ts:72-96`), so it would appear in the Continue list. Tolerable for a CLI tool,
+a visible bug on the generation path. So this needs `buildSession(choice, { persist:
+false })` backed by a `SaveRepository` that never writes. Worth fixing for `tools/validate`
+too.
 
-  It asks the item half through the *same* resolver `dropErrandsForThingsThatDoNotExist`
-  uses — `surroundingsFor` plus `resolveObjectiveTarget` — rather than a second route, so
-  the check and the repair cannot disagree about whether a thing exists. That matters more
-  than usual here: under C4 the repair is now forbidden from deleting the objective, so its
-  answer and this check's answer are the same fact reported to two audiences.
+**Fix tiers, cheapest first**, each with a defined invalidation cost:
 
-These generate settlement patches, and so does `checkPlaces`. Patch generation is shared
-across the round rather than repeated per check — three independent `invalidateFeature` +
-`generateSettlement` sweeps per round would triple the most expensive thing in the
-pipeline and could disagree about what was built.
+| Fault at the beat | Fix | Cost |
+|---|---|---|
+| objective names a thing the world spells differently | respell it | artifact only — **walk continues** |
+| NPC's `placement` anchor kind absent at the site | re-point to an anchor that exists | rebuild that site's NPC directory — **continues** |
+| NPC's `structureName` was not built | re-point to a building that was | same — **continues** |
+| item has nowhere to be hidden | another container at the site | same — **continues** |
+| required structure went unplaced (C1's `unplaced`) | grow the site (C3's ceiling and constraints) | invalidate that site's feature and overlapping chunks; restart the walk |
+| no walkable route to the site at all | nothing local helps | fail the beat |
 
-Scope discipline from `invariants.ts:15-45` still holds: measure what nothing else
-measures, or share a question already asked. Nothing here re-asks a `validate.ts` question
-by a second route.
+The first four do not touch the map, so the walk carries on from where it was — which is
+the whole point of the pass. Only growth restarts.
 
-### C6. The playability gate
+**Growth restarts from the first beat rather than resuming.** Replaying to beat *N-1* costs
+exactly what walking to it cost, so resumption saves nothing; and a fresh start is provably
+correct where splicing a regrown site under a live session is the kind of thing that works
+until it does not. With caches warm for every untouched site, a restart is engine commands
+— milliseconds — not world generation.
 
-After the repair loop, in `generateScenario`: run `walkTheStory`. It **fails** on any of
+**Termination.** Three guards, and the pass provably ends because each growth strictly
+increases a radius toward its ceiling while each non-map fix strictly shrinks the set of
+unresolved placements:
 
-- a main-line beat in `stuck`,
-- `finished === false`,
-- a main-line beat's NPC in `absent`,
-- a main-line objective in `unfinished`.
+- ≤3 fix attempts per beat,
+- growth operations capped at the number of story sites,
+- a wall-clock budget (60s) after which it stops and reports where it got to.
 
-Concessions on main-line beats are reported, not failures — a walker that cannot guess
-which conversation hands over a ring is a limit of the walker.
+**A concession is not a failure.** A walker that cannot guess which conversation hands over
+a ring is a limit of the walker; concessions are recorded and shown, never gated on.
 
-On failure, its findings feed exactly **one** more grow+repair round, then it walks again.
-Optional-beat failures never gate; they are reported on the review screen.
+**Determinism holds**, which matters because the whole codebase rests on it: the fixes are a
+pure function of the walk, the walk is pure in `(artifact, recipe)`, and the final artifact
+carries the final recipe. A kept world replays exactly.
 
-### C7. Write only on acceptance, and reseed
+**What it reports.** Either every main-line beat opened and closed in the real engine — a
+far stronger statement than "no findings" — or the exact beat that could not be made to
+work, the fault, and each fix that was tried and did not help. That report is what the
+reseed prompt shows.
+
+This is also the answer to "make sure the key NPCs and items are placed": asking whether the
+beat's person is standing somewhere reachable and its item is somewhere findable *is* the
+attempt to open the beat, so there is no separate placement check to write. `invariants.ts`'s
+`checkStructuresBuilt` and `checkBuildingsReachable` stay tool-only, unchanged: the walk
+subsumes what they measure for the story's own sites, and their remaining job is comparing
+whole worlds before and after a change, which is what `invariants.ts:41-44` says they are
+for.
+
+### C6. Write only on acceptance, and reseed
 
 `generateScenario` stops writing unconditionally (`generate.ts:191`). Instead:
 
-- **Gate passed** → write, review screen, play. Today's flow.
-- **Gate failed** → write nothing. Return the artifact and a gate report in the outcome.
+- **Story settled** → write, review screen, play. Today's flow.
+- **Story stuck** → write nothing. Return the artifact and the `settleTheStory` report in
+  the outcome.
 
 `generateAndLaunch` becomes a loop over attempts. On failure it shows an unplayable screen
-listing the gate errors, with:
+naming the beat that could not be settled and what was tried, with:
 
 - `R` — discard this artifact and start attempt *n+1*. Same premise, title, tone, length,
   model and packs; **id unchanged**; seed salted as `resolveSeed(`${id}#${attempt}`)` for
   attempt > 1. No cap: each attempt is an explicit keypress and the estimated cost is on
   the screen before it is spent.
-- `P` — write it, then play it. The only path by which a world that failed the gate reaches
-  the disk, and it is the player's decision.
+- `P` — write it, then play it. The only path by which a world with an unsettled story
+  reaches the disk, and it is the player's decision.
 - `ESC` — abandon. Nothing is written.
 
 Because the id no longer determines the seed after a reseed, the "same name always names
@@ -425,15 +478,24 @@ Everything below runs offline with no key.
   come within 4 tiles of a neighbour; stops as soon as capacity suffices.
 - **Buildingless site.** A fixture where the ground yields no plots is dropped by
   `buildsSomething` — the test the current `buildsSomething` cannot fail.
-- **Repair policy.** A main-line objective survives a repair round that would have dropped
+- **Repair policy.** A main-line objective survives the static pass that would have dropped
   it, and the finding is present with `error` severity; the equivalent optional objective
   is still dropped.
-- **Grow-only round is kept.** `repairUntilClean` does not discard a round whose only
-  change was growing a site.
-- **`checkKeyPlacements`.** An artifact whose main-line NPC names an unbuilt building is
-  reported; one whose optional-beat NPC does is not.
-- **The gate.** A deliberately-broken fixture fails and writes nothing; a good one passes
-  and writes. `walkTheStory` already has coverage to build on.
+- **The walk fixes without restarting.** A fixture whose main-line NPC names an unbuilt
+  building is re-pointed and the beat then opens, and the walk does *not* regenerate any
+  site's feature — asserted by counting feature invalidations, which is what distinguishes
+  a continuing walk from a restarting one.
+- **The walk grows and restarts.** A fixture where a required structure went unplaced grows
+  that site, restarts, and settles; the invalidation count is exactly one site.
+- **The walk gives up on the right thing.** An unreachable main-line beat stops the pass and
+  names that beat; the same fault on an optional beat drops it and settles.
+- **Termination.** A fixture engineered to fail every fix stops at the per-beat attempt cap
+  rather than looping, and one engineered to be slow stops at the wall-clock budget.
+- **Determinism.** The same draft settles to a byte-identical artifact twice.
+- **No saves are written.** A settle pass leaves `listSaves()` unchanged — the regression
+  test for the `walk-<id>` leak.
+- **Write only on acceptance.** A stuck story writes nothing; accepting it writes; a settled
+  one writes without being asked.
 - **Reseed.** Attempt 2 keeps the id and the brief and produces a different seed.
 
 ### Risks
@@ -444,14 +506,25 @@ Everything below runs offline with no key.
 2. **Bigger radii churn the golden tests.** `golden.test.ts`, `coherence.test.ts` and
    `seam.test.ts` will all change. Expected and accepted; pinning the four existing
    artifacts keeps the *scenario* tests still.
-3. **Generation gets slower.** ~1.8× the tiles per settlement patch (cached per site, so
-   once each), plus seconds for the walk, plus possibly one extra repair round which
-   generates the bounded world twice. Worst case roughly +30s on a medium world.
-4. **Clearance refuses growth in dense regions**, which is correct but means some sites
-   keep a short roster and report it rather than being fixed.
-5. **Forbidding drops can strand a round.** Covered by the grow-only-round test, but the
-   interaction between the new findings and `score()` is the subtlest part of C4 and
-   deserves attention during implementation rather than at review.
+3. **Generation cost, which should go down.** ~1.8× the tiles per settlement patch (cached
+   per site, so once each), against removing up to three of the four bounded-world
+   generations the old repair loop could perform. The walk itself is engine commands over
+   warm caches. Net expected to be faster; to be measured, not assumed, since "should be
+   cheaper" is exactly the kind of claim this codebase asks to be checked.
+4. **Clearance refuses growth in dense regions**, which is correct but means some sites keep
+   a short roster and report it rather than being fixed.
+5. **The engine is now on the generation path.** This is the real risk of C5 and it is not a
+   performance one: a hang or a throw inside `settleTheStory` now happens to somebody who
+   has paid for four minutes of authoring. The wall-clock budget and the attempt caps are
+   the guards; on top of them the pass must be wrapped so that an unexpected throw degrades
+   to "could not settle the story" with the artifact intact, never to a lost run. The same
+   rule `client.ts` states for model calls — a failure never throws into the thing that
+   asked.
+6. **Moving four repairs into the walk changes when they run.** They currently run before
+   validation and now run per beat, so a fault at a *later* beat is fixed after an earlier
+   beat has already been satisfied. Intended, and the reason the walk is ordered — but it
+   means the existing `repair.test.ts` cases for those four move with them rather than being
+   deleted.
 
 ---
 
@@ -461,6 +534,13 @@ Everything below runs offline with no key.
   every site in every existing world and break the two hand-authored scenarios' positions.
 - Retrospectively forbidding overlaps that today's seeds already produce. Reported, not
   fixed.
-- Any change to what the walker can do. Its concessions stay concessions.
+- Any change to what the walker can *play*. It gains the ability to fix the world it is
+  walking; it does not learn to search a crate it has no reason to look in, so its
+  concessions stay concessions.
+- Resuming the walk mid-story after a growth fix. Rejected on cost grounds above: replaying
+  to a beat costs what reaching it cost, so resumption buys nothing and risks a spliced
+  session.
+- Automatic reseeding. Every attempt past the first is an explicit keypress, per the failure
+  policy in C6.
 - Persisting the transcript for a *live* (unbounded, non-scenario) world. Part A's
   persistence is keyed to a scenario id.
