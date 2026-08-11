@@ -10,6 +10,7 @@ import { localIndex, toChunk } from "../core/world/coords.js";
 import { isSettlement, macroSite, sitesInside } from "../core/world/macro.js";
 import { worldSeed } from "../core/world/recipe.js";
 import type { SiteSpec } from "../core/world/spec.js";
+import { ChunkManager } from "./chunk-manager.js";
 import { GameEngine } from "./engine.js";
 import { findSpawn } from "./spawn.js";
 
@@ -120,6 +121,25 @@ describe("the generator putting up a post", () => {
 		const bare = generateChunk({ world: WORLD, bounds: BOUNDS }, cc).chunk;
 		const same = generateChunk({ world: WORLD, bounds: BOUNDS, signs: [] }, cc).chunk;
 		expect([...same.decor]).toEqual([...bare.decor]);
+	});
+});
+
+/*
+ * A running game never calls `generateChunk` itself — it goes through `ChunkManager`,
+ * which is handed the scenario's signs once and has to thread them into every chunk it
+ * builds after that. The test above proves the stamping pass works; this one proves the
+ * manager actually reaches it, which is a different claim and the one play depends on.
+ */
+describe("the chunk manager threading signs into the chunks it actually builds", () => {
+	const spawn = findSpawn(WORLD, 12, BOUNDS);
+	const spot = openTileNear(spawn);
+	const cc = toChunk(spot.x, spot.y);
+	const index = localIndex(spot.x - cc.cx * 64, spot.y - cc.cy * 64);
+
+	it("stamps a post on a chunk it builds itself, not one handed to generateChunk directly", () => {
+		const manager = new ChunkManager({ world: WORLD, bounds: BOUNDS, signs: [spot] });
+		const chunk = manager.ensure(cc.cx, cc.cy);
+		expect(chunk.decor[index]).toBe(D.signpost);
 	});
 });
 
