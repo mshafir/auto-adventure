@@ -1730,6 +1730,12 @@ Compare against the `## Baseline` section recorded in Task 4, Step 4.
 Expected: **`structures-built` should fall, on all four scenarios, including the hand-written
 ones.** This corrects an earlier prediction in this plan that it would not move at all.
 
+(Disclosure: this correction was written after Task 4's baseline was recorded and before
+Task 7 ran — before the after-numbers below existed — but it did not reach git until this
+task's commit staged the whole plan file at once, which makes the diff alone unable to show
+that it predates the result. Recorded here so a reader diffing the commit doesn't have to
+take that on faith.)
+
 The reasoning that prediction missed: today's assignment is a *strict positional pairing*
 (`settlement.ts:249-254`). Plots are sorted largest-first, `wanted` is sorted by importance,
 and those two orderings are unrelated — so `plots[i]` is offered only to `wanted[i]`, and if
@@ -2035,38 +2041,56 @@ Before/after:
 | a-secret-lies-in-the (generated) | 14 → 13 | 0 → 0 | 1 → 1 | 1 → 1 |
 | an-interesting-spin-on-the (generated) | 6 → 6 | 0 → 0 | 0 → 0 | 1 → 1 |
 
-**Reading.** `structures-built` fell on three of the four scenarios and held flat on the
-fourth — 14→13, 14→13, 27→25, and 6→6 — exactly as predicted once the plan's earlier,
-wrong prediction of a larger fall was corrected. The mechanism behind the fall is the one
-the corrected text names: best-fit search (Task 6) seats a request on any plot that fits
-it, where the old positional pairing offered `plots[i]` to `wanted[i]` only and dropped the
-request entirely, handing the plot to filler, whenever that one pairing didn't fit. On
-`green-chapel` this fixed Stubchapel's farmhouse (asked 1, built 0 → satisfied); on
-`a-secret-lies-in-the` it fixed Bedrock's End's inn; on `thornwick-road` it net-fixed two at
-Harrowmere. None of this required anything to be `required: true` — nothing on disk sets
-that flag, so every one of these gains is best-fit matching an advisory request more
-competently, not the requirement-survives-filler guarantee Task 9's property test pins.
-That guarantee is real (the property test fails when `PlotRequest.required` is forced to
-`false` and passes when it isn't — see the commit for both outcomes) but it is not what
-moved these numbers, because nothing here asks for anything as `required`.
+**Reading.** This paragraph is a record, not an ex-ante check: it is written with the
+after-numbers already in hand, not as a prediction checked against them afterward. Worth
+being plain about that, and about the plan's actual prediction history, rather than
+compressing the two into one: the plan **originally** predicted `structures-built` would
+**not move at all**, reasoning that nothing sets `required: true`, so phase 2 could not
+apply to any on-disk scenario. That was a prediction of zero fall, and it was wrong.
+Step 3 above then **corrected** it — on the grounds that today's positional pairing drops
+a request whenever its assigned plot doesn't fit, even when a smaller unused plot would
+have held it, and best-fit search does not make that mistake — to predict a **fall**. That
+correction was right in direction for three of the four scenarios (`green-chapel` 14→13,
+`a-secret-lies-in-the` 14→13, `thornwick-road` 27→25) and wrong for the fourth:
+`an-interesting-spin-on-the` held flat at 6.
 
-The fall is modest, not large, because — as the corrected Task 9 text says — most of these
-violations are not misassigned plots but towns with no usable plot at all: `Wodedesert`
+The falls that did happen are small — 1 or 2 per scenario — because most `structures-built`
+violations are towns that built nothing requested at all, and no assignment algorithm,
+best-fit or positional, can seat a structure on a site with no usable plot: `Wodedesert`
 still asks for a farmhouse, three houses, an inn and a shop and still gets none of them,
-unchanged from the baseline, because no assignment algorithm, best-fit or otherwise, can
-seat a structure on a site with nothing to seat it on. `an-interesting-spin-on-the` stayed
-flat at 6 for the same reason at the scenario level: its violations churned internally
-(Salt-Spit Junction's `shop` request is now satisfied but a `house` request that was
-satisfied at baseline is not, and Rustgutter's house count improved from 1 built to 2 but
-is still short) without changing the total, because the plots this town has are still
-outnumbered by what it asks for.
+unchanged from baseline. Neither prediction anticipated that the falls would be this small,
+because neither was made by reading the per-town detail lines — the original predicted zero
+movement outright, and the correction predicted movement without committing to a size
+("falls but does not reach zero" is the only magnitude claim the corrected Step 3 text
+makes; "modest" is not something either prediction said).
+
+Where a fall happened, the mechanism is the one the correction named: best-fit search
+satisfies a request the old positional pairing would have dropped. On `green-chapel` this
+satisfies Stubchapel's farmhouse ask (asked 1, built 0 → satisfied) — but the same
+reassignment cost Stubchapel ground elsewhere: its house ask regressed from built 2 to
+built 1 (still a violation either way, so the total there is unaffected, but it is the same
+trade-off as the other two below and should not be left out). On `a-secret-lies-in-the` it
+fixes Bedrock's End's inn ask outright. On `thornwick-road` it net-fixes two asks at
+Harrowmere, trading an apothecary ask and a shop ask fixed for a stable ask newly broken.
+`an-interesting-spin-on-the` held flat at 6 for the same kind of trade, just netting to
+zero: Salt-Spit Junction's shop ask is now satisfied but its house ask, satisfied at
+baseline, is not, and Rustgutter's house count improved from built 1 to built 2 but is still
+short — churn, not progress, because the plots this town has are still outnumbered by what
+it asks for. None of this required anything to be `required: true` — nothing on disk sets
+that flag, so every one of these gains and losses is best-fit matching an *advisory*
+request more competently (or, occasionally, less), not the requirement-survives-filler
+guarantee Task 9's property test pins. That guarantee is real (the property test fails when
+`PlotRequest.required` is forced to `false` and passes when it isn't — see the commit for
+both outcomes) but it is not what moved these numbers, because nothing on disk asks for
+anything as `required`.
 
 `buildings-reachable` did not rise on any scenario: `green-chapel` stayed at exactly 1 (the
 same pre-existing Greyford square fault, unrelated to plot assignment), and the other three
 stayed at 0. Task 8's neighbour-substitution did not trade one unreachable building for
 another here — this run is not `BLOCKED`. `scenes-written` and `legs-walkable` are
 unchanged on every scenario, as expected: neither invariant is downstream of plot
-assignment. In short: the two invariants Phase 2 could plausibly move both moved in the
-direction and for the reason the corrected plan predicted, the one invariant that must not
-get worse did not, and the invariant that actually depends on `required` being used by an
-author is not exercised by anything on disk yet — that measurement waits for `src/forge/`.
+assignment. In short: `structures-built` moved for the reason the correction gave, on three
+of the four scenarios it named, by an amount neither prediction sized; the one invariant
+that must not get worse did not; and the invariant that actually depends on `required`
+being used by an author is not exercised by anything on disk yet — that measurement waits
+for `src/forge/`.
