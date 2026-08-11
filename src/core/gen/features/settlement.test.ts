@@ -539,6 +539,45 @@ describe("the town square", () => {
 	}, 30_000);
 });
 
+describe("duplicate structure ids", () => {
+	it("still builds both structures when two entries share an explicit id", () => {
+		// Before this was fixed, the request id fell back to `structure.id ?? \`s${index}\``
+		// independently in two places — the plot request and `specByRequestId` — so two
+		// structures sharing an author id collided in BOTH: `assignPlots` could give them the
+		// same `chosen` entry, and `specByRequestId` kept whichever entry arrived last. Either
+		// way one plot's building could answer to the wrong spec, or one of the two could be
+		// dropped outright and its plot handed to unnamed filler. This asserts the thing that
+		// actually matters: neither "First" nor "Second" silently vanishes because two specs
+		// happened to be given the same id.
+		const { seed, sites } = sampleSites("dup-id", 3);
+		const world = worldSeed(seed);
+
+		let found = false;
+		for (const site of sites) {
+			clearFeatureCache();
+			const patch = generateSettlement(world, site, {
+				walled: false,
+				structures: [
+					{ kind: "house", size: "small", importance: 5, id: "dup", name: "First", required: true },
+					{
+						kind: "house",
+						size: "small",
+						importance: 5,
+						id: "dup",
+						name: "Second",
+						required: true,
+					},
+				],
+			});
+			const names = patch.buildings.map((b) => b.name);
+			if (!names.includes("First") || !names.includes("Second")) continue;
+			found = true;
+			break;
+		}
+		expect(found, "no site in the sample had room for both structures").toBe(true);
+	});
+});
+
 describe("required structures", () => {
 	it("builds a required structure even when the town is oversubscribed", () => {
 		// A settlement's plots come from a BSP split of its footprint, and both hamlets

@@ -112,6 +112,39 @@ describe("writeScenario and readScenarioFile", () => {
 		expect(structure?.required).toBe(true);
 	});
 
+	/**
+	 * Two structures sharing an explicit id used to be silently possible, and
+	 * `settlement.ts` keys both its plot request and its spec lookup by that string — a
+	 * repeat lets one plot's assignment answer to the *other* entry's spec, and a required
+	 * building can vanish into filler with nothing downstream reporting it wrong. Refused
+	 * here rather than left for the generator to trip over.
+	 */
+	it("refuses two structures that share an explicit id", () => {
+		const bad = artifact();
+		const spec = bad.sites[String(SITE.id)] as SiteSpec;
+		mkdirSync(scenarioRoot(), { recursive: true });
+		writeFileSync(
+			scenarioPath("dup-structure-id"),
+			JSON.stringify({
+				...bad,
+				id: "dup-structure-id",
+				sites: {
+					[String(SITE.id)]: {
+						...spec,
+						settlement: {
+							...spec.settlement,
+							structures: [
+								{ kind: "house", size: "small", importance: 5, id: "dup" },
+								{ kind: "house", size: "small", importance: 5, id: "dup" },
+							],
+						},
+					},
+				},
+			}),
+		);
+		expect(loadScenario("dup-structure-id")).toBeUndefined();
+	});
+
 	it("returns undefined for a file that is not there", () => {
 		expect(readScenarioFile(scenarioPath("nothing"))).toBeUndefined();
 		expect(loadScenario("nothing")).toBeUndefined();

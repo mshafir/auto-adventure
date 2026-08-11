@@ -261,10 +261,36 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 
 	// --- assign structures to plots -----------------------------------------
 	// Requirements are solved first and filler takes what is left; see `plots.ts` for
-	// why the old importance sort could not express that. `id` falls back to the spec's
-	// index so every request has a distinct handle even when the author gave none.
+	// why the old importance sort could not express that.
+	//
+	// Ids are derived once, here, into `ids` — and both `requests` and `specByRequestId`
+	// below are built from that same array — because deriving them independently in two
+	// places is exactly how a duplicate author `id` used to go unnoticed: one request's
+	// plot would silently answer to a *different* spec entry (`Map` keeps whichever
+	// arrived last), so the building the story actually asked for could vanish into
+	// filler while `unplaced` reported nothing wrong. Made unique by construction rather
+	// than merely hoped for: an explicit `id` wins the first time it appears; anything
+	// after that — a repeat, or no `id` at all — falls back to a form built from the
+	// index, grown further still if that form is itself already claimed (an author is
+	// free to write `s0` as their own id, however unlikely). `plots.ts` also sorts
+	// required requests by `id` as its final tie-break, so a duplicate id would have
+	// reintroduced the argument-order dependence Task 6's solver was written to remove,
+	// not only the substitution above.
+	const claimedIds = new Set<string>();
+	const ids = spec.structures.map((structure, index) => {
+		const wanted = structure.id;
+		if (wanted !== undefined && !claimedIds.has(wanted)) {
+			claimedIds.add(wanted);
+			return wanted;
+		}
+		let fallback = `s${index}`;
+		while (claimedIds.has(fallback)) fallback += "'";
+		claimedIds.add(fallback);
+		return fallback;
+	});
+
 	const requests: PlotRequest[] = spec.structures.map((structure, index) => ({
-		id: structure.id ?? `s${index}`,
+		id: ids[index] as string,
 		kind: structure.kind,
 		size: structure.size,
 		importance: structure.importance,
@@ -279,7 +305,7 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 	const solution = assignPlots({ plots, square, gates, centre: site.site, radius }, requests);
 
 	const specByRequestId = new Map(
-		spec.structures.map((structure, index) => [structure.id ?? `s${index}`, structure] as const),
+		spec.structures.map((structure, index) => [ids[index] as string, structure] as const),
 	);
 	const assignedTo = new Map(
 		solution.assignments.map((assignment) => [assignment.plot, assignment.request] as const),

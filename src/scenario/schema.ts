@@ -103,11 +103,33 @@ const StoredStructureSchema = z.object({
 	required: z.boolean().optional(),
 });
 
-export const StoredSettlementSpecSchema = z.object({
-	name: z.string(),
-	walled: z.boolean(),
-	structures: z.array(StoredStructureSchema),
-});
+export const StoredSettlementSpecSchema = z
+	.object({
+		name: z.string(),
+		walled: z.boolean(),
+		structures: z.array(StoredStructureSchema),
+	})
+	.superRefine((spec, ctx) => {
+		// A duplicate explicit id is not a stylistic slip: `settlement.ts` keys both its
+		// plot request and its spec lookup by this string, and a repeat lets one plot's
+		// assignment silently answer to the *other* entry's spec — a required building can
+		// vanish into filler with nothing downstream reporting it wrong. Only entries that
+		// *have* an id are compared; an absent id gets its own collision-proof handle at
+		// generation time and is none of this check's business.
+		const seen = new Set<string>();
+		spec.structures.forEach((structure, index) => {
+			if (structure.id === undefined) return;
+			if (seen.has(structure.id)) {
+				ctx.addIssue({
+					code: "custom",
+					message: `duplicate structure id "${structure.id}"`,
+					path: ["structures", index, "id"],
+				});
+				return;
+			}
+			seen.add(structure.id);
+		});
+	});
 
 export const StoredNpcSpecSchema = z.object({
 	slot: z.number().int().min(0),
