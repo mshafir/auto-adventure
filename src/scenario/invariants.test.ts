@@ -10,7 +10,12 @@ import { clearFeatureCache } from "../core/gen/features/registry.js";
 import type { SettlementSpec } from "../core/gen/features/settlement.js";
 import { beatNpcId } from "../core/rules/arc.js";
 import type { ScenarioArtifact } from "./artifact.js";
-import { checkBuildingsReachable, checkScenesWritten, checkStructuresBuilt } from "./invariants.js";
+import {
+	checkBuildingsReachable,
+	checkInvariants,
+	checkScenesWritten,
+	checkStructuresBuilt,
+} from "./invariants.js";
 
 /** The one-town fixture, with its settlement asking for exactly these buildings. */
 function withStructures(structures: SettlementSpec["structures"]): ScenarioArtifact {
@@ -130,5 +135,23 @@ describe("scenes-written", () => {
 		);
 
 		expect(checkScenesWritten({ ...artifact, trees })).toEqual([]);
+	});
+});
+
+describe("checkInvariants", () => {
+	it("returns a count for every invariant, including the ones with no violations", () => {
+		clearFeatureCache();
+		const report = checkInvariants(demoJourneyArtifact());
+
+		expect(Object.keys(report.counts).sort()).toEqual([
+			"buildings-reachable",
+			"legs-walkable",
+			"scenes-written",
+			"structures-built",
+		]);
+		// Every count is the number of violations carrying that id, so the two agree.
+		for (const [id, count] of Object.entries(report.counts)) {
+			expect(report.violations.filter((v) => v.invariant === id).length).toBe(count);
+		}
 	});
 });

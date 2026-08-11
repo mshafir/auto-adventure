@@ -3,7 +3,7 @@ import { generateSettlement } from "../core/gen/features/settlement.js";
 import { reachableFrom } from "../core/gen/features/terraform.js";
 import { orderedBeats } from "../core/rules/arc.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
-import { beatsWithoutTrees, siteIndex } from "./validate.js";
+import { beatsWithoutTrees, buildPassability, siteIndex, storyWalk } from "./validate.js";
 
 /**
  * Mechanical properties a playable world has, measured one at a time.
@@ -226,4 +226,81 @@ export function checkScenesWritten(artifact: ScenarioArtifact): Violation[] {
 		}
 	}
 	return violations;
+}
+
+/**
+ * The longest single leg the story asks the player to walk, against the pacing the
+ * validator already judges by.
+ *
+ * A rollup over `storyWalk` rather than a second path search, deliberately. The numbers
+ * are `LONG_MARCH` and `SHORT_STORY` from `validate.ts:135-136`, used at the same
+ * altitude as there — `LONG_MARCH` against the longest leg, `SHORT_STORY` against the
+ * total — so this report and the validator cannot disagree about whether a world is
+ * paced badly.
+ */
+const LONG_MARCH = 320;
+const SHORT_STORY = 60;
+
+export function checkLegsWalkable(artifact: ScenarioArtifact): Violation[] {
+	if (!artifact.arc) return [];
+	const grid = buildPassability(artifact);
+	const walk = storyWalk(artifact, grid, siteIndex(artifact));
+	const violations: Violation[] = [];
+
+	if (walk.unreachable) {
+		violations.push({
+			invariant: "legs-walkable",
+			where: `beat ${walk.unreachable}`,
+			detail: "there is no walkable route to this beat, so the story cannot be finished",
+		});
+	}
+
+	for (const leg of walk.legs) {
+		if (leg.tiles <= LONG_MARCH) continue;
+		violations.push({
+			invariant: "legs-walkable",
+			where: leg.to,
+			detail: `${leg.tiles} tiles in one leg, over the ${LONG_MARCH} a session tolerates`,
+		});
+	}
+
+	if (walk.legs.length > 0 && walk.tiles < SHORT_STORY) {
+		violations.push({
+			invariant: "legs-walkable",
+			where: "the whole story",
+			detail: `${walk.tiles} tiles in total, under the ${SHORT_STORY} that makes a journey`,
+		});
+	}
+	return violations;
+}
+
+/**
+ * Every invariant, with a count per id.
+ *
+ * The counts include the zeroes. A report that omits what passed cannot be compared
+ * against a later one, and comparing before with after is the only reason this module
+ * exists.
+ */
+export function checkInvariants(artifact: ScenarioArtifact): InvariantReport {
+	// Settlements first, then the passability grid. `checkStructuresBuilt` and
+	// `checkBuildingsReachable` generate settlement patches, and the grid stamps those
+	// same patches — so building the grid first would measure a layout that is about to
+	// be regenerated. The same ordering `validateArtifact:230-233` takes, for the same
+	// reason.
+	const violations = [
+		...checkStructuresBuilt(artifact),
+		...checkBuildingsReachable(artifact),
+		...checkScenesWritten(artifact),
+		...checkLegsWalkable(artifact),
+	];
+
+	const counts: Record<InvariantId, number> = {
+		"structures-built": 0,
+		"buildings-reachable": 0,
+		"scenes-written": 0,
+		"legs-walkable": 0,
+	};
+	for (const violation of violations) counts[violation.invariant]++;
+
+	return { violations, counts };
 }
