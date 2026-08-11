@@ -5,6 +5,7 @@ import {
 	writeTree,
 } from "../ai/author/author.js";
 import { polishArtifact } from "../ai/author/polish.js";
+import { beginWorking } from "../ai/working-file.js";
 import { resolveSeed } from "../config.js";
 import { resolveOverride } from "../content/load.js";
 import { logger } from "../utils/log.js";
@@ -132,6 +133,10 @@ export async function generateScenario(
 	// From the id, so the same name always names the same country — the rule the CLI
 	// already follows, and what makes a run reproducible from its filename alone.
 	const seed = resolveSeed(id);
+	// Opened here rather than by the caller, because here is where the id first exists and
+	// the record is named after it. Closed by the caller, which is the only thing that knows
+	// when the run is actually over — a polish pass afterwards belongs in the same record.
+	beginWorking(id);
 	logger.info(`generating scenario "${id}" seed ${seed}, ${request.brief.duration ?? "medium"}`);
 
 	const packOverride = request.pack ? resolveOverride(request.pack) : undefined;

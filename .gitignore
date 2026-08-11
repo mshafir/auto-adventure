@@ -12,3 +12,6 @@ state.json
 
 # Subagent-driven development scratch: ledgers, briefs, review packages.
 .superpowers/
+
+# Diagnostics from a generation run, not content. See src/ai/working-file.ts.
+.scenarios/.working/

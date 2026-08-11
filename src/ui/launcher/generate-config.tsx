@@ -142,7 +142,6 @@ export function GenerateConfig({
 	const [pack, setPack] = useState(DEFAULT_PACK);
 	const [dayAndNight, setDayAndNight] = useState(true);
 	const [liveInGame, setLiveInGame] = useState(true);
-	const [debug, setDebug] = useState(false);
 	const [editing, setEditing] = useState(false);
 
 	// The default is offered first in both lists, so ← from it wraps to a real pack
@@ -242,14 +241,6 @@ export function GenerateConfig({
 				: "Nobody says anything that was not written down in advance. Free to play, entirely offline, and the same every time.",
 		},
 		{
-			id: "debug",
-			label: "Keep the working",
-			detail: debug ? "on" : "off",
-			body: debug
-				? "Every prompt and every answer is kept, readable while it is being written and afterwards from the game's own menu. Costs nothing extra to run; it is what you turn on when the last world came out wrong and you want to know why."
-				: "Only the summary of each pass is reported. Turn this on to keep the full prompts and answers, and to read them without leaving the game.",
-		},
-		{
 			id: "begin",
 			label: "Write this world",
 			accent: "green",
@@ -283,9 +274,6 @@ export function GenerateConfig({
 				return;
 			case "live":
 				setLiveInGame((current) => !current);
-				return;
-			case "debug":
-				setDebug((current) => !current);
 				return;
 			default:
 				return;
@@ -327,7 +315,6 @@ export function GenerateConfig({
 								models,
 								dayAndNight,
 								liveInGame,
-								...(debug ? { debug: true } : {}),
 							});
 							return;
 						}

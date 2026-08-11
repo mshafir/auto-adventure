@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { demoArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
 import { AuthoringStopped, type AuthorResult } from "../ai/author/author.js";
 import type { ScenarioArtifact } from "./artifact.js";
@@ -21,6 +24,26 @@ const REQUEST: GenerateRequest = {
 	dayAndNight: true,
 	liveInGame: false,
 };
+
+/**
+ * Somewhere of its own to write the run's record into.
+ *
+ * The artifact is written through an injected `write`, so nothing here reaches the disk by
+ * that route — but `generateScenario` also opens the working record, and that one goes
+ * straight to the filesystem. Without this the suite appends to the repository's own
+ * `.scenarios/.working`.
+ */
+let scenarios: string;
+
+beforeAll(() => {
+	scenarios = fs.mkdtempSync(path.join(os.tmpdir(), "aa-generate-"));
+	process.env.AUTO_ADVENTURE_SCENARIOS = scenarios;
+});
+
+afterAll(() => {
+	delete process.env.AUTO_ADVENTURE_SCENARIOS;
+	fs.rmSync(scenarios, { recursive: true, force: true });
+});
 
 /**
  * A stand-in for the authoring pipeline that reports what the real one would.

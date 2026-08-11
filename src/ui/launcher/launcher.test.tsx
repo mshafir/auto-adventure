@@ -547,8 +547,6 @@ describe("configuring a world to be written", () => {
 		await m.ink.type(KEY.right); // day and night → off
 		await toRow(m, "Improvise while playing");
 		await m.ink.type(KEY.right); // improvise → off
-		await toRow(m, "Keep the working");
-		await m.ink.type(KEY.right); // keep the working → on
 		await toRow(m, "Write this world");
 		await m.ink.type(KEY.enter);
 
@@ -558,9 +556,18 @@ describe("configuring a world to be written", () => {
 			pack: "camelot",
 			dayAndNight: false,
 			liveInGame: false,
-			debug: true,
 		});
 		expect(m.requested[0]?.brief.duration).toBe("long");
+		m.ink.unmount();
+	});
+
+	it("no longer asks whether to keep the working, because it always is", async () => {
+		// The row it replaces defaulted to off, which put the prompt-by-prompt view behind
+		// a question asked on the same screen that costs four minutes — so the run that
+		// most wanted the view was reliably the run that did not have it.
+		const m = mount();
+		await toConfig(m);
+		expect(m.ink.screen()).not.toContain("Keep the working");
 		m.ink.unmount();
 	});
 

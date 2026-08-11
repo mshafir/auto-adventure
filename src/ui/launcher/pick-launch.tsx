@@ -1,6 +1,7 @@
 import { render } from "ink";
 import { logTelemetry } from "../../ai/telemetry.js";
-import { clearTranscript, debugAi, setDebugAi } from "../../ai/transcript.js";
+import { clearTranscript, sizeTranscript } from "../../ai/transcript.js";
+import { endWorking } from "../../ai/working-file.js";
 import { CONFIG, gatewayKey, hasGatewayKey } from "../../config.js";
 import { packCatalogue } from "../../content/load.js";
 import { tilePackCatalogue } from "../../content/tiles.js";
@@ -140,12 +141,23 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	if (request.models) writeSettings({ modelSet: request.models });
 
 	// Before the first call, or the first pass is the one exchange nobody can read.
-	// Cleared as well as enabled: the launcher may have been round this loop already,
-	// and a transcript that opens on the previous world's prompts is worse than none.
-	if (request.debug) {
-		clearTranscript();
-		setDebugAi(true);
-	}
+	// Cleared as well as sized: the launcher may have been round this loop already, and a
+	// transcript that opens on the previous world's prompts is worse than none.
+	clearTranscript();
+	sizeTranscript(request.brief.duration);
+
+	/**
+	 * The run is over: stop recording, and say what it cost.
+	 *
+	 * Paired because they are one moment, and because the record has to stay open across
+	 * the polish loop below — a pass that rewrites six conversations belongs in the same
+	 * file as the pass that wrote them. `generateScenario` opens it, since that is where
+	 * the id it is named after first exists.
+	 */
+	const finish = () => {
+		endWorking();
+		logTelemetry();
+	};
 
 	const startedAt = Date.now();
 	const stop = new AbortController();
@@ -189,7 +201,6 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 			{...(outcome?.path ? { path: outcome.path } : {})}
 			done={reviewing && !polishing}
 			{...(outcome?.verdict ? { verdict: outcome.verdict } : {})}
-			debug={debugAi()}
 			// Offered only when there is a model to ask and the pass has not already run. A
 			// second reading of a world the reader has already passed on would be a call spent
 			// to be told the same thing.
@@ -225,7 +236,7 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 		lines.push(outcome.stopped ? "stopped. nothing was written." : `failed: ${outcome.failure}`);
 		instance.rerender(view("Nothing was kept. Press Ctrl-C to go back to the shell."));
 		await instance.waitUntilExit();
-		logTelemetry();
+		finish();
 		return undefined;
 	}
 
@@ -271,7 +282,7 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	}
 
 	instance.unmount();
-	logTelemetry();
+	finish();
 	// Asked again rather than remembered from above: `outcome` has been replaced since, by a
 	// pass that returns a whole new one, and the narrowing that came with the first answer
 	// does not survive that.
