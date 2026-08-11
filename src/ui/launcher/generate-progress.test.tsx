@@ -2,7 +2,8 @@ import stripAnsi from "strip-ansi";
 import { afterEach, describe, expect, it } from "vitest";
 import { KEY, renderInk } from "../../../test/harness/ink.js";
 import { resetTelemetry } from "../../ai/telemetry.js";
-import { clearTranscript, recordExchange, setDebugAi } from "../../ai/transcript.js";
+import { clearTranscript, recordExchange } from "../../ai/transcript.js";
+import { clearLogRing, logger } from "../../utils/log.js";
 import { GenerateProgress } from "./generate-progress.js";
 
 /**
@@ -219,13 +220,12 @@ describe("offering to mend it", () => {
  */
 describe("reading the working", () => {
 	afterEach(() => {
-		setDebugAi(false);
 		clearTranscript();
+		clearLogRing();
 		resetTelemetry();
 	});
 
 	function recorded() {
-		setDebugAi(true);
 		clearTranscript();
 		recordExchange({
 			kind: "site",
@@ -239,20 +239,35 @@ describe("reading the working", () => {
 		});
 	}
 
-	it("offers the working only when it is being kept", () => {
-		const plain = mount();
-		expect(plain.screen()).toContain("ESC to stop");
-		expect(plain.screen()).not.toContain("D for the working");
-		plain.ink.unmount();
+	it("offers the working on every run, not only one that asked for it", () => {
+		// It used to be offered only when a toggle on the config page had been set, which
+		// meant the run that most wanted it — the one that came out wrong — was reliably
+		// the run that had not thought to ask.
+		const m = mount();
+		expect(m.screen()).toContain("ESC to stop");
+		expect(m.screen()).toContain("D for the working");
+		m.ink.unmount();
+	});
 
-		const debugging = mount({ debug: true });
-		expect(debugging.screen()).toContain("D for the working");
-		debugging.ink.unmount();
+	it("shows the log beside the exchanges, on a key of its own", async () => {
+		// The other half of the answer to "why did this world come out like that". The
+		// exchanges say what was asked and what came back; the log says what the pipeline
+		// then did with it — dropped a late spec, escalated, replayed a remembered reply.
+		recorded();
+		logger.debug("dropping late spec for committed site 42");
+
+		const m = mount();
+		await m.ink.settle();
+		await m.ink.type("d");
+		expect(m.screen()).toContain("L log");
+		await m.ink.type("l");
+		expect(m.screen()).toContain("committed site 42");
+		m.ink.unmount();
 	});
 
 	it("shows the prompt that was actually sent", async () => {
 		recorded();
-		const m = mount({ debug: true });
+		const m = mount();
 		await m.ink.settle();
 		await m.ink.type("d");
 		const text = m.screen();
@@ -263,7 +278,7 @@ describe("reading the working", () => {
 
 	it("switches to what came back, and comes out again on ESC", async () => {
 		recorded();
-		const m = mount({ debug: true });
+		const m = mount();
 		await m.ink.settle();
 		await m.ink.type("d");
 		await m.ink.type(KEY.right);
@@ -282,7 +297,6 @@ describe("reading the working", () => {
 		// out wrong, and that screen otherwise starts the game on any key at all.
 		recorded();
 		const m = mount({
-			debug: true,
 			findings: [{ severity: "warning", message: "nobody lives in Millford" }],
 		});
 		await m.ink.settle();

@@ -9,6 +9,7 @@ import {
 	tokens,
 } from "../../ai/telemetry.js";
 import { type Exchange, onTranscript, transcript } from "../../ai/transcript.js";
+import { type LogLine, logRing, onLog } from "../../utils/log.js";
 import { FRAME_CHROME, Frame, Rule } from "../panels/primitives.js";
 import { TRANSCRIPT_PAGE, type TranscriptPart, TranscriptView } from "../panels/transcript-view.js";
 import { type ColorDepth, rgb } from "../render/color.js";
@@ -87,13 +88,6 @@ export interface GenerateProgressProps {
 	/** A reader's verdict on the world, once one has read it. */
 	readonly verdict?: string;
 	readonly onStop: () => void;
-	/**
-	 * Whether the full prompts are being kept, and so whether `D` does anything.
-	 *
-	 * Passed in rather than read from the module so this stays a pure view and can be
-	 * rendered in a test without turning global debug state on.
-	 */
-	readonly debug?: boolean;
 }
 
 export function GenerateProgress({
@@ -113,7 +107,6 @@ export function GenerateProgress({
 	onPolish,
 	verdict,
 	onStop,
-	debug = false,
 }: GenerateProgressProps) {
 	const reviewing = done ?? Boolean(findings && findings.length > 0);
 
@@ -140,9 +133,11 @@ export function GenerateProgress({
 		const redraw = () => bump((n) => n + 1);
 		const offTelemetry = onTelemetry(redraw);
 		const offTranscript = onTranscript(redraw);
+		const offLog = onLog(redraw);
 		return () => {
 			offTelemetry();
 			offTranscript();
+			offLog();
 		};
 	}, []);
 	const spend = telemetrySnapshot();
@@ -153,7 +148,12 @@ export function GenerateProgress({
 	const [cursor, setCursor] = useState(0);
 	const [offset, setOffset] = useState(0);
 	const [part, setPart] = useState<TranscriptPart>("prompt");
+	// Under the exchange rather than instead of it, and only when asked for: the pane it
+	// takes is a third of the detail, which is a third fewer lines of the prompt somebody
+	// opened this to read.
+	const [showLog, setShowLog] = useState(false);
 	const exchanges: readonly Exchange[] = showing ? transcript() : [];
+	const log: readonly LogLine[] = showing && showLog ? logRing() : [];
 
 	useInput((input, key) => {
 		const letter = input.toLowerCase();
@@ -183,6 +183,11 @@ export function GenerateProgress({
 				setOffset(0);
 				return;
 			}
+			if (letter === "l") {
+				setShowLog((up) => !up);
+				setOffset(0);
+				return;
+			}
 			if (input === " " || key.return) {
 				setOffset((line) => line + TRANSCRIPT_PAGE);
 				return;
@@ -194,7 +199,7 @@ export function GenerateProgress({
 		// Never on any key. `D` opens the working, and taking it as "I have read the
 		// findings, start the game" would make the transcript unreachable exactly where
 		// it is most wanted — on the screen reporting what came out wrong.
-		if (debug && letter === "d") {
+		if (letter === "d") {
 			setShowing(true);
 			return;
 		}
@@ -229,11 +234,11 @@ export function GenerateProgress({
 						width={columns - CHROME}
 						rows={Math.max(6, rows - FRAME_CHROME - PAGE_CHROME)}
 						totals={spend}
-						recording
+						{...(log.length > 0 ? { log } : {})}
 					/>
 				</Box>
 				<Text dimColor wrap="truncate">
-					↑↓ exchange · ←→ question/answer · SPACE down · B up · D or ESC back
+					↑↓ exchange · ←→ question/answer · L log · SPACE down · B up · D or ESC back
 				</Text>
 			</Frame>
 		);
@@ -261,7 +266,6 @@ export function GenerateProgress({
 				findings={findings ?? []}
 				{...(path ? { path } : {})}
 				spent={spend}
-				debug={debug}
 				canPolish={Boolean(onPolish)}
 				{...(verdict ? { verdict } : {})}
 			/>
@@ -314,9 +318,7 @@ export function GenerateProgress({
 								// here can be interrupted mid-call, so a player told "stopping" and then
 								// made to wait ten seconds has been told the truth.
 								"stopping after this pass"
-							: debug
-								? "ESC to stop · D for the working"
-								: "ESC to stop"}
+							: "ESC to stop · D for the working"}
 					</Text>
 				</Text>
 			)}
@@ -343,7 +345,6 @@ function Review({
 	findings,
 	path,
 	spent,
-	debug,
 	canPolish,
 	verdict,
 }: {
@@ -354,7 +355,6 @@ function Review({
 	readonly findings: readonly { readonly severity: string; readonly message: string }[];
 	readonly path?: string;
 	readonly spent: TelemetrySnapshot;
-	readonly debug: boolean;
 	readonly canPolish: boolean;
 	readonly verdict?: string;
 }) {
@@ -443,8 +443,8 @@ function Review({
 			<Text color="cyan" wrap="truncate">
 				{[
 					canPolish ? "P to have it read back and the faults written out" : "",
-					debug ? "D to read the working" : "",
-					canPolish || debug ? "any other key to play it" : "Press any key to play it",
+					"D to read the working",
+					"any other key to play it",
 				]
 					.filter(Boolean)
 					.join(" · ")}

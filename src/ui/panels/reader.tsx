@@ -1,11 +1,12 @@
 import { Text } from "ink";
 import { telemetrySnapshot } from "../../ai/telemetry.js";
-import { debugAi, transcript } from "../../ai/transcript.js";
+import { transcript } from "../../ai/transcript.js";
 import { arcOutline } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { describeObjective, questNeeding, questRows } from "../../core/rules/quests.js";
 import { type GameState, type Quest, worldAnchor } from "../../core/rules/state.js";
 import { toChunk } from "../../core/world/coords.js";
+import { logRing } from "../../utils/log.js";
 import { type HudState, PANEL_TABS, type PanelTab } from "../hud-state.js";
 import { tileMode } from "../viewport.js";
 import { mapLegend } from "./legend.js";
@@ -154,8 +155,10 @@ function KeyReader({ width, rows }: { width: number; rows: number }) {
  *
  * A page rather than a log line, because the log is a file the player has no reason to
  * know about and every reason not to be reading while inside a full-screen program.
- * Only on the strip when the recording is on, so this is never a tab most people have
- * to step past.
+ *
+ * On the strip for every world. A scenario carries the record of its own authoring beside
+ * it, so this page has something in it even for a world written last week by somebody else
+ * — which is the case it is most wanted in, and the one it used to be missing for.
  *
  * The question and the answer are drawn as one document rather than as two panes to be
  * switched between: what a reader actually does is find where the prompt described the
@@ -171,6 +174,7 @@ function WorkingReader({
 	readonly rows: number;
 }) {
 	const exchanges = transcript();
+	const log = logRing();
 	return (
 		<TranscriptView
 			exchanges={exchanges}
@@ -180,7 +184,7 @@ function WorkingReader({
 			width={width}
 			rows={rows}
 			totals={telemetrySnapshot()}
-			recording={debugAi()}
+			{...(log.length > 0 ? { log } : {})}
 		/>
 	);
 }

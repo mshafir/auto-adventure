@@ -1,6 +1,7 @@
 import { Text } from "ink";
 import { money, type TelemetrySnapshot, tokens } from "../../ai/telemetry.js";
 import type { Exchange } from "../../ai/transcript.js";
+import type { LogLine } from "../../utils/log.js";
 import { clampLine, wrapBlock } from "../render/text.js";
 import { Rule, ScrollList } from "./primitives.js";
 
@@ -40,8 +41,16 @@ export interface TranscriptViewProps {
 	readonly rows: number;
 	/** Running totals, shown above the list. Absent where the caller shows its own. */
 	readonly totals?: TelemetrySnapshot;
-	/** Whether debug recording is on at all, so an empty list can say why. */
-	readonly recording: boolean;
+	/**
+	 * The debug log, when the caller wants it under the exchange.
+	 *
+	 * The other half of the answer to "why did this world come out like that". The
+	 * exchanges say what was asked and what came back; this says what the pipeline then did
+	 * with it — dropped a late spec for a committed site, escalated to a dearer model,
+	 * replayed a remembered reply. Absent means the caller is not showing it, which is the
+	 * ordinary case.
+	 */
+	readonly log?: readonly LogLine[];
 }
 
 /**
@@ -60,16 +69,14 @@ export function TranscriptView({
 	width,
 	rows,
 	totals,
-	recording,
+	log,
 }: TranscriptViewProps) {
 	if (exchanges.length === 0) {
 		return (
 			<>
 				<Rule width={width} label="the working" />
 				<Text color="gray" wrap="truncate">
-					{recording
-						? "Nothing has been asked of a model yet."
-						: "Not recording. Turn on “keep the working” when writing a world, or set DEBUG_AI=1."}
+					Nothing has been asked of a model yet.
 				</Text>
 			</>
 		);
@@ -77,9 +84,13 @@ export function TranscriptView({
 
 	const at = Math.max(0, Math.min(cursor, exchanges.length - 1));
 	const selected = exchanges[at] as Exchange;
-	// Two rules and the summary line come off the top; the rest is split.
+	// Two rules and the summary line come off the top; the rest is split. The log, when it
+	// is up, takes a third of what is left — enough to read the last few lines, which is
+	// what a reader wants beside an exchange rather than the whole file.
 	const listRows = Math.max(2, Math.floor((rows - 3) * LIST_SHARE));
-	const detailRows = Math.max(2, rows - 3 - listRows);
+	const showLog = log !== undefined && log.length > 0;
+	const logRows = showLog ? Math.max(2, Math.floor((rows - 3 - listRows) / 3)) : 0;
+	const detailRows = Math.max(2, rows - 3 - listRows - logRows - (showLog ? 1 : 0));
 
 	const asked = `${selected.system}\n\n${selected.prompt}`;
 	const body =
@@ -127,8 +138,29 @@ export function TranscriptView({
 					{line}
 				</Text>
 			))}
+			{showLog ? (
+				<>
+					<Rule width={width} label="log" />
+					{(log ?? []).slice(-logRows).map((line, index) => (
+						<Text
+							// biome-ignore lint/suspicious/noArrayIndexKey: log lines are positional
+							key={index}
+							wrap="truncate"
+							color={line.level === "error" || line.level === "warn" ? "yellow" : undefined}
+							dimColor={line.level === "debug"}
+						>
+							{clampLine(`${stamp(line.at)} ${line.text}`, width)}
+						</Text>
+					))}
+				</>
+			) : null}
 		</>
 	);
+}
+
+/** `hh:mm:ss`, so two lines can be told apart by when as well as by what. */
+function stamp(at: number): string {
+	return new Date(at).toISOString().slice(11, 19);
 }
 
 /** One row: enough to recognise the call by, and to spot the expensive one. */
