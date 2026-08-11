@@ -1209,7 +1209,15 @@ In `src/ui/launcher/launcher.test.tsx`, in the config-page describe block:
 		await toConfig(m);
 		await toRow(m, "Premise");
 		await m.ink.type(KEY.enter);
-		// …down to "Suggest some for me", enter, settle, enter on the first offer…
+
+		await toRow(m, "Suggest some for me");
+		await m.ink.type(KEY.enter);
+		// The call is a promise, so the list is not on screen until the frames settle.
+		await m.ink.settle();
+
+		await toRow(m, "The Tide-Glass");
+		await m.ink.type(KEY.enter);
+
 		await toRow(m, "Write this world");
 		await m.ink.type(KEY.enter);
 
@@ -1221,19 +1229,30 @@ In `src/ui/launcher/launcher.test.tsx`, in the config-page describe block:
 		m.ink.unmount();
 	});
 
-	it("still lets a premise be typed, and still lets it be left to the model", async () => {
+	it("still lets a premise be typed", async () => {
 		const m = mount();
 		await toConfig(m);
 		await toRow(m, "Premise");
 		await m.ink.type(KEY.enter);
-		// The typing route is the default row, so ENTER twice reaches the text field.
+		await toRow(m, "Type it myself");
 		await m.ink.type(KEY.enter);
 		expect(m.ink.screen()).toContain("A sentence is plenty");
 		m.ink.unmount();
 	});
 ```
 
-The `mount` helper in that file will need to accept and forward `onSuggest`. Read it and the `toConfig`/`toRow` helpers first; fill in the elided navigation from how the neighbouring tests drive the chooser.
+`toRow` navigates by looking for `❯ <label>` on screen rather than by counting presses
+(`launcher.test.tsx:166-172`), so the two calls that land on a row already under the cursor
+are free — they are there so the test survives the rows being reordered.
+
+`mount` needs one new option. Add `onSuggest?: GenerateConfigProps["onSuggest"]` to its
+options object (`launcher.test.tsx:57-72`) and forward it to the rendered `<Launcher>` the
+same way `gatewayKey` and `modelSet` already are — conditionally spread, since
+`exactOptionalPropertyTypes` is on:
+
+```tsx
+			{...(options.onSuggest ? { onSuggest: options.onSuggest } : {})}
+```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
