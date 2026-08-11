@@ -3,7 +3,14 @@ import { generateSettlement } from "../core/gen/features/settlement.js";
 import { reachableFrom } from "../core/gen/features/terraform.js";
 import { orderedBeats } from "../core/rules/arc.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
-import { beatsWithoutTrees, buildPassability, siteIndex, storyWalk } from "./validate.js";
+import {
+	beatsWithoutTrees,
+	buildPassability,
+	LONG_MARCH,
+	SHORT_STORY,
+	siteIndex,
+	storyWalk,
+} from "./validate.js";
 
 /**
  * Mechanical properties a playable world has, measured one at a time.
@@ -229,18 +236,19 @@ export function checkScenesWritten(artifact: ScenarioArtifact): Violation[] {
 }
 
 /**
- * The longest single leg the story asks the player to walk, against the pacing the
- * validator already judges by.
+ * Every leg the story asks the player to walk, against the pacing the validator already
+ * judges by.
  *
- * A rollup over `storyWalk` rather than a second path search, deliberately. The numbers
- * are `LONG_MARCH` and `SHORT_STORY` from `validate.ts:135-136`, used at the same
- * altitude as there — `LONG_MARCH` against the longest leg, `SHORT_STORY` against the
- * total — so this report and the validator cannot disagree about whether a world is
- * paced badly.
+ * A rollup over `storyWalk` rather than a second path search, deliberately, and the
+ * thresholds are `LONG_MARCH` and `SHORT_STORY` *imported* from `validate.ts` rather than
+ * copied, so the two cannot silently drift apart on what counts as too long or too short.
+ *
+ * Where this deliberately goes further than the validator: `validate.ts` (`:1428-1432`)
+ * judges only the single *longest* leg against `LONG_MARCH`, so a story with two legs of
+ * 300 tiles each passes there. This checks every leg, which is stricter — so the two can
+ * still disagree about whether a *specific* world is paced badly, just never about where
+ * the line is. `SHORT_STORY` is judged the same way in both places, against the total.
  */
-const LONG_MARCH = 320;
-const SHORT_STORY = 60;
-
 export function checkLegsWalkable(artifact: ScenarioArtifact): Violation[] {
 	if (!artifact.arc) return [];
 	const grid = buildPassability(artifact);

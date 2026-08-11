@@ -132,8 +132,8 @@ export function hasErrors(findings: readonly Finding[]): boolean {
  * suspect the game has lost the thread — and a story that never leaves one place is
  * the other. Everything between those is a pace, not a mistake.
  */
-const LONG_MARCH = 320;
-const SHORT_STORY = 60;
+export const LONG_MARCH = 320;
+export const SHORT_STORY = 60;
 
 /**
  * The anchor a placement really resolves to.
