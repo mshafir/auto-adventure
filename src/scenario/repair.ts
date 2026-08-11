@@ -19,6 +19,7 @@ import {
 	surroundingsFor,
 	validateArtifact,
 } from "./validate.js";
+import { journeys, toldWhereToGo } from "./wayfinding.js";
 
 /**
  * Fix what can be fixed without asking anybody.
@@ -178,6 +179,7 @@ const REPAIRS: readonly ((artifact: ScenarioArtifact, ground: Ground) => RepairR
 	dropOneArmedForks,
 	forgetPeopleWhoAreNotHere,
 	gateTheCastOnTheirOwnScene,
+	sayWhereToGoNext,
 ];
 
 function survey(artifact: ScenarioArtifact): Ground {
@@ -675,6 +677,80 @@ function withoutStrangers(
 	if (who === undefined || people.has(who)) return condition;
 	found.add(who);
 	return undefined;
+}
+
+/**
+ * A beat that sends the player somewhere without saying where.
+ *
+ * The fault that cost a whole playthrough, and the one nothing here could have caught: the
+ * story was sound, every beat opened, every flag was written — and after the second scene
+ * the player was holding a journal line about the weighing tallies with six towns to choose
+ * between and nothing to choose on. `checkWayfinding` reports it; this is the fix.
+ *
+ * A repair rather than a model call, because the answer is not a matter of judgement. The
+ * arc knows which beat is next, the sites know what that place is called and who stands
+ * there, and one plain sentence is a strictly better thing to have than an allusive
+ * paragraph. It is also free, which means every world gets it rather than only the ones
+ * somebody paid to have polished.
+ *
+ * Appended rather than substituted. Whatever the model wrote is the *story*, and this is
+ * the direction — the two do different jobs and the second must not eat the first. A
+ * journal line reading "Cull signs two tallies and only one of them is true. Ask for Lune
+ * Harrowgate at Aldermoor." is exactly right, and it is what a GM would say.
+ *
+ * Signposts are ignored when deciding whether to say it, and deliberately: a board on the
+ * road out is a real answer to "which way" and no answer at all to somebody reading their
+ * errand log two towns later, so a world with both is better than a world with one. The
+ * check accepts either, so this adding a line where a board already exists costs a sentence
+ * and removes no finding — which is the right way round for a free repair.
+ */
+function sayWhereToGoNext(artifact: ScenarioArtifact, ground: Ground): RepairResult {
+	const arc = artifact.arc;
+	if (!arc) return { artifact, repairs: [] };
+	const repairs: string[] = [];
+
+	const directions = new Map<string, string>();
+	for (const journey of journeys(artifact, ground.sites)) {
+		if (toldWhereToGo(artifact, journey, { ignoreSigns: true })) continue;
+		const spec = journey.destination;
+		const person = spec.npcs.find((npc) => npc.slot === journey.to.npcSlot);
+		directions.set(
+			journey.from.id,
+			person ? `Go to ${spec.name} and ask for ${person.name}.` : `Go to ${spec.name}.`,
+		);
+	}
+	if (directions.size === 0) return { artifact, repairs: [] };
+
+	const beats = arc.beats.map((beat) => {
+		const said = directions.get(beat.id);
+		if (!said) return beat;
+		repairs.push(`beat ${beat.id} did not say where to go next; the journal now says "${said}"`);
+		return {
+			...beat,
+			journal: beat.journal ? `${withStop(beat.journal)} ${said}` : said,
+			...(beat.quest
+				? {
+						quest: {
+							...beat.quest,
+							// The errand as well as the journal, because they are read in different
+							// places: the journal is a log the player scrolls back through and the
+							// errand is the line in the quest pane that is on screen while they walk.
+							description: beat.quest.description
+								? `${withStop(beat.quest.description)} ${said}`
+								: said,
+						},
+					}
+				: {}),
+		};
+	});
+
+	return { artifact: { ...artifact, arc: { ...arc, beats } }, repairs };
+}
+
+/** A sentence that ends, so the direction after it does not run into it. */
+function withStop(text: string): string {
+	const trimmed = text.trim();
+	return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 /**
