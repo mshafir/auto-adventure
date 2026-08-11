@@ -11,10 +11,30 @@ import type { SurveyedSite } from "../../scenario/survey.js";
  * against real distances and real town sizes instead of hoping.
  */
 
+/**
+ * How everything in this world is written.
+ *
+ * Rewritten after a playthrough of a generated world that was well-written and unplayable.
+ * The prose was good — atmospheric, allusive, every line carrying its weight — and the
+ * player could not work out what to do next, because "concrete and specific" turns out to
+ * license a model to be concrete and specific about *the wrong things*: the smell of the
+ * weighing station, in detail, and the name of the town they were supposed to walk to
+ * nowhere at all.
+ *
+ * So the instruction now separates the two registers. Description may be as good as it
+ * likes. Anything the player has to *act on* — an errand, a journal line, what somebody
+ * says when they hand out a job — is plain, short, and names the thing: the place, the
+ * person, the object. A story is not spoiled by saying where to go; it is spoiled by the
+ * player standing in a field guessing.
+ */
 const HOUSE_STYLE =
 	"Write like a good tabletop GM: concrete, specific, unsentimental. " +
 	"Prefer one telling detail to three adjectives. Never mention game mechanics, " +
-	"tiles, chunks, seeds, or that this is generated. No markdown, no lists in prose fields.";
+	"tiles, chunks, seeds, or that this is generated. No markdown, no lists in prose fields. " +
+	"Use plain words: short sentences, everyday vocabulary, and no riddling. " +
+	"When you tell the player to do something, say it outright and name the place, the " +
+	"person or the thing by the name the world uses for it. Atmosphere goes in description; " +
+	"instructions are never allusive.";
 
 export const ARC_SYSTEM =
 	`You plot the story of a small terminal roguelike. ${HOUSE_STYLE} ` +
@@ -46,13 +66,26 @@ function siteLine(index: number, entry: SurveyedSite, spec: SiteSpec): string {
 /**
  * How many side errands a story of this length should carry.
  *
- * About one per three beats, floored at one. Fewer than that and the map is scenery
- * between conversations; many more and the main line stops being findable among them.
- * The count is asked for explicitly because a range was ignored: every generated arc came
- * back with none at all while `optional` sat in the schema, documented and unused.
+ * About one per three beats. Fewer than that and the map is scenery between conversations;
+ * many more and the main line stops being findable among them. The count is asked for
+ * explicitly because a range was ignored: every generated arc came back with none at all
+ * while `optional` sat in the schema, documented and unused.
+ *
+ * The floor used to be *one*, and it was wrong in a way two real generated worlds showed.
+ * A `tiny` world has two beats, so demanding one side errand left a main line of exactly
+ * one beat: the player arrives, has a conversation, and the story is over — with the only
+ * other thing to do marked as refusable. Both worlds read as having no direction at all,
+ * and no check could say so, because there was no second main beat for anything to be
+ * unclear *about*.
+ *
+ * So the main line keeps three beats before a side errand is asked for at all. Three is
+ * where a story starts being a road rather than a scene: somewhere to be given the errand,
+ * somewhere to take it, and somewhere it turns out to lead.
  */
+export const MAIN_LINE_FLOOR = 3;
+
 function optionalWanted(beats: number): number {
-	return Math.max(1, Math.round(beats / 3));
+	return Math.max(0, Math.min(Math.round(beats / 3), beats - MAIN_LINE_FLOOR));
 }
 
 export function arcPrompt(input: {
@@ -82,21 +115,51 @@ export function arcPrompt(input: {
 		"objective must be something the world can actually satisfy — an item somebody hands over, a",
 		"place with a name listed above, or a person named above.",
 		"",
+		// The fault a playthrough found, which nothing in the schema had ever asked about.
+		// Every beat opened and every errand landed, and the player finished a scene holding
+		// a journal line about the tallies and six towns to choose between. The story was
+		// perfectly sound and completely unfollowable.
+		"Every beat must say where the player goes next. When the next beat is in a different",
+		"settlement, write its name in this beat's journal line or in its quest description —",
+		"the name exactly as it is spelled in the list above — and name the person to ask for.",
+		'Do not make the player infer it. "Ask for Lune Harrowgate at Aldermoor" is the line;',
+		'"the answer lies northward, if you have the wit to find it" is not, however much better',
+		"it reads.",
+		"",
 		"The last beat should end the story, not open another door.",
 		"",
 		// Both of these were available before and neither was ever used: every generated
 		// world came back with zero side errands and zero hidden things, because "you may"
 		// reads as "you need not" and the straight line is always the easier thing to write.
 		// A story of nothing but main beats is a story of walking between conversations.
-		`Two of these are required. ${optionalWanted(input.beats)} of those ${input.beats} beats must`,
-		"be side errands marked optional, and at least one beat must hide something to find:",
-		"",
-		"  optional  A side errand, off the main line. The story can finish with it still open,",
-		"            so this is where a piece of the world that is worth finding but not on the",
-		"            way belongs. It is what makes the map worth leaving the road for.",
-		"  find      Something hidden. Name it, say which kind of building at that settlement",
-		"            it is in, and the player has to go and get it before the beat closes.",
-		"            A story where nothing is ever searched for is a story with no objects in it.",
+		//
+		// But a short story cannot spare one, and asking anyway is what produced two real
+		// worlds with a main line of a single beat — see `optionalWanted`. So the demand is
+		// dropped rather than scaled at that length, and the hidden thing is asked for either
+		// way: something to search for is what makes a beat happen in a place.
+		...(optionalWanted(input.beats) > 0
+			? [
+					`Two of these are required. ${optionalWanted(input.beats)} of those ${input.beats} beats must`,
+					"be side errands marked optional, and at least one beat must hide something to find:",
+					"",
+					"  optional  A side errand, off the main line. The story can finish with it still open,",
+					"            so this is where a piece of the world that is worth finding but not on the",
+					"            way belongs. It is what makes the map worth leaving the road for.",
+					"  find      Something hidden. Name it, say which kind of building at that settlement",
+					"            it is in, and the player has to go and get it before the beat closes.",
+					"            A story where nothing is ever searched for is a story with no objects in it.",
+				]
+			: [
+					`This story is only ${input.beats} beats long, so every one of them is on the main`,
+					"line. Mark none of them optional — a story this short cannot spare a beat for a side",
+					"errand, and one that does leaves the player with a single thing to do and no road.",
+					"",
+					"One thing is still required: at least one beat must hide something to find.",
+					"",
+					"  find      Something hidden. Name it, say which kind of building at that settlement",
+					"            it is in, and the player has to go and get it before the beat closes.",
+					"            A story where nothing is ever searched for is a story with no objects in it.",
+				]),
 		"",
 		"Two more you may use, neither required, and only where they make the story better",
 		"than a straight line would. Use at most one fork:",
@@ -207,6 +270,73 @@ export function reactionsPrompt(input: {
 		.join("\n");
 }
 
+export const READING_SYSTEM =
+	"You are handed a finished adventure and asked one question: could somebody play it " +
+	"through without getting stuck? You are not a critic and you are not being asked whether " +
+	"it is good. Answer only about what would actually stop a player — a scene that does not " +
+	"say where to go next, an errand whose object is never mentioned, a character who talks " +
+	"as though something has happened that has not. Say nothing about prose quality, and " +
+	"invent nothing: if the story is followable, say so and give no notes.";
+
+/**
+ * Read a written world back and ask whether it can be followed.
+ *
+ * The pass the offline validator cannot be. Every check in `validate.ts` is structural — is
+ * this flag ever set, can this town be walked to, does this errand name something the world
+ * contains — and a world can pass all of them and still be unplayable, because the thing
+ * that went wrong is *what the prose says*. The playthrough that prompted this had a sound
+ * story where the second scene did not name the town the third was in, and nothing in a
+ * static check can see that: there is no rule being broken, only a player left with
+ * nowhere to walk.
+ *
+ * So the mechanical findings go in too, verbatim. They are the parts already known to be
+ * wrong, and a reader told about them will not spend its six notes rediscovering them.
+ */
+export function readingPrompt(input: {
+	readonly lore: WorldLore;
+	readonly beats: readonly {
+		readonly place: string;
+		readonly person: string;
+		readonly summary: string;
+		readonly errand?: string;
+		readonly says: readonly string[];
+	}[];
+	/** What the signposts in this world point at, since they answer the same question. */
+	readonly signs: readonly string[];
+	/** What the offline checks already found, in their own words. */
+	readonly known: readonly string[];
+}): string {
+	return [
+		`World: ${input.lore.title}. ${input.lore.premise}`,
+		"",
+		"The story, in the order the player meets it:",
+		...input.beats.flatMap((beat, index) =>
+			[
+				`  [${index}] at ${beat.place}, from ${beat.person}: ${beat.summary}`,
+				beat.errand ? `        errand: ${beat.errand}` : "",
+				...beat.says.map((line) => `        they say: ${line}`),
+			].filter(Boolean),
+		),
+		"",
+		input.signs.length > 0
+			? ["Signposts stand in this world, and the player can read them:", ...input.signs].join("\n")
+			: "There are no signposts in this world.",
+		"",
+		input.known.length > 0
+			? [
+					"These are already known to be wrong; do not repeat them:",
+					...input.known.map((line) => `  - ${line}`),
+				].join("\n")
+			: "The offline checks found nothing wrong with it.",
+		"",
+		"Walk through it as a player who knows nothing. After each scene, ask: do I now know",
+		"where to go and who to look for? If the answer is no, that is a note — say which scene",
+		"and what is missing. If the answer is yes throughout, give no notes at all.",
+	]
+		.filter((line) => line !== "")
+		.join("\n");
+}
+
 export const TREE_SYSTEM =
 	`You write dialogue for one character in a small terminal roguelike. ${HOUSE_STYLE} ` +
 	"Conversations are choice-only: the player picks from what you offer, so every reply " +
@@ -221,6 +351,19 @@ export function treePrompt(input: {
 		readonly setsFlag: string;
 		readonly questName?: string;
 	};
+	/**
+	 * Where the player goes after this scene, when this scene is what sends them.
+	 *
+	 * The single most useful thing a beat anchor can be told, and it was not being told it.
+	 * A conversation is where the player is *standing* when the errand is handed out, so it
+	 * is the natural place — and the only reliable one — for "go to Aldermoor and ask for
+	 * Lune Harrowgate" to be said. Left out, the model writes a fine scene about the thing
+	 * that has just gone wrong and the player walks out of it with no direction.
+	 */
+	readonly sendsTo?: {
+		readonly place: string;
+		readonly person?: string;
+	};
 	/** Flags earlier beats set, which a reply may be gated on. */
 	readonly availableFlags: readonly string[];
 	/**
@@ -232,6 +375,20 @@ export function treePrompt(input: {
 	 * went. Asking for a flag to be used is far more reliable than asking again and hoping.
 	 */
 	readonly insist?: readonly string[];
+	/**
+	 * What was wrong with the last attempt, in the validator's own words.
+	 *
+	 * The whole of what the thorough pass adds. A rewrite asked to try again produces
+	 * something different; a rewrite told "this scene opens while the player is carrying the
+	 * thing and then takes it, so every later hello asks for it again" produces something
+	 * *fixed*. Those sentences are already written — they are what the player is shown after
+	 * a run — so handing them to the model costs nothing but the tokens.
+	 *
+	 * Passed through verbatim rather than translated. The messages are written for a reader
+	 * and a model is a reader, and any paraphrase here would be a second copy of the
+	 * explanation to keep in step with the first.
+	 */
+	readonly notes?: readonly string[];
 }): string {
 	const { npc, site } = input;
 	return [
@@ -256,6 +413,21 @@ export function treePrompt(input: {
 					.join("\n")
 			: "This person is not part of the main story. Give them something local and true to say.",
 		"",
+		// Said in one of this character's own lines, because a line of dialogue is the one
+		// piece of prose the player cannot miss: they are standing in front of it, reading it,
+		// with nothing else on the screen.
+		input.sendsTo
+			? [
+					`When this is done the player should go to ${input.sendsTo.place}${
+						input.sendsTo.person ? ` and ask for ${input.sendsTo.person}` : ""
+					}.`,
+					`One of the lines you write must say so plainly, naming ${input.sendsTo.place} exactly`,
+					"like that. Not a hint and not a bearing — the name. A player who leaves this",
+					"conversation without it has nowhere to walk, and the story stops there however good",
+					"the rest of the scene was.",
+				].join("\n")
+			: "",
+		"",
 		input.insist && input.insist.length > 0
 			? [
 					`This character must have something to say once the player has taken one path rather`,
@@ -274,6 +446,17 @@ export function treePrompt(input: {
 		"",
 		"Only use an action if this character would really do it — hand over an object, take payment,",
 		"note something down. Most conversations need none.",
+		// Last, so it is the freshest thing in the context when the answer is composed, and
+		// stated as facts about the previous attempt rather than as a scolding — the previous
+		// attempt is not this model's fault and telling it so wastes the instruction.
+		input.notes && input.notes.length > 0
+			? [
+					"",
+					"A conversation for this character has been written once already and something was",
+					"wrong with it. Fix these, and change nothing else about who they are:",
+					...input.notes.map((note) => `  - ${note}`),
+				].join("\n")
+			: "",
 	]
 		.filter((line) => line !== "")
 		.join("\n");

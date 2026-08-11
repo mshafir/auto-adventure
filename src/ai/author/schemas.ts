@@ -185,6 +185,43 @@ export const ReactionsSchema = z.object({
 
 export type ReactionsResponse = z.infer<typeof ReactionsSchema>;
 
+/**
+ * One thing a reader thinks would stop a player finishing this world.
+ *
+ * Named by beat index, like everything else a model is asked to point at here, so a note
+ * can be attached to the scene it is about and handed to the rewrite of that scene. A note
+ * about nothing in particular says -1 and is reported rather than acted on.
+ *
+ * `fixable` is the model's own judgement about whether rewriting the conversation would
+ * cure it, and it is *advisory*: the pass below decides what it attempts on the strength of
+ * what it can re-derive, and re-validates afterwards. Asking is still worth it, because
+ * "the map is too big for this story" and "this character never says where to go" both
+ * come back as prose and only one of them is worth a call.
+ */
+export const ReadingNoteSchema = z.object({
+	beat: z
+		.number()
+		.int()
+		.min(-1)
+		.describe("Index into the list of beats this is about, or -1 for the story as a whole."),
+	what: cappedText(300).describe("What would go wrong for the player, in one or two sentences."),
+	fixable: z
+		.boolean()
+		.describe("Whether rewriting that scene's conversation would fix it, as far as you can tell."),
+});
+
+export const ReadingSchema = z.object({
+	/**
+	 * Asked for even when the answer is "nothing", because a model with a list to fill will
+	 * fill it: a schema that only carries faults invites the invention of faults. A verdict
+	 * gives it somewhere to say the world is sound.
+	 */
+	verdict: cappedText(200).describe("One sentence: could a player follow this story through?"),
+	notes: cappedList(ReadingNoteSchema, 6),
+});
+
+export type ReadingResponse = z.infer<typeof ReadingSchema>;
+
 const TreeChoiceSchema = z.object({
 	text: cappedText(90).describe("What the player says, in the player's voice."),
 	goto: slugText(48).nullable().describe("Id of the next node, or null to end."),

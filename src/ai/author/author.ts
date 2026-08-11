@@ -453,6 +453,10 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			const beat = arc?.beats.find(
 				(candidate) => candidate.siteId === spec.siteId && candidate.npcSlot === npc.slot,
 			);
+			// Where this scene sends the player, so the person handing out the errand can say
+			// so in their own voice. Only across a real journey: telling somebody to go to the
+			// town they are standing in reads as the character not knowing where they are.
+			const onward = beat && arc ? nextStop(arc, beat, sites) : undefined;
 			const tree = await writeTree({
 				lore,
 				site: spec,
@@ -467,6 +471,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 							},
 						}
 					: {}),
+				...(onward ? { sendsTo: onward } : {}),
 				availableFlags: (arc?.beats ?? []).map((candidate) => candidate.setsFlag),
 				...abortable,
 			});
@@ -799,6 +804,30 @@ export function lowerArc(
 	};
 }
 
+/**
+ * Where the story goes after this beat, in words a character could say.
+ *
+ * The main line only, and only when it leads somewhere else. A side errand is something
+ * the player chooses to go looking for, so sending them off to one from the main line's
+ * own scene would be the story recommending its own detour; and a beat whose successor is
+ * in the same settlement is a scene followed by another scene, which needs no directions.
+ */
+export function nextStop(
+	arc: ScenarioArc,
+	after: ScenarioBeat,
+	sites: Readonly<Record<string, SiteSpec>>,
+): { readonly place: string; readonly person?: string } | undefined {
+	const main = arc.beats.filter((beat) => !beat.optional).sort((a, b) => a.order - b.order);
+	const at = main.findIndex((beat) => beat.id === after.id);
+	const next = at >= 0 ? main[at + 1] : undefined;
+	if (!next || next.siteId === after.siteId) return undefined;
+
+	const spec = sites[String(next.siteId)];
+	if (!spec) return undefined;
+	const person = spec.npcs.find((npc) => npc.slot === next.npcSlot);
+	return { place: spec.name, ...(person ? { person: person.name } : {}) };
+}
+
 export interface WriteTreeInput {
 	readonly lore: WorldLore;
 	readonly site: SiteSpec;
@@ -809,9 +838,16 @@ export interface WriteTreeInput {
 		readonly setsFlag: string;
 		readonly questName?: string;
 	};
+	/** Where this scene sends the player, when it is a scene that sends them anywhere. */
+	readonly sendsTo?: {
+		readonly place: string;
+		readonly person?: string;
+	};
 	readonly availableFlags: readonly string[];
 	/** Flags a reply must be hidden behind. Used by the repair pass, not the first run. */
 	readonly insist?: readonly string[];
+	/** What was wrong with the last attempt, for a rewrite. See `treePrompt`. */
+	readonly notes?: readonly string[];
 	readonly signal?: AbortSignal;
 }
 
@@ -826,8 +862,10 @@ export async function writeTree(input: WriteTreeInput): Promise<DialogueTree | u
 			site: input.site,
 			npc: input.npc,
 			...(input.beat ? { beat: input.beat } : {}),
+			...(input.sendsTo ? { sendsTo: input.sendsTo } : {}),
 			availableFlags: input.availableFlags,
 			...(input.insist ? { insist: input.insist } : {}),
+			...(input.notes ? { notes: input.notes } : {}),
 		}),
 		temperature: 0.85,
 		timeoutMs: AUTHOR_TIMEOUT_MS,
