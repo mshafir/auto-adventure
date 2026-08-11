@@ -9,14 +9,17 @@ import type { ScenarioArtifact } from "./artifact.js";
  * Its own module because two passes ask a related question and must not disagree by
  * accident. `checkWayfinding` reports a story that leaves the player guessing, and
  * `sayWhereToGoNext` appends a plain direction to one — and the two *deliberately* differ:
- * `repair.ts:721` calls this with `ignoreSigns: true`, because a board on the road out
+ * `repair.ts:714` calls this with `ignoreSigns: true`, because a board on the road out
  * answers "which way" but says nothing to somebody reading their journal two towns later,
- * so the repair adds a line even where a sign already satisfies the check. Get a
- * deliberate difference like that wrong in the wrong direction and the two failure shapes
- * differ by kind: a repair with too narrow a rule for "already told" can decide nothing is
- * wrong and leave a finding standing after claiming to have fixed it, while one with too
- * wide a rule fires on a beat the check was already happy with, adding a sentence nobody
- * needed.
+ * so the repair adds a line even where a sign already satisfies the check.
+ *
+ * The direction of that difference is the whole of why it is safe, and it is worth stating
+ * because it is easy to get backwards. `ignoreSigns` makes the repair's rule for "already
+ * told" *narrower* than the check's, so the repair acts more often than the check
+ * complains: at worst it appends a sentence to a beat the check was already happy with.
+ * A *wider* rule is the dangerous one — it would decide the player had been told where the
+ * check does not, and leave a finding standing after claiming to have fixed it. Narrower
+ * over-writes; wider lies.
  *
  * The fault they are both about cost a whole playthrough. Every beat opened, every errand
  * landed in the log, every flag was written and read; the player finished a scene, read
