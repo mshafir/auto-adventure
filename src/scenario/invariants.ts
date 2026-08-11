@@ -195,6 +195,12 @@ export function checkBuildingsReachable(artifact: ScenarioArtifact): Violation[]
  *
  * Side errands are exempt. A player goes looking for one by choice, and warning about
  * every optional beat in every world is how an author learns to stop reading a report.
+ *
+ * Sharing `beatsWithoutTrees` narrowed what counts as "no conversation" a second time,
+ * beyond the optional-beat exemption above: the question moved from "has no spoken
+ * lines" to "has no tree at all", so a tree that exists but has zero nodes now passes
+ * here. Nothing goes unreported for it — `checkTrees` still warns below two nodes — it
+ * just surfaces under a different invariant than this one.
  */
 export function checkScenesWritten(artifact: ScenarioArtifact): Violation[] {
 	const arc = artifact.arc;

@@ -8,7 +8,11 @@ import {
 } from "../../test/fixtures/scenario.js";
 import { clearFeatureCache } from "../core/gen/features/registry.js";
 import type { SettlementSpec } from "../core/gen/features/settlement.js";
+import { hashString } from "../core/rand/hash.js";
 import { beatNpcId } from "../core/rules/arc.js";
+import { boundsAround } from "../core/world/bounds.js";
+import { macroSite } from "../core/world/macro.js";
+import { worldSeed } from "../core/world/recipe.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import {
 	checkBuildingsReachable,
@@ -103,6 +107,65 @@ describe("buildings-reachable", () => {
 	it("is silent on a settlement whose buildings all open onto the square", () => {
 		clearFeatureCache();
 		expect(checkBuildingsReachable(demoArtifact())).toEqual([]);
+	});
+
+	/**
+	 * A real violation, not only the silent case above. Without this, the silent test
+	 * would still pass with `checkBuildingsReachable` replaced by `() => []` — which is
+	 * exactly the finding this test answers: the invariant backs one of the branch's two
+	 * headline measurements ("buildings-reachable unchanged") and had never actually been
+	 * made to fail.
+	 *
+	 * Reuses the seed and site `settlement.test.ts` pins for the same reason it pins them:
+	 * `sweep2-242` at macro cell (-2,-3) is a walled town whose BSP gives it room for only
+	 * a couple of plots against this 41-structure spec, so its required hall's own
+	 * doorstep is stranded even after every prune round. Built directly from `macroSite`
+	 * rather than through `findSettlement`, because the fixture needs *this* site and not
+	 * whichever one a sweep from the origin finds first.
+	 */
+	it("reports a required building the carve could never reach", () => {
+		clearFeatureCache();
+		const seed = hashString("sweep2-242");
+		const site = macroSite(worldSeed(seed), -2, -3);
+		const spec = demoSiteSpec(site.id);
+
+		const artifact = demoArtifact({
+			seed,
+			spawn: { x: site.site.x, y: site.site.y },
+			bounds: boundsAround(site.site, site.radius + 40, { style: "cliffs", thickness: 6 }),
+			sites: {
+				[String(site.id)]: {
+					...spec,
+					name: "Bulwark",
+					shortName: "Bulwark",
+					settlement: {
+						name: "Bulwark",
+						walled: true,
+						structures: [
+							{
+								kind: "hall",
+								size: "large",
+								importance: 1,
+								id: "needed",
+								name: "Needed",
+								required: true,
+							},
+							...Array.from({ length: 40 }, () => ({
+								kind: "house" as const,
+								size: "large" as const,
+								importance: 5,
+							})),
+						],
+					},
+				},
+			},
+		});
+
+		const violations = checkBuildingsReachable(artifact);
+
+		expect(violations.length).toBeGreaterThan(0);
+		expect(violations[0]?.invariant).toBe("buildings-reachable");
+		expect(violations.some((v) => v.detail.includes("Needed"))).toBe(true);
 	});
 });
 
