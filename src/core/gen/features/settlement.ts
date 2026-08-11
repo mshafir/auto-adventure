@@ -414,8 +414,13 @@ const MAX_PRUNE_ROUNDS = 4;
  *
  * A *required* building is different: demolishing it is the very substitution
  * `plots.ts` exists to prevent, arriving one pass later. So a required building that
- * cannot be reached takes a neighbour down instead — the nearest non-required building —
- * and the carve is retried. If that still does not open a route the building is kept,
+ * cannot be reached tries taking a neighbour down instead — the nearest non-required
+ * building — and retrying the carve. That trade is judged every time against the one
+ * thing it exists to buy, rather than kept on faith: if the required building's own
+ * doorstep is still not reached afterwards, the neighbour goes back rather than staying
+ * demolished for nothing. (A 200-seed sweep during development never once found this
+ * sacrifice actually opening a route — see the plan's Task 8 notes — which is why it is
+ * no longer assumed to work.) If nothing helps, the required building is kept,
  * unreachable, and the `buildings-reachable` invariant reports it. Kept rather than
  * demolished on purpose: a building standing in the wrong place is a bug somebody can
  * see and fix, and a building that was silently deleted is the bug that took a
@@ -429,48 +434,99 @@ function pruneUnreachable(
 	buildable: Allowed,
 	rng: Rng,
 ): void {
-	for (let round = 0; round < MAX_PRUNE_ROUNDS; round++) {
-		const reached = reachableFrom(patch, square, anchors);
-		if (!reached) return;
-
+	const strandedDoorsteps = (reached: ReadonlySet<Anchor>): Set<number> => {
 		const stranded = new Set<number>();
 		for (const anchor of anchors) {
 			if (anchor.kind !== "doorstep" || anchor.building === undefined) continue;
 			if (!reached.has(anchor)) stranded.add(anchor.building);
 		}
+		return stranded;
+	};
+
+	const remove = (indices: ReadonlySet<number>): void => {
+		for (let i = buildings.length - 1; i >= 0; i--) {
+			if (indices.has(buildings[i]?.index ?? -1)) buildings.splice(i, 1);
+		}
+		for (let i = anchors.length - 1; i >= 0; i--) {
+			const owner = anchors[i]?.building;
+			if (owner !== undefined && indices.has(owner)) anchors.splice(i, 1);
+		}
+	};
+
+	for (let round = 0; round < MAX_PRUNE_ROUNDS; round++) {
+		const reached = reachableFrom(patch, square, anchors);
+		if (!reached) return;
+
+		const stranded = strandedDoorsteps(reached);
 		if (stranded.size === 0) return;
 
 		const isRequired = (index: number) =>
 			buildings.find((building) => building.index === index)?.required === true;
 
-		// What actually comes down this round: the stranded buildings that may be
-		// demolished, plus one sacrificial neighbour for each stranded one that may not.
+		// Stranded buildings nobody asked to keep come down outright, same as always.
 		const doomed = new Set<number>();
 		for (const index of stranded) {
-			if (!isRequired(index)) {
-				doomed.add(index);
+			if (!isRequired(index)) doomed.add(index);
+		}
+
+		let changed = doomed.size > 0;
+		if (changed) {
+			for (const index of doomed) {
+				const building = buildings.find((b) => b.index === index);
+				if (building) demolish(patch, building, buildable, rng);
+			}
+			remove(doomed);
+			// Re-carve: removing a building may open a route the previous pass could not
+			// find, including — before any sacrifice is tried below — for a required one.
+			carveConnections(patch, square, anchors, buildable);
+		}
+
+		const afterOrdinary = changed ? reachableFrom(patch, square, anchors) : reached;
+		const stillStranded = afterOrdinary ? strandedDoorsteps(afterOrdinary) : stranded;
+
+		for (const index of stillStranded) {
+			if (!isRequired(index)) continue;
+			const neighbour = nearestExpendable(buildings, index, new Set());
+			if (neighbour === undefined) continue;
+
+			// Snapshot before the sacrifice, so a trade that buys nothing can be undone
+			// rather than paid for anyway. `.slice()` copies the typed arrays and the two
+			// plain arrays; the patch is small (a radius-20 site is roughly 45x45), so this
+			// is cheap.
+			const snapshot = {
+				terrain: patch.terrain.slice(),
+				decor: patch.decor.slice(),
+				flags: patch.flags.slice(),
+				buildings: [...buildings],
+				anchors: [...anchors],
+			};
+
+			const victim = buildings.find((b) => b.index === neighbour);
+			if (victim) demolish(patch, victim, buildable, rng);
+			remove(new Set([neighbour]));
+			carveConnections(patch, square, anchors, buildable);
+
+			const after = reachableFrom(patch, square, anchors);
+			const doorstep = anchors.find((a) => a.kind === "doorstep" && a.building === index);
+			const opened = after !== undefined && doorstep !== undefined && after.has(doorstep);
+
+			if (opened) {
+				changed = true;
 				continue;
 			}
-			const neighbour = nearestExpendable(buildings, index, doomed);
-			if (neighbour !== undefined) doomed.add(neighbour);
-		}
-		if (doomed.size === 0) return;
 
-		for (const index of doomed) {
-			const building = buildings.find((b) => b.index === index);
-			if (building) demolish(patch, building, buildable, rng);
-		}
-
-		for (let i = buildings.length - 1; i >= 0; i--) {
-			if (doomed.has(buildings[i]?.index ?? -1)) buildings.splice(i, 1);
-		}
-		for (let i = anchors.length - 1; i >= 0; i--) {
-			const owner = anchors[i]?.building;
-			if (owner !== undefined && doomed.has(owner)) anchors.splice(i, 1);
+			// It did not help: restore all five together rather than keep a demolition
+			// that bought nothing.
+			patch.terrain.set(snapshot.terrain);
+			patch.decor.set(snapshot.decor);
+			patch.flags.set(snapshot.flags);
+			buildings.length = 0;
+			buildings.push(...snapshot.buildings);
+			anchors.length = 0;
+			anchors.push(...snapshot.anchors);
 		}
 
-		// Re-carve: removing a building may open a route the previous pass could not find.
-		carveConnections(patch, square, anchors, buildable);
+		if (!changed) return;
 	}
 }
 

@@ -744,6 +744,58 @@ describe("required structures", () => {
 			}
 		}
 	});
+
+	it("restores a sacrificed neighbour when it did not open the required building's route", () => {
+		// The Task 8 pinned case: this exact seed and site strand the required hall even
+		// after all four prune rounds. Before this fix, `pruneUnreachable` demolished the
+		// nearest non-required neighbour on the chance it would reopen the route and kept it
+		// demolished regardless of whether it actually did — and a 200-seed sweep during
+		// Task 8 never once found that trade paying for itself. Confirmed here the same way
+		// Task 8 confirmed its own pinned case: with the fix reverted (`git stash push --
+		// src/core/gen/features/settlement.ts`), this exact spec produces exactly ONE
+		// building (the required hall, still stranded — the sacrifice never helped, same as
+		// every case in Task 8's sweep); with the fix restored, it produces exactly TWO — the
+		// same hall, plus the neighbour that used to be demolished for nothing.
+		const { seed, sites } = sampleSites("sweep2-242", 4);
+		const site = sites.find((s) => s.mx === -2 && s.my === -3);
+		expect(site).toBeDefined();
+		if (!site) return;
+
+		const patch = generateSettlement(worldSeed(seed), site, {
+			walled: true,
+			structures: [
+				{
+					kind: "hall",
+					size: "large",
+					importance: 1,
+					id: "needed",
+					name: "Needed",
+					required: true,
+				},
+				...Array.from({ length: 40 }, () => ({
+					kind: "house" as const,
+					size: "large" as const,
+					importance: 5,
+				})),
+			],
+		});
+
+		const needed = patch.buildings.find((b) => b.name === "Needed");
+		expect(needed, "the required building was demolished instead of kept").toBeDefined();
+
+		// The rolled-back neighbour: not required, and never named (filler, not the spec's
+		// own requirements — this site's plots are too scarce to fit more than a couple of
+		// the 40 requested houses even before any pruning).
+		const neighbour = patch.buildings.find((b) => b !== needed);
+		expect(neighbour, "the sacrificed neighbour was not restored").toBeDefined();
+		expect(neighbour?.required).not.toBe(true);
+
+		// Tripwire, mirroring Task 9's on the same site: if plot-splitting ever gives this
+		// site enough room that the hall stops being stranded, this test would keep passing
+		// for the boring reason that nothing threatened the neighbour either — assert the
+		// oversubscription directly so that stops being silent.
+		expect(patch.buildings.length, "this site is no longer oversubscribed enough").toBeLessThan(10);
+	});
 });
 
 describe("buildings seen from outside", () => {
