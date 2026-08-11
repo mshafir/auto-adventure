@@ -120,6 +120,19 @@ describe("the working file", () => {
 		expect(transcript()[0]?.prompt).toBe(CALL.prompt);
 	});
 
+	it("refuses to read a run back over one already in memory", () => {
+		// The case this exists for: a world written a moment ago on the previous screen has
+		// every one of these exchanges in memory already, so reading the file back over the
+		// top of them would show the player each one twice.
+		beginWorking("the-tide-glass");
+		recordExchange({ ...CALL });
+		endWorking();
+
+		expect(transcript()).toHaveLength(1);
+		expect(loadWorkingInto("the-tide-glass")).toBe(false);
+		expect(transcript()).toHaveLength(1);
+	});
+
 	it("says so rather than throwing when a world has no working file", () => {
 		expect(loadWorkingInto("never-written")).toBe(false);
 		expect(readWorking("never-written")).toBeUndefined();

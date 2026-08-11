@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { render } from "ink";
-import { setDebugAi } from "./ai/transcript.js";
+import { loadWorkingInto } from "./ai/working-file.js";
 import { CONFIG, installGatewayKey } from "./config.js";
 import type { LaunchChoice } from "./scenario/scenario.js";
 import { buildSession } from "./session.js";
@@ -134,15 +134,14 @@ async function startGame() {
 	// that starts with a key already stored.
 	installGatewayKey();
 
-	// `DEBUG_AI=1` is the same switch the generate page offers, for a run that starts
-	// without one — a scripted generation, or somebody who already knows the world they
-	// are about to open is the one behaving oddly. It covers play as well as authoring,
-	// which the page's own toggle cannot: by the time a world is being played the page
-	// that offered it is three screens ago.
-	if (CONFIG.debugAi) setDebugAi(true);
-
 	const choice = wantsLauncher() ? await pickLaunch() : choiceFromEnv();
 	if (!choice) return;
+
+	// A scenario carries the record of its own authoring beside it, so the working page has
+	// the prompts that produced this world even though this process did not write it. Silent
+	// when there is nothing to read, and a no-op for a world just written on the previous
+	// screen — `loadWorkingInto` will not read over a transcript already in memory.
+	if (choice.scenario) loadWorkingInto(choice.scenario.id);
 
 	const session = buildSession(choice, { saveDebounceMs: CONFIG.saveDebounceMs });
 	// Only the real game coalesces frames. A test or a screenshot dispatches and

@@ -31,19 +31,24 @@ export type PanelTab = "inventory" | "quests" | "journal" | "key" | "debug";
 export const PANEL_TABS: readonly PanelTab[] = ["inventory", "quests", "journal", "key"];
 
 /**
- * The tabs on offer, which is not always all of them.
+ * The tabs on offer.
  *
- * `debug` is the one that comes and goes. It holds the prompts and answers of every
- * model call, which is a page most players have no use for and which is empty unless
- * somebody asked for the recording — and a tab that is always there and always empty
- * is a tab everybody has to step past forever to reach the one they wanted.
+ * `debug` used to come and go with whether the recording was on, so that a page most
+ * players have no use for — and which was empty unless somebody had asked for the
+ * recording — was not one everybody had to step past forever.
  *
- * A function rather than a constant because the reducer has to agree with the strip:
- * stepping is modular arithmetic over this list, so a screen drawing four tabs while
- * the reducer cycles five would leave one that could be reached and not seen.
+ * It is always here now, for the same reason the recording always runs: a scenario carries
+ * the record of its own authoring beside it, so the page has something in it for any world
+ * rather than only one this process happened to write. A tab that appears only when this
+ * process did the writing is a tab that is missing for exactly the case somebody wants it
+ * in — a world generated last week that is behaving oddly now.
+ *
+ * Still a function rather than a constant, because the reducer has to agree with the strip:
+ * stepping is modular arithmetic over this list, so a screen drawing four tabs while the
+ * reducer cycled five would leave one that could be reached and not seen.
  */
-export function panelTabs(debug: boolean): readonly PanelTab[] {
-	return debug ? [...PANEL_TABS, "debug"] : PANEL_TABS;
+export function panelTabs(): readonly PanelTab[] {
+	return [...PANEL_TABS, "debug"];
 }
 
 /** Tabs holding a list the player can move a cursor through. */

@@ -159,14 +159,21 @@ export function readWorking(id: string): WorkingRecord[] | undefined {
  * Put a world's recorded exchanges into the live transcript.
  *
  * What makes the in-game working page useful for a scenario somebody else generated, or
- * one generated last week. Reports whether there was anything to read, so a caller can tell
- * "no record" from "an empty record".
+ * one generated last week. Reports whether anything was read, so a caller can tell "no
+ * record" from "an empty record".
+ *
+ * Refuses outright when the transcript already holds something, which is the case that
+ * matters rather than a defensive flourish: a world written a moment ago on the previous
+ * screen has every one of these exchanges in memory already, and reading the file back over
+ * the top of them would show the player each one twice. The invariant belongs here rather
+ * than with the caller, because a second caller would have to rediscover it.
  *
  * Only the exchanges. The log lines are in the file for whoever reads it, but seeding them
  * into this session's ring would mix last week's authoring with this session's play in one
  * list with no way to tell which was which.
  */
 export function loadWorkingInto(id: string): boolean {
+	if (transcript().length > 0) return false;
 	const records = readWorking(id);
 	if (!records) return false;
 	const exchanges = records

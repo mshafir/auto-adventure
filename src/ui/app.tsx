@@ -1,6 +1,6 @@
 import { Box, useApp, useStdout } from "ink";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { debugAi, transcript } from "../ai/transcript.js";
+import { transcript } from "../ai/transcript.js";
 import { CONFIG } from "../config.js";
 import { resolveTileTheme } from "../content/tiles.js";
 import { computeFov, lightAt } from "../core/geom/fov.js";
@@ -89,9 +89,9 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	const state = useGameState();
 	const { width, height } = useTerminalSize();
 	const { exit } = useApp();
-	// Which pages the menu offers this run. The working is only on the strip when the
-	// recording is on, so it is never a tab most players have to step past.
-	const tabs = panelTabs(debugAi());
+	// Which pages the menu offers. Fixed rather than per-run: a scenario carries the record
+	// of its own authoring, so the working page has something in it for any world.
+	const tabs = panelTabs();
 	const [hud, hudDispatch] = useReducer(
 		// Bound to this run's tab list, so the strip the player sees and the ring the
 		// arrow keys walk are the same list by construction.
