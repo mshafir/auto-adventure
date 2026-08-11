@@ -44,6 +44,8 @@
 		"analyze": "vite-node src/tools/analyze-capture.ts -- capture.raw --columns 163 --rows 37",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"//test:reap": "Kill workers a cancelled or OOM-killed run left behind. The [v] is not a typo: it keeps the pattern from matching the shell that runs it.",
+		"test:reap": "pkill -f '[v]itest' ; pkill -f '[v]ite-node' ; exit 0",
 		"lint": "./node_modules/.bin/biome check .",
 		"lint:fix": "./node_modules/.bin/biome check . --write",
 		"check": "npm run typecheck && npm run lint && npm test",
