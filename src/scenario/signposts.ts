@@ -28,6 +28,13 @@ import { isPassable, type PassabilityGrid, terrainOf } from "./passability.js";
  * no marker at all is precisely the case that needs one: somewhere the player has never
  * been. A board at the edge of town is the answer to that, and it is the answer *at the
  * moment the choice is made*, which no amount of map furniture is.
+ *
+ * At this commit, that is all this module does. The derivation above is finished and
+ * covered by tests, but nothing yet calls it in the running game: no pass stamps a
+ * `Sign` into a generated chunk, and no engine lookup lets a player read one standing in
+ * front of it. So despite the present tense throughout, no signpost exists in the world
+ * today — wiring the plan up to `pipeline.ts` and `engine.ts` is follow-up work, tracked
+ * separately, not part of what this file claims to have finished.
  */
 
 export interface SignpostPlan {
