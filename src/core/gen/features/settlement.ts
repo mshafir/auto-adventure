@@ -41,6 +41,23 @@ export interface StructureSpec {
 	readonly signText?: string;
 	/** What has to be true to get inside. Absent means the door simply opens. */
 	readonly lock?: Lock;
+	/**
+	 * A handle for this structure, so something else can refer to it.
+	 *
+	 * Needed because `required` and the relations in `plots.ts` are about *this*
+	 * building and not about its kind: a settlement with three houses and one required
+	 * counting house cannot express either without a way to name the one that matters.
+	 */
+	readonly id?: string;
+	/**
+	 * Whether the settlement must contain this, or may substitute filler for it.
+	 *
+	 * The flag that makes a spec binding. Without it the assignment pass is advisory all
+	 * the way down — a plot too small yields filler and the story's counting house
+	 * quietly becomes a house — and nothing downstream can tell the difference between a
+	 * building the author wanted and one the roll happened to place.
+	 */
+	readonly required?: boolean;
 }
 
 export interface SettlementSpec {

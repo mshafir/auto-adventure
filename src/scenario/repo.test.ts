@@ -80,6 +80,38 @@ describe("writeScenario and readScenarioFile", () => {
 		expect(read?.liveInGame).toBeUndefined();
 	});
 
+	it("keeps a structure's identity and its required flag through a round trip", () => {
+		const site = findSettlement(FIXTURE_SEED);
+		const spec = demoSiteSpec(site.id);
+		const built = artifact({
+			sites: {
+				[String(site.id)]: {
+					...spec,
+					settlement: {
+						...spec.settlement,
+						structures: [
+							{
+								kind: "hall",
+								size: "medium",
+								importance: 5,
+								name: "The Counting House",
+								id: "counting-house",
+								required: true,
+							},
+						],
+					},
+				},
+			},
+		});
+
+		const path = writeScenario(built);
+		const read = readScenarioFile(path);
+
+		const structure = read?.sites[String(site.id)]?.settlement.structures[0];
+		expect(structure?.id).toBe("counting-house");
+		expect(structure?.required).toBe(true);
+	});
+
 	it("returns undefined for a file that is not there", () => {
 		expect(readScenarioFile(scenarioPath("nothing"))).toBeUndefined();
 		expect(loadScenario("nothing")).toBeUndefined();

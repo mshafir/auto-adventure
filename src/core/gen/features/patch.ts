@@ -64,6 +64,16 @@ export interface BuildingPlacement {
 	 * an evicted chunk comes back locked without anything having been written down.
 	 */
 	readonly lock?: Lock;
+	/**
+	 * Whether the spec insisted on this building.
+	 *
+	 * Carried on the placement rather than re-derived, because the two passes that must
+	 * respect it — the demolition pass in `settlement.ts` and the `buildings-reachable`
+	 * invariant — both see placements and not specs. Re-deriving it would mean matching
+	 * a building back to a spec entry by name, which is exactly the fuzzy join this flag
+	 * exists to avoid.
+	 */
+	readonly required?: boolean;
 }
 
 /**

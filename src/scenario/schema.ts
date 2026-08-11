@@ -97,6 +97,10 @@ const StoredStructureSchema = z.object({
 	signText: z.string().optional(),
 	/** What has to be true to get inside. Absent means the door simply opens. */
 	lock: LockSchema.optional(),
+	/** A handle, so a relation or a story beat can name this building. */
+	id: z.string().optional(),
+	/** Whether the settlement must contain this rather than substituting filler. */
+	required: z.boolean().optional(),
 });
 
 export const StoredSettlementSpecSchema = z.object({
