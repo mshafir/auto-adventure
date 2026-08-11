@@ -189,6 +189,15 @@ describe("relations", () => {
 	});
 
 	it("keeps an Isolated requirement's neighbours empty", () => {
+		// Plot 0 and plot 1 are 3 tiles apart (well under minGap 20); plot 2 is 288 tiles
+		// from both. The tower has nothing placed yet to conflict with, so it takes the
+		// first plot that fits its size (plot 0) — isolation is not "go to the emptiest
+		// corner", it is "keep anything else out of the gap once you've landed". That gap
+		// then has to swallow plot 1, and only plot 2 is left for the optional request.
+		//
+		// Asserting `blocked` is non-empty and names plot 1 specifically is what makes this
+		// test able to fail: the previous version of this test asserted `blocked` was `[]`,
+		// which passed whether the blocking pass existed or not.
 		const ctx: PlotContext = {
 			plots: [
 				{ x: 0, y: 0, w: 9, h: 9 },
@@ -213,11 +222,9 @@ describe("relations", () => {
 		]);
 
 		const tower = solution.assignments.find((a) => a.request.id === "tower");
-		expect(tower?.plot).toBe(2);
-		// Plot 2's only near neighbour is nothing; plots 0 and 1 are 288 tiles away, so
-		// neither is blocked and the optional request may take one.
-		expect(solution.blocked).toEqual([]);
-		expect(solution.assignments.find((a) => a.request.id === "filler-ish")).toBeDefined();
+		expect(tower?.plot).toBe(0);
+		expect(solution.blocked).toEqual([1]);
+		expect(solution.assignments.find((a) => a.request.id === "filler-ish")?.plot).toBe(2);
 	});
 
 	it("puts an AtEdge requirement away from the centre, not next to it", () => {
@@ -290,5 +297,37 @@ describe("relations", () => {
 
 		expect(solution.unplaced).toEqual([]);
 		expect(solution.assignments[0]?.plot).toBe(0);
+	});
+
+	it("honours an optional request's own relations rather than filling it in first-fit", () => {
+		// Plot 0 is nearer the top of the list but fails OnSquare; plot 1 fits the size just
+		// as well and satisfies it. The old fill loop for optional requests checked only
+		// size and occupancy, never `holds`, so it would have handed this to plot 0 — the
+		// first fit — and silently ignored the relation. There is no required request in
+		// this call at all, so the only way plot 1 gets chosen is if the optional loop itself
+		// enforces the relation.
+		const ctx: PlotContext = {
+			plots: [
+				{ x: 200, y: 200, w: 13, h: 13 },
+				{ x: 4, y: 4, w: 13, h: 13 },
+			],
+			square: { x: 0, y: 0 },
+			gates: [],
+			centre: { x: 0, y: 0 },
+			radius: 60,
+		};
+
+		const solution = assignPlots(ctx, [
+			request({
+				id: "optional-square",
+				kind: "house",
+				size: "small",
+				required: false,
+				relations: [{ t: "OnSquare", within: 30 }],
+			}),
+		]);
+
+		expect(solution.unplaced).toEqual([]);
+		expect(solution.assignments.find((a) => a.request.id === "optional-square")?.plot).toBe(1);
 	});
 });

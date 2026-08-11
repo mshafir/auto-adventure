@@ -71,7 +71,15 @@ export interface PlotSolution {
 	readonly assignments: readonly PlotAssignment[];
 	/** Plot indices that must be left empty, from an `Isolated` requirement. */
 	readonly blocked: readonly number[];
-	/** Ids of required requests that no plot could satisfy. */
+	/**
+	 * Ids of required requests that no plot could satisfy.
+	 *
+	 * Non-empty means the search failed outright: every requirement is reported here, not
+	 * only the one that actually ran out of plots, and `assignments` is still filled with
+	 * whatever optional requests fit anyway — a town is better than a hole where a building
+	 * should stand, and the invariant report is where the missing building surfaces. So a
+	 * caller must check this is empty before trusting `assignments` to be what it asked for.
+	 */
 	readonly unplaced: readonly string[];
 }
 
@@ -101,23 +109,24 @@ function fitsSize(plot: Rect, request: PlotRequest): boolean {
 	return plot.w >= need.x && plot.h >= need.y;
 }
 
+/** The largest `minGap` any of a request's `Isolated` relations asks for, or 0 if none. */
+function isolationOf(request: PlotRequest): number {
+	return request.relations.reduce(
+		(max, relation) => (relation.t === "Isolated" ? Math.max(max, relation.minGap) : max),
+		0,
+	);
+}
+
 export function assignPlots(context: PlotContext, requests: readonly PlotRequest[]): PlotSolution {
 	const { plots } = context;
 
 	/**
 	 * Whether a relation holds for a plot, given what has been chosen so far.
 	 *
-	 * Takes the plot's *index* as well as the rectangle. `Isolated` has to exclude the
-	 * plot from its own neighbour sweep, and finding it by `indexOf` would compare by
-	 * reference — correct today and quietly wrong the moment a caller passes two plots
-	 * that happen to be equal rectangles.
+	 * `Isolated` is not decided here — see its case below — so this no longer needs the
+	 * plot's index to exclude itself from a neighbour sweep, only the rectangle.
 	 */
-	const holds = (
-		relation: Relation,
-		at: number,
-		plot: Rect,
-		chosen: ReadonlyMap<string, number>,
-	): boolean => {
+	const holds = (relation: Relation, plot: Rect, chosen: ReadonlyMap<string, number>): boolean => {
 		switch (relation.t) {
 			case "OnSquare":
 				return dist(rectCenter(plot), context.square) <= relation.within;
@@ -135,9 +144,11 @@ export function assignPlots(context: PlotContext, requests: readonly PlotRequest
 				return target !== undefined && rectGap(plot, target) <= relation.within;
 			}
 			case "Isolated":
-				return plots.every(
-					(other, index) => index === at || rectGap(plot, other) >= relation.minGap,
-				);
+				// Isolation is pairwise and symmetric — a property of the distance between two
+				// buildings, not of one plot considered alone — so it cannot be decided here
+				// against a single candidate. `respectsIsolation` enforces it against every
+				// request actually placed so far.
+				return true;
 		}
 	};
 
@@ -157,13 +168,7 @@ export function assignPlots(context: PlotContext, requests: readonly PlotRequest
 			if (index === undefined) return false;
 			const plot = plots[index];
 			if (!plot) return false;
-			return request.relations.every((relation) => {
-				if (relation.t !== "Adjacent") return holds(relation, index, plot, chosen);
-				const other = chosen.get(relation.to);
-				if (other === undefined) return true;
-				const target = plots[other];
-				return target !== undefined && rectGap(plot, target) <= relation.within;
-			});
+			return request.relations.every((relation) => holds(relation, plot, chosen));
 		});
 
 	// Required first, and among them the most constrained first — fewest candidate plots,
@@ -183,6 +188,27 @@ export function assignPlots(context: PlotContext, requests: readonly PlotRequest
 	const taken = new Set<number>();
 	let nodes = 0;
 
+	// Every request placed so far, required or optional, in placement order. Isolation is
+	// checked against this rather than `chosen.values()` so nothing about the result depends
+	// on Map iteration order, and against every entry rather than only required ones so an
+	// optional request can neither crowd nor be crowded by anything already standing.
+	const placed: { request: PlotRequest; index: number }[] = [];
+
+	/**
+	 * Whether a candidate plot respects every isolation already claimed, and its own.
+	 *
+	 * Symmetric deliberately: the tower must not land beside a building already placed, and
+	 * a building placed later must not land beside the tower. Enforcing one direction only
+	 * leaves the fault to whichever order the sort happened to choose.
+	 */
+	const respectsIsolation = (candidate: PlotRequest, plot: Rect): boolean =>
+		placed.every((entry) => {
+			const gap = Math.max(isolationOf(candidate), isolationOf(entry.request));
+			if (gap <= 0) return true;
+			const other = plots[entry.index];
+			return other === undefined || rectGap(plot, other) >= gap;
+		});
+
 	const place = (at: number): boolean => {
 		if (at >= ordered.length) return verified(chosen, ordered);
 		const request = ordered[at];
@@ -193,11 +219,14 @@ export function assignPlots(context: PlotContext, requests: readonly PlotRequest
 			if (taken.has(index)) continue;
 			const plot = plots[index];
 			if (!plot || !fitsSize(plot, request)) continue;
-			if (!request.relations.every((relation) => holds(relation, index, plot, chosen))) continue;
+			if (!request.relations.every((relation) => holds(relation, plot, chosen))) continue;
+			if (!respectsIsolation(request, plot)) continue;
 
 			taken.add(index);
 			chosen.set(request.id, index);
+			placed.push({ request, index });
 			if (place(at + 1)) return true;
+			placed.pop();
 			chosen.delete(request.id);
 			taken.delete(index);
 		}
@@ -218,35 +247,50 @@ export function assignPlots(context: PlotContext, requests: readonly PlotRequest
 		// No complete assignment. Report every requirement as unplaced rather than
 		// shipping a partial one: a settlement missing one of three required buildings is
 		// a fault the caller must see, and a half-solution hides which half is missing.
+		//
+		// Defensive rather than load-bearing: `place`'s own backtracking already unwinds
+		// `chosen`, `taken` and `placed` on every failure path, including the MAX_NODES
+		// bailout, so by the time it returns false all three are already empty. Clearing
+		// them again costs nothing and keeps that invariant from being trusted silently.
 		chosen.clear();
 		taken.clear();
+		placed.length = 0;
 		for (const request of ordered) unplaced.push(request.id);
 	}
 
-	// Plots an isolated building keeps empty. Collected after the search, because it
-	// depends on where the isolated buildings actually landed.
+	// Plots an isolated building keeps empty. Collected after the required search, because
+	// it depends on where the isolated buildings actually landed. Only *unassigned* plots are
+	// blocked — a neighbour already assigned within the gap would mean `respectsIsolation`
+	// failed to do its job during placement, not something for this pass to undo.
 	const blocked = new Set<number>();
 	for (const assignment of assignments) {
-		const gap = assignment.request.relations.find((relation) => relation.t === "Isolated");
-		if (!gap || gap.t !== "Isolated") continue;
+		const gap = isolationOf(assignment.request);
+		if (gap <= 0) continue;
 		const plot = plots[assignment.plot];
 		if (!plot) continue;
 		plots.forEach((other, index) => {
 			if (index === assignment.plot || taken.has(index)) return;
-			if (rectGap(plot, other) < gap.minGap) blocked.add(index);
+			if (rectGap(plot, other) < gap) blocked.add(index);
 		});
 	}
 
-	// Then the optional requests, by importance as before, into what is left.
+	// Then the optional requests, by importance as before, into what is left. Relations and
+	// isolation apply here too — nothing in `PlotRequest` says an optional request's wishes
+	// are decorative — and each accepted placement is recorded in `chosen` and `placed` so a
+	// later optional request can reference it via `Adjacent` or `Isolated`.
 	const optional = [...requests.filter((request) => !request.required)].sort(
 		(a, b) => b.importance - a.importance || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
 	);
 	for (const request of optional) {
-		const index = plots.findIndex(
-			(plot, i) => !taken.has(i) && !blocked.has(i) && fitsSize(plot, request),
-		);
+		const index = plots.findIndex((plot, i) => {
+			if (taken.has(i) || blocked.has(i) || !fitsSize(plot, request)) return false;
+			if (!request.relations.every((relation) => holds(relation, plot, chosen))) return false;
+			return respectsIsolation(request, plot);
+		});
 		if (index < 0) continue;
 		taken.add(index);
+		chosen.set(request.id, index);
+		placed.push({ request, index });
 		assignments.push({ plot: index, request });
 	}
 
