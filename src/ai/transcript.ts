@@ -1,4 +1,4 @@
-import { logger, setLogLevel } from "../utils/log.js";
+import type { Duration } from "../core/world/brief.js";
 import { type CallKind, estimatedCost } from "./telemetry.js";
 
 /**
@@ -11,9 +11,11 @@ import { type CallKind, estimatedCost } from "./telemetry.js";
  * and until now the text existed nowhere at all. The log recorded a one-line summary
  * and the prompts were simply gone.
  *
- * Off by default and deliberately so. Keeping every prompt of a long run is tens of
- * megabytes of strings held live, and a game does not need them. It is turned on for a
- * generation run by somebody who is trying to find something out.
+ * On always. It used to be a switch that defaulted to off, on the grounds that keeping
+ * every prompt of a long run is tens of megabytes of strings held live — which is true, and
+ * is what the bounded, duration-sized buffer below is for. What the switch actually bought
+ * was a debug view nobody could find, on the one screen where somebody watching four
+ * minutes of authoring go wrong most wants one.
  *
  * Held in memory as well as written to the log, because a log file is not somewhere a
  * player can read from — they are inside a full-screen terminal application at the time,
@@ -41,15 +43,25 @@ export interface Exchange {
 }
 
 /**
- * How many exchanges to keep.
+ * How many exchanges to keep, by how large a world is being written.
  *
- * A long world is a few hundred calls, so this holds all of one and the tail of
- * anything larger. Bounded rather than unbounded because the alternative is a debug
- * switch that eventually ends the session it was meant to explain.
+ * One number cannot serve both ends. Eviction takes the *head*, so a run with more calls
+ * than room loses the shape, the lore and the region passes — the first three somebody
+ * reading a bad world asks about. A `long` world is around 120 calls, and a model that
+ * needs its retries turns each of those into three exchanges, which the old flat 400 could
+ * not hold.
  */
-export const TRANSCRIPT_LIMIT = 400;
+export const TRANSCRIPT_LIMITS: Readonly<Record<Duration, number>> = {
+	tiny: 200,
+	short: 400,
+	medium: 800,
+	long: 1600,
+};
 
-let enabled = false;
+/** What an unsized run holds: playing a world, or a caller that never said. */
+export const DEFAULT_TRANSCRIPT_LIMIT = TRANSCRIPT_LIMITS.medium;
+
+let limit: number = DEFAULT_TRANSCRIPT_LIMIT;
 let nextSeq = 1;
 const kept: Exchange[] = [];
 
@@ -57,25 +69,32 @@ type Listener = () => void;
 const listeners = new Set<Listener>();
 
 /**
- * Turn the recording on, and turn the log file's level down with it.
+ * Set the buffer to the size of the world about to be written.
  *
- * One switch for both, because they are one decision. Somebody who asks for the
- * prompt-by-prompt view wants the debug lines the rest of the codebase already writes —
- * "dropping late spec for committed site", "replaying a remembered reply" — and having
- * to also know that `LOG_LEVEL` exists, and to have set it before the process started,
- * is the kind of thing that makes a debug feature go unused.
+ * Called once, before the first pass. `undefined` means the default — a caller with no
+ * duration in hand is not a caller asking for the smallest buffer.
  */
-export function setDebugAi(on: boolean): void {
-	enabled = on;
-	if (on) {
-		setLogLevel("debug");
-		logger.info("ai debug logging on: full prompts and answers are being kept");
-	}
+export function sizeTranscript(duration: Duration | undefined): void {
+	limit = duration ? TRANSCRIPT_LIMITS[duration] : DEFAULT_TRANSCRIPT_LIMIT;
+	evict();
 	announce();
 }
 
+export function transcriptLimit(): number {
+	return limit;
+}
+
+/**
+ * @deprecated The recording is always on; these two exist only until their callers are
+ * gone, so that no commit in between fails to compile. Nothing should read them.
+ */
+export function setDebugAi(_on: boolean): void {
+	// Deliberately nothing. The recording no longer has an off state.
+}
+
+/** @deprecated See {@link setDebugAi}. Always true. */
 export function debugAi(): boolean {
-	return enabled;
+	return true;
 }
 
 export function onTranscript(listener: Listener): () => void {
@@ -102,8 +121,6 @@ export interface RecordExchange {
 }
 
 export function recordExchange(input: RecordExchange): void {
-	if (!enabled) return;
-
 	const inputTokens = input.usage?.inputTokens;
 	const outputTokens = input.usage?.outputTokens;
 	const exchange: Exchange = {
@@ -122,24 +139,47 @@ export function recordExchange(input: RecordExchange): void {
 	};
 
 	kept.push(exchange);
-	// The head, not the tail: an exchange the buffer has dropped is one the reader can
-	// no longer scroll back to, and the oldest is the one they are least likely to want.
-	if (kept.length > TRANSCRIPT_LIMIT) kept.splice(0, kept.length - TRANSCRIPT_LIMIT);
+	evict();
 
-	// The whole exchange to the log as well, on its own lines. The in-memory copy is
-	// bounded and dies with the process; the file is what survives a run that ended
-	// badly, which is exactly the run somebody is going to want to read.
-	logger.debug(
-		`ai exchange #${exchange.seq} ${exchange.kind} ${exchange.model} attempt ${exchange.attempt} ${exchange.millis}ms\n` +
-			`--- system ---\n${exchange.system}\n` +
-			`--- prompt ---\n${exchange.prompt}\n` +
-			`--- ${exchange.error ? "error" : "answer"} ---\n${exchange.error ?? exchange.response ?? "(nothing)"}`,
-	);
+	/*
+	 * No second copy to the log.
+	 *
+	 * The whole exchange used to go to `logger.debug` as well, because this buffer dies
+	 * with the process and the file was the only thing that survived a run which ended
+	 * badly. `working-file.ts` is that survivor now, and it holds the same text in a form
+	 * something can read back — so writing it twice would only be a way for the two copies
+	 * to disagree.
+	 */
 	announce();
+}
+
+/**
+ * Trim to the limit in force, from the head.
+ *
+ * The head and not the tail: an exchange the buffer has dropped is one the reader can no
+ * longer scroll back to, and the oldest is the one they are least likely to want.
+ */
+function evict(): void {
+	if (kept.length > limit) kept.splice(0, kept.length - limit);
 }
 
 export function transcript(): readonly Exchange[] {
 	return kept;
+}
+
+/**
+ * Adopt a transcript read back off disk.
+ *
+ * For the in-game view of a world this process did not write: the exchanges are the ones
+ * `working-file.ts` recorded while it was being authored. Numbering continues past what was
+ * seeded, so a live call afterwards cannot collide with a seeded `#1`.
+ */
+export function seedTranscript(exchanges: readonly Exchange[]): void {
+	if (exchanges.length === 0) return;
+	kept.push(...exchanges);
+	evict();
+	for (const exchange of kept) nextSeq = Math.max(nextSeq, exchange.seq + 1);
+	announce();
 }
 
 /** Reset between tests, and between one generation run and the next. */

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { KEY, renderInk } from "../../test/harness/ink.js";
 import { createDialogueService } from "../ai/dialogue/dialogue.js";
 import { fallbackLore, fallbackSite } from "../ai/director/fallback.js";
-import { clearTranscript, recordExchange, setDebugAi } from "../ai/transcript.js";
+import { clearTranscript, recordExchange } from "../ai/transcript.js";
 import { hashString } from "../core/rand/hash.js";
 import type { ScenarioArc } from "../core/rules/arc.js";
 import { createInitialState } from "../core/rules/state.js";
@@ -737,27 +737,31 @@ describe("the people the story turns on", () => {
 /**
  * The working, readable from inside the game.
  *
- * A page rather than a log line, and only a page when somebody asked for one: a tab
- * that is always there and always empty is a tab everybody steps past forever.
+ * A page rather than a log line, because the log is a file the player has no reason to
+ * know about and every reason not to be reading while inside a full-screen program.
+ *
+ * It used to come and go with whether the recording was on, so that a page most players
+ * have no use for was not one everybody had to step past. It is always here now for the
+ * same reason the recording is: a tab that appears only when this process did the writing
+ * is a tab that is missing for exactly the case somebody wants it in — a world generated
+ * last week that is behaving oddly now.
  */
 describe("the working page", () => {
 	afterEach(() => {
-		setDebugAi(false);
 		clearTranscript();
 	});
 
-	it("is not on the strip unless the prompts are being kept", () => {
+	it("is on the strip for every world, not only one just written", () => {
 		const { engine } = engineBesideSomeone();
 		bindEngine(engine);
 		const { lastFrame, unmount } = renderInk(<App initialTab="key" />);
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).toContain("Key");
-		expect(text).not.toContain("Working");
+		expect(text).toContain("Working");
 	});
 
-	it("shows what was asked and what came back, once they are", () => {
-		setDebugAi(true);
+	it("shows what was asked and what came back", () => {
 		clearTranscript();
 		recordExchange({
 			kind: "site",
