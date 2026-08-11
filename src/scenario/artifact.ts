@@ -4,6 +4,7 @@ import type { ScenarioArc } from "../core/rules/arc.js";
 import type { TimeOptions } from "../core/rules/clock.js";
 import type { AuthoredBarrier } from "../core/rules/lock.js";
 import type { Placement } from "../core/rules/placement.js";
+import type { Sign } from "../core/rules/signage.js";
 import type { Trigger } from "../core/rules/trigger.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import type { ScenarioBrief } from "../core/world/brief.js";
@@ -115,6 +116,14 @@ export interface ScenarioArtifact {
 	readonly barriers?: readonly AuthoredBarrier[];
 	/** Particular things in particular places. */
 	readonly placements?: readonly Placement[];
+	/**
+	 * Boards on posts, telling the player which way the next place is.
+	 *
+	 * The one authored thing whose *content* is derived: an arm names a site and the
+	 * bearing is computed from where that site really is, so a signpost cannot drift out
+	 * of step with the map the way a hand-copied coordinate can. See `core/rules/signage.ts`.
+	 */
+	readonly signs?: readonly Sign[];
 	/**
 	 * Whether this world has a clock, and what it drives.
 	 *

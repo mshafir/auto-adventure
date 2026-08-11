@@ -1,6 +1,7 @@
 import type { Vec2 } from "../geom/vec.js";
 import { hash32 } from "../rand/hash.js";
 import { valueFor } from "../rand/rng.js";
+import type { WorldBounds } from "./bounds.js";
 import { CHUNK, HALO } from "./coords.js";
 import { civilizationAt, elevationAt, slopeAt } from "./fields.js";
 import { placeKey, type SettledKind, type WorldRules, type WorldSeed } from "./recipe.js";
@@ -159,6 +160,33 @@ export function sitesAround(world: WorldSeed, cx: number, cy: number, halo = HAL
 	// independent of which chunk asked, which is what the MST relies on.
 	sites.sort((a, b) => a.my - b.my || a.mx - b.mx);
 	return sites;
+}
+
+/**
+ * Every site of a bounded world, by id.
+ *
+ * `macroSite` is the only authority on where a site is and nothing carries the macro
+ * cell, so finding one *by id* means sweeping every cell of the world. That is only
+ * affordable — and only meaningful — for a bounded one, which is why every caller is a
+ * scenario pass: resolving a gate named by its castle, an item hidden in a named town, a
+ * signpost pointing at a place.
+ *
+ * One cell of margin on each side, because a site's footprint reaches past its own cell
+ * and a town whose centre sits just outside the boundary still has streets inside it.
+ */
+export function sitesInside(world: WorldSeed, bounds: WorldBounds): Map<number, MacroSite> {
+	const found = new Map<number, MacroSite>();
+	const minMx = Math.floor(bounds.minX / MACRO) - 1;
+	const maxMx = Math.floor(bounds.maxX / MACRO) + 1;
+	const minMy = Math.floor(bounds.minY / MACRO) - 1;
+	const maxMy = Math.floor(bounds.maxY / MACRO) + 1;
+	for (let my = minMy; my <= maxMy; my++) {
+		for (let mx = minMx; mx <= maxMx; mx++) {
+			const site = macroSite(world, mx, my);
+			if (site.kind !== "none") found.set(site.id, site);
+		}
+	}
+	return found;
 }
 
 /** Whether a site is a settlement (has buildings) rather than a point feature. */
