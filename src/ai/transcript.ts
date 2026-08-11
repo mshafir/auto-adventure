@@ -84,19 +84,6 @@ export function transcriptLimit(): number {
 	return limit;
 }
 
-/**
- * @deprecated The recording is always on; these two exist only until their callers are
- * gone, so that no commit in between fails to compile. Nothing should read them.
- */
-export function setDebugAi(_on: boolean): void {
-	// Deliberately nothing. The recording no longer has an off state.
-}
-
-/** @deprecated See {@link setDebugAi}. Always true. */
-export function debugAi(): boolean {
-	return true;
-}
-
 export function onTranscript(listener: Listener): () => void {
 	listeners.add(listener);
 	return () => {

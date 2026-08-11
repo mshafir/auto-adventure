@@ -14,7 +14,6 @@
 
 import { authorScenario } from "../ai/author/author.js";
 import { logTelemetry, money, telemetrySnapshot } from "../ai/telemetry.js";
-import { setDebugAi } from "../ai/transcript.js";
 import { hasGatewayKey, installGatewayKey, resolveSeed } from "../config.js";
 import { isDuration, normalizeBrief, type ScenarioBrief } from "../core/world/brief.js";
 import { writeScenario } from "../scenario/repo.js";
@@ -58,7 +57,6 @@ function usage(): never {
 			"  --seed <word|number> which world to author against",
 			"  --concurrency <n>    model calls in flight  (default 4)",
 			"  --no-trees           skip the per-person dialogue pass",
-			"  --debug              keep every prompt and answer in the log",
 			"  --force              write even if validation found errors",
 			"",
 		].join("\n"),
@@ -103,11 +101,6 @@ async function main() {
 		process.stderr.write("AI_GATEWAY_API_KEY is not set; there is nothing to author with.\n");
 		process.exit(1);
 	}
-
-	// Before the first call, or the pass most worth reading is the one pass that was
-	// not recorded. There is no screen here to read them back from, so this is the log
-	// alone — which is the right shape for a scripted run.
-	if (args.has("debug")) setDebugAi(true);
 
 	// The seed defaults to the id, so re-running the same command reproduces the same
 	// world and a different scenario gets a different one.

@@ -699,10 +699,11 @@ compass point, which is the only way to be sure a board never points the wrong w
 matters because an open errand only gets a bearing on the map once you have *been* to the
 town it is in, so the case with no marker at all is exactly the case you need one for.
 
-Add `--debug` to keep every prompt and every answer in the log, at full length. The
-launcher offers the same thing as **keep the working**, which additionally makes them
-readable inside the game: `D` on the writing screen, and a `Working` tab in the menu
-while playing. `DEBUG_AI=1` turns it on for a whole run.
+Every prompt and every answer is kept, at full length, and there is nothing to turn on.
+`D` on the writing screen opens them while the world is being written — `L` there puts the
+debug log under the exchange — and a `Working` tab in the menu reads them back while
+playing. They are also written beside the world in `.scenarios/.working/`, so a run you
+have since quit, or one that failed halfway, can still be read afterwards.
 
 See `docs/scenarios.md` for the design.
 

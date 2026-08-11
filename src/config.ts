@@ -84,14 +84,6 @@ export const CONFIG = {
 	contentPack: process.env.CONTENT_PACK,
 	/** A directory under `.packs/tiles/`, or a path to one. Chooses how the map looks. */
 	tilePack: process.env.TILE_PACK,
-	/**
-	 * Keep every prompt and every answer, and turn the log file up to debug.
-	 *
-	 * The same switch the generate page offers, for a run that has to start with it on:
-	 * a scripted authoring run, or a session where what needs explaining happens during
-	 * play rather than during generation.
-	 */
-	debugAi: envFlag("DEBUG_AI"),
 	saveDebounceMs: envNumber("SAVE_DEBOUNCE_MS", 2000),
 	prefetchRadius: envNumber("PREFETCH_RADIUS", 2),
 } as const;
