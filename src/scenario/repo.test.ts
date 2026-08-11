@@ -73,6 +73,38 @@ describe("writeScenario and readScenarioFile", () => {
 		expect(read?.liveInGame).toBe(true);
 	});
 
+	/**
+	 * A signpost is a tile and a list of site ids and nothing else, and this is the check
+	 * that keeps it that way: the schema has no field for a direction, so a file that tried
+	 * to write one down would lose it here rather than being believed. Where the arms point
+	 * is what survives; which way that is gets worked out afresh against the world.
+	 */
+	it("keeps the boards a world was given, and only what they are allowed to say", () => {
+		const path = writeScenario({
+			...artifact(),
+			signs: [
+				{
+					id: "sign:start",
+					x: 12,
+					y: -7,
+					arms: [{ siteId: SITE.id }, { siteId: SITE.id, label: "the weighing station" }],
+					note: "Toll paid at the bridge.",
+				},
+			],
+		});
+		const read = readScenarioFile(path);
+		expect(read?.signs?.[0]?.arms).toEqual([
+			{ siteId: SITE.id },
+			{ siteId: SITE.id, label: "the weighing station" },
+		]);
+		expect(read?.signs?.[0]?.note).toBe("Toll paid at the bridge.");
+	});
+
+	it("refuses a board with no arms on it, which is a post with nothing painted on it", () => {
+		writeScenario({ ...artifact(), id: "armless", signs: [{ id: "s", x: 0, y: 0, arms: [] }] });
+		expect(loadScenario("armless")).toBeUndefined();
+	});
+
 	it("treats a world that said nothing about improvising as one that does not", () => {
 		// Which is every hand-written scenario. `prebuilt` meant "never calls a model"
 		// before this existed, and it has to go on meaning that where nobody said otherwise.

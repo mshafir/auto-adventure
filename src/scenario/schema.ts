@@ -3,6 +3,7 @@ import { ActionSchema } from "../ai/dialogue/schema.js";
 import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
 import { PackOverrideSchema } from "../core/content/schema.js";
 import { ConditionSchema, RequiresSchema } from "../core/rules/condition-schema.js";
+import { MAX_SIGN_ARMS } from "../core/rules/signage.js";
 import { WorldRecipeSchema } from "../core/world/recipe-schema.js";
 import { ARTIFACT_VERSION } from "./artifact.js";
 
@@ -308,6 +309,30 @@ export const PlacementSchema = z.object({
 });
 
 /**
+ * A board on a post, as an author writes it.
+ *
+ * A tile and a list of site ids, and deliberately nothing else. There is no field here
+ * for a direction or a distance because both are computed from where the sites really
+ * are — see `core/rules/signage.ts` — so the one thing a signpost must never do, which is
+ * point the wrong way, is not expressible.
+ */
+export const SignSchema = z.object({
+	id: z.string().min(1).max(64),
+	x: z.number().int(),
+	y: z.number().int(),
+	arms: z
+		.array(
+			z.object({
+				siteId: z.number().int(),
+				label: z.string().min(1).max(60).optional(),
+			}),
+		)
+		.min(1)
+		.max(MAX_SIGN_ARMS),
+	note: z.string().min(1).max(120).optional(),
+});
+
+/**
  * The clock, as an author writes it.
  *
  * Every field optional, because the world that says anything at all here is the
@@ -433,6 +458,7 @@ export const ScenarioArtifactSchema = z.object({
 	triggers: z.array(TriggerSchema).max(64).optional(),
 	barriers: z.array(BarrierSchema).max(32).optional(),
 	placements: z.array(PlacementSchema).max(64).optional(),
+	signs: z.array(SignSchema).max(32).optional(),
 	/** Whether this world has a clock. Absent means the ordinary day/night cycle. */
 	time: TimeOptionsSchema.optional(),
 	/** Whether a model may improvise for anyone with no written tree. Absent means no. */
