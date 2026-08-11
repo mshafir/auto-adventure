@@ -42,6 +42,43 @@ layers of silent substitution, all downstream of a spec that was never binding.
 **The pipeline never plays the story it writes.** `walkTheStory` drives the real engine
 through the arc, and its only caller is the offline CLI at `src/tools/validate.ts:98`.
 
+### What measurement added to this diagnosis
+
+The invariant harness built in the first implementation phase measured the four installed
+scenarios, and two of its results correct the account above.
+
+**The hand-written scenarios are the worst offenders, not the generated ones.**
+`thornwick-road` drops 27 requested buildings and `green-chapel` 14, against 14 and 6 for the
+two generated worlds. So the substitution is not a fault of the authoring pipeline at all —
+it is a fault of the builder, and it has been quietly eating hand-authored content for as
+long as it has existed.
+
+**Most of those drops are towns that built nothing, not towns that built the wrong thing.**
+The violations cluster on sites where *every* requested structure came back `built 0` —
+`Wodedesert` asked for a farmhouse, three houses, an inn and a shop and received none of
+them. Those settlements have no usable plot at all: a plot must be at least 5×5, lie wholly
+on buildable ground, and clear the town square, and on rough or coastal ground a small
+footprint yields nothing that qualifies.
+
+And there is a specific hole letting them through. `survey.ts:121-129` decides whether a site
+is real enough to name:
+
+```ts
+return !patch || patch.buildings.length > 0 || patch.anchors.length > 0;
+```
+
+But `buildSettlement` always pushes a `square` anchor (`settlement.ts:147`) and a `well` for
+anything that is not a camp (`:151`), so `anchors.length > 0` is unconditionally true. A
+settlement with **zero buildings** therefore passes the very check written to reject sites
+that build nothing — and is then named, populated with a cast, given hooks, and made
+eligible to host a story beat, with no door for anybody to stand at.
+
+That is a better explanation of "locations seemingly cannot be found, maybe don't exist" than
+the advisory-spec fault this document was built around. It also belongs to tier 2 rather than
+tier 1: the place solver cannot invent a plot. The fix is that a site which builds nothing
+must be **declined by the survey**, the way a castle with no level ground already is, so the
+story is never offered it.
+
 ## What makes the fix possible
 
 Four properties of the existing generator carry the whole design.
