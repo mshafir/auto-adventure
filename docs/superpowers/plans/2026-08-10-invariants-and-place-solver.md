@@ -1933,6 +1933,12 @@ system 109% cpu 6.187 total`, via `time npm run invariants`). All four scenarios
 loaded and reported without a "could not be read" line, and nothing threw; the process
 exited 1, as expected with violations present.
 
+`a-secret-lies-in-the.json` and `an-interesting-spin-on-the.json` are local artifacts
+of running `npm run invariants` — untracked and not gitignored, so a fresh clone of
+this branch has only `green-chapel` and `thornwick-road` on disk. Those two hand-written
+scenarios are the comparison anyone re-running this baseline can actually reproduce; the
+two generated ones above are recorded for completeness but require regenerating.
+
 ## After Phase 2
 
 **2026-08-11.** `npm run invariants` over the same four installed scenarios, after Task
@@ -2072,7 +2078,10 @@ built 1 (still a violation either way, so the total there is unaffected, but it 
 trade-off as the other two below and should not be left out). On `a-secret-lies-in-the` it
 fixes Bedrock's End's inn ask outright. On `thornwick-road` it net-fixes two asks at
 Harrowmere, trading an apothecary ask, a shop ask, and a smithy ask fixed for a stable ask
-newly broken. `an-interesting-spin-on-the` held flat at 6 for the same kind of trade, just
+newly broken — and the same town's Measurewick shows the identical shape on its own: the
+farmhouse ask (asked 2, built 1 → satisfied) is fixed, at the cost of a newly broken barn
+ask (asked 1, built 0), a fix traded for a regression rather than a net gain, same as
+Stubchapel and the Harrowmere/Salt-Spit pair. `an-interesting-spin-on-the` held flat at 6 for the same kind of trade, just
 netting to zero: Salt-Spit Junction's shop ask is now satisfied but its house ask, satisfied at
 baseline, is not, and Rustgutter's house count improved from built 1 to built 2 but is still
 short — churn, not progress, because the plots this town has are still outnumbered by what

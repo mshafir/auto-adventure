@@ -37,7 +37,13 @@ export type Relation =
 	 * Costs plots rather than merely constraining one: filler would otherwise build right
 	 * up against a hermit's tower and the isolation would last until the next pass. So an
 	 * isolated assignment also *blocks* the plots inside its gap, and those plots are
-	 * returned so the caller can leave them empty.
+	 * returned so the caller can leave them empty — but only when the assignment is
+	 * *required*. The blocking pass runs once, before the optional loop, and reads only
+	 * `assignments` as populated by then, which is the required search's output alone
+	 * (`assignPlots` below); an optional request carrying this relation still keeps
+	 * `respectsIsolation`'s protection against anything `assignPlots` places after it, but
+	 * contributes nothing to `blocked` itself, so `settlement.ts`'s filler pass — which
+	 * only consults `blocked`, not the solver — is free to fill its gap.
 	 */
 	| { readonly t: "Isolated"; readonly minGap: number };
 

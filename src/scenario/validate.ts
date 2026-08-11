@@ -847,12 +847,15 @@ function checkSigns(
 	if (signs.length === 0) return findings;
 
 	const seen = new Map<string, string>();
-	for (const sign of signs) {
+	for (const [index, sign] of signs.entries()) {
 		if (seen.has(sign.id)) findings.push(warning(`signpost ${sign.id} is defined twice`));
 		seen.set(sign.id, sign.id);
 
 		const tile = `${sign.x},${sign.y}`;
-		const other = [...signs].find((each) => each !== sign && `${each.x},${each.y}` === tile);
+		// Only look ahead. A collision between two signs is one fault, not one per side of
+		// it, and looking only forward reports it exactly once — from whichever sign comes
+		// first — instead of once from each.
+		const other = signs.slice(index + 1).find((each) => `${each.x},${each.y}` === tile);
 		if (other) {
 			findings.push(
 				warning(

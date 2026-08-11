@@ -550,9 +550,12 @@ function nearestExpendable(
 	});
 	const from = centreOf(subject);
 
+	// `buildings` is already in index order — pushed with `index = buildings.length` and
+	// never reordered, only spliced — so the strict `<` below, not a sort, is what makes
+	// two equidistant neighbours resolve the same way every time.
 	let best: number | undefined;
 	let bestDistance = Number.POSITIVE_INFINITY;
-	for (const building of [...buildings].sort((a, b) => a.index - b.index)) {
+	for (const building of buildings) {
 		if (building.index === index) continue;
 		if (building.required) continue;
 		if (already.has(building.index)) continue;

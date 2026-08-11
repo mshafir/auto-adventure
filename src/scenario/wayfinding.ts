@@ -6,11 +6,17 @@ import type { ScenarioArtifact } from "./artifact.js";
 /**
  * Whether the player is ever told where to go.
  *
- * Its own module because two passes ask the identical question and must not answer it
- * differently. `checkWayfinding` reports a story that leaves the player guessing, and
- * `sayWhereToGoNext` appends a plain direction to one — so a repair that used a narrower
- * rule than the check would fire on a beat the check was happy with, and a wider one would
- * leave a finding standing after claiming to have fixed it.
+ * Its own module because two passes ask a related question and must not disagree by
+ * accident. `checkWayfinding` reports a story that leaves the player guessing, and
+ * `sayWhereToGoNext` appends a plain direction to one — and the two *deliberately* differ:
+ * `repair.ts:721` calls this with `ignoreSigns: true`, because a board on the road out
+ * answers "which way" but says nothing to somebody reading their journal two towns later,
+ * so the repair adds a line even where a sign already satisfies the check. Get a
+ * deliberate difference like that wrong in the wrong direction and the two failure shapes
+ * differ by kind: a repair with too narrow a rule for "already told" can decide nothing is
+ * wrong and leave a finding standing after claiming to have fixed it, while one with too
+ * wide a rule fires on a beat the check was already happy with, adding a sentence nobody
+ * needed.
  *
  * The fault they are both about cost a whole playthrough. Every beat opened, every errand
  * landed in the log, every flag was written and read; the player finished a scene, read

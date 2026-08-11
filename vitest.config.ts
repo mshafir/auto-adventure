@@ -28,9 +28,12 @@ export default defineConfig({
 		 * at 24,971 pageouts on a full run, with twelve node processes left stranded when it
 		 * was interrupted mid-swap.
 		 *
-		 * Two forks: zero new pageouts, ~640 MB across all workers, and the same 1967 passing
-		 * as eight gave. Capping how many run at once cannot change what any one of them
-		 * sees, so it cannot change a result — it costs only wall clock, 38s to 96s here.
+		 * Two forks: zero new pageouts, ~640 MB across all workers, and the pass count
+		 * unchanged from the eight-fork run measured before this cap went in. Capping how
+		 * many run at once cannot change what any one of them sees, so it cannot change a
+		 * result — it costs only wall clock, 38s to 96s here. (Read this as "matched before
+		 * and after the change", not as a number to keep in sync — the suite has grown many
+		 * times since and will again.)
 		 *
 		 * The pool stays `forks` rather than moving to `threads` deliberately. Every generator
 		 * cache is module-level, and a fork gives each worker its own module registry, which
