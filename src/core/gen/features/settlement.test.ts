@@ -658,6 +658,52 @@ describe("required structures", () => {
 		const needed = patch.buildings.find((b) => b.name === "Needed");
 		expect(needed, "the required building was demolished instead of kept").toBeDefined();
 		expect(needed?.required).toBe(true);
+
+		// Tripwire: this test proves the guard only because this exact site is a walled
+		// town whose spec (1 hall + 40 large houses) vastly outstrips its plots — that is
+		// what strands the required hall's own doorstep and forces pruneUnreachable to
+		// reach for a substitute in the first place. If a later change to plot-splitting
+		// gives this site room for most of its filler, the strand this test pins stops
+		// happening, `needed` above would be defined for the boring reason that nothing
+		// ever threatened it, and this test would keep passing while no longer covering
+		// the guard at all. So assert the oversubscription directly: at most a handful of
+		// the 41 requested structures fit here, before or after pruning.
+		expect(
+			patch.buildings.length,
+			"this site is no longer oversubscribed enough to strand the required hall — " +
+				"the case this test pins no longer exists",
+		).toBeLessThan(10);
+	});
+
+	it("builds every required structure a town has room for, across many seeds", () => {
+		// The property phase 2 exists to establish. Not "every requirement is always built" —
+		// a hamlet with four plots cannot hold six halls, and pretending otherwise would be
+		// the advisory behaviour again with a new name. The property is that a requirement is
+		// never beaten to a plot by filler.
+		for (const name of ["fit-a", "fit-b", "fit-c"]) {
+			clearFeatureCache();
+			const { seed, sites } = sampleSites(name, 3);
+			for (const site of sites) {
+				const world = worldSeed(seed);
+				const patch = generateSettlement(world, site, {
+					walled: false,
+					structures: [
+						{ kind: "inn", size: "small", importance: 1, id: "inn", name: "Inn", required: true },
+						...Array.from({ length: 20 }, () => ({
+							kind: "house" as const,
+							size: "small" as const,
+							importance: 5,
+						})),
+					],
+				});
+
+				// A small inn needs the same plot a small house does, so whenever any house was
+				// built the inn had a plot available to it and must have taken it first.
+				const houses = patch.buildings.filter((b) => b.kind === "house").length;
+				if (houses === 0) continue;
+				expect(patch.buildings.some((b) => b.required)).toBe(true);
+			}
+		}
 	});
 });
 

@@ -1727,7 +1727,27 @@ Run: `npm run invariants`
 
 Compare against the `## Baseline` section recorded in Task 4, Step 4.
 
-Expected: **`structures-built` violations on the two generated scenarios are unchanged.** This is not a regression — those artifacts were written before `required` existed, so every structure in them is optional and nothing in phase 2 applies. Phase 2 makes a *binding* spec binding; it cannot retroactively make an old spec binding. The number that must not get *worse* is `buildings-reachable`.
+Expected: **`structures-built` should fall, on all four scenarios, including the hand-written
+ones.** This corrects an earlier prediction in this plan that it would not move at all.
+
+The reasoning that prediction missed: today's assignment is a *strict positional pairing*
+(`settlement.ts:249-254`). Plots are sorted largest-first, `wanted` is sorted by importance,
+and those two orderings are unrelated — so `plots[i]` is offered only to `wanted[i]`, and if
+it does not fit, that structure is **dropped entirely and the plot is given filler**, even
+when a smaller unused plot would have held it. The solver in Task 6 assigns best-fit per
+request instead, so it satisfies strictly more requests whether or not anything is marked
+`required`. Making the spec *binding* was the point; matching it *competently* is a side
+effect worth measuring.
+
+So the honest expectation is: `structures-built` falls but does not reach zero (a town with
+four plots still cannot hold six halls, and pretending otherwise would be the advisory
+behaviour under a new name), and `buildings-reachable` must not get worse.
+
+The baseline recorded below also shows something the plan did not anticipate: the
+hand-written scenarios violate `structures-built` *more* than the generated ones, because
+`required` has no author yet and every spec everywhere is advisory. So this invariant is
+currently measuring the builder, not the authoring pipeline. That is still the fault worth
+fixing — it is simply more widespread than the diagnosis assumed.
 
 - [ ] **Step 4: Record the after-numbers and the honest conclusion**
 
@@ -1906,3 +1926,147 @@ The run took about 6.2 seconds wall-clock for all four scenarios (`6.69s user 0.
 system 109% cpu 6.187 total`, via `time npm run invariants`). All four scenarios
 loaded and reported without a "could not be read" line, and nothing threw; the process
 exited 1, as expected with violations present.
+
+## After Phase 2
+
+**2026-08-11.** `npm run invariants` over the same four installed scenarios, after Task
+6's best-fit solver and Task 8's neighbour-substitution replaced the old positional
+pairing. Verbatim output:
+
+```
+> auto-adventure@0.2.0 invariants
+> vite-node src/tools/invariants.ts --
+
+green-chapel — A Blow for a Blow
+  structures-built  Camelkeep (site 1144681494): asked for 1 shrine, built 0
+  structures-built  Wain Keep (site 1529687061): asked for 1 barn, built 0
+  structures-built  Wain Keep (site 1529687061): asked for 2 house, built 1
+  structures-built  Wodedesert (site 2340111694): asked for 1 farmhouse, built 0
+  structures-built  Wodedesert (site 2340111694): asked for 3 house, built 0
+  structures-built  Wodedesert (site 2340111694): asked for 1 inn, built 0
+  structures-built  Wodedesert (site 2340111694): asked for 1 shop, built 0
+  structures-built  Greyford (site 2447650453): asked for 1 house, built 0
+  structures-built  Greyford (site 2447650453): asked for 1 stable, built 0
+  structures-built  Heathgate (site 2901334670): asked for 1 farmhouse, built 0
+  structures-built  Heathgate (site 2901334670): asked for 3 house, built 1
+  structures-built  Stubchapel (site 860455222): asked for 3 house, built 1
+  structures-built  Stubchapel (site 860455222): asked for 1 mill, built 0
+  buildings-reachable  Greyford (site 2447650453): the square itself is not walkable
+  FAIL  structures-built: 13
+  FAIL  buildings-reachable: 1
+  ok    scenes-written: 0
+  ok    legs-walkable: 0
+
+a-secret-lies-in-the — Hands Full
+  structures-built  Hammerwatch (site 2227307379): asked for 1 smithy, built 0
+  structures-built  Bedrock's End (site 3213465016): asked for 1 hall, built 0
+  structures-built  Bedrock's End (site 3213465016): asked for 1 house, built 0
+  structures-built  Hearthgate (site 3271006950): asked for 5 house, built 2
+  structures-built  The Last Anvil (site 3287834627): asked for 1 barracks, built 0
+  structures-built  The Last Anvil (site 3287834627): asked for 1 hall, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 farmhouse, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 hall, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 2 house, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 inn, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 temple, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 tower, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 warehouse, built 0
+  scenes-written  beat bellkeeper-rub: no conversation was written for the person this beat hangs on
+  legs-walkable  Hammerwatch: 413 tiles in one leg, over the 320 a session tolerates
+  FAIL  structures-built: 13
+  ok    buildings-reachable: 0
+  FAIL  scenes-written: 1
+  FAIL  legs-walkable: 1
+
+an-interesting-spin-on-the — The Ash-Stained Crown
+  structures-built  Rust-Hollow (site 1278240940): asked for 1 shop, built 0
+  structures-built  Salt-Tooth Outpost (site 1677355018): asked for 1 inn, built 0
+  structures-built  Salt-Spit Junction (site 3676251433): asked for 1 house, built 0
+  structures-built  Salt-Spit Junction (site 3676251433): asked for 1 ruin, built 0
+  structures-built  Rustgutter (site 3986944761): asked for 4 house, built 2
+  structures-built  Rustgutter (site 3986944761): asked for 1 warehouse, built 0
+  legs-walkable  Rust-Hollow: 431 tiles in one leg, over the 320 a session tolerates
+  FAIL  structures-built: 6
+  ok    buildings-reachable: 0
+  ok    scenes-written: 0
+  FAIL  legs-walkable: 1
+
+thornwick-road — The Hollow Tithe
+  structures-built  Measurewick (site 1803785688): asked for 1 barn, built 0
+  structures-built  Measurewick (site 1803785688): asked for 2 house, built 0
+  structures-built  Kilnwait (site 2009483734): asked for 1 house, built 0
+  structures-built  Kilnwait (site 2009483734): asked for 1 stable, built 0
+  structures-built  Bracken Cross (site 2150566345): asked for 1 barn, built 0
+  structures-built  Bracken Cross (site 2150566345): asked for 1 smithy, built 0
+  structures-built  Bracken Cross (site 2150566345): asked for 1 warehouse, built 0
+  structures-built  Measuregate (site 2165261147): asked for 1 farmhouse, built 0
+  structures-built  Measuregate (site 2165261147): asked for 2 house, built 0
+  structures-built  Measuregate (site 2165261147): asked for 1 shop, built 0
+  structures-built  Tallybastion (site 2309958617): asked for 4 barracks, built 2
+  structures-built  Tallybastion (site 2309958617): asked for 1 stable, built 0
+  structures-built  Tallybastion (site 2309958617): asked for 1 warehouse, built 0
+  structures-built  Brackenholt (site 232432215): asked for 1 shrine, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 inn, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 mill, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 stable, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 temple, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 warehouse, built 0
+  structures-built  Kilnbarrow (site 3217682817): asked for 3 ruin, built 2
+  structures-built  Cord Mere (site 338095591): asked for 2 house, built 0
+  structures-built  Bellmere (site 4073541284): asked for 2 house, built 0
+  structures-built  Measurewrack (site 4125361648): asked for 3 ruin, built 1
+  structures-built  Kilnbridge (site 933820581): asked for 1 farmhouse, built 0
+  structures-built  Kilnbridge (site 933820581): asked for 3 house, built 2
+  scenes-written  beat the-honest-weight: no conversation was written for the person this beat hangs on
+  scenes-written  beat the-weight-in-hand: no conversation was written for the person this beat hangs on
+  scenes-written  beat report-the-fraud: no conversation was written for the person this beat hangs on
+  FAIL  structures-built: 25
+  ok    buildings-reachable: 0
+  FAIL  scenes-written: 3
+  ok    legs-walkable: 0
+```
+
+Before/after:
+
+| scenario | structures-built (before → after) | buildings-reachable (before → after) | scenes-written | legs-walkable |
+|---|---|---|---|---|
+| green-chapel (hand-written) | 14 → 13 | 1 → 1 | 0 → 0 | 0 → 0 |
+| thornwick-road (hand-written) | 27 → 25 | 0 → 0 | 3 → 3 | 0 → 0 |
+| a-secret-lies-in-the (generated) | 14 → 13 | 0 → 0 | 1 → 1 | 1 → 1 |
+| an-interesting-spin-on-the (generated) | 6 → 6 | 0 → 0 | 0 → 0 | 1 → 1 |
+
+**Reading.** `structures-built` fell on three of the four scenarios and held flat on the
+fourth — 14→13, 14→13, 27→25, and 6→6 — exactly as predicted once the plan's earlier,
+wrong prediction of a larger fall was corrected. The mechanism behind the fall is the one
+the corrected text names: best-fit search (Task 6) seats a request on any plot that fits
+it, where the old positional pairing offered `plots[i]` to `wanted[i]` only and dropped the
+request entirely, handing the plot to filler, whenever that one pairing didn't fit. On
+`green-chapel` this fixed Stubchapel's farmhouse (asked 1, built 0 → satisfied); on
+`a-secret-lies-in-the` it fixed Bedrock's End's inn; on `thornwick-road` it net-fixed two at
+Harrowmere. None of this required anything to be `required: true` — nothing on disk sets
+that flag, so every one of these gains is best-fit matching an advisory request more
+competently, not the requirement-survives-filler guarantee Task 9's property test pins.
+That guarantee is real (the property test fails when `PlotRequest.required` is forced to
+`false` and passes when it isn't — see the commit for both outcomes) but it is not what
+moved these numbers, because nothing here asks for anything as `required`.
+
+The fall is modest, not large, because — as the corrected Task 9 text says — most of these
+violations are not misassigned plots but towns with no usable plot at all: `Wodedesert`
+still asks for a farmhouse, three houses, an inn and a shop and still gets none of them,
+unchanged from the baseline, because no assignment algorithm, best-fit or otherwise, can
+seat a structure on a site with nothing to seat it on. `an-interesting-spin-on-the` stayed
+flat at 6 for the same reason at the scenario level: its violations churned internally
+(Salt-Spit Junction's `shop` request is now satisfied but a `house` request that was
+satisfied at baseline is not, and Rustgutter's house count improved from 1 built to 2 but
+is still short) without changing the total, because the plots this town has are still
+outnumbered by what it asks for.
+
+`buildings-reachable` did not rise on any scenario: `green-chapel` stayed at exactly 1 (the
+same pre-existing Greyford square fault, unrelated to plot assignment), and the other three
+stayed at 0. Task 8's neighbour-substitution did not trade one unreachable building for
+another here — this run is not `BLOCKED`. `scenes-written` and `legs-walkable` are
+unchanged on every scenario, as expected: neither invariant is downstream of plot
+assignment. In short: the two invariants Phase 2 could plausibly move both moved in the
+direction and for the reason the corrected plan predicted, the one invariant that must not
+get worse did not, and the invariant that actually depends on `required` being used by an
+author is not exercised by anything on disk yet — that measurement waits for `src/forge/`.
