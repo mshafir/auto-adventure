@@ -90,6 +90,28 @@ describe("the map key", () => {
 		}
 	});
 
+	/*
+	 * A signpost is the only thing on the map that answers "which way to somewhere I have
+	 * never been" — an open errand gets a bearing only once its town is in `discovered` — so
+	 * the key has to name it, and has to tell it from the board over a shop door.
+	 */
+	it("names a signpost, and does not confuse it with a shop board", () => {
+		for (const mode of ["glyph", "kitty"] as const) {
+			const entries = mapLegend(mode);
+			const post = entries.find((entry) => named(entry.label) === "signpost");
+			const board = entries.find((entry) => named(entry.label) === "sign");
+			expect(post, mode).toBeDefined();
+			expect(board, mode).toBeDefined();
+			// Different colours, because in pixel mode the colour is all there is to go on.
+			expect(post?.color, mode).not.toBe(board?.color);
+		}
+		// And different characters where there are characters at all.
+		const glyph = mapLegend("glyph");
+		const post = glyph.find((entry) => named(entry.label) === "signpost");
+		const board = glyph.find((entry) => named(entry.label) === "sign");
+		expect(post?.ch).not.toBe(board?.ch);
+	});
+
 	it("puts you first in both, since that is the one thing worth finding fast", () => {
 		expect(mapLegend("glyph")[0]?.label).toBe("you");
 		expect(mapLegend("kitty")[0]?.label).toContain("you");

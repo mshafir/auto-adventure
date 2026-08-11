@@ -144,6 +144,11 @@ const SWATCH = "█";
 const THINGS: readonly { readonly entry: () => LegendEntry; readonly drawn: string }[] = [
 	{ entry: () => fromTerrain(T.doorClosed, "door"), drawn: "an upright cross" },
 	{ entry: () => fromDecor(D.sign, "sign"), drawn: "a board on a post" },
+	// Worth its own row now that it is how a player finds anywhere they have not been: an
+	// errand only gets a bearing on the map once its town is in `discovered`, so a board on
+	// the road out is the only thing that answers "which way" the first time. A key that did
+	// not name it left the one piece of furniture the player needs to look for unnamed.
+	{ entry: () => fromDecor(D.signpost, "signpost"), drawn: "a bar across a post" },
 	{ entry: () => fromDecor(D.chest, "chest"), drawn: "a ring round a block" },
 	{ entry: () => fromDecor(D.crate, "crate"), drawn: "a diagonal band" },
 	{ entry: () => fromTerrain(T.crops, "crops"), drawn: "rows of upright stalks" },

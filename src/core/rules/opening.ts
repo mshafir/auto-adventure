@@ -2,6 +2,7 @@ import type { ScenarioBrief } from "../world/brief.js";
 import type { RegionSpec, WorldLore } from "../world/spec.js";
 import type { ScenarioArc } from "./arc.js";
 import { type Card, tidyCard } from "./card.js";
+import { walkTime } from "./signage.js";
 
 /**
  * The card the game opens on.
@@ -144,16 +145,13 @@ function whereToStart(input: OpeningInput): string {
 /**
  * How far, in words a player can act on.
  *
- * Tiles are the engine's unit and mean nothing to somebody holding an arrow key, so
- * this converts to the only measure that matters — whether it is worth setting off
- * now. The thresholds are deliberately coarse; a wrong number would be worse than a
- * vague one.
+ * The phrasing itself lives in `signage.ts`, because a signpost answers the same question
+ * about the same map and two tables of thresholds would eventually disagree — at which
+ * point the card and the board in front of the player say different things about the same
+ * walk, and one of them is wrong.
  */
 function distanceHint(tiles: number | undefined): string {
-	if (tiles === undefined) return "";
-	if (tiles < 60) return ", a few minutes' walk";
-	if (tiles < 250) return ", a fair walk";
-	return ", a long way off";
+	return tiles === undefined ? "" : `, ${walkTime(tiles)}`;
 }
 
 function capitalise(text: string): string {
