@@ -7,7 +7,7 @@ import type { Placement, ResolvedPlacement } from "../core/rules/placement.js";
 import { decorDef } from "../core/tiles/decor.js";
 import { TFlag } from "../core/tiles/flags.js";
 import type { WorldBounds } from "../core/world/bounds.js";
-import { MACRO, type MacroSite, macroSite } from "../core/world/macro.js";
+import { type MacroSite, sitesInside } from "../core/world/macro.js";
 import type { WorldSeed } from "../core/world/recipe.js";
 import type { SiteSpec } from "../core/world/spec.js";
 
@@ -82,7 +82,7 @@ export function resolvePlacements(
 			});
 			continue;
 		}
-		sites ??= sweepSites(options.world, options.bounds);
+		sites ??= sitesInside(options.world, options.bounds);
 		const site = sites.get(at.siteId);
 		const spec = options.siteSpec(at.siteId);
 		if (!site || !spec) {
@@ -243,26 +243,4 @@ function spotInside(
 		}
 	}
 	return undefined;
-}
-
-/**
- * Every site of this seed inside the boundary, by id.
- *
- * The same sweep `scenario/validate.ts` does, and for the same reason: `macroSite` is
- * the only authority on where a site is, and nothing carries the macro cell that
- * would let one be found directly.
- */
-function sweepSites(world: WorldSeed, bounds: WorldBounds): Map<number, MacroSite> {
-	const found = new Map<number, MacroSite>();
-	const minMx = Math.floor(bounds.minX / MACRO) - 1;
-	const maxMx = Math.floor(bounds.maxX / MACRO) + 1;
-	const minMy = Math.floor(bounds.minY / MACRO) - 1;
-	const maxMy = Math.floor(bounds.maxY / MACRO) + 1;
-	for (let my = minMy; my <= maxMy; my++) {
-		for (let mx = minMx; mx <= maxMx; mx++) {
-			const site = macroSite(world, mx, my);
-			if (site.kind !== "none") found.set(site.id, site);
-		}
-	}
-	return found;
 }

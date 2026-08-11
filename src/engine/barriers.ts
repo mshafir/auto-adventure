@@ -1,7 +1,7 @@
 import { castleGateTiles } from "../core/gen/features/castle.js";
 import type { AuthoredBarrier, Barrier } from "../core/rules/lock.js";
 import type { WorldBounds } from "../core/world/bounds.js";
-import { MACRO, type MacroSite, macroSite } from "../core/world/macro.js";
+import { type MacroSite, sitesInside } from "../core/world/macro.js";
 import type { WorldSeed } from "../core/world/recipe.js";
 
 /**
@@ -59,7 +59,7 @@ export function resolveBarriers(
 			});
 			continue;
 		}
-		sites ??= sweepSites(options.world, options.bounds);
+		sites ??= sitesInside(options.world, options.bounds);
 		const site = sites.get(span.siteId);
 		if (!site) {
 			unresolved.push({ id: barrier.id, reason: `site ${span.siteId} is not in this world` });
@@ -84,19 +84,4 @@ export function resolveBarriers(
 	}
 
 	return { resolved, unresolved };
-}
-
-function sweepSites(world: WorldSeed, bounds: WorldBounds): Map<number, MacroSite> {
-	const found = new Map<number, MacroSite>();
-	const minMx = Math.floor(bounds.minX / MACRO) - 1;
-	const maxMx = Math.floor(bounds.maxX / MACRO) + 1;
-	const minMy = Math.floor(bounds.minY / MACRO) - 1;
-	const maxMy = Math.floor(bounds.maxY / MACRO) + 1;
-	for (let my = minMy; my <= maxMy; my++) {
-		for (let mx = minMx; mx <= maxMx; mx++) {
-			const site = macroSite(world, mx, my);
-			if (site.kind !== "none") found.set(site.id, site);
-		}
-	}
-	return found;
 }
