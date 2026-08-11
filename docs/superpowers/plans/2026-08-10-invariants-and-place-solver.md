@@ -59,7 +59,7 @@ The invariant that matters most, and the one no existing check performs. `valida
 
 **Interfaces:**
 - Consumes: `ScenarioArtifact` (`src/scenario/artifact.ts:37`), `artifactWorld` (`artifact.ts:169`), `siteIndex` (`src/scenario/validate.ts:156`), `generateSettlement` (`src/core/gen/features/settlement.ts:61`), `featureKindFor` (`src/core/gen/features/registry.ts`).
-- Produces: `type InvariantId`, `interface Violation`, `interface InvariantReport`, `function checkStructuresBuilt(artifact: ScenarioArtifact): Violation[]`, `function checkInvariants(artifact: ScenarioArtifact): InvariantReport`.
+- Produces: `type InvariantId`, `interface Violation`, `interface InvariantReport`, `function checkStructuresBuilt(artifact: ScenarioArtifact): Violation[]`. The `checkInvariants` aggregator is **Task 3's** deliverable, not this one's — `InvariantReport` is declared here and has no consumer until then.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -393,18 +393,31 @@ export function checkScenesWritten(artifact: ScenarioArtifact): Violation[] {
 	const arc = artifact.arc;
 	if (!arc) return [];
 
+	// Whose scene is unwritten is asked by `checkTrees` too, and is therefore asked once.
+	// `beatsWithoutTrees` is exported from `validate.ts` and shared, so the warning an
+	// author reads and the violation this report counts can never disagree about who has
+	// nothing to say. Narrowed to the main line here, at the one call site, with the reason
+	// stated — that is a deliberate difference in *scope*, not a second opinion.
+	const unwritten = new Set(
+		beatsWithoutTrees(artifact)
+			.filter(({ beat }) => !beat.optional)
+			.map(({ beat }) => beat.id),
+	);
+
 	const violations: Violation[] = [];
 	for (const beat of orderedBeats(arc)) {
 		if (beat.optional) continue;
-		const tree = artifact.trees?.[beatNpcId(beat)];
-		const spoken = Object.keys(tree?.nodes ?? {}).length;
-		if (spoken === 0) {
+		if (unwritten.has(beat.id)) {
 			violations.push({
 				invariant: "scenes-written",
 				where: `beat ${beat.id}`,
 				detail: "no conversation was written for the person this beat hangs on",
 			});
 		}
+		// The genuinely new half. Nothing anywhere checks that a beat leaves any prose
+		// behind: the only two reads of `beat.journal` — `authoredProse` in `validate.ts`
+		// and `toldWhereToGo` in `wayfinding.ts` — gather it to search *within*, and both
+		// are content with the empty string.
 		const written = beat.journal ?? beat.quest?.description ?? "";
 		if (written.trim() === "") {
 			violations.push({
@@ -415,6 +428,32 @@ export function checkScenesWritten(artifact: ScenarioArtifact): Violation[] {
 		}
 	}
 	return violations;
+}
+```
+
+And in `src/scenario/validate.ts`, lift the beat-anchor loop out of `checkTrees` (currently
+`validate.ts:1523-1536`) into one exported function that both callers use:
+
+```ts
+/**
+ * The beat anchors nobody wrote a conversation for.
+ *
+ * Exported and shared rather than asked twice. `checkTrees` turns these into warnings an
+ * author reads; `checkScenesWritten` turns them into a counted invariant violation. The
+ * rule `wayfinding.ts` was split out for, and for the same reason: two passes asking the
+ * identical question must not be able to answer it differently.
+ */
+export function beatsWithoutTrees(
+	artifact: ScenarioArtifact,
+): { readonly beat: ScenarioBeat; readonly npcId: string }[] {
+	const trees = artifact.trees ?? {};
+	const found: { beat: ScenarioBeat; npcId: string }[] = [];
+	for (const beat of artifact.arc?.beats ?? []) {
+		const id = beatNpcId(beat);
+		if (trees[id]) continue;
+		found.push({ beat, npcId: id });
+	}
+	return found;
 }
 ```
 
@@ -506,12 +545,21 @@ export function checkLegsWalkable(artifact: ScenarioArtifact): Violation[] {
 	const walk = storyWalk(artifact, grid, siteIndex(artifact));
 	const violations: Violation[] = [];
 
+	// An unreachable beat is reported and nothing else is. `storyWalk` returns *early* when
+	// a leg cannot be walked (`validate.ts:200-210`), so `legs` and `tiles` are a partial
+	// sum of the journey up to that point — and judging pacing against a partial sum turns
+	// one fault into two. A story stopped at its second beat thirty tiles out would be
+	// reported as unreachable *and* as under `SHORT_STORY`, which inflates exactly the count
+	// this module exists to make comparable. `checkStory` avoids it the same way, by putting
+	// its pacing checks in the `else` branch (`validate.ts:1419-1444`).
 	if (walk.unreachable) {
-		violations.push({
-			invariant: "legs-walkable",
-			where: `beat ${walk.unreachable}`,
-			detail: "there is no walkable route to this beat, so the story cannot be finished",
-		});
+		return [
+			{
+				invariant: "legs-walkable",
+				where: `beat ${walk.unreachable}`,
+				detail: "there is no walkable route to this beat, so the story cannot be finished",
+			},
+		];
 	}
 
 	for (const leg of walk.legs) {
@@ -1715,3 +1763,146 @@ Named so that nobody goes looking for them:
 - **The invariant CLI is not wired into `npm run check`.** It exits non-zero on the current
   scenarios, and a red tree teaches people to ignore the signal. Wire it in once the generated
   scenarios come from `src/forge/`.
+
+## Baseline
+
+**2026-08-10.** `npm run invariants` over all four installed scenarios (`green-chapel`,
+`thornwick-road` hand-written; `a-secret-lies-in-the`, `an-interesting-spin-on-the`
+generated). Verbatim output:
+
+```
+> auto-adventure@0.2.0 invariants
+> vite-node src/tools/invariants.ts --
+
+green-chapel — A Blow for a Blow
+  structures-built  Camelkeep (site 1144681494): asked for 1 shrine, built 0
+  structures-built  Wain Keep (site 1529687061): asked for 1 barn, built 0
+  structures-built  Wain Keep (site 1529687061): asked for 2 house, built 0
+  structures-built  Wodedesert (site 2340111694): asked for 1 farmhouse, built 0
+  structures-built  Wodedesert (site 2340111694): asked for 3 house, built 0
+  structures-built  Wodedesert (site 2340111694): asked for 1 inn, built 0
+  structures-built  Wodedesert (site 2340111694): asked for 1 shop, built 0
+  structures-built  Greyford (site 2447650453): asked for 1 house, built 0
+  structures-built  Greyford (site 2447650453): asked for 1 stable, built 0
+  structures-built  Heathgate (site 2901334670): asked for 1 farmhouse, built 0
+  structures-built  Heathgate (site 2901334670): asked for 3 house, built 1
+  structures-built  Stubchapel (site 860455222): asked for 1 farmhouse, built 0
+  structures-built  Stubchapel (site 860455222): asked for 3 house, built 2
+  structures-built  Stubchapel (site 860455222): asked for 1 mill, built 0
+  buildings-reachable  Greyford (site 2447650453): the square itself is not walkable
+  FAIL  structures-built: 14
+  FAIL  buildings-reachable: 1
+  ok    scenes-written: 0
+  ok    legs-walkable: 0
+
+a-secret-lies-in-the — Hands Full
+  structures-built  Hammerwatch (site 2227307379): asked for 1 smithy, built 0
+  structures-built  Bedrock's End (site 3213465016): asked for 1 hall, built 0
+  structures-built  Bedrock's End (site 3213465016): asked for 1 house, built 0
+  structures-built  Bedrock's End (site 3213465016): asked for 1 inn, built 0
+  structures-built  Hearthgate (site 3271006950): asked for 5 house, built 2
+  structures-built  The Last Anvil (site 3287834627): asked for 1 barracks, built 0
+  structures-built  The Last Anvil (site 3287834627): asked for 1 hall, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 farmhouse, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 hall, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 2 house, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 inn, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 temple, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 tower, built 0
+  structures-built  The Last Anvil (site 4064606860): asked for 1 warehouse, built 0
+  scenes-written  beat bellkeeper-rub: no conversation was written for the person this beat hangs on
+  legs-walkable  Hammerwatch: 415 tiles in one leg, over the 320 a session tolerates
+  FAIL  structures-built: 14
+  ok    buildings-reachable: 0
+  FAIL  scenes-written: 1
+  FAIL  legs-walkable: 1
+
+an-interesting-spin-on-the — The Ash-Stained Crown
+  structures-built  Rust-Hollow (site 1278240940): asked for 1 shop, built 0
+  structures-built  Salt-Tooth Outpost (site 1677355018): asked for 1 inn, built 0
+  structures-built  Salt-Spit Junction (site 3676251433): asked for 1 ruin, built 0
+  structures-built  Salt-Spit Junction (site 3676251433): asked for 1 shop, built 0
+  structures-built  Rustgutter (site 3986944761): asked for 4 house, built 1
+  structures-built  Rustgutter (site 3986944761): asked for 1 warehouse, built 0
+  legs-walkable  Rust-Hollow: 431 tiles in one leg, over the 320 a session tolerates
+  FAIL  structures-built: 6
+  ok    buildings-reachable: 0
+  ok    scenes-written: 0
+  FAIL  legs-walkable: 1
+
+thornwick-road — The Hollow Tithe
+  structures-built  Measurewick (site 1803785688): asked for 2 farmhouse, built 1
+  structures-built  Measurewick (site 1803785688): asked for 2 house, built 0
+  structures-built  Kilnwait (site 2009483734): asked for 1 house, built 0
+  structures-built  Kilnwait (site 2009483734): asked for 1 stable, built 0
+  structures-built  Bracken Cross (site 2150566345): asked for 1 barn, built 0
+  structures-built  Bracken Cross (site 2150566345): asked for 1 smithy, built 0
+  structures-built  Bracken Cross (site 2150566345): asked for 1 warehouse, built 0
+  structures-built  Measuregate (site 2165261147): asked for 1 farmhouse, built 0
+  structures-built  Measuregate (site 2165261147): asked for 2 house, built 0
+  structures-built  Measuregate (site 2165261147): asked for 1 shop, built 0
+  structures-built  Tallybastion (site 2309958617): asked for 4 barracks, built 2
+  structures-built  Tallybastion (site 2309958617): asked for 1 stable, built 0
+  structures-built  Tallybastion (site 2309958617): asked for 1 warehouse, built 0
+  structures-built  Brackenholt (site 232432215): asked for 1 shrine, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 apothecary, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 inn, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 mill, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 shop, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 smithy, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 temple, built 0
+  structures-built  Harrowmere (site 3139050156): asked for 1 warehouse, built 0
+  structures-built  Kilnbarrow (site 3217682817): asked for 3 ruin, built 2
+  structures-built  Cord Mere (site 338095591): asked for 2 house, built 0
+  structures-built  Bellmere (site 4073541284): asked for 2 house, built 0
+  structures-built  Measurewrack (site 4125361648): asked for 3 ruin, built 1
+  structures-built  Kilnbridge (site 933820581): asked for 1 farmhouse, built 0
+  structures-built  Kilnbridge (site 933820581): asked for 3 house, built 2
+  scenes-written  beat the-honest-weight: no conversation was written for the person this beat hangs on
+  scenes-written  beat the-weight-in-hand: no conversation was written for the person this beat hangs on
+  scenes-written  beat report-the-fraud: no conversation was written for the person this beat hangs on
+  FAIL  structures-built: 27
+  ok    buildings-reachable: 0
+  FAIL  scenes-written: 3
+  ok    legs-walkable: 0
+```
+
+Counts:
+
+| scenario | structures-built | buildings-reachable | scenes-written | legs-walkable |
+|---|---|---|---|---|
+| green-chapel (hand-written) | 14 | 1 | 0 | 0 |
+| thornwick-road (hand-written) | 27 | 0 | 3 | 0 |
+| a-secret-lies-in-the (generated) | 14 | 0 | 1 | 1 |
+| an-interesting-spin-on-the (generated) | 6 | 0 | 0 | 1 |
+
+**Reading.** Not zero: the two generated scenarios do show `structures-built` violations
+(14 and 6), so the diagnosis this plan is built on — that filler is outbidding requested
+structures — is not falsified by this run, and the stop condition in Task 4, Step 4 does
+not apply.
+
+But the run does not match the plan's other stated expectation, that the hand-written
+scenarios would be "largely clean". They are not: `green-chapel` has *more*
+`structures-built` violations than either generated scenario (14, tied with
+`a-secret-lies-in-the`), and `thornwick-road` has the worst count of the four (27),
+plus 3 `scenes-written` violations. `checkStructuresBuilt` counts by kind, not by
+whether a spec was ever meant to be binding — and per "What this plan does not do"
+above, `required` has no author today, so every structure in every one of these four
+files, hand-written or generated, is advisory. Filler is free to outbid an advisory
+request regardless of who wrote the spec, so a high `structures-built` count on
+`green-chapel` and `thornwick-road` is consistent with the mechanism the plan
+describes, not evidence against it — but it does mean "hand-written vs. generated"
+is not the axis this invariant actually splits on, and Phase 2's Task 9 comparison
+(Task 4 note: `structures-built` on the two generated scenarios is expected to stay
+unchanged after Phase 2, precisely because their specs are all advisory) should be
+read with that in mind for the hand-written pair too.
+
+The other three invariants behave as expected: `buildings-reachable` is a single,
+narrow fault (`green-chapel`'s Greyford square is not walkable) rather than a systemic
+one; `scenes-written` and `legs-walkable` are occasional, not pervasive, in all four
+files.
+
+The run took about 6.2 seconds wall-clock for all four scenarios (`6.69s user 0.08s
+system 109% cpu 6.187 total`, via `time npm run invariants`). All four scenarios
+loaded and reported without a "could not be read" line, and nothing threw; the process
+exited 1, as expected with violations present.
