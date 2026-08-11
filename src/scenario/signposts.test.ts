@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { demoJourneyArtifact } from "../../test/fixtures/scenario.js";
+import { demoArtifact, demoJourneyArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
+import { hashString } from "../core/rand/hash.js";
 import { signBoard } from "../core/rules/signage.js";
 import { hasFlag, TFlag } from "../core/tiles/flags.js";
 import { terrainDef } from "../core/tiles/terrain.js";
-import { isWellInside } from "../core/world/bounds.js";
+import { boundsAround, isWellInside } from "../core/world/bounds.js";
+import type { MacroSite } from "../core/world/macro.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
 import { isPassable, terrainOf } from "./passability.js";
 import { signpostsFor } from "./signposts.js";
@@ -106,8 +108,124 @@ describe("signposts on the way out", SLOW, () => {
 		}
 	});
 
+	/*
+	 * `demoJourneyArtifact` (used by every other test in this file) yields exactly ONE
+	 * signpost: the spawn sits exactly on the first town, so it becomes the origin rather
+	 * than a leg in its own right, and there is only the one leg onward. So this test used
+	 * to reduce to `1 === 1` against `PLAN` above and would have stayed green with `taken`
+	 * deleted from `signposts.ts` entirely — the tile-dedupe mechanism it claims to check.
+	 *
+	 * Fixed with two origins built to *force* the collision rather than hope a procedural
+	 * world happens to produce one: two towns 24 tiles apart, radius 10 each, one leg out
+	 * and one leg back, so each stands its board on the way toward the other along the
+	 * same line. `OUT_OF_TOWN` starts each search at `radius + 2` tiles out — 12 for
+	 * both — so the two searches start from the *same* point on that line and, without
+	 * the guard, resolve to the identical tile: confirmed empirically (see the fix's
+	 * report) by running this exact fixture with `taken.add` commented out, which gives
+	 * two identical coordinates rather than two distinct ones. Revisiting the first town
+	 * also gives it two arms (to the second town, then to a third), exercising the
+	 * grouping at `signposts.ts:102` the single-leg fixture above never reaches either.
+	 *
+	 * Built from fabricated `MacroSite`s rather than real ones precisely because organic
+	 * settlement placement does not reliably put two towns this close together — a sweep
+	 * over several seeds' nearest settlements got as near as *adjacent* tiles and no
+	 * closer, which is why the mechanism needs to be forced to be tested at all.
+	 */
 	it("never stands two posts on one tile", () => {
-		const tiles = PLAN.signs.map((sign) => `${sign.x},${sign.y}`);
+		const fabricate = (id: number, x: number, y: number, radius: number): MacroSite => ({
+			id,
+			mx: id,
+			my: id,
+			site: { x, y },
+			kind: "hamlet",
+			importance: 1,
+			radius,
+			regionId: 0,
+		});
+
+		// Far from the origin, so nothing here is near any site a real seed would place.
+		const a = fabricate(900_001, 4000, 4000, 10);
+		const b = fabricate(900_002, 4024, 4000, 10);
+		const c = fabricate(900_003, 6000, 6000, 12);
+		const named = (site: MacroSite, name: string) => {
+			const spec = demoSiteSpec(site.id);
+			return { ...spec, name, shortName: name, settlement: { ...spec.settlement, name } };
+		};
+
+		const forced = demoArtifact({
+			seed: hashString("signpost-forced-collision"),
+			spawn: { x: a.site.x, y: a.site.y },
+			// Only wide enough to cover where a board could actually stand (within radius +
+			// `OUT_OF_TOWN.to` + a verge reach of either town, ~40 tiles) — `c` is never
+			// searched geometrically, only referenced by id, so it does not need to be inside
+			// bounds. Kept small deliberately: `buildPassability` over a much wider area
+			// (2400, tried first) took over a minute for this one test.
+			bounds: boundsAround(a.site, 150, { style: "cliffs", thickness: 6 }),
+			sites: {
+				[String(a.id)]: named(a, "Aldermoor"),
+				[String(b.id)]: named(b, "Bellhaven"),
+				[String(c.id)]: named(c, "Candlemere"),
+			},
+			arc: {
+				title: "The Three-Cornered Errand",
+				premise: "One town sends the player out, calls them back, and sends them on again.",
+				beats: [
+					{
+						id: "beat-a",
+						order: 0,
+						siteId: a.id,
+						npcSlot: 0,
+						requires: [],
+						setsFlag: "arc:beat-a",
+						journal: "Word at Aldermoor is to start at Bellhaven.",
+					},
+					{
+						id: "beat-b",
+						order: 1,
+						siteId: b.id,
+						npcSlot: 0,
+						requires: ["arc:beat-a"],
+						setsFlag: "arc:beat-b",
+						journal: "Bellhaven sends word back to Aldermoor.",
+					},
+					{
+						id: "beat-a2",
+						order: 2,
+						siteId: a.id,
+						npcSlot: 0,
+						requires: ["arc:beat-b"],
+						setsFlag: "arc:beat-a2",
+						journal: "Aldermoor, again, points onward to Candlemere.",
+					},
+					{
+						id: "beat-c",
+						order: 3,
+						siteId: c.id,
+						npcSlot: 0,
+						requires: ["arc:beat-a2"],
+						setsFlag: "arc:beat-c",
+						journal: "Candlemere is the last of it.",
+					},
+				],
+			},
+		});
+
+		const grid = buildPassability(forced);
+		// `siteIndex` only returns sites a real world seed actually placed at that cell, and
+		// none of these fabricated ids are one — so the fabricated `MacroSite`s themselves
+		// are what `signpostsFor` is given, exactly as a real `sites` map would hand them in.
+		const sites = new Map<number, MacroSite>([
+			[a.id, a],
+			[b.id, b],
+			[c.id, c],
+		]);
+		const plan = signpostsFor(forced, grid, sites);
+
+		// Two real origins — Aldermoor (two arms, to Bellhaven and Candlemere) and
+		// Bellhaven (one arm, back to Aldermoor) — so this is a genuine dedupe check
+		// rather than a single sign compared against itself.
+		expect(plan.signs.length).toBe(2);
+		const tiles = plan.signs.map((sign) => `${sign.x},${sign.y}`);
 		expect(new Set(tiles).size).toBe(tiles.length);
 	});
 
