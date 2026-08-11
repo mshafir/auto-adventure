@@ -1,4 +1,10 @@
-import { AuthoringStopped, type AuthorResult, authorScenario } from "../ai/author/author.js";
+import {
+	AuthoringStopped,
+	type AuthorResult,
+	authorScenario,
+	writeTree,
+} from "../ai/author/author.js";
+import { polishArtifact } from "../ai/author/polish.js";
 import { resolveSeed } from "../config.js";
 import { resolveOverride } from "../content/load.js";
 import { logger } from "../utils/log.js";
@@ -34,6 +40,75 @@ export interface GenerationOutcome {
 	/** Something went wrong, in words. Nothing was written. */
 	readonly failure?: string;
 	readonly calls: number;
+	/**
+	 * A reader's one-sentence answer to "could a player follow this", once one has read it.
+	 *
+	 * Only ever set by the polish pass, which is the only thing that asks.
+	 */
+	readonly verdict?: string;
+}
+
+/**
+ * Read a written world back, fix what reading it found, and keep the result.
+ *
+ * Split out from {@link generateScenario} rather than folded into it because it is a
+ * *second* decision, taken after the first has finished: the player has the findings in
+ * front of them and chooses whether to spend more. Everything that decides anything is in
+ * `polishArtifact`; this is the boundary that writes the answer back to disk, so the world
+ * that gets played is the world that was kept.
+ */
+export async function polishScenario(
+	outcome: GenerationOutcome,
+	deps: PolishDeps = {},
+): Promise<GenerationOutcome> {
+	const choice = outcome.choice;
+	const artifact = choice?.scenario;
+	if (!choice || !artifact) return outcome;
+
+	const polish = deps.polish ?? polishArtifact;
+	const write = deps.write ?? writeScenario;
+
+	let result: Awaited<ReturnType<typeof polishArtifact>>;
+	try {
+		result = await polish({
+			artifact,
+			findings: outcome.findings,
+			writeTree,
+			...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
+			...(deps.signal ? { signal: deps.signal } : {}),
+		});
+	} catch (error) {
+		// Never fatal. The world was already written, checked and kept; a polish that fell
+		// over must leave the player with exactly what they had before they asked for it.
+		logger.error(`polishing "${artifact.id}" failed`, error);
+		return outcome;
+	}
+
+	for (const repair of result.repairs) logger.info(`polished ${artifact.id}: ${repair}`);
+	const findings = [...result.findings].sort((a, b) => rank(a) - rank(b));
+	for (const finding of findings) {
+		logger.warn(`polished ${artifact.id}: ${finding.severity} ${finding.message}`);
+	}
+
+	// Written again only when something actually changed. Rewriting the file to record that
+	// nothing happened would touch its timestamp and tell the player it had been edited.
+	const path = result.artifact === artifact ? outcome.path : write(result.artifact);
+
+	return {
+		...outcome,
+		...(path ? { path } : {}),
+		findings,
+		calls: outcome.calls + result.calls,
+		...(result.verdict ? { verdict: result.verdict } : {}),
+		choice: { ...choice, scenario: result.artifact },
+	};
+}
+
+export interface PolishDeps {
+	readonly onProgress?: (message: string) => void;
+	readonly signal?: AbortSignal;
+	readonly polish?: typeof polishArtifact;
+	readonly write?: (artifact: ScenarioArtifact) => string;
 }
 
 export interface GenerationDeps {

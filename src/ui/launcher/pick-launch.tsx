@@ -6,7 +6,11 @@ import { packCatalogue } from "../../content/load.js";
 import { tilePackCatalogue } from "../../content/tiles.js";
 import { deleteSave, listSaves } from "../../persist/save-repo.js";
 import { displaySettingsPath, readSettings, writeSettings } from "../../persist/settings.js";
-import { type GenerationOutcome, generateScenario } from "../../scenario/generate.js";
+import {
+	type GenerationOutcome,
+	generateScenario,
+	polishScenario,
+} from "../../scenario/generate.js";
 import { listScenarios, loadScenario } from "../../scenario/repo.js";
 import type { GenerateRequest, LaunchChoice } from "../../scenario/scenario.js";
 import { logger } from "../../utils/log.js";
@@ -145,6 +149,10 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 
 	const startedAt = Date.now();
 	const stop = new AbortController();
+	// Recomputed here rather than passed down from `pickLaunch`: the key can be typed on the
+	// options page during the same session, so the answer that matters is the one at the
+	// moment the offer is made.
+	const canUseModel = hasGatewayKey() && !CONFIG.noAi;
 
 	const lines: string[] = [];
 	let calls = 0;
@@ -156,6 +164,15 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	const columns = process.stdout.columns ?? 80;
 	const rows = Math.max(12, (process.stdout.rows ?? 24) - 1);
 	const depth = detectColorDepth();
+
+	// Set while the world is being read back, so the screen stops offering a second pass
+	// over the same faults and goes back to showing progress lines.
+	let polishing = false;
+	let polish: (() => void) | undefined;
+	// Whether the review page is what should be on screen. Declared here rather than beside
+	// the loop that owns it because `view` closes over it and is called long before that
+	// loop is reached.
+	let reviewing = false;
 
 	const view = (failure?: string) => (
 		<GenerateProgress
@@ -170,7 +187,13 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 			{...(failure ? { failure } : {})}
 			{...(outcome?.findings.length ? { findings: outcome.findings } : {})}
 			{...(outcome?.path ? { path: outcome.path } : {})}
+			done={reviewing && !polishing}
+			{...(outcome?.verdict ? { verdict: outcome.verdict } : {})}
 			debug={debugAi()}
+			// Offered only when there is a model to ask and the pass has not already run. A
+			// second reading of a world the reader has already passed on would be a call spent
+			// to be told the same thing.
+			{...(polish && canUseModel && !outcome?.verdict ? { onPolish: polish } : {})}
 			onDismiss={() => dismiss?.()}
 			onStop={() => {
 				if (stopping) return;
@@ -206,22 +229,58 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 		return undefined;
 	}
 
-	// Read before played, when there is anything to read. The screen this replaces filed
-	// the findings in the log and told the player it had done so, which is the same as not
-	// telling them: the log is a file they have no reason to know about.
-	if (outcome.findings.length > 0) {
-		await new Promise<void>((resolve) => {
-			dismiss = resolve;
+	/*
+	 * Read before played, and mended before played if that is what the player wants.
+	 *
+	 * A loop rather than a single wait, because reading the world back is a *second* pass
+	 * over it: it produces its own findings, which the player is owed a look at on the same
+	 * terms as the first set. It goes round at most twice in practice — the offer is
+	 * withdrawn once a reader has given a verdict, since a second reading of a world the
+	 * reader has already passed on is a call spent to be told the same thing.
+	 */
+	reviewing = outcome.findings.length > 0;
+	while (reviewing) {
+		const next = await new Promise<"play" | "polish">((resolve) => {
+			dismiss = () => resolve("play");
+			polish = () => resolve("polish");
 			draw();
 		});
+		dismiss = undefined;
+		polish = undefined;
+		if (next === "play") break;
+
+		// Back to the progress screen while it works. The findings are still true, but a page
+		// of faults with a spinner nowhere on it looks like a game that has stopped.
+		polishing = true;
+		lines.push("");
+		draw();
+		outcome = await polishScenario(outcome, {
+			signal: stop.signal,
+			onProgress: (message) => {
+				lines.push(message);
+				calls += 1;
+				draw();
+			},
+		});
+		calls = outcome.calls;
+		polishing = false;
+		// Shown even when it comes back clean, which is the whole reason `done` exists: a
+		// world with nothing left wrong with it is the outcome most worth telling somebody
+		// about, and it used to be the one case that said nothing at all.
+		reviewing = true;
 	}
 
 	instance.unmount();
 	logTelemetry();
+	// Asked again rather than remembered from above: `outcome` has been replaced since, by a
+	// pass that returns a whole new one, and the narrowing that came with the first answer
+	// does not survive that.
+	const playing = outcome.choice;
+	if (!playing) return undefined;
 	// The last thing before the world opens, so that a run which dies between here and the
 	// first frame says where it got to rather than simply ending.
-	logger.info(`starting the generated world "${outcome.choice.worldId}"`);
-	return outcome.choice;
+	logger.info(`starting the generated world "${playing.worldId}"`);
+	return playing;
 }
 /**
  * Which scenario a prebuilt choice refers to.

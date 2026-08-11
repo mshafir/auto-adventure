@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { demoArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
 import { AuthoringStopped, type AuthorResult } from "../ai/author/author.js";
 import type { ScenarioArtifact } from "./artifact.js";
-import { freeScenarioId, generateScenario } from "./generate.js";
+import { freeScenarioId, generateScenario, polishScenario } from "./generate.js";
 import { verifyArtifact } from "./repo.js";
 import type { GenerateRequest } from "./scenario.js";
 import type { Finding } from "./validate.js";
@@ -163,6 +163,104 @@ describe("generating a world", () => {
 		});
 		await generateScenario(REQUEST, h.deps);
 		expect(h.progress).toContain("lore: The Long Siege");
+	});
+});
+
+/**
+ * Reading the world back, at the boundary rather than in the pass.
+ *
+ * Everything that decides anything is in `polishArtifact`; this is the eight lines that
+ * write the answer to disk — which is exactly the shape of code that has gone wrong here
+ * before, so it gets its own tests. The pass itself is injected.
+ */
+describe("mending a world after it has been read back", () => {
+	async function generated(findings: readonly Finding[] = []) {
+		const h = harness({ author: author(demoArtifact(), 12, findings) });
+		return { h, outcome: await generateScenario(REQUEST, h.deps) };
+	}
+
+	it("keeps what the pass produced, and plays that rather than the original", async () => {
+		const { outcome } = await generated([{ severity: "warning", message: "rough" }]);
+		const mended = demoArtifact({ title: "Mended" });
+		const written: ScenarioArtifact[] = [];
+		const after = await polishScenario(outcome, {
+			polish: async () => ({
+				artifact: mended,
+				calls: 3,
+				repairs: ["rewrote Ilse"],
+				findings: [],
+				verdict: "A player could follow this through.",
+			}),
+			write: (artifact) => {
+				written.push(artifact);
+				return "/tmp/mended.json";
+			},
+		});
+		expect(after.choice?.scenario).toBe(mended);
+		expect(after.findings).toEqual([]);
+		expect(after.verdict).toContain("follow this through");
+		// Counted on top of what the world already cost, since the player is deciding about
+		// the total and not about this pass in isolation.
+		expect(after.calls).toBe(15);
+		expect(written).toEqual([mended]);
+		expect(after.path).toBe("/tmp/mended.json");
+	});
+
+	/*
+	 * Rewriting the file to record that nothing happened would touch its timestamp and tell
+	 * the player their world had been edited when it had not.
+	 */
+	it("leaves the file alone when the pass changed nothing", async () => {
+		const { outcome } = await generated([{ severity: "warning", message: "rough" }]);
+		const written: ScenarioArtifact[] = [];
+		const after = await polishScenario(outcome, {
+			polish: async (input) => ({
+				artifact: input.artifact,
+				calls: 1,
+				repairs: [],
+				findings: input.findings,
+			}),
+			write: (artifact) => {
+				written.push(artifact);
+				return "/tmp/again.json";
+			},
+		});
+		expect(written).toEqual([]);
+		expect(after.path).toBe(outcome.path);
+	});
+
+	/*
+	 * Never fatal. The world was written, checked and kept before the player asked for this,
+	 * so a pass that falls over has to leave them exactly what they had — the alternative is
+	 * losing a paid-for world to a failure in an optional extra.
+	 */
+	it("hands back the world unchanged when the pass throws", async () => {
+		const { outcome } = await generated([{ severity: "warning", message: "rough" }]);
+		const after = await polishScenario(outcome, {
+			polish: async () => {
+				throw new Error("the gateway went away");
+			},
+		});
+		expect(after).toBe(outcome);
+		expect(after.choice?.scenario).toBeDefined();
+	});
+
+	it("has nothing to do when there is no world to read", async () => {
+		const nothing = { findings: [], calls: 0, stopped: true } as const;
+		expect(await polishScenario(nothing)).toBe(nothing);
+	});
+
+	it("hands the pass what the authoring found, so the rewrites can be told about it", async () => {
+		const faults: readonly Finding[] = [{ severity: "warning", message: "nobody says where" }];
+		const { outcome } = await generated(faults);
+		let seen: readonly Finding[] = [];
+		await polishScenario(outcome, {
+			polish: async (input) => {
+				seen = input.findings;
+				return { artifact: input.artifact, calls: 0, repairs: [], findings: input.findings };
+			},
+		});
+		expect(seen.map((finding) => finding.message)).toContain("nobody says where");
 	});
 });
 

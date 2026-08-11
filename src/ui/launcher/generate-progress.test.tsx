@@ -36,6 +36,13 @@ function mount(props: Partial<Parameters<typeof GenerateProgress>[0]> = {}) {
 	return { ink, dismissed, stopped, screen: () => stripAnsi(ink.lastFrame() ?? "") };
 }
 
+/** The same screen with the mend on offer, which is a second thing a key can mean. */
+function mountOffering(props: Partial<Parameters<typeof GenerateProgress>[0]> = {}) {
+	const polished: number[] = [];
+	const m = mount({ onPolish: () => polished.push(1), ...props });
+	return { ...m, polished };
+}
+
 describe("while a world is being written", () => {
 	it("shows what each pass produced, so a wait is something to read", () => {
 		const m = mount();
@@ -139,6 +146,66 @@ describe("once it is written and something is wrong with it", () => {
 		// keypress confirming that it worked.
 		const m = mount({ findings: [] });
 		expect(m.screen()).not.toContain("press any key");
+		m.ink.unmount();
+	});
+});
+
+/**
+ * The offer to read the world back and write the faults out.
+ *
+ * A second decision, taken with the findings in front of the player: everything before this
+ * point is part of the price of writing a world at all, and this one costs a call for the
+ * reading and a call per scene it mends. So it is offered, and only ever when it can be
+ * taken — a key on the screen that does nothing reads as the game having stopped responding
+ * at the exact moment somebody is deciding whether to trust it.
+ */
+describe("offering to mend it", () => {
+	const FAULTS = [{ severity: "warning", message: "nobody tells you where Aldermoor is" }];
+
+	it("makes the offer only when there is something to make it with", () => {
+		const plain = mount({ findings: FAULTS });
+		expect(plain.screen()).not.toContain("read back");
+		plain.ink.unmount();
+
+		const offering = mountOffering({ findings: FAULTS });
+		expect(offering.screen()).toContain("read back");
+		offering.ink.unmount();
+	});
+
+	it("takes P as the offer rather than as 'I have read this'", async () => {
+		const m = mountOffering({ findings: FAULTS });
+		await m.ink.settle();
+		await m.ink.type("p");
+		expect(m.polished).toHaveLength(1);
+		expect(m.dismissed).toHaveLength(0);
+		m.ink.unmount();
+	});
+
+	it("still starts the game on anything else", async () => {
+		const m = mountOffering({ findings: FAULTS });
+		await m.ink.settle();
+		await m.ink.type(KEY.space);
+		expect(m.dismissed).toHaveLength(1);
+		expect(m.polished).toHaveLength(0);
+		m.ink.unmount();
+	});
+
+	/*
+	 * The one case that used to say nothing at all: a world read back and mended until there
+	 * was nothing left wrong with it went straight into play, so the player paid for the pass
+	 * and was never told it had worked.
+	 */
+	it("shows the review even when nothing is left wrong, if asked to", () => {
+		const m = mount({ findings: [], done: true, verdict: "A player could follow this through." });
+		const text = m.screen();
+		expect(text).toContain("Nothing is wrong with it");
+		expect(text).toContain("could follow this through");
+		m.ink.unmount();
+	});
+
+	it("puts the reader's verdict on the screen, not in the log", () => {
+		const m = mount({ findings: FAULTS, verdict: "The second scene never names the town." });
+		expect(m.screen()).toContain("never names the town");
 		m.ink.unmount();
 	});
 });

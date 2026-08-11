@@ -64,8 +64,28 @@ export interface GenerateProgressProps {
 	readonly findings?: readonly { readonly severity: string; readonly message: string }[];
 	/** Where it was kept, once it has been. */
 	readonly path?: string;
+	/**
+	 * Whether the work is finished and the review is what should be on screen.
+	 *
+	 * Inferred from there being findings, normally, since a world with nothing wrong with it
+	 * used to go straight into play. But a world that has just been read back and mended may
+	 * have *nothing* left wrong with it, and that is precisely the outcome worth showing —
+	 * so the caller can say so outright.
+	 */
+	readonly done?: boolean;
 	/** Called when the player has read the findings and wants to get on with it. */
 	readonly onDismiss?: () => void;
+	/**
+	 * Called when the player asks for the world to be read back and mended.
+	 *
+	 * Absent means the offer is not made — there is no key to spend, or the world came out
+	 * with nothing to mend. An offer that cannot be taken is worse than no offer: it is a
+	 * key on the screen that does nothing, which reads as the game having stopped
+	 * responding at the exact moment the player is deciding whether to trust it.
+	 */
+	readonly onPolish?: () => void;
+	/** A reader's verdict on the world, once one has read it. */
+	readonly verdict?: string;
 	readonly onStop: () => void;
 	/**
 	 * Whether the full prompts are being kept, and so whether `D` does anything.
@@ -88,11 +108,14 @@ export function GenerateProgress({
 	failure,
 	findings,
 	path,
+	done,
 	onDismiss,
+	onPolish,
+	verdict,
 	onStop,
 	debug = false,
 }: GenerateProgressProps) {
-	const reviewing = Boolean(findings && findings.length > 0);
+	const reviewing = done ?? Boolean(findings && findings.length > 0);
 
 	// The clock is the one thing that has to move without anything arriving: between two
 	// passes nothing is printed for a minute at a time, and a frozen screen during that
@@ -175,6 +198,12 @@ export function GenerateProgress({
 			setShowing(true);
 			return;
 		}
+		// Before the catch-all below, for the same reason `D` is: this screen dismisses on
+		// any key, so a key that means something has to be taken out of "any" first.
+		if (reviewing && onPolish && letter === "p") {
+			onPolish();
+			return;
+		}
 		// Any other key once the work is done and there is something to read; ESC only
 		// while it is still running, where it means stop rather than go on.
 		if (reviewing) {
@@ -233,6 +262,8 @@ export function GenerateProgress({
 				{...(path ? { path } : {})}
 				spent={spend}
 				debug={debug}
+				canPolish={Boolean(onPolish)}
+				{...(verdict ? { verdict } : {})}
 			/>
 		);
 	}
@@ -313,6 +344,8 @@ function Review({
 	path,
 	spent,
 	debug,
+	canPolish,
+	verdict,
 }: {
 	readonly columns: number;
 	readonly rows: number;
@@ -322,17 +355,22 @@ function Review({
 	readonly path?: string;
 	readonly spent: TelemetrySnapshot;
 	readonly debug: boolean;
+	readonly canPolish: boolean;
+	readonly verdict?: string;
 }) {
 	const inner = columns - CHROME;
 	const errors = findings.filter((finding) => finding.severity === "error");
 	const warnings = findings.filter((finding) => finding.severity !== "error");
 
-	// Two rows of chrome above, the rule, two rows of explanation, the path and the prompt.
-	const room = Math.max(2, rows - FRAME_CHROME - 8);
+	// Two rows of chrome above, the rule, two rows of explanation, the path and the prompt,
+	// and the verdict when a reader has given one.
+	const room = Math.max(2, rows - FRAME_CHROME - 8 - (verdict ? 1 : 0));
 	const explanation =
-		errors.length > 0
-			? "The world is written and playable. The errors above are parts of the story that may not open — everything else still works, and the whole map is there."
-			: "The world is written and playable. The warnings above are things that came out rougher than intended.";
+		findings.length === 0
+			? "Nothing is wrong with it. Every place the story sends you exists, every errand can be finished, and every scene has somebody in it to play it."
+			: errors.length > 0
+				? "The world is written and playable. The errors above are parts of the story that may not open — everything else still works, and the whole map is there."
+				: "The world is written and playable. The warnings above are things that came out rougher than intended.";
 	// Errors first and never dropped in favour of a warning: a warning is a world that is
 	// merely rougher than intended, and an error is a step of the story that cannot be
 	// taken. Whatever will not fit is counted rather than silently missing.
@@ -374,6 +412,14 @@ function Review({
 					{line}
 				</Text>
 			))}
+			{/* What a reader made of it, in its own words, above the bookkeeping. This is the
+			    answer to the question the player actually has — "is this worth playing" — and
+			    the only line on the screen that answers it rather than counting something. */}
+			{verdict ? (
+				<Text color="green" wrap="truncate">
+					{clampLine(verdict, inner)}
+				</Text>
+			) : null}
 			{path ? (
 				<Text dimColor wrap="truncate">
 					{`Kept in ${path}`}
@@ -390,10 +436,18 @@ function Review({
 					{spent.failures > 0 ? `, ${spent.failures} of them failed` : ""}
 				</Text>
 			</Text>
+			{/* The offer, and it is only ever made when it can be taken. Named for what it
+			    does rather than for what it is: "fix" is the word somebody looking at a list
+			    of faults is already thinking, and "run the polish pass" is a sentence about
+			    our pipeline rather than about their world. */}
 			<Text color="cyan" wrap="truncate">
-				{debug
-					? "D to read the working, or any other key to play it."
-					: "Press any key to play it."}
+				{[
+					canPolish ? "P to have it read back and the faults written out" : "",
+					debug ? "D to read the working" : "",
+					canPolish || debug ? "any other key to play it" : "Press any key to play it",
+				]
+					.filter(Boolean)
+					.join(" · ")}
 			</Text>
 		</Frame>
 	);
