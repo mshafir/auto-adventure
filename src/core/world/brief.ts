@@ -22,6 +22,15 @@
 export type Duration = "tiny" | "short" | "medium" | "long";
 
 export interface ScenarioBrief {
+	/**
+	 * What the world is called, when the player chose it rather than leaving it to be
+	 * invented.
+	 *
+	 * Unlike every other field here this one is not a hint — the lore pass is made to keep
+	 * it (see `author.ts`), because a player who picked a world by its name and got a
+	 * different name has been overruled by a machine on the one decision they made.
+	 */
+	readonly title?: string;
 	/** Freeform intent, used close to verbatim. The main knob. */
 	readonly premise?: string;
 	readonly setting?: string;
@@ -52,6 +61,7 @@ export function isBriefEmpty(brief: ScenarioBrief | undefined): boolean {
 	// and a prompt that reshapes itself around one would reword the premise of
 	// every world whose brief was a stray space.
 	return !(
+		brief.title?.trim() ||
 		brief.premise?.trim() ||
 		brief.setting?.trim() ||
 		brief.storyline?.trim() ||
@@ -74,6 +84,7 @@ export function normalizeBrief(brief: ScenarioBrief | undefined): ScenarioBrief 
 	if (!brief) return undefined;
 
 	const next: {
+		title?: string;
 		premise?: string;
 		setting?: string;
 		storyline?: string;
@@ -88,6 +99,8 @@ export function normalizeBrief(brief: ScenarioBrief | undefined): ScenarioBrief 
 		return trimmed ? trimmed : undefined;
 	};
 
+	const title = text(brief.title);
+	if (title) next.title = title;
 	const premise = text(brief.premise);
 	if (premise) next.premise = premise;
 	const setting = text(brief.setting);

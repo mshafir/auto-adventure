@@ -73,6 +73,20 @@ describe("writeScenario and readScenarioFile", () => {
 		expect(read?.liveInGame).toBe(true);
 	});
 
+	it("keeps a brief's title through a write and a read", () => {
+		// Zod strips what a schema does not name, so a field added to the interface and not
+		// to `ScenarioBriefSchema` survives in memory and vanishes on the way back off disk —
+		// which reads as the lore pass having ignored the title rather than as data loss.
+		const path = writeScenario(
+			artifact({
+				brief: { premise: "a drowned archipelago", title: "The Tide-Glass", tone: "sombre" },
+			}),
+		);
+		const read = readScenarioFile(path);
+		expect(read?.brief.title).toBe("The Tide-Glass");
+		expect(read?.brief.tone).toBe("sombre");
+	});
+
 	/**
 	 * A signpost is a tile and a list of site ids and nothing else, and this is the check
 	 * that keeps it that way: the schema has no field for a direction, so a file that tried

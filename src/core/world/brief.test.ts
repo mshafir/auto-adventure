@@ -32,6 +32,13 @@ describe("normalizeBrief", () => {
 		expect(normalizeBrief({ premise: " ", duration: "short" })).toEqual({ duration: "short" });
 	});
 
+	it("keeps a title, and drops one that is only whitespace", () => {
+		expect(normalizeBrief({ title: "The Tide-Glass of Wodedesert" })?.title).toBe(
+			"The Tide-Glass of Wodedesert",
+		);
+		expect(normalizeBrief({ title: "   " })).toBeUndefined();
+	});
+
 	it("survives a hand-edited save whose brief is not an object", () => {
 		// `migrate.ts` funnels untrusted JSON through here, so a string where an
 		// object belongs must read as "no brief" rather than throw on load.
@@ -48,6 +55,12 @@ describe("isBriefEmpty", () => {
 	it("counts any single field as content", () => {
 		expect(isBriefEmpty({ avoid: "dragons" })).toBe(false);
 		expect(isBriefEmpty({ duration: "long" })).toBe(false);
+	});
+
+	it("counts a title as an instruction, so a brief carrying only one is not empty", () => {
+		// A player who picked a world by its name has said something about the world, and a
+		// brief reported as empty is a brief the prompts leave out entirely.
+		expect(isBriefEmpty({ title: "The Tide-Glass" })).toBe(false);
 	});
 
 	it("does not count whitespace as content", () => {

@@ -61,6 +61,7 @@ export const WorldBoundsSchema = z.object({
 });
 
 export const ScenarioBriefSchema = z.object({
+	title: z.string().optional(),
 	premise: z.string().optional(),
 	setting: z.string().optional(),
 	storyline: z.string().optional(),
