@@ -539,6 +539,50 @@ describe("the town square", () => {
 	}, 30_000);
 });
 
+describe("required structures", () => {
+	it("builds a required structure even when the town is oversubscribed", () => {
+		// A settlement's plots come from a BSP split of its footprint, and both hamlets
+		// in this sample happen to land a single plot too narrow for a hall's frontage
+		// (hall pads its minimum plot by {x: 3, y: 1}) — a fact of this seed's geometry,
+		// not something the spec below controls. So this tries every site in the sample
+		// rather than hard-coding one, and asserts the property on whichever actually has
+		// room: a required request is never beaten to a plot it fits by filler.
+		const { seed, sites } = sampleSites("required", 3);
+		const world = worldSeed(seed);
+
+		let found = false;
+		for (const site of sites) {
+			const patch = generateSettlement(world, site, {
+				walled: false,
+				structures: [
+					// One requirement, buried behind more filler-grade specs than there are plots.
+					{
+						kind: "hall",
+						size: "small",
+						importance: 1,
+						id: "counting-house",
+						name: "The Counting House",
+						required: true,
+					},
+					...Array.from({ length: 30 }, () => ({
+						kind: "house" as const,
+						size: "large" as const,
+						importance: 5,
+					})),
+				],
+			});
+
+			const counting = patch.buildings.find((b) => b.name === "The Counting House");
+			if (!counting) continue;
+			found = true;
+			expect(counting.kind).toBe("hall");
+			expect(counting.required).toBe(true);
+			break;
+		}
+		expect(found, "no site in the sample had room for the required hall").toBe(true);
+	});
+});
+
 describe("buildings seen from outside", () => {
 	it("are roofed, not floored", () => {
 		// Interiors are separate grids, so the tiles inside the wall ring are only

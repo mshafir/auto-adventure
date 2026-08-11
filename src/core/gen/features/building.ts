@@ -52,7 +52,12 @@ export function buildStructure(
 	streetTarget: Vec2,
 	interiorId: number,
 	rng: Rng,
-	details?: { readonly name?: string; readonly signText?: string; readonly lock?: Lock },
+	details?: {
+		readonly name?: string;
+		readonly signText?: string;
+		readonly lock?: Lock;
+		readonly required?: boolean;
+	},
 ): BuildResult {
 	const { wall, cover } = materialsFor(kind);
 	const anchors: Anchor[] = [];
@@ -148,6 +153,7 @@ export function buildStructure(
 		...(details?.name ? { name: details.name } : {}),
 		...(details?.signText ? { signText: details.signText } : {}),
 		...(details?.lock ? { lock: details.lock } : {}),
+		...(details?.required ? { required: true } : {}),
 	};
 
 	return { placement, anchors };

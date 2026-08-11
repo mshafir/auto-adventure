@@ -9,7 +9,7 @@ import { T } from "../../tiles/terrain.js";
 import type { MacroSite } from "../../world/macro.js";
 import type { WorldSeed } from "../../world/recipe.js";
 import { roadsAround } from "../../world/roads.js";
-import { buildStructure, minimumPlot } from "./building.js";
+import { buildStructure } from "./building.js";
 import {
 	type Anchor,
 	type BuildingPlacement,
@@ -19,6 +19,7 @@ import {
 	patchWrite,
 	type StructureKind,
 } from "./patch.js";
+import { assignPlots, type PlotRequest } from "./plots.js";
 import { featureBounds, generateFeature, registerFeature } from "./registry.js";
 import {
 	type Allowed,
@@ -259,19 +260,39 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 		.sort((a, b) => b.w * b.h - a.w * a.h);
 
 	// --- assign structures to plots -----------------------------------------
-	// The spec is advisory: more structures than plots are truncated by
-	// importance and fewer are padded with filler, so a malformed or oversized
-	// spec degrades instead of failing.
-	const wanted = [...spec.structures].sort((a, b) => b.importance - a.importance);
-	const assignments: (StructureSpec | undefined)[] = plots.map((plot, i) => {
-		const candidate = wanted[i];
-		if (!candidate) return undefined;
-		const need = minimumPlot(candidate.kind, candidate.size);
-		return plot.w >= need.x && plot.h >= need.y ? candidate : undefined;
-	});
+	// Requirements are solved first and filler takes what is left; see `plots.ts` for
+	// why the old importance sort could not express that. `id` falls back to the spec's
+	// index so every request has a distinct handle even when the author gave none.
+	const requests: PlotRequest[] = spec.structures.map((structure, index) => ({
+		id: structure.id ?? `s${index}`,
+		kind: structure.kind,
+		size: structure.size,
+		importance: structure.importance,
+		required: structure.required ?? false,
+		relations: [],
+	}));
+
+	const gates = anchors
+		.filter((anchor) => anchor.kind === "gate")
+		.map((anchor) => ({ x: anchor.x, y: anchor.y }));
+
+	const solution = assignPlots({ plots, square, gates, centre: site.site, radius }, requests);
+
+	const specByRequestId = new Map(
+		spec.structures.map((structure, index) => [structure.id ?? `s${index}`, structure] as const),
+	);
+	const assignedTo = new Map(
+		solution.assignments.map((assignment) => [assignment.plot, assignment.request] as const),
+	);
+	const blocked = new Set(solution.blocked);
 
 	plots.forEach((plot, i) => {
-		const assigned = assignments[i];
+		// A plot an isolated building keeps clear stays clear. Building filler here would
+		// undo the isolation the requirement asked for.
+		if (blocked.has(i)) return;
+
+		const request = assignedTo.get(i);
+		const assigned = request ? specByRequestId.get(request.id) : undefined;
 		const kind: StructureKind = assigned?.kind ?? pickFiller(world, rng);
 		const size = fitRect(plot, assigned?.size ?? "small", rng);
 		if (size.w < 5 || size.h < 5) return;
@@ -288,7 +309,12 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 			interiorId,
 			rng,
 			assigned
-				? { name: assigned.name, signText: assigned.signText, lock: assigned.lock }
+				? {
+						name: assigned.name,
+						signText: assigned.signText,
+						lock: assigned.lock,
+						required: assigned.required ?? false,
+					}
 				: undefined,
 		);
 		buildings.push(result.placement);
