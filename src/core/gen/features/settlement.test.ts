@@ -581,6 +581,84 @@ describe("required structures", () => {
 		}
 		expect(found, "no site in the sample had room for the required hall").toBe(true);
 	});
+
+	it("never demolishes a required building, across many seeds", () => {
+		// Demolition only fires when a doorstep is walled in, which depends on the roll. So
+		// this sweeps seeds rather than contriving one: the property is that no seed anywhere
+		// produces a town that has thrown away the building the story needs.
+		for (const name of ["prune-a", "prune-b", "prune-c", "prune-d", "prune-e"]) {
+			clearFeatureCache();
+			const { seed, sites } = sampleSites(name, 3);
+			for (const site of sites) {
+				const world = worldSeed(seed);
+				const patch = generateSettlement(world, site, {
+					walled: site.kind === "town",
+					structures: [
+						{
+							kind: "hall",
+							size: "medium",
+							importance: 1,
+							id: "needed",
+							name: "Needed",
+							required: true,
+						},
+						...Array.from({ length: 20 }, () => ({
+							kind: "house" as const,
+							size: "medium" as const,
+							importance: 3,
+						})),
+					],
+				});
+
+				// Either it was never placed (too few plots, reported by the solver) or it
+				// survives. What must never happen is placed-then-demolished.
+				const needed = patch.buildings.filter((b) => b.required);
+				expect(needed.length).toBeLessThanOrEqual(1);
+				for (const building of needed) {
+					expect(building.name).toBe("Needed");
+				}
+			}
+		}
+	});
+
+	it("keeps a required building rather than demolishing it, on a seed that actually walls it in", () => {
+		// The property test above sweeps seeds with the brief's exact spec, but across
+		// those five names the required hall's own doorstep never once landed in the
+		// stranded set — only filler did. That is not enough to know the guard works: a
+		// test that cannot go red is a guess (see the invariants-and-place-solver plan).
+		// So this pins a seed and site, found by widening the search (denser filler,
+		// larger footprints, a walled town) until the required hall's doorstep was
+		// itself stranded. Confirmed by temporarily instrumenting the old
+		// implementation: it demolished this exact building and `patch.buildings` came
+		// back with no "Needed" building at all.
+		const { seed, sites } = sampleSites("sweep2-242", 4);
+		const site = sites.find((s) => s.mx === -2 && s.my === -3);
+		expect(site).toBeDefined();
+		if (!site) return;
+
+		const patch = generateSettlement(worldSeed(seed), site, {
+			walled: true,
+			structures: [
+				{
+					kind: "hall",
+					size: "large",
+					importance: 1,
+					id: "needed",
+					name: "Needed",
+					required: true,
+				},
+				...Array.from({ length: 40 }, () => ({
+					kind: "house" as const,
+					size: "large" as const,
+					importance: 5,
+				})),
+			],
+		});
+
+		const needed = patch.buildings.find((b) => b.name === "Needed");
+		expect(needed, "the required building was demolished instead of kept").toBeDefined();
+		expect(needed?.required).toBe(true);
+	});
 });
 
 describe("buildings seen from outside", () => {

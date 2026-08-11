@@ -379,6 +379,22 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 
 const MAX_PRUNE_ROUNDS = 4;
 
+/**
+ * Demolish what the carve pass could not reach — except what the story needs.
+ *
+ * A building walled in by its neighbours is demolished rather than shipped, because the
+ * alternative the old design took was letting the player break the wall at runtime,
+ * which turned every unreachable objective into a hole punched through stone.
+ *
+ * A *required* building is different: demolishing it is the very substitution
+ * `plots.ts` exists to prevent, arriving one pass later. So a required building that
+ * cannot be reached takes a neighbour down instead — the nearest non-required building —
+ * and the carve is retried. If that still does not open a route the building is kept,
+ * unreachable, and the `buildings-reachable` invariant reports it. Kept rather than
+ * demolished on purpose: a building standing in the wrong place is a bug somebody can
+ * see and fix, and a building that was silently deleted is the bug that took a
+ * playthrough to find.
+ */
 function pruneUnreachable(
 	patch: FeaturePatch,
 	square: Vec2,
@@ -391,10 +407,26 @@ function pruneUnreachable(
 		const reached = reachableFrom(patch, square, anchors);
 		if (!reached) return;
 
-		const doomed = new Set<number>();
+		const stranded = new Set<number>();
 		for (const anchor of anchors) {
 			if (anchor.kind !== "doorstep" || anchor.building === undefined) continue;
-			if (!reached.has(anchor)) doomed.add(anchor.building);
+			if (!reached.has(anchor)) stranded.add(anchor.building);
+		}
+		if (stranded.size === 0) return;
+
+		const isRequired = (index: number) =>
+			buildings.find((building) => building.index === index)?.required === true;
+
+		// What actually comes down this round: the stranded buildings that may be
+		// demolished, plus one sacrificial neighbour for each stranded one that may not.
+		const doomed = new Set<number>();
+		for (const index of stranded) {
+			if (!isRequired(index)) {
+				doomed.add(index);
+				continue;
+			}
+			const neighbour = nearestExpendable(buildings, index, doomed);
+			if (neighbour !== undefined) doomed.add(neighbour);
 		}
 		if (doomed.size === 0) return;
 
@@ -411,10 +443,45 @@ function pruneUnreachable(
 			if (owner !== undefined && doomed.has(owner)) anchors.splice(i, 1);
 		}
 
-		// Re-carve: removing a building may open a route the previous pass could
-		// not find.
+		// Re-carve: removing a building may open a route the previous pass could not find.
 		carveConnections(patch, square, anchors, buildable);
 	}
+}
+
+/**
+ * The nearest building that may be knocked down to open a route to `index`.
+ *
+ * By squared distance between footprint centres, with the building index as the
+ * tie-break, so two equidistant neighbours always resolve the same way — this runs
+ * inside settlement generation, where a coin toss would make two chunks disagree.
+ */
+function nearestExpendable(
+	buildings: readonly BuildingPlacement[],
+	index: number,
+	already: ReadonlySet<number>,
+): number | undefined {
+	const subject = buildings.find((building) => building.index === index);
+	if (!subject) return undefined;
+	const centreOf = (building: BuildingPlacement) => ({
+		x: building.rect.x + building.rect.w / 2,
+		y: building.rect.y + building.rect.h / 2,
+	});
+	const from = centreOf(subject);
+
+	let best: number | undefined;
+	let bestDistance = Number.POSITIVE_INFINITY;
+	for (const building of [...buildings].sort((a, b) => a.index - b.index)) {
+		if (building.index === index) continue;
+		if (building.required) continue;
+		if (already.has(building.index)) continue;
+		const to = centreOf(building);
+		const distance = (to.x - from.x) ** 2 + (to.y - from.y) ** 2;
+		if (distance < bestDistance) {
+			bestDistance = distance;
+			best = building.index;
+		}
+	}
+	return best;
 }
 
 /** Return a building's footprint to open ground. */
