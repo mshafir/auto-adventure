@@ -15,6 +15,7 @@ import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/
 import { npcId } from "../../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "../../scenario/artifact.js";
 import { inspect, repairUntilClean, score } from "../../scenario/repair.js";
+import { signpostsFor } from "../../scenario/signposts.js";
 import {
 	planFor,
 	type Survey,
@@ -22,7 +23,7 @@ import {
 	surveyWorld,
 	walkableSites,
 } from "../../scenario/survey.js";
-import type { Finding } from "../../scenario/validate.js";
+import { buildPassability, type Finding, siteIndex } from "../../scenario/validate.js";
 import { logger } from "../../utils/log.js";
 import { structured } from "../client.js";
 import type { DialogueTree } from "../dialogue/tree.js";
@@ -524,13 +525,26 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		},
 	};
 
+	// --- pass 5b: put up the signposts ---------------------------------------
+	// Free, and worth doing before anything is checked so the validator judges the world
+	// the player will actually walk. It costs one sweep of the bounded world, which is the
+	// most expensive non-model work in the pipeline — paid here once rather than inside the
+	// derivation, so the repair loop below is not made to pay for it again.
+	const posted = signpostsFor(drafted, buildPassability(drafted), siteIndex(drafted));
+	for (const gap of posted.missed) say(gap);
+	if (posted.signs.length > 0) {
+		say(`put up ${posted.signs.length} signpost(s) on the way out of town`);
+	}
+	const signed: ScenarioArtifact =
+		posted.signs.length > 0 ? { ...drafted, signs: posted.signs } : drafted;
+
 	// --- pass 6: check it, and fix what can be fixed --------------------------
 	// Here rather than in the callers, so the CLI and the launcher get the same world
 	// from the same input. It costs a few seconds of world generation at the end of a
 	// run that has already spent minutes, and it is the only pass that measures the
 	// others: everything above this line is a model being asked to be careful.
 	say("checking the world against itself");
-	const mechanical = repairUntilClean(drafted, say);
+	const mechanical = repairUntilClean(signed, say);
 	let artifact = mechanical.artifact;
 	let findings = mechanical.findings;
 	const repairs = [...mechanical.repairs];

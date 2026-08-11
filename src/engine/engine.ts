@@ -19,10 +19,11 @@ import {
 	takenKey,
 } from "../core/rules/placement.js";
 import { reduce, type WorldProbe } from "../core/rules/reduce.js";
+import { type Sign, signBoard, signIndex, signTiles } from "../core/rules/signage.js";
 import { type GameState, worldAnchor } from "../core/rules/state.js";
 import { EMPTY_SURROUNDINGS, type Surroundings } from "../core/rules/surroundings.js";
 import { type ChunkKey, chunkKey, parseChunkKey, toChunk } from "../core/world/coords.js";
-import { type MacroSite, regionIdAt, sitesAround } from "../core/world/macro.js";
+import { type MacroSite, regionIdAt, sitesAround, sitesInside } from "../core/world/macro.js";
 import { type WorldSeed, worldSeed } from "../core/world/recipe.js";
 import { npcId as makeNpcId, type SiteSpec } from "../core/world/spec.js";
 import { logger } from "../utils/log.js";
@@ -92,6 +93,23 @@ export class GameEngine {
 	 * list — nothing else can change it during play.
 	 */
 	private barriers: Map<string, Barrier>;
+	/**
+	 * Signposts, by the tile the post stands on. Rebuilt on `hydrate`.
+	 *
+	 * Indexed for the same reason the gates are: the describe path asks about the tile in
+	 * front of the player on every keypress, and a scan of the list would be a scan per
+	 * frame.
+	 */
+	private signs: Map<string, Sign>;
+	/**
+	 * Site positions, swept lazily and never invalidated.
+	 *
+	 * Safe to keep for the life of the session because it is a function of the seed and the
+	 * recipe, neither of which can change during play — the same reason `world` is built
+	 * once in the constructor. Lazy because a world with no signposts must not pay for the
+	 * sweep at all.
+	 */
+	private sitePositions?: Map<number, MacroSite>;
 	/** Authored items, by the tile they sit on. Rebuilt on `hydrate`. */
 	private placements: Map<string, ResolvedPlacement>;
 	private draining = false;
@@ -104,12 +122,14 @@ export class GameEngine {
 		this.state = initial;
 		this.world = worldSeed(initial.world.seed, initial.world.recipe);
 		this.barriers = barrierIndex(initial.barriers);
+		this.signs = signIndex(initial.signs);
 		this.placements = this.resolvePlaced(initial);
 		this.chunks = new ChunkManager({
 			world: this.world,
 			...(services.specFor ? { specFor: services.specFor } : {}),
 			...(initial.world.bounds ? { bounds: initial.world.bounds } : {}),
 			...(initial.barriers?.length ? { barriers: barrierTiles(initial.barriers) } : {}),
+			...(initial.signs?.length ? { signs: signTiles(initial.signs) } : {}),
 		});
 		this.chunks.setDeltas(initial.deltas);
 		this.npcs = new NpcDirectory(this.chunks, (siteId) => this.services.siteSpec?.(siteId));
@@ -626,6 +646,7 @@ export class GameEngine {
 	hydrate(state: GameState): void {
 		this.state = state;
 		this.barriers = barrierIndex(state.barriers);
+		this.signs = signIndex(state.signs);
 		this.placements = this.resolvePlaced(state);
 		this.chunks.setDeltas(state.deltas);
 		const here = toChunk(worldAnchor(state.player).x, worldAnchor(state.player).y);
@@ -663,6 +684,58 @@ export class GameEngine {
 			contents: [{ ...item, quantity: item.quantity ?? 1 }],
 			emptyText: entry.placement.emptyText ?? "There is nothing more here.",
 		};
+	}
+
+	/**
+	 * What the signpost on this tile says, worked out now rather than stored.
+	 *
+	 * Composed per call, which costs a handful of subtractions and buys the property the
+	 * whole feature rests on: an arm names a site, and the direction and the distance come
+	 * from where that site actually is. Nothing here can disagree with the map, because
+	 * there is no second copy of the answer to disagree with it.
+	 *
+	 * Indoors always answers nothing. Interior coordinates are their own small grid near
+	 * the origin, so a tile inside a house would otherwise collide with a signpost
+	 * standing at those world coordinates out in the country — the same class of bug
+	 * `worldAnchor` exists to prevent.
+	 */
+	signAt(x: number, y: number): string | undefined {
+		if (this.state.player.inside) return undefined;
+		const sign = this.signs.get(`${x},${y}`);
+		if (!sign) return undefined;
+		const text = signBoard(sign, {
+			nameOf: (siteId) => this.siteName(siteId),
+			positionOf: (siteId) => this.sitePosition(siteId),
+		});
+		return text.length > 0 ? text : undefined;
+	}
+
+	/**
+	 * What a place is called, for a board to paint on itself.
+	 *
+	 * The authored spec first and the generated roster second, because a scenario's own
+	 * name for a town is the one the player will hear people say. `shortName` in
+	 * preference to the full one: a signpost is two lines of a panel, and "Cull's Weighing
+	 * Station on the Thornwick Road" spends both of them on one arm.
+	 */
+	private siteName(siteId: number): string | undefined {
+		const spec = this.state.sites[String(siteId)] ?? this.services.siteSpec?.(siteId);
+		return spec?.shortName ?? spec?.name;
+	}
+
+	/**
+	 * Where a place is, by id.
+	 *
+	 * Swept once and kept, because a site's position is a pure function of its macro cell
+	 * and nothing indexes it the other way round. Only a bounded world can be swept, which
+	 * is the same limit signposts already have: they are a scenario feature, and a
+	 * scenario is finite by construction.
+	 */
+	private sitePosition(siteId: number): { readonly x: number; readonly y: number } | undefined {
+		const bounds = this.state.world.bounds;
+		if (!bounds) return undefined;
+		this.sitePositions ??= sitesInside(this.world, bounds);
+		return this.sitePositions.get(siteId)?.site;
 	}
 
 	/**

@@ -2,6 +2,7 @@ import { scatterField, variantAt } from "../rand/blue-noise.js";
 import { fbm2, unit } from "../rand/noise.js";
 import { streamId, valueAt } from "../rand/rng.js";
 import { type Chunk, createChunk, setTerrain } from "../tiles/chunk.js";
+import { D } from "../tiles/decor.js";
 import { TFlag } from "../tiles/flags.js";
 import { T, type TerrainId } from "../tiles/terrain.js";
 import { type BiomeId, biomeDef, classifyBiome } from "../world/biome.js";
@@ -107,6 +108,16 @@ export interface GenContext {
 	 * one, because the delta is state and this is not.
 	 */
 	readonly barriers?: readonly { readonly x: number; readonly y: number }[];
+	/**
+	 * Signposts the scenario puts up, as tiles to stamp.
+	 *
+	 * Positions only, like the gates above and for the same reason: what a board *says*
+	 * is composed from where the places it points at really are, which is a question
+	 * about the whole world and not about this chunk. The generator's whole job here is
+	 * to make sure a post is standing on the tile the scenario claims one is on, so that
+	 * the player has something to face.
+	 */
+	readonly signs?: readonly { readonly x: number; readonly y: number }[];
 }
 
 /**
@@ -274,10 +285,17 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 	// summary describes what the chunk actually is.
 	if (ctx.bounds) stampBoundary(chunk, ctx.bounds, seed, originX, originY);
 
-	// S10 -- authored gates. Last of the stamping passes, because a gate stands
+	// S11 -- authored gates. Last of the stamping passes, because a gate stands
 	// *across* whatever was there: a road through a gatehouse, a gap in a wall. A
 	// settlement or a road that ran over the tile has already been written, so
 	// stamping earlier would let either bury the gate.
+	// S10 -- signposts. After the boundary, so the pass that closes the edge of the world
+	// has already had its say about the ground a post would stand on, and before the gates,
+	// so that a board and a portcullis on one tile resolve as a portcullis: a gate clears
+	// the decor on its own tile, which is what stops a signpost appearing to grow through
+	// the arch.
+	if (ctx.signs) stampSigns(chunk, ctx.signs, originX, originY);
+
 	if (ctx.barriers) stampBarriers(chunk, ctx.barriers, originX, originY);
 
 	// Tally after stamping, so the counts describe what the chunk actually is.
@@ -367,6 +385,36 @@ function stampBarriers(
 		// A tree or a signpost left standing here would appear to grow through the
 		// gate, the same reason the boundary pass clears decor.
 		chunk.decor[localIndex(lx, ly)] = 0;
+	}
+}
+
+/**
+ * Put up the signposts that fall inside this chunk.
+ *
+ * Only where somebody could stand: a post is read by *facing* it, so one planted in deep
+ * water or in the cliffs closing the world is a board nobody can get in front of. The
+ * offline validator refuses those where they can still be moved, and this is the floor
+ * under it — a hand-edited scenario with a coordinate typed wrong gets no post rather
+ * than a board in the sea.
+ *
+ * Decor rather than terrain, which is what makes it safe to stamp over whatever was
+ * there: decor does not take passability away outdoors, so a post cannot wall off a road
+ * or seal a bridge however badly it is placed. The player walks up to it or over it and
+ * reads it either way.
+ */
+function stampSigns(
+	chunk: Chunk,
+	signs: readonly { readonly x: number; readonly y: number }[],
+	originX: number,
+	originY: number,
+): void {
+	for (const sign of signs) {
+		const lx = sign.x - originX;
+		const ly = sign.y - originY;
+		if (lx < 0 || ly < 0 || lx >= CHUNK || ly >= CHUNK) continue;
+		const index = localIndex(lx, ly);
+		if (((chunk.flags[index] ?? 0) & TFlag.Passable) === 0) continue;
+		chunk.decor[index] = D.signpost;
 	}
 }
 

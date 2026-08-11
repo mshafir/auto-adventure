@@ -29,12 +29,19 @@ import { isPassable, type PassabilityGrid, terrainOf } from "./passability.js";
  * been. A board at the edge of town is the answer to that, and it is the answer *at the
  * moment the choice is made*, which no amount of map furniture is.
  *
- * At this commit, that is all this module does. The derivation above is finished and
- * covered by tests, but nothing yet calls it in the running game: no pass stamps a
- * `Sign` into a generated chunk, and no engine lookup lets a player read one standing in
- * front of it. So despite the present tense throughout, no signpost exists in the world
- * today — wiring the plan up to `pipeline.ts` and `engine.ts` is follow-up work, tracked
- * separately, not part of what this file claims to have finished.
+ * This module only derives the plan; it does not touch the running game itself. The
+ * author calls `signpostsFor` after the world is drafted and before it is checked (so the
+ * validator judges the world the player will actually walk), and the resulting `Sign[]`
+ * rides in `ScenarioArtifact.signs` next to the barriers it already carries. From there
+ * the wiring is the same shape as a barrier's: `session.ts` threads the signs from the
+ * artifact into `GameState`, `pipeline.ts` stamps a post onto the tile a `Sign` names
+ * (`stampSigns`, decor rather than terrain, so it can never wall off the ground it stands
+ * on), and `GameEngine.signAt` composes the board's text on demand from the `Sign` and the
+ * live positions of the sites it names — the same "derived, not written" discipline as
+ * the plan above, so a scenario that moves a town does not also have to go back and edit
+ * every board pointing at it. `describeFaced` in `src/ui/app.tsx` is what a player actually
+ * sees: it reads a tile's decor, and asks `signAt` for the words only once that decor says
+ * a post is standing there.
  */
 
 export interface SignpostPlan {

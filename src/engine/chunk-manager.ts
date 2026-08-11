@@ -19,6 +19,8 @@ export interface ChunkManagerOptions {
 	readonly bounds?: WorldBounds;
 	/** Gates the scenario stamps across the world. Positions only — see `GenContext`. */
 	readonly barriers?: readonly { readonly x: number; readonly y: number }[];
+	/** Signposts the scenario puts up. Positions only, for the same reason. */
+	readonly signs?: readonly { readonly x: number; readonly y: number }[];
 }
 
 interface Entry {
@@ -98,6 +100,7 @@ export class ChunkManager {
 				...(this.options.specFor ? { specFor: this.options.specFor } : {}),
 				...(this.options.bounds ? { bounds: this.options.bounds } : {}),
 				...(this.options.barriers?.length ? { barriers: this.options.barriers } : {}),
+				...(this.options.signs?.length ? { signs: this.options.signs } : {}),
 			},
 			cc,
 		);

@@ -11,6 +11,7 @@ import type { CachedTurn } from "./dialogue-cache.js";
 import type { Barrier } from "./lock.js";
 import type { NpcRecord } from "./npc.js";
 import type { Placement } from "./placement.js";
+import type { Sign } from "./signage.js";
 import type { Trigger } from "./trigger.js";
 
 export const SAVE_VERSION = 3;
@@ -320,6 +321,17 @@ export interface GameState {
 	 * Whether each has been taken is the existing `looted:` flag.
 	 */
 	readonly placements?: readonly Placement[];
+	/**
+	 * Signposts, and where their arms point.
+	 *
+	 * Persisted with the rest of the authored rules rather than re-read like the dialogue
+	 * trees, because the generator stamps them: a post has to be a definite tile before
+	 * the chunk it stands in is built, and the chunk is built before anything reads the
+	 * artifact. Nothing about a sign is player-caused, so there is no progress here to
+	 * keep — only the boards, so that a world whose artifact went missing still has its
+	 * directions.
+	 */
+	readonly signs?: readonly Sign[];
 	readonly regions: Readonly<Record<string, RegionSpec>>;
 	readonly sites: Readonly<Record<string, SiteSpec>>;
 	readonly specSources: Readonly<Record<string, SpecSource>>;

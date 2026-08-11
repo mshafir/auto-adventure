@@ -457,5 +457,10 @@ function scenarioRules(artifact: ScenarioArtifact): Partial<GameState> {
 		// it is therefore resolved at the one point where the artifact becomes state.
 		...(barriers.length ? { barriers } : {}),
 		...(artifact.placements?.length ? { placements: artifact.placements } : {}),
+		// Signposts, here for the same reason the gates are: the *generator* stamps a post,
+		// so the tile has to be settled by the time a chunk is built. What the board says is
+		// worked out later and from the world, so an edit that moves a town is picked up by
+		// every sign pointing at it without the file being touched.
+		...(artifact.signs?.length ? { signs: artifact.signs } : {}),
 	};
 }

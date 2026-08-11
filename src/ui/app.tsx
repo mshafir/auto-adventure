@@ -539,6 +539,12 @@ function describeFaced(
 	const decor = view.decorAt(x, y);
 	if (decor !== 0) {
 		const def = decorDef(decor);
+		// A scenario's own signpost first, and without the decor's description in front of
+		// it. The board is the whole point of the tile and the panel is two lines — spending
+		// half of the first on "a crossroads signpost, arms pointing away" would cost the
+		// arm at the end of the list, which is the one the player has not been to.
+		const board = engine.signAt(x, y);
+		if (board) return board;
 		const sign = engine.getChunks().signNear(x, y);
 		if (sign) return `${def.describe} It reads "${sign}".`;
 		if (isContainer(decor)) {
