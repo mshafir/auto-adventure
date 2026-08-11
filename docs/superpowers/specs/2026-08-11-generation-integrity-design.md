@@ -18,7 +18,10 @@ them what came out. They are independent to build.
   main story cannot be finished. The answer is to walk the story in the real engine as part
   of writing it, fixing the map and the placements beat by beat until each one works — so
   that by the end either everything was accommodated, or we know the beat that defeated us
-  and can ask the player whether to try a fresh seed.
+  and can ask the player whether to try a fresh seed. The main line is settled first and
+  given every fix available; side quests are fitted afterwards into the world that resulted,
+  taking only the fixes that cannot disturb it; and then the story is adjusted to say
+  something about whichever ones fitted.
 
 C is much the largest. A is self-contained and makes C's failures readable while C is
 being built, so A lands first. C depends on B only for the reseed's "keep the bundle"
@@ -369,15 +372,38 @@ over: `repair.ts:71-76` notes each repair round **generates the bounded world tw
 a forward walk visits only the sites the story actually uses, and after a local fix every
 untouched site's patch is still cached.
 
+It runs over the **main line only** — non-optional, non-barred beats, the same set
+`arcOutline` counts (`arc.ts:444`). Optional beats are fitted afterwards by C6, under
+stricter rules, because a side quest must never be the reason a site is regrown.
+
 ```
 settleTheStory(draft):
   session = buildSession(draft, { persist: false })
-  for beat of orderedBeats(draft.arc):
+  for beat of mainLine(draft.arc):            // in orderedBeats order
       reach it, open it, satisfy it
-      ok                    -> advance
-      not ok                -> diagnose; apply the narrowest fix; retry (<= 3)
-      attempts spent, optional beat   -> drop the beat, advance
-      attempts spent, main-line beat  -> stop here; report the beat and what was tried
+      ok       -> advance
+      not ok   -> diagnose; apply the narrowest fix; retry (<= 3)
+      attempts spent -> stop here; report the beat and every fix tried on it
+```
+
+A main-line beat that cannot be settled stops the pass. There is no "drop it and carry on"
+branch here — that is C6's behaviour for side quests, and applying it to the main line is
+exactly the deletion C4 forbids.
+
+The whole pipeline, for orientation:
+
+```
+survey            measure real plots, grow undersized sites      [C2, C3]
+author            lore, regions, sites, arc, dialogue
+static repairs    once, unjudged: gotos, journals, strangers,
+                  forks, dead flags                              [C4]
+settleTheStory    the main line, in the engine, fixing in place   [C5]
+fitSideQuests     optional beats, non-map fixes only, give up
+                  easily                                         [C6]
+adjustTheStory    one call: endings, shortcuts, alternative
+                  main-line pieces, revised text; re-walk to
+                  verify or discard                              [C7]
+write / reseed    only on success or acceptance                  [C8]
 ```
 
 **Ephemeral session, and a bug this uncovers.** `buildSession` constructs a
@@ -436,7 +462,59 @@ subsumes what they measure for the story's own sites, and their remaining job is
 whole worlds before and after a change, which is what `invariants.ts:41-44` says they are
 for.
 
-### C6. Write only on acceptance, and reseed
+### C6. Fitting the side quests, after the main line stands
+
+Side quests are fitted only once `settleTheStory` has settled the main line, and with a
+deliberately lower tolerance: they are worth having and none of them is worth risking the
+story for.
+
+**No growth.** This is the rule the ordering forces rather than a preference. Growing a site
+re-rolls its entire layout — the BSP runs over `radius * 1.56` (`settlement.ts:206-212`), so
+every plot moves — which would disturb the main line that has just been settled against the
+old layout. So side-quest fitting gets only the four fixes that touch no map: respell,
+re-point an anchor, re-point a building, find another container. A side quest that needs a
+site to be bigger is a side quest we do not have.
+
+**Give up easily.** One fix attempt per optional beat, not three. On failure the beat is
+dropped with a repair line saying so, and the pass moves on. Dropping an optional beat is
+already what C4 permits and what today's repairs do; the difference is that it now happens
+after a genuine attempt to place it rather than instead of one.
+
+Each optional beat is fitted independently, so one that cannot be placed costs nothing to
+the others. Order is `orderedBeats`, so the result is deterministic.
+
+### C7. Adjusting the story to the side quests that fitted
+
+Which side quests fitted is not known until C6 has run, so anything the story wants to say
+*about* them has to be written afterwards. One authoring call, given the arc and the list of
+optional beats that survived, may:
+
+- offer a different ending conditioned on side quests completed,
+- add a shortcut between existing beats,
+- make an alternative main-line beat available,
+- revise the text of existing beats to acknowledge what is now reachable.
+
+**Constrained to what needs no map and no placement.** The call may only reference sites,
+people, buildings and items the artifact already contains, and may only add beats anchored on
+them. It may not introduce a place, a person or a structure. That constraint is what makes
+this pass cheap and safe, and it is enforced on the way in — a returned beat naming anything
+unknown is rejected rather than repaired.
+
+**Verified, not assumed.** The changes are text and arc only, so the re-walk should pass
+smoothly — which is exactly why it is worth running: a pass that is expected to succeed and
+is never checked is how an alternative main-line beat with no route to it ships. So the main
+line is walked again over warm caches, costing engine commands.
+
+If the re-walk fails, **the adjustment is discarded wholesale** and the pre-adjustment arc is
+kept. Not repaired, not partially applied: the world was already playable before this pass,
+the pass is an enhancement, and chasing a fix for it would be spending the main line's
+guarantee on a flourish. Discarding is reported as a finding so the failure is visible rather
+than silent.
+
+Skipped entirely when no optional beat fitted — there is nothing to adjust, and a call spent
+to be told so is a call wasted.
+
+### C8. Write only on acceptance, and reseed
 
 `generateScenario` stops writing unconditionally (`generate.ts:191`). Instead:
 
@@ -488,7 +566,20 @@ Everything below runs offline with no key.
 - **The walk grows and restarts.** A fixture where a required structure went unplaced grows
   that site, restarts, and settles; the invalidation count is exactly one site.
 - **The walk gives up on the right thing.** An unreachable main-line beat stops the pass and
-  names that beat; the same fault on an optional beat drops it and settles.
+  names that beat; the same fault on an optional beat leaves the main line settled and is
+  dropped by C6 instead.
+- **Side-quest fitting never grows.** A fixture whose optional beat would need a bigger site
+  drops the beat, and no feature is invalidated — the assertion that protects the settled
+  main line.
+- **Side-quest fitting is independent per beat.** Three optional beats, the middle one
+  unfittable: the other two are fitted and only the middle is dropped.
+- **The adjustment is bounded.** A returned beat naming a site, person or item the artifact
+  does not contain is rejected without being applied.
+- **The adjustment is discarded, not chased.** A fixture whose adjustment breaks the main
+  line keeps the pre-adjustment arc, still plays, and reports a finding saying the
+  adjustment was dropped.
+- **The adjustment is skipped when nothing fitted.** No optional beat survives, no call is
+  made.
 - **Termination.** A fixture engineered to fail every fix stops at the per-beat attempt cap
   rather than looping, and one engineered to be slow stops at the wall-clock budget.
 - **Determinism.** The same draft settles to a byte-identical artifact twice.
@@ -506,11 +597,12 @@ Everything below runs offline with no key.
 2. **Bigger radii churn the golden tests.** `golden.test.ts`, `coherence.test.ts` and
    `seam.test.ts` will all change. Expected and accepted; pinning the four existing
    artifacts keeps the *scenario* tests still.
-3. **Generation cost, which should go down.** ~1.8× the tiles per settlement patch (cached
-   per site, so once each), against removing up to three of the four bounded-world
-   generations the old repair loop could perform. The walk itself is engine commands over
-   warm caches. Net expected to be faster; to be measured, not assumed, since "should be
-   cheaper" is exactly the kind of claim this codebase asks to be checked.
+3. **Generation cost is deliberately not estimated here.** The shape changes too much for a
+   number written now to mean anything: ~1.8× the tiles per settlement patch against the
+   removal of up to three of four bounded-world generations, plus a walk over warm caches,
+   plus one new authoring call in C7. Measured once the pipeline is settled and the cost
+   lines on the config page (`COST` in `generate-config.tsx:58`) re-derived from real runs
+   then — not guessed at now.
 4. **Clearance refuses growth in dense regions**, which is correct but means some sites keep
    a short roster and report it rather than being fixed.
 5. **The engine is now on the generation path.** This is the real risk of C5 and it is not a
@@ -541,6 +633,11 @@ Everything below runs offline with no key.
   to a beat costs what reaching it cost, so resumption buys nothing and risks a spliced
   session.
 - Automatic reseeding. Every attempt past the first is an explicit keypress, per the failure
-  policy in C6.
+  policy in C8.
+- Growing a site to fit a *side* quest, and re-settling the main line afterwards. Rejected in
+  C6: growth re-rolls a layout, and no side quest is worth re-opening a settled main line.
+- Repairing a story adjustment that breaks the main line. C7 discards it instead.
+- Re-deriving the cost and duration estimates on the config page. Deferred until the pipeline
+  is settled and can be measured.
 - Persisting the transcript for a *live* (unbounded, non-scenario) world. Part A's
   persistence is keyed to a scenario id.
