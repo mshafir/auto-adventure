@@ -247,12 +247,21 @@ export function checkLegsWalkable(artifact: ScenarioArtifact): Violation[] {
 	const walk = storyWalk(artifact, grid, siteIndex(artifact));
 	const violations: Violation[] = [];
 
+	// An unreachable beat is reported and nothing else is. `storyWalk` returns *early* when
+	// a leg cannot be walked (`validate.ts:200-210`), so `legs` and `tiles` are a partial
+	// sum of the journey up to that point — and judging pacing against a partial sum turns
+	// one fault into two. A story stopped at its second beat thirty tiles out would be
+	// reported as unreachable *and* as under `SHORT_STORY`, which inflates exactly the count
+	// this module exists to make comparable. `checkStory` avoids it the same way, by putting
+	// its pacing checks in the `else` branch (`validate.ts:1419-1444`).
 	if (walk.unreachable) {
-		violations.push({
-			invariant: "legs-walkable",
-			where: `beat ${walk.unreachable}`,
-			detail: "there is no walkable route to this beat, so the story cannot be finished",
-		});
+		return [
+			{
+				invariant: "legs-walkable",
+				where: `beat ${walk.unreachable}`,
+				detail: "there is no walkable route to this beat, so the story cannot be finished",
+			},
+		];
 	}
 
 	for (const leg of walk.legs) {

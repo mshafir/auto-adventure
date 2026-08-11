@@ -13,6 +13,7 @@ import type { ScenarioArtifact } from "./artifact.js";
 import {
 	checkBuildingsReachable,
 	checkInvariants,
+	checkLegsWalkable,
 	checkScenesWritten,
 	checkStructuresBuilt,
 } from "./invariants.js";
@@ -135,6 +136,32 @@ describe("scenes-written", () => {
 		);
 
 		expect(checkScenesWritten({ ...artifact, trees })).toEqual([]);
+	});
+});
+
+describe("legs-walkable", () => {
+	it("reports an unreachable beat once, and says nothing about the total walk", () => {
+		// The spawn sits at the first settlement, so the first leg is a few tiles at most and
+		// the partial total lands well under `SHORT_STORY`. That is exactly what makes the
+		// double-report reachable: pointing the second beat at a site id the world does not
+		// have makes `storyWalk` return early with `unreachable` set and a partial `tiles`
+		// sum (`validate.ts:200-202`) — a story stopped this early must be reported as
+		// unreachable and *only* as unreachable, not also as too short.
+		const base = demoJourneyArtifact();
+		const beats = (base.arc?.beats ?? []).map((beat, i) =>
+			i === 1 ? { ...beat, siteId: 999999999 } : beat,
+		);
+		const artifact = { ...base, arc: { ...base.arc, beats } } as ScenarioArtifact;
+
+		const violations = checkLegsWalkable(artifact);
+
+		expect(violations).toHaveLength(1);
+		expect(violations[0]?.where).toBe(`beat ${beats[1]?.id}`);
+		expect(violations.some((v) => v.detail.includes("total"))).toBe(false);
+	});
+
+	it("is silent on a story that walks and arrives", () => {
+		expect(checkLegsWalkable(demoJourneyArtifact())).toEqual([]);
 	});
 });
 
