@@ -8,6 +8,7 @@ import { polishArtifact } from "../ai/author/polish.js";
 import { beginWorking } from "../ai/working-file.js";
 import { resolveSeed } from "../config.js";
 import { resolveOverride } from "../content/load.js";
+import type { ScenarioBrief } from "../core/world/brief.js";
 import { logger } from "../utils/log.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { listScenarios, writeScenario } from "./repo.js";
@@ -129,7 +130,7 @@ export async function generateScenario(
 	const write = deps.write ?? writeScenario;
 	const taken = deps.taken ?? (() => listScenarios().map((scenario) => scenario.id));
 
-	const id = freeScenarioId(request.brief.premise, taken());
+	const id = freeScenarioId(request.brief, taken());
 	// From the id, so the same name always names the same country — the rule the CLI
 	// already follows, and what makes a run reproducible from its filename alone.
 	const seed = resolveSeed(id);
@@ -218,14 +219,18 @@ function rank(finding: Finding): number {
 /**
  * A filename nothing else has taken, from what the player asked for.
  *
- * The premise makes a far better name than a counter does — `.scenarios` is a directory a
- * person reads — but two worlds asked for in the same words must not overwrite each other,
- * so a taken slug gets a number. Falls back to a fixed stem when there is no premise,
- * which is the case where the model was left to invent one.
+ * The title first, because `.scenarios` is a directory a person reads and a shelf of book
+ * names beats a list of pitches. The premise second, which is what every world written
+ * before there was a title to give has. Two worlds asked for in the same words must not
+ * overwrite each other, so a taken slug gets a number, and a brief with neither falls back
+ * to a fixed stem.
  */
-export function freeScenarioId(premise: string | undefined, taken: readonly string[]): string {
+export function freeScenarioId(
+	brief: ScenarioBrief | undefined,
+	taken: readonly string[],
+): string {
 	const already = new Set(taken);
-	const stem = slug(premise) || "a-world";
+	const stem = slug(brief?.title) || slug(brief?.premise) || "a-world";
 	if (!already.has(stem)) return stem;
 	for (let n = 2; ; n++) {
 		const candidate = `${stem}-${n}`;

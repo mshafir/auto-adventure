@@ -289,14 +289,15 @@ describe("mending a world after it has been read back", () => {
 
 describe("naming the file it will be kept in", () => {
 	it("names it after what was asked for, because .scenarios is read by people", () => {
-		expect(freeScenarioId("A siege that has gone on nine years!", [])).toBe(
+		expect(freeScenarioId({ premise: "A siege that has gone on nine years!" }, [])).toBe(
 			"a-siege-that-has-gone",
 		);
 	});
 
 	it("falls back to a fixed stem when the model chose the premise", () => {
 		expect(freeScenarioId(undefined, [])).toBe("a-world");
-		expect(freeScenarioId("   ", [])).toBe("a-world");
+		expect(freeScenarioId({}, [])).toBe("a-world");
+		expect(freeScenarioId({ premise: "   " }, [])).toBe("a-world");
 	});
 
 	it("never overwrites a world that is already there", () => {
@@ -306,7 +307,27 @@ describe("naming the file it will be kept in", () => {
 
 	it("only ever produces a name the scenario id rules accept", () => {
 		for (const premise of ["!!!", "ÜBER", "a/../../etc/passwd", "9 lives", ""]) {
-			expect(freeScenarioId(premise, []), premise).toMatch(/^[a-z0-9][a-z0-9-]*$/);
+			expect(freeScenarioId({ premise }, []), premise).toMatch(/^[a-z0-9][a-z0-9-]*$/);
 		}
+	});
+
+	it("names the file after the title when there is one", () => {
+		// `.scenarios` is a directory a person reads. "the-tide-glass-of-wodedesert" is a
+		// shelf of books; "a-drowned-archipelago-run-by" is a list of pitches.
+		expect(freeScenarioId({ title: "The Tide-Glass of Wodedesert", premise: "Debt." }, [])).toBe(
+			"the-tide-glass-of-wodedesert",
+		);
+	});
+
+	it("falls back to the premise for a world nobody named", () => {
+		expect(freeScenarioId({ premise: "a siege that has gone on nine years" }, [])).toBe(
+			"a-siege-that-has-gone",
+		);
+	});
+
+	it("still refuses to overwrite a world of the same name", () => {
+		expect(freeScenarioId({ title: "The Tide-Glass" }, ["the-tide-glass"])).toBe(
+			"the-tide-glass-2",
+		);
 	});
 });
