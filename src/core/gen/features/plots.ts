@@ -78,13 +78,16 @@ export interface PlotSolution {
 	/** Plot indices that must be left empty, from an `Isolated` requirement. */
 	readonly blocked: readonly number[];
 	/**
-	 * Ids of required requests that no plot could satisfy.
+	 * Ids of required requests that no plot could take.
 	 *
-	 * Non-empty means the search failed outright: every requirement is reported here, not
-	 * only the one that actually ran out of plots, and `assignments` is still filled with
-	 * whatever optional requests fit anyway — a town is better than a hole where a building
-	 * should stand, and the invariant report is where the missing building surfaces. So a
-	 * caller must check this is empty before trusting `assignments` to be what it asked for.
+	 * Only the ones genuinely left over: when no single assignment satisfies everything, the
+	 * fallback below places what it can and names the rest here, so this is the list of
+	 * buildings the caller asked for and did not get. `assignments` still holds the ones that
+	 * did fit, plus whatever optional requests found room afterwards.
+	 *
+	 * A caller must check this is empty before trusting `assignments` to be what it asked for
+	 * — a town is better than a hole where a building should stand, but a story that sends
+	 * the player to the counting house needs to know the counting house was never built.
 	 */
 	readonly unplaced: readonly string[];
 }
@@ -250,18 +253,43 @@ export function assignPlots(context: PlotContext, requests: readonly PlotRequest
 			else assignments.push({ plot: index, request });
 		}
 	} else {
-		// No complete assignment. Report every requirement as unplaced rather than
-		// shipping a partial one: a settlement missing one of three required buildings is
-		// a fault the caller must see, and a half-solution hides which half is missing.
-		//
-		// Defensive rather than load-bearing: `place`'s own backtracking already unwinds
-		// `chosen`, `taken` and `placed` on every failure path, including the MAX_NODES
-		// bailout, so by the time it returns false all three are already empty. Clearing
-		// them again costs nothing and keeps that invariant from being trusted silently.
-		chosen.clear();
-		taken.clear();
-		placed.length = 0;
-		for (const request of ordered) unplaced.push(request.id);
+		/*
+		 * No assignment satisfies every requirement at once, so take what can be had.
+		 *
+		 * The old branch reported *all* of them unplaced and cleared the map, on the grounds
+		 * that a half-solution hides which half is missing. That is true of the report and
+		 * false of the town: a settlement short of one required building was given filler for
+		 * every one of them, which is the substitution this module exists to prevent, arriving
+		 * one layer further down and unremarked. `unplaced` names the half that is missing.
+		 *
+		 * Greedy over `ordered`, which is sorted on explicit keys — fewest candidate plots,
+		 * then importance, then id — so this is a function of the inputs and not of the order
+		 * the caller happened to pass them in. Same relations, same isolation, same `placed`
+		 * list as the search above, so a plot taken here constrains what comes after it
+		 * exactly as it would have during the search.
+		 *
+		 * `place`'s backtracking has already unwound `chosen`, `taken` and `placed` on every
+		 * failure path, including the MAX_NODES bailout, so this starts from empty.
+		 */
+		for (const request of ordered) {
+			// `Adjacent` to something that never got placed is allowed through, unlike in the
+			// search above, which verifies the finished assignment. Placing a building slightly
+			// further from its neighbour than asked is a worse world; not placing it at all is a
+			// missing one, and this branch only runs when the good answer is already gone.
+			const index = plots.findIndex((plot, i) => {
+				if (taken.has(i) || !fitsSize(plot, request)) return false;
+				if (!request.relations.every((relation) => holds(relation, plot, chosen))) return false;
+				return respectsIsolation(request, plot);
+			});
+			if (index < 0) {
+				unplaced.push(request.id);
+				continue;
+			}
+			taken.add(index);
+			chosen.set(request.id, index);
+			placed.push({ request, index });
+			assignments.push({ plot: index, request });
+		}
 	}
 
 	// Plots an isolated building keeps empty. Collected after the required search, because

@@ -70,6 +70,54 @@ describe("assignPlots", () => {
 		expect(solution.unplaced).toEqual([]);
 		expect(solution.assignments).toHaveLength(2);
 	});
+
+	it("places the requirements it can when one of them will not fit", () => {
+		// The old behaviour threw away the two that fitted along with the one that did not,
+		// so a town short of a single required building got filler for all three — which is
+		// the substitution this module exists to prevent, one layer further down.
+		//
+		// Two plots of 13 take a medium temple (9x8), a medium smithy (7x7) or a large hall
+		// (12x10); the 6 takes none of them. Three requirements, two plots that can hold them:
+		// exactly one has to go unplaced, and which one is settled by the id tiebreak.
+		const ctx = context([13, 13, 6]);
+		const solution = assignPlots(ctx, [
+			request({ id: "temple", kind: "temple", size: "medium", required: true }),
+			request({ id: "smithy", kind: "smithy", size: "medium", required: true }),
+			request({ id: "hall", kind: "hall", size: "large", required: true }),
+		]);
+
+		expect(solution.unplaced).toEqual(["temple"]);
+		expect(solution.assignments.map((a) => a.request.id).sort()).toEqual(["hall", "smithy"]);
+	});
+
+	it("still reports nothing unplaced when every requirement fits", () => {
+		const ctx = context([13, 13]);
+		const solution = assignPlots(ctx, [
+			request({ id: "temple", kind: "temple", size: "medium", required: true }),
+			request({ id: "smithy", kind: "smithy", size: "medium", required: true }),
+		]);
+		expect(solution.unplaced).toEqual([]);
+		expect(solution.assignments).toHaveLength(2);
+	});
+
+	it("answers the same way whatever order the requests arrive in, even when one will not fit", () => {
+		// The property the whole module rests on: this runs inside settlement generation, so
+		// two chunks that disagreed about which building went where would disagree about the
+		// town. The partial fallback is greedy, which is exactly where an order dependence
+		// would creep back in.
+		const ctx = () => context([13, 13, 6]);
+		const temple = request({ id: "temple", kind: "temple", size: "medium", required: true });
+		const smithy = request({ id: "smithy", kind: "smithy", size: "medium", required: true });
+		const hall = request({ id: "hall", kind: "hall", size: "large", required: true });
+
+		const forwards = assignPlots(ctx(), [temple, smithy, hall]);
+		const backwards = assignPlots(ctx(), [hall, smithy, temple]);
+
+		expect(backwards.unplaced).toEqual(forwards.unplaced);
+		expect(backwards.assignments.map((a) => [a.plot, a.request.id])).toEqual(
+			forwards.assignments.map((a) => [a.plot, a.request.id]),
+		);
+	});
 });
 
 describe("assignPlots: the sort that makes the result a function of the inputs alone", () => {
