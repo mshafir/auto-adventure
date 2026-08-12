@@ -148,7 +148,13 @@ export const ArcSchema = z.object({
 export const PitchSchema = z.object({
 	title: cappedText(60).describe("The world's name. Two to five words, no subtitle."),
 	tone: cappedText(24).describe("Its register, in one or two words: 'sombre', 'wry'."),
-	premise: cappedText(400).describe("What the player is caught up in, in two to four sentences."),
+	// The budget is stated in characters as well as sentences, because "two to four
+	// sentences" is a length a model can honour with four very long ones — and this field is
+	// trimmed rather than refused, so the overrun shows up as a paragraph that stops
+	// mid-sentence on the one screen where the paragraph is the entire content.
+	premise: cappedText(400).describe(
+		"What the player is caught up in. Two or three sentences, at most 350 characters.",
+	),
 });
 
 export const PitchesSchema = z.object({

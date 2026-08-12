@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import { useState } from "react";
+import type { Pitch } from "../../ai/author/pitch.js";
 import { CATALOGUE, costLabel, costRatio, modelChoice, priceLine } from "../../ai/catalogue.js";
 import type { PackEntry } from "../../content/load.js";
 import { defaultTilePackEntry, type TilePackEntry } from "../../content/tiles.js";
@@ -10,6 +11,7 @@ import { FRAME_CHROME, Frame } from "../panels/primitives.js";
 import { type ColorDepth, rgb } from "../render/color.js";
 import { type ChoiceItem, Chooser } from "./chooser.js";
 import { rampRows } from "./gradient.js";
+import { PickPremise } from "./pick-premise.js";
 import { TextField } from "./text-field.js";
 
 /**
@@ -117,10 +119,34 @@ export interface GenerateConfigProps {
 	 * is where somebody is thinking about what a world is worth.
 	 */
 	readonly onModelSet?: (id: string) => void;
+	/**
+	 * Writes a few worlds to choose between, when there is a model to write them with.
+	 *
+	 * Absent means the Premise row offers only the two answers that need nobody: type one,
+	 * or leave it to the lore pass. Passed down rather than imported so this page renders in
+	 * a test with no gateway key.
+	 *
+	 * Takes the duration because the length is state *here* and the call needs it — see the
+	 * `suggest` binding below. The alternative was reading the environment's duration in
+	 * `pick-launch.tsx`, which compiles and sends the wrong length to the model.
+	 */
+	readonly onSuggest?: (input: {
+		readonly duration: Duration;
+		readonly hint?: string;
+		readonly avoid?: readonly string[];
+	}) => Promise<readonly Pitch[]>;
 	readonly onBegin: (request: GenerateRequest) => void;
 	readonly onBack: () => void;
 	readonly isActive?: boolean;
 }
+
+/**
+ * Which of the three ways into a premise is on screen.
+ *
+ * `how` and `suggest` take the whole frame; `type` shares it with the settings, in the two
+ * rows the cost line normally occupies.
+ */
+type PremiseWay = "none" | "how" | "suggest" | "type";
 
 export function GenerateConfig({
 	columns,
@@ -131,6 +157,7 @@ export function GenerateConfig({
 	initialPremise = "",
 	modelSet,
 	onModelSet,
+	onSuggest,
 	onBegin,
 	onBack,
 	isActive = true,
@@ -142,7 +169,15 @@ export function GenerateConfig({
 	const [pack, setPack] = useState(DEFAULT_PACK);
 	const [dayAndNight, setDayAndNight] = useState(true);
 	const [liveInGame, setLiveInGame] = useState(true);
-	const [editing, setEditing] = useState(false);
+	// Set only by choosing an offered world. A premise typed by hand leaves both empty, which
+	// is what keeps a hand-written brief behaving exactly as it did.
+	const [title, setTitle] = useState("");
+	const [tone, setTone] = useState("");
+	const [premiseWay, setPremiseWay] = useState<PremiseWay>("none");
+	// Whether the premise has ever been asked about, which is what decides where the settings
+	// list opens once it comes back. Not the same as "a premise was chosen": a player who went
+	// to look and came back with nothing still left the page from that row.
+	const [askedAboutPremise, setAskedAboutPremise] = useState(false);
 
 	// The default is offered first in both lists, so ← from it wraps to a real pack
 	// rather than to nothing. It carries a description and a preview of its own, so
@@ -177,8 +212,13 @@ export function GenerateConfig({
 			// The premise itself, not a word standing for it. This is the setting a player is
 			// most likely to want to re-read before committing several minutes to it, and
 			// putting it only in the paragraph means it is invisible unless the cursor happens
-			// to be resting here.
-			detail: premise.trim() ? `“${clamp(premise.trim(), 48)}”` : "let the model choose",
+			// to be resting here. The title wins where there is one: a player who chose a world
+			// by its name recognises it by that name and not by its first forty characters.
+			detail: title
+				? `“${clamp(title, 48)}”`
+				: premise.trim()
+					? `“${clamp(premise.trim(), 48)}”`
+					: "let the model choose",
 			body: premise.trim()
 				? premise.trim()
 				: "What the world should be about. Optional — with nothing here the model picks a premise as well, which is one fewer decision and no worse a world.",
@@ -282,6 +322,73 @@ export function GenerateConfig({
 
 	const heading = rampRows([HEADING], RAMP, depth)[0] ?? HEADING;
 
+	// Both of these take the whole frame, so the settings list unmounts under them — which is
+	// why it is told to open on `premise` when it comes back. See `Chooser.initialId`.
+	if (premiseWay === "suggest" && onSuggest) {
+		return (
+			<PickPremise
+				columns={columns}
+				rows={rows}
+				depth={depth}
+				duration={duration}
+				{...(premise.trim() ? { hint: premise.trim() } : {})}
+				// The duration is closed over here rather than asked of the caller, because the
+				// length is this page's state and `PickPremise` must not import the AI layer.
+				suggest={(input) => onSuggest({ duration, ...input })}
+				onChoose={(pitch) => {
+					setTitle(pitch.title);
+					setTone(pitch.tone);
+					setPremise(pitch.premise);
+					setPremiseWay("none");
+				}}
+				onBack={() => setPremiseWay("none")}
+			/>
+		);
+	}
+
+	if (premiseWay === "how") {
+		return (
+			<Frame style="menu" width={columns} height={rows}>
+				<Box marginBottom={1}>
+					<Text bold>{rampRows([WAYS_HEADING], RAMP, depth)[0] ?? WAYS_HEADING}</Text>
+					<Text dimColor>{"  the one decision everything else is written around"}</Text>
+				</Box>
+
+				<Box flexGrow={1} flexDirection="column">
+					<Chooser
+						// Keyed apart from the settings list below. Both pages are a `Frame` holding a
+						// `Chooser` in the same position, so without distinct keys React reconciles
+						// them as one component and this list opens on whatever row the settings
+						// cursor was on — which is the Premise row, so it opened on "Type it myself".
+						key="premise-way"
+						items={wayItems(Boolean(onSuggest))}
+						width={columns - CHROME}
+						height={rows - FRAME_CHROME - PAGE_CHROME}
+						isActive={isActive}
+						onBack={() => setPremiseWay("none")}
+						onChoose={(item) => {
+							if (item.id === "way:model") {
+								// Emptied rather than kept and ignored: the row above now says "let the
+								// model choose", and a premise still sitting in the state would be sent
+								// with the request and quietly obeyed.
+								setPremise("");
+								setTitle("");
+								setTone("");
+								setPremiseWay("none");
+								return;
+							}
+							setPremiseWay(item.id === "way:suggest" ? "suggest" : "type");
+						}}
+					/>
+				</Box>
+
+				<Text dimColor wrap="truncate">
+					{"↑↓ move · ENTER choose · ESC back"}
+				</Text>
+			</Frame>
+		);
+	}
+
 	return (
 		<Frame style="menu" width={columns} height={rows}>
 			<Box marginBottom={1}>
@@ -291,6 +398,7 @@ export function GenerateConfig({
 
 			<Box flexGrow={1} flexDirection="column">
 				<Chooser
+					key="settings"
 					items={items}
 					width={columns - CHROME}
 					height={rows - FRAME_CHROME - PAGE_CHROME}
@@ -299,17 +407,26 @@ export function GenerateConfig({
 					// player back to the top of the page every time they wrote a premise —
 					// and `isActive` is exactly the seam that lets both exist without both
 					// acting on the same keypress.
-					isActive={isActive && !editing}
+					isActive={isActive && premiseWay !== "type"}
+					// Opened on the Premise row once it is what sent the player away, so coming
+					// back from a screen of its own lands on the setting just decided rather than
+					// at the top of the page. Explicit rather than left to React reusing this list
+					// across the two pages, which is what happened before they were keyed apart —
+					// and which put the *other* page's cursor in the wrong place instead.
+					{...(askedAboutPremise ? { initialId: "premise" } : {})}
 					onBack={onBack}
 					onCycle={cycle}
 					onChoose={(item) => {
 						if (item.id === "premise") {
-							setEditing(true);
+							setAskedAboutPremise(true);
+							setPremiseWay("how");
 							return;
 						}
 						if (item.id === "begin") {
 							onBegin({
-								brief: normalizeBrief({ premise, duration }) ?? { duration },
+								// `normalizeBrief` drops the empty strings, so a hand-typed premise
+								// produces exactly the brief it produced before any of this existed.
+								brief: normalizeBrief({ premise, title, tone, duration }) ?? { duration },
 								...(tiles === DEFAULT_PACK ? {} : { tiles }),
 								...(pack === DEFAULT_PACK ? {} : { pack }),
 								models,
@@ -326,15 +443,15 @@ export function GenerateConfig({
 				/>
 			</Box>
 
-			{editing ? (
+			{premiseWay === "type" ? (
 				// In the two rows the cost and the footer normally occupy, so the frame keeps
 				// its height and the settings stay readable above while the premise is written.
 				<TextField
 					value={premise}
 					onChange={setPremise}
 					placeholder="a drowned archipelago run by debt-collectors"
-					onSubmit={() => setEditing(false)}
-					onCancel={() => setEditing(false)}
+					onSubmit={() => setPremiseWay("none")}
+					onCancel={() => setPremiseWay("none")}
 				/>
 			) : (
 				/* A line of its own rather than part of the "begin" row's paragraph, because a
@@ -350,7 +467,7 @@ export function GenerateConfig({
 			)}
 
 			<Text dimColor wrap="truncate">
-				{editing
+				{premiseWay === "type"
 					? "A sentence is plenty. Empty means the model picks one. ENTER to keep it, ESC to drop it."
 					: "↑↓ move · ←→ change · ENTER choose · ESC back"}
 			</Text>
@@ -373,6 +490,40 @@ function relative(id: string): string {
 		: `, at about ${ratio < 10 ? ratio.toFixed(1) : ratio.toFixed(0)}× the usual price`;
 }
 
+/**
+ * The three ways a world gets a premise.
+ *
+ * Suggesting comes first because it is the only one a player cannot discover for themselves:
+ * the other two were both already reachable from an empty text field, and this one is the
+ * reason the field is no longer the first thing on screen. Shown and disabled without a
+ * model rather than hidden, for the reason `ChoiceItem.disabled` gives.
+ */
+function wayItems(canSuggest: boolean): ChoiceItem[] {
+	return [
+		{
+			id: "way:suggest",
+			label: "Suggest some for me",
+			accent: "cyan",
+			body: canSuggest
+				? "Four worlds, written now and read before anything is paid for: a name, a register and a paragraph each. Take one, ask for four more, or go back and write your own."
+				: "Not available here: there is no model to write them with.",
+			...(canSuggest ? {} : { disabled: true }),
+		},
+		{
+			id: "way:type",
+			label: "Type it myself",
+			accent: "green",
+			body: "A sentence about what the world is about. Followed closely — where it is specific the author obeys it, and where it is silent the author invents.",
+		},
+		{
+			id: "way:model",
+			label: "Let the model choose",
+			accent: "yellow",
+			body: "Say nothing, and the premise is invented along with the rest of the lore. One fewer decision, and no worse a world — but you find out what it is about once it is written.",
+		},
+	];
+}
+
 /** Enough of a premise to recognise it by, with an ellipsis where the rest was. */
 function clamp(text: string, width: number): string {
 	return text.length <= width ? text : `${text.slice(0, width - 1)}…`;
@@ -387,3 +538,5 @@ function next<T>(values: readonly T[], current: T, step: number): T {
 }
 
 const HEADING = "Write a world";
+
+const WAYS_HEADING = "What is it about?";

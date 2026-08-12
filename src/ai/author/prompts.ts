@@ -66,8 +66,14 @@ export function pitchPrompt(input: {
 	const lines = [
 		`Offer ${input.count} worlds to play in, as different from each other as you can make them.`,
 		`Each will be a ${input.duration} scenario: ${LENGTH_NOTE[input.duration]}`,
-		"A traveller on foot is the protagonist, and a village blacksmith should plausibly have",
-		"an opinion about whatever has happened.",
+		// Scale guidance, and it has to be phrased as scale. Written as "a village blacksmith
+		// should have an opinion about it" — the words `lorePrompt` uses, where they sit beside
+		// a whole brief — every pitch came back with a blacksmith standing in it, because with
+		// nothing else to go on the model reads a named trade as casting.
+		"Keep each one small enough that ordinary people in one district would be arguing about",
+		"it, and keep a traveller arriving on foot a natural way in.",
+		"Two or three sentences each, at most 350 characters. A premise is read whole on one",
+		"screen beside three others, so finish the thought inside that.",
 	];
 	if (input.hint) {
 		lines.push("", "The player has said what they are after. Follow it:", input.hint);

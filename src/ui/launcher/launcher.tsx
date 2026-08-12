@@ -9,7 +9,7 @@ import type { GenerateRequest, LaunchChoice } from "../../scenario/scenario.js";
 import { detectColorDepth } from "../render/color.js";
 import { type ChoiceContext, choiceFor } from "./choice.js";
 import { Continue } from "./continue.js";
-import { GenerateConfig } from "./generate-config.js";
+import { GenerateConfig, type GenerateConfigProps } from "./generate-config.js";
 import { NewWorld } from "./new-world.js";
 import { Options } from "./options.js";
 import { Title } from "./title.js";
@@ -82,6 +82,14 @@ export interface LauncherProps {
 	 */
 	readonly onGenerate?: (request: GenerateRequest) => void;
 	/**
+	 * Writes a few premises to choose between, on the config page's Premise row.
+	 *
+	 * Passed down rather than imported anywhere below here, so every page in this app still
+	 * renders in a test with no gateway key. Absent means the row offers only the two answers
+	 * that need no model.
+	 */
+	readonly onSuggest?: GenerateConfigProps["onSuggest"];
+	/**
 	 * Wall-clock, for the "last played" line. Passed in so the page is a function of
 	 * its inputs and a test does not have to freeze the clock.
 	 */
@@ -105,6 +113,7 @@ export function Launcher({
 	onChoose,
 	onDelete,
 	onGenerate,
+	onSuggest,
 	onQuit,
 }: LauncherProps) {
 	const { exit } = useApp();
@@ -199,6 +208,7 @@ export function Launcher({
 					setModelSet(id);
 				}}
 				{...(initialBrief?.premise ? { initialPremise: initialBrief.premise } : {})}
+				{...(onSuggest ? { onSuggest } : {})}
 				onBegin={(request) => {
 					// Resolved into a world by `pickLaunch`, after this app has unmounted: there
 					// is no seed, no spawn and no artifact yet, so there is nothing a

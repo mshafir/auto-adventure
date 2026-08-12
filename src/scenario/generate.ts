@@ -225,10 +225,7 @@ function rank(finding: Finding): number {
  * overwrite each other, so a taken slug gets a number, and a brief with neither falls back
  * to a fixed stem.
  */
-export function freeScenarioId(
-	brief: ScenarioBrief | undefined,
-	taken: readonly string[],
-): string {
+export function freeScenarioId(brief: ScenarioBrief | undefined, taken: readonly string[]): string {
 	const already = new Set(taken);
 	const stem = slug(brief?.title) || slug(brief?.premise) || "a-world";
 	if (!already.has(stem)) return stem;

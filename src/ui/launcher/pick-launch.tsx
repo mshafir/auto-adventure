@@ -1,4 +1,5 @@
 import { render } from "ink";
+import { suggestPitches } from "../../ai/author/pitch.js";
 import { logTelemetry } from "../../ai/telemetry.js";
 import { clearTranscript, sizeTranscript } from "../../ai/transcript.js";
 import { endWorking } from "../../ai/working-file.js";
@@ -87,6 +88,12 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 			onGenerate={(request) => {
 				requested = request;
 			}}
+			// The one model call that happens *inside* this app rather than after it unmounts,
+			// and the exception the paragraph below is written around: it is a single short call
+			// with a spinner on it, not minutes of authoring, and the answers are the thing the
+			// player has to read in order to make the choice. Only offered when there is a key;
+			// without one the Premise row keeps the two answers that need nobody.
+			{...(canUseModel ? { onSuggest: suggestPitches } : {})}
 			onDelete={(worldId) => {
 				// Done here rather than in the component, which must stay renderable in a
 				// test without a temporary home directory to delete things out of.

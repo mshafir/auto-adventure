@@ -6,6 +6,7 @@ import { hashString } from "../../core/rand/hash.js";
 import type { SaveSummary } from "../../persist/save-repo.js";
 import type { ScenarioSummary } from "../../scenario/repo.js";
 import type { GenerateRequest, LaunchChoice } from "../../scenario/scenario.js";
+import type { GenerateConfigProps } from "./generate-config.js";
 import { Launcher } from "./launcher.js";
 
 const NOW = Date.parse("2026-08-05T12:00:00.000Z");
@@ -69,6 +70,8 @@ function mount(
 		keyFromEnv?: boolean;
 		modelSet?: string;
 		withOptions?: boolean;
+		/** Absent means the Premise row cannot offer to write any, which is the keyless case. */
+		onSuggest?: GenerateConfigProps["onSuggest"];
 	} = {},
 ): Mounted {
 	const chosen: LaunchChoice[] = [];
@@ -102,6 +105,7 @@ function mount(
 						},
 					}
 				: {})}
+			{...(options.onSuggest ? { onSuggest: options.onSuggest } : {})}
 			context={{ saves, baseWorldId: "default", noAi: false }}
 			tilePacks={options.tilePacks ?? []}
 			contentPacks={options.contentPacks ?? []}
@@ -169,6 +173,20 @@ async function toRow(m: Mounted, label: string) {
 		await m.ink.type(KEY.down);
 	}
 	throw new Error(`never reached a row called "${label}"`);
+}
+
+/**
+ * Onto the Premise row and through to the text field.
+ *
+ * Two presses rather than one now: ENTER on Premise asks *how* the premise is arrived at,
+ * because a blank box was the one way in and most players left it blank. Typing is still a
+ * way in, and it is this one.
+ */
+async function toPremiseField(m: Mounted) {
+	await toRow(m, "Premise");
+	await m.ink.type(KEY.enter);
+	await toRow(m, "Type it myself");
+	await m.ink.type(KEY.enter);
 }
 
 describe("the title screen", () => {
@@ -408,11 +426,61 @@ describe("configuring a world to be written", () => {
 		m.ink.unmount();
 	});
 
-	it("takes a premise and shows it back", async () => {
+	it("offers to write a few premises rather than only an empty box", async () => {
 		const m = mount();
 		await toConfig(m);
 		await toRow(m, "Premise");
 		await m.ink.type(KEY.enter);
+		expect(m.ink.screen()).toContain("Suggest");
+		m.ink.unmount();
+	});
+
+	it("puts a chosen world's title and tone on the request, not just its premise", async () => {
+		// The whole point of binding the bundle: a player who picked a world by its name gets
+		// that name, and the register they picked with it.
+		const m = mount({
+			onSuggest: async () => [
+				{ title: "The Tide-Glass", tone: "sombre", premise: "A drowned archipelago." },
+			],
+		});
+		await toConfig(m);
+		await toRow(m, "Premise");
+		await m.ink.type(KEY.enter);
+
+		await toRow(m, "Suggest some for me");
+		await m.ink.type(KEY.enter);
+		// The call is a promise, so the list is not on screen until the frames settle.
+		await m.ink.settle();
+
+		await toRow(m, "The Tide-Glass");
+		await m.ink.type(KEY.enter);
+
+		await toRow(m, "Write this world");
+		await m.ink.type(KEY.enter);
+
+		expect(m.requested[0]?.brief).toMatchObject({
+			title: "The Tide-Glass",
+			tone: "sombre",
+			premise: "A drowned archipelago.",
+		});
+		m.ink.unmount();
+	});
+
+	it("still lets a premise be typed", async () => {
+		const m = mount();
+		await toConfig(m);
+		await toRow(m, "Premise");
+		await m.ink.type(KEY.enter);
+		await toRow(m, "Type it myself");
+		await m.ink.type(KEY.enter);
+		expect(m.ink.screen()).toContain("A sentence is plenty");
+		m.ink.unmount();
+	});
+
+	it("takes a premise and shows it back", async () => {
+		const m = mount();
+		await toConfig(m);
+		await toPremiseField(m);
 		expect(m.ink.screen()).toContain("ENTER to keep it");
 		await m.ink.type("a drowned archipelago");
 		await m.ink.type(KEY.enter);
@@ -429,8 +497,7 @@ describe("configuring a world to be written", () => {
 		// the packs you already chose are still on screen while you write.
 		const m = mount();
 		await toConfig(m);
-		await toRow(m, "Premise");
-		await m.ink.type(KEY.enter);
+		await toPremiseField(m);
 		const text = m.ink.screen();
 		expect(text).toContain("Length");
 		expect(text).toContain("Write this world");
@@ -443,8 +510,7 @@ describe("configuring a world to be written", () => {
 		// one of them. `isActive` is what makes that true.
 		const m = mount();
 		await toConfig(m);
-		await toRow(m, "Premise");
-		await m.ink.type(KEY.enter);
+		await toPremiseField(m);
 		await m.ink.type(KEY.down);
 		await m.ink.type(KEY.enter);
 		expect(m.ink.screen()).toContain("❯ Premise");
@@ -456,8 +522,7 @@ describe("configuring a world to be written", () => {
 		// treated as an instruction.
 		const m = mount();
 		await toConfig(m);
-		await toRow(m, "Premise");
-		await m.ink.type(KEY.enter);
+		await toPremiseField(m);
 		await m.ink.type("   ");
 		await m.ink.type(KEY.escape);
 		await toRow(m, "Write this world");

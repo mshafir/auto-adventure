@@ -100,6 +100,15 @@ export interface ChooserProps {
 	 * A row with no value to change simply does not implement it.
 	 */
 	readonly onCycle?: (item: ChoiceItem | undefined, step: -1 | 1) => void;
+	/**
+	 * The row to open on, by id, rather than the first choosable one.
+	 *
+	 * For a page that answers one of its own rows on a screen of its own: the list unmounts
+	 * to make room and its cursor goes with it, so coming back would otherwise land at the
+	 * top rather than on the setting just decided. Read once, on mounting — a list whose
+	 * cursor jumped whenever this changed would fight the arrow keys.
+	 */
+	readonly initialId?: string;
 	readonly isActive?: boolean;
 }
 
@@ -111,9 +120,10 @@ export function Chooser({
 	onBack,
 	onKey,
 	onCycle,
+	initialId,
 	isActive = true,
 }: ChooserProps) {
-	const [cursor, setCursor] = useState(() => firstEnabled(items));
+	const [cursor, setCursor] = useState(() => opensOn(items, initialId));
 
 	useInput(
 		(input, key) => {
@@ -311,6 +321,13 @@ const BODY_ROWS = 3;
 function firstEnabled(items: readonly ChoiceItem[]): number {
 	const at = items.findIndex((item) => !item.disabled);
 	return at === -1 ? 0 : at;
+}
+
+/** The asked-for row where there is one that can be landed on, and the first otherwise. */
+function opensOn(items: readonly ChoiceItem[], id: string | undefined): number {
+	if (id === undefined) return firstEnabled(items);
+	const at = items.findIndex((item) => item.id === id && !item.disabled);
+	return at === -1 ? firstEnabled(items) : at;
 }
 
 /** Move, skipping what cannot be chosen, and stop at the ends rather than wrapping. */
