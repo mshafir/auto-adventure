@@ -1,4 +1,4 @@
-import { bspSplit } from "../../geom/bsp.js";
+import { type BspCut, bspSplit } from "../../geom/bsp.js";
 import { rasterizePolyline } from "../../geom/line.js";
 import { type Rect, rectIntersects, type Vec2 } from "../../geom/vec.js";
 import { hash2 } from "../../rand/hash.js";
@@ -116,16 +116,23 @@ registerFeature({
 	build: (world, site, spec) => buildSettlement(world, site, spec),
 });
 
-function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec): FeaturePatch {
+/**
+ * The outline a settlement occupies, and the ground inside it worth building on.
+ *
+ * Its own function because {@link sitePlots} needs the same footprint the builder uses and
+ * must not describe a different one. The rng comes back with it: these are the first draws
+ * of the settlement's stream, and the builder goes on drawing from exactly where this left
+ * off, so lifting the block out of `buildSettlement` changed nothing about the world.
+ */
+function settlementShape(
+	world: WorldSeed,
+	site: MacroSite,
+): { rng: Rng; radiusAt: (angle: number) => number; buildable: Allowed } {
 	const rng = rngFor(world.seed, "settlement", site.mx, site.my);
 	const radius = site.radius;
-	const bounds = settlementRect(site);
 
-	const { patch, buildings, anchors, unplaced } = createPatch(site.id, bounds);
-
-	// --- footprint -----------------------------------------------------------
 	// A circle deformed by a few radial harmonics, so the outline is organic
-	// without being noisy. Everything below is clipped to it.
+	// without being noisy. Everything is clipped to it.
 	const harmonics = Array.from({ length: 4 }, (_, i) => ({
 		amplitude: (0.06 + rng.float() * 0.1) / (i + 1),
 		phase: rng.float() * Math.PI * 2,
@@ -148,19 +155,151 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 	};
 
 	// A settlement never sits in the sea, and never on ground too steep to build.
-	const buildable: Allowed = buildableWithin(world, inFootprint);
+	return { rng, radiusAt, buildable: buildableWithin(world, inFootprint) };
+}
 
-	// --- ground --------------------------------------------------------------
+/**
+ * Where the square is, and the box around it nothing may be built on.
+ *
+ * Nothing here is rolled, so both callers get the same answer without either of them
+ * touching the stream.
+ */
+function settlementPlaza(
+	world: WorldSeed,
+	site: MacroSite,
+): { square: Vec2; squareRadius: number; plaza: Rect } {
+	const square = flattestNear(world, site.site, 5);
+	const squareRadius = site.kind === "town" ? 4 : 3;
+
+	/**
+	 * Nothing may be built on the square.
+	 *
+	 * The BSP is laid over the town centre and the square sits at the town centre,
+	 * so without this a plot lands squarely on top of it — burying the well, and
+	 * leaving the "square" anchor *inside somebody's house*. That anchor is where
+	 * people gather in the evening and where every carve path starts, so the whole
+	 * settlement is then routed from a tile behind a locked door. It went unnoticed
+	 * because a building used to be floored rather than roofed, which made the
+	 * stolen square passable and the connectivity check pass.
+	 */
+	const plaza: Rect = {
+		x: square.x - squareRadius - 1,
+		y: square.y - squareRadius - 1,
+		w: squareRadius * 2 + 3,
+		h: squareRadius * 2 + 3,
+	};
+	return { square, squareRadius, plaza };
+}
+
+/**
+ * Grass or dirt, for every buildable tile of the footprint.
+ *
+ * Shared rather than duplicated for a reason that is not about the speckle at all: this
+ * pass draws once per tile, and the BSP that decides the plots draws *after* it. So the
+ * plots depend on the rng state this leaves behind, and anything wanting to know what a
+ * site can hold has to arrive at the same state. Replaying the loop is the only way to do
+ * that without changing where the split is drawn from — and changing that would re-lay-out
+ * every settlement in every world, including four shipped scenarios that pin their own
+ * recipes precisely so their worlds do not move.
+ *
+ * `write` is what separates the two callers: the builder paints the tile, {@link sitePlots}
+ * passes nothing and keeps only the rolls.
+ */
+function rollGround(
+	rng: Rng,
+	bounds: Rect,
+	buildable: Allowed,
+	write?: (x: number, y: number, grass: boolean) => void,
+): void {
 	for (let y = bounds.y; y < bounds.y + bounds.h; y++) {
 		for (let x = bounds.x; x < bounds.x + bounds.w; x++) {
 			if (!buildable(x, y)) continue;
-			patchWrite(patch, x, y, rng.chance(0.12) ? T.grass : T.dirt);
+			const grass = rng.chance(0.12);
+			write?.(x, y, grass);
 		}
 	}
+}
+
+/**
+ * The BSP over a settlement's centre: the streets it cuts, and the plots left between them.
+ *
+ * Takes the settlement's own rng rather than making one, so the split lands exactly where
+ * it always has. Everything between the ground pass and here — the square, the plaza, the
+ * streets carved in from the roads — is decided without a roll, which is what makes it
+ * possible to reach this point twice by two different routes and get the same answer.
+ */
+function subdivide(
+	rng: Rng,
+	site: MacroSite,
+	buildable: Allowed,
+	plaza: Rect,
+): { cuts: readonly BspCut[]; plots: readonly Rect[] } {
+	const radius = site.radius;
+	const inner: Rect = {
+		x: Math.round(site.site.x - radius * 0.78),
+		y: Math.round(site.site.y - radius * 0.78),
+		w: Math.round(radius * 1.56),
+		h: Math.round(radius * 1.56),
+	};
+	const { leaves, cuts } = bspSplit(inner, rng, { minSize: 7, stopSize: 13, cutWidth: 2 });
+
+	// A plot is a leaf inset by a street margin, kept only if it fits entirely
+	// on buildable ground and clear of the square.
+	const plots = leaves
+		.map((leaf) => ({ x: leaf.x + 1, y: leaf.y + 1, w: leaf.w - 2, h: leaf.h - 2 }))
+		.filter(
+			(plot) =>
+				plot.w >= 5 &&
+				plot.h >= 5 &&
+				!rectIntersects(plot, plaza) &&
+				rectFullyAllowed(plot, buildable),
+		)
+		.sort((a, b) => b.w * b.h - a.w * a.h);
+
+	return { cuts, plots };
+}
+
+/**
+ * The plots a settlement will be laid out on.
+ *
+ * Extracted from `buildSettlement` rather than written beside it, and `buildSettlement`
+ * calls it — that is the whole point. Capacity decides how many structures the model may be
+ * asked for and whether a site has to be grown, so a second implementation that drifted from
+ * the builder would be a lie told confidently, where the arithmetic estimate it replaces was
+ * at least obviously a guess.
+ *
+ * Pure in `(world, site)`, and it walks the same three steps the builder walks — the shape,
+ * the ground rolls, the split — because the split is drawn from the stream those two leave
+ * behind. That costs a roll per tile of the footprint, which is the price of the answer
+ * being the one the builder will get rather than one that resembles it. Largest first,
+ * which is the order the assignment pass expects.
+ */
+export function sitePlots(world: WorldSeed, site: MacroSite): readonly Rect[] {
+	const { rng, buildable } = settlementShape(world, site);
+	rollGround(rng, settlementRect(site), buildable);
+	const { plaza } = settlementPlaza(world, site);
+	return subdivide(rng, site, buildable, plaza).plots;
+}
+
+function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec): FeaturePatch {
+	const radius = site.radius;
+	const bounds = settlementRect(site);
+
+	const { patch, buildings, anchors, unplaced } = createPatch(site.id, bounds);
+
+	const { rng, radiusAt, buildable } = settlementShape(world, site);
+
+	// --- ground --------------------------------------------------------------
+	rollGround(rng, bounds, buildable, (x, y, grass) =>
+		patchWrite(patch, x, y, grass ? T.grass : T.dirt),
+	);
+
+	// The split comes off the stream the pass above left behind, so it has to be taken here
+	// and not earlier. Nothing between the two draws anything.
+	const { square, squareRadius, plaza } = settlementPlaza(world, site);
+	const { cuts, plots } = subdivide(rng, site, buildable, plaza);
 
 	// --- town square ---------------------------------------------------------
-	const square = flattestNear(world, site.site, 5);
-	const squareRadius = site.kind === "town" ? 4 : 3;
 	stampDisc(patch, square, squareRadius, T.cobbleRoad, buildable);
 	anchors.push({ id: "square", kind: "square", x: square.x, y: square.y });
 	if (site.kind !== "camp") {
@@ -203,14 +342,6 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 	}
 
 	// --- plots ---------------------------------------------------------------
-	const inner: Rect = {
-		x: Math.round(site.site.x - radius * 0.78),
-		y: Math.round(site.site.y - radius * 0.78),
-		w: Math.round(radius * 1.56),
-		h: Math.round(radius * 1.56),
-	};
-	const { leaves, cuts } = bspSplit(inner, rng, { minSize: 7, stopSize: 13, cutWidth: 2 });
-
 	// BSP cuts become the secondary street grid.
 	for (const cut of cuts) {
 		if (cut.vertical) {
@@ -227,37 +358,6 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 			}
 		}
 	}
-
-	/**
-	 * Nothing may be built on the square.
-	 *
-	 * The BSP is laid over the town centre and the square sits at the town centre,
-	 * so without this a plot lands squarely on top of it — burying the well, and
-	 * leaving the "square" anchor *inside somebody's house*. That anchor is where
-	 * people gather in the evening and where every carve path starts, so the whole
-	 * settlement is then routed from a tile behind a locked door. It went unnoticed
-	 * because a building used to be floored rather than roofed, which made the
-	 * stolen square passable and the connectivity check pass.
-	 */
-	const plaza: Rect = {
-		x: square.x - squareRadius - 1,
-		y: square.y - squareRadius - 1,
-		w: squareRadius * 2 + 3,
-		h: squareRadius * 2 + 3,
-	};
-
-	// A plot is a leaf inset by a street margin, kept only if it fits entirely
-	// on buildable ground and clear of the square.
-	const plots = leaves
-		.map((leaf) => ({ x: leaf.x + 1, y: leaf.y + 1, w: leaf.w - 2, h: leaf.h - 2 }))
-		.filter(
-			(plot) =>
-				plot.w >= 5 &&
-				plot.h >= 5 &&
-				!rectIntersects(plot, plaza) &&
-				rectFullyAllowed(plot, buildable),
-		)
-		.sort((a, b) => b.w * b.h - a.w * a.h);
 
 	// --- assign structures to plots -----------------------------------------
 	// Requirements are solved first and filler takes what is left; see `plots.ts` for
