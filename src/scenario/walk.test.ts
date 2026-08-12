@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { listSaves } from "../persist/save-repo.js";
 import { readScenarioFile, scenarioPath } from "./repo.js";
 import { walkTheStory } from "./walk.js";
 
@@ -20,8 +21,10 @@ import { walkTheStory } from "./walk.js";
 let home: string;
 
 beforeEach(() => {
-	// Somewhere to put the saves a walk writes. A test that checks a scenario must not
-	// leave a world behind in the real home directory, still less overwrite one.
+	// A home of its own, so nothing here can read or write the real saves. The walk no longer
+	// writes one — `persist: false`, pinned by the test below — and this is the belt to those
+	// braces: a test that builds a session and plays it must not be able to reach a
+	// playthrough if any of that goes wrong.
 	home = mkdtempSync(join(tmpdir(), "auto-adventure-walk-"));
 	process.env.AUTO_ADVENTURE_HOME = home;
 });
@@ -50,6 +53,19 @@ describe("walkTheStory", SLOW, () => {
 			expect(walk.opened.length).toBeGreaterThanOrEqual((artifact.arc?.beats.length ?? 0) - 1);
 		});
 	}
+
+	it("leaves no world behind for the launcher to offer", async () => {
+		// The walk used to write a save under `walk-<id>`, and `listSaves` has no filter — so
+		// a checked scenario appeared in Continue as a half-played world nobody started. That
+		// was tolerable while this was a tool somebody ran by hand and is not once generation
+		// walks every story it writes.
+		const artifact = readScenarioFile(scenarioPath("thornwick-road"));
+		expect(artifact).toBeDefined();
+		if (!artifact) return;
+
+		await walkTheStory(artifact, "walk-test-ephemeral");
+		expect(listSaves().map((entry) => entry.worldId)).not.toContain("walk-test-ephemeral");
+	});
 
 	it("says a world with no story is finished, without building one", async () => {
 		const artifact = readScenarioFile(scenarioPath("thornwick-road"));

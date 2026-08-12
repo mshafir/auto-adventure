@@ -85,7 +85,7 @@ export async function walkTheStory(
 
 	const session = buildSession(
 		{ worldId, seed: artifact.seed, flavour: "prebuilt", scenario: artifact },
-		{ saveDebounceMs: 0 },
+		{ saveDebounceMs: 0, persist: false },
 	);
 	const { engine } = session;
 	// The opening card blocks movement until it is read, which is the point of it.

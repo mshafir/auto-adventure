@@ -61,9 +61,11 @@ async function main() {
 		process.exit(2);
 	}
 
-	// Somewhere to put the saves a walk writes. A tool that checks a scenario must not
-	// leave a world behind in the player's own directory with the same name as one of
-	// theirs — and one that wrote into the real home could overwrite a playthrough.
+	// A home of its own, so nothing here can read or write the player's real saves. The walk
+	// itself no longer writes one — its session is built with `persist: false`, and
+	// `walk.test.ts` pins that — so this is the belt to those braces, and it still earns its
+	// keep: a deep check loads and plays a scenario, and a bug in any of that must not be
+	// able to reach a playthrough.
 	let home: string | undefined;
 	if (deep) {
 		home = mkdtempSync(join(tmpdir(), "auto-adventure-validate-"));

@@ -44,6 +44,25 @@ describe("SaveRepository", () => {
 		expect(loaded?.world.seed).toBe(SEED);
 	});
 
+	it("writes nothing at all when it was told not to persist", () => {
+		// The opt-out has to live inside the repository rather than in a rule about not
+		// calling dispose, because dispose() flushes — so "remember not to dispose" is a leak
+		// waiting for the first caller who tidies up properly.
+		const repo = new SaveRepository(0, { persist: false });
+		repo.schedule(newState("ephemeral"));
+		repo.flush();
+		repo.dispose();
+		expect(existsSync(savePath("ephemeral"))).toBe(false);
+		expect(listSaves().map((entry) => entry.worldId)).not.toContain("ephemeral");
+	});
+
+	it("still writes when it was not", () => {
+		const repo = new SaveRepository(0);
+		repo.schedule(newState("kept"));
+		repo.flush();
+		expect(existsSync(savePath("kept"))).toBe(true);
+	});
+
 	it("coalesces repeated schedules into one write", () => {
 		const repo = new SaveRepository(0);
 		for (let i = 0; i < 50; i++) repo.schedule(newState());

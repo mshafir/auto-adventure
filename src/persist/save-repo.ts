@@ -129,6 +129,19 @@ export function deleteSave(worldId: string): boolean {
 	}
 }
 
+export interface SaveOptions {
+	/**
+	 * Whether to write anything at all. Default yes.
+	 *
+	 * Off for a session built to ask a question rather than to be played: walking a story,
+	 * validating a scenario, settling one. It lives here rather than in a rule about not
+	 * calling `dispose` because `dispose` *flushes* — so the caller who tidied up properly
+	 * would be the one who left a world behind, and `listSaves` has no filter to hide it
+	 * from the Continue list.
+	 */
+	readonly persist?: boolean;
+}
+
 /**
  * Reads and writes the whole save.
  *
@@ -141,8 +154,14 @@ export class SaveRepository {
 	private dirty = false;
 	private timer: NodeJS.Timeout | undefined;
 	private latest: GameState | undefined;
+	private readonly persist: boolean;
 
-	constructor(private readonly debounceMs = 2000) {}
+	constructor(
+		private readonly debounceMs = 2000,
+		options: SaveOptions = {},
+	) {
+		this.persist = options.persist ?? true;
+	}
 
 	load(worldId: string): GameState | undefined {
 		const path = savePath(worldId);
@@ -158,6 +177,9 @@ export class SaveRepository {
 
 	/** Queue a debounced write. Repeated calls coalesce into one. */
 	schedule(state: GameState): void {
+		// Nothing is ever held pending, so `flush` and `dispose` need no guard of their own —
+		// which is the point of refusing here rather than there.
+		if (!this.persist) return;
 		this.latest = state;
 		this.dirty = true;
 		if (this.timer) return;

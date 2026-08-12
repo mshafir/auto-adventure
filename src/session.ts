@@ -50,6 +50,13 @@ export interface Session {
 
 export interface SessionOptions {
 	readonly saveDebounceMs?: number;
+	/**
+	 * Whether this session may write a save. Default yes.
+	 *
+	 * A session built to answer a question — walking a story, validating a scenario,
+	 * settling one — must not leave a world in the launcher's Continue list.
+	 */
+	readonly persist?: boolean;
 }
 
 export class MissingSaveError extends Error {
@@ -77,7 +84,9 @@ export function resolveBrief(
 }
 
 export function buildSession(choice: LaunchChoice, options: SessionOptions = {}): Session {
-	const saves = new SaveRepository(options.saveDebounceMs ?? 2000);
+	const saves = new SaveRepository(options.saveDebounceMs ?? 2000, {
+		...(options.persist === false ? { persist: false } : {}),
+	});
 	const loaded = saves.load(choice.worldId);
 	if (!loaded && choice.mustExist) throw new MissingSaveError(choice.worldId);
 
