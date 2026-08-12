@@ -2,7 +2,7 @@ import { getInterior } from "../core/gen/features/interior.js";
 import type { AnchorKind, FeaturePatch } from "../core/gen/features/patch.js";
 import { generateFeature, invalidateFeature } from "../core/gen/features/registry.js";
 import { standingRoom } from "../core/gen/features/residents.js";
-import { beatNpcId, orderedBeats, type ScenarioBeat } from "../core/rules/arc.js";
+import { beatNpcId, mainLineBeats, orderedBeats, type ScenarioBeat } from "../core/rules/arc.js";
 import { asCondition, type Condition, flagsRead } from "../core/rules/condition.js";
 import type { QuestObjective } from "../core/rules/state.js";
 import { resolveObjectiveTarget } from "../core/rules/surroundings.js";
@@ -51,6 +51,15 @@ export interface RepairResult {
 	readonly artifact: ScenarioArtifact;
 	/** What was changed, in the words of the fault removed. Empty when nothing was. */
 	readonly repairs: readonly string[];
+	/**
+	 * Faults a repair declined to fix, because fixing meant deleting main-line story.
+	 *
+	 * Reported rather than merely skipped. The validator finding that motivated the repair
+	 * persists either way, so the *fault* is already visible — what is not is that a repair
+	 * looked at it and deliberately left it, which reads exactly like a repair that failed to
+	 * notice.
+	 */
+	readonly refused: readonly string[];
 }
 
 /**
@@ -76,50 +85,42 @@ export interface Ground {
 }
 
 /**
- * How many times to go round. Two, and the second one almost never earns its keep.
+ * Repair once, then check.
  *
- * Each round generates the bounded world twice — once to repair against and once to
- * validate the result — and that is the most expensive thing in the whole pipeline. The
- * repairs here are near enough independent that a second pass finds anything only when
- * one repair unblocked another, so the cap is set where the returns stop rather than
- * where the loop would converge.
- */
-const MAX_ROUNDS = 2;
-
-/**
- * Repair, check, and keep going while it is getting better.
+ * This used to loop twice and throw away any round whose findings did not improve, because
+ * static findings were the only available measure of "better" and a repair with an unforeseen
+ * consequence had to be caught somehow. `settleTheStory` is that check now, and a far stronger
+ * one: it plays the story rather than reading it.
  *
- * The loop rather than the repairs is what makes this trustworthy. Every round is judged
- * on the validator's own output, so a repair cannot claim a success it did not have — and
- * a round that does not improve the score is *thrown away*, which means a repair with an
- * unforeseen consequence costs one wasted world-generation rather than a worse scenario.
- *
- * Errors are worth ten warnings in that score. Trading a step of the story that cannot be
- * taken for a place that came out rougher than intended is a good trade, and counting
- * findings alone would call it a draw and refuse it.
+ * Collapsing the loop is also what makes refusing a main-line drop safe. A round that
+ * deliberately leaves findings in place scores worse than one that deleted the story to clear
+ * them, so a judged round would have thrown the refusal out along with every good repair
+ * standing beside it.
  */
 export function repairUntilClean(
 	artifact: ScenarioArtifact,
 	onProgress: (message: string) => void = () => undefined,
-): { artifact: ScenarioArtifact; findings: readonly Finding[]; repairs: readonly string[] } {
-	let current = artifact;
-	let findings = inspect(current);
-	const repairs: string[] = [];
-
-	for (let round = 0; round < MAX_ROUNDS && findings.length > 0; round++) {
-		const attempt = repairArtifact(current);
-		if (attempt.repairs.length === 0) break;
-		const after = inspect(attempt.artifact);
-		if (score(after) >= score(findings)) {
-			onProgress(`${attempt.repairs.length} repairs made nothing better; kept the world as it was`);
-			break;
-		}
-		current = attempt.artifact;
-		findings = after;
-		repairs.push(...attempt.repairs);
-		onProgress(`repaired ${attempt.repairs.length}, ${describe(after)} left`);
+): {
+	artifact: ScenarioArtifact;
+	findings: readonly Finding[];
+	repairs: readonly string[];
+	refused: readonly string[];
+} {
+	const attempt = repairArtifact(artifact);
+	const findings = [
+		...inspect(attempt.artifact),
+		...attempt.refused.map((message) => ({ severity: "error" as const, message })),
+	];
+	if (attempt.repairs.length > 0) {
+		onProgress(`repaired ${attempt.repairs.length}, ${describe(findings)} left`);
 	}
-	return { artifact: current, findings, repairs };
+	for (const message of attempt.refused) onProgress(message);
+	return {
+		artifact: attempt.artifact,
+		findings,
+		repairs: attempt.repairs,
+		refused: attempt.refused,
+	};
 }
 
 /**
@@ -152,15 +153,19 @@ function describe(findings: readonly Finding[]): string {
 export function repairArtifact(artifact: ScenarioArtifact): RepairResult {
 	const ground = survey(artifact);
 	const repairs: string[] = [];
+	const refused: string[] = [];
 	let current = artifact;
 	for (const repair of REPAIRS) {
 		const result = repair(current, ground);
+		// Collected whether or not the artifact changed: a pass that refused everything changes
+		// nothing, and dropping the refusals there is exactly how a refusal becomes invisible.
+		refused.push(...result.refused);
 		if (result.artifact !== current) {
 			current = result.artifact;
 			repairs.push(...result.repairs);
 		}
 	}
-	return { artifact: current, repairs };
+	return { artifact: current, repairs, refused };
 }
 
 /**
@@ -171,14 +176,19 @@ export function repairArtifact(artifact: ScenarioArtifact): RepairResult {
  * one written in the wrong words, and dropping it would throw away a step of the story to
  * avoid fixing a typo. Everything else here is independent.
  *
+ * `spellObjectivesAsTheWorldDoes` stays *here*, ahead of the drops, and is also applied by
+ * `settleTheStory`. That is the one deliberate overlap: it changes only words, it needs the
+ * passability grid either way, and `dropErrandsForThingsThatDoNotExist` below depends on
+ * having run after it — so moving it out entirely would leave that repair deleting errands
+ * that were merely misspelt. The other two spatial repairs are gone from this list, because
+ * the walk can tell whether they worked and this pass cannot.
+ *
  * Notably absent: trimming a roster that asked for more buildings than fit. The engine
  * already drops the tail, so the finding is a report on the authoring rather than a fault
  * in the world, and editing the roster would change the layout the rest of the artifact —
  * every placement, every anchor, every named building — was written against.
  */
 const REPAIRS: readonly ((artifact: ScenarioArtifact, ground: Ground) => RepairResult)[] = [
-	standTheCastSomewhereReal,
-	hideThingsWhereThereIsSomewhereToHideThem,
 	spellObjectivesAsTheWorldDoes,
 	// After the respelling, and that order matters: an item this would delete for not
 	// existing may simply have been written in the wrong words, and the two repairs
@@ -192,14 +202,42 @@ const REPAIRS: readonly ((artifact: ScenarioArtifact, ground: Ground) => RepairR
 ];
 
 /**
- * The world a set of repairs measures against.
+ * The repairs that answer "is this thing somewhere that exists".
  *
- * Exported as `groundFor` because `settleTheStory` applies three of these repairs itself,
- * with a live session in front of it, and building this is how they are given a world to ask
- * questions of.
+ * Not in {@link REPAIRS}: `settleTheStory` applies these, with a live session in front of it,
+ * because it can tell whether the fix worked and this pass cannot. They are grouped here
+ * rather than listed at the call site so that there is one answer to which repairs are
+ * spatial — the walk and these tests would otherwise each keep their own.
+ *
+ * None of them touches the map, which is what lets the walk carry on from where it was rather
+ * than starting again.
  */
-export function groundFor(artifact: ScenarioArtifact): Ground {
-	return survey(artifact);
+const SPATIAL_REPAIRS: readonly ((artifact: ScenarioArtifact, ground: Ground) => RepairResult)[] = [
+	standTheCastSomewhereReal,
+	hideThingsWhereThereIsSomewhereToHideThem,
+	// Also in `REPAIRS`, and that overlap is deliberate: it changes only words, and
+	// `dropErrandsForThingsThatDoNotExist` depends on having run after it.
+	spellObjectivesAsTheWorldDoes,
+];
+
+/**
+ * Put everybody and everything somewhere that exists.
+ *
+ * One `Ground` for all three: `built` is memoised per site and hits the feature cache a walk
+ * has already warmed, and `grid` is lazy, so the one repair that needs a sweep of the bounded
+ * world pays for it only if the two before it did not already fix the fault.
+ */
+export function applySpatialRepairs(artifact: ScenarioArtifact): RepairResult {
+	const ground = survey(artifact);
+	const repairs: string[] = [];
+	let current = artifact;
+	for (const repair of SPATIAL_REPAIRS) {
+		const result = repair(current, ground);
+		if (result.artifact === current) continue;
+		current = result.artifact;
+		repairs.push(...result.repairs);
+	}
+	return { artifact: current, repairs, refused: [] };
 }
 
 function survey(artifact: ScenarioArtifact): Ground {
@@ -346,7 +384,9 @@ export function standTheCastSomewhereReal(
 		}
 	}
 
-	return changed ? { artifact: { ...artifact, sites }, repairs } : { artifact, repairs: [] };
+	return changed
+		? { artifact: { ...artifact, sites }, repairs, refused: [] }
+		: { artifact, repairs: [], refused: [] };
 }
 
 /**
@@ -367,7 +407,7 @@ export function hideThingsWhereThereIsSomewhereToHideThem(
 	ground: Ground,
 ): RepairResult {
 	const placements = artifact.placements;
-	if (!placements || placements.length === 0) return { artifact, repairs: [] };
+	if (!placements || placements.length === 0) return { artifact, repairs: [], refused: [] };
 	const repairs: string[] = [];
 
 	const kept = placements.flatMap((placement) => {
@@ -417,8 +457,8 @@ export function hideThingsWhereThereIsSomewhereToHideThem(
 
 	return kept.length === placements.length &&
 		kept.every((entry, index) => entry === placements[index])
-		? { artifact, repairs: [] }
-		: { artifact: { ...artifact, placements: kept }, repairs };
+		? { artifact, repairs: [], refused: [] }
+		: { artifact: { ...artifact, placements: kept }, repairs, refused: [] };
 }
 
 /**
@@ -460,7 +500,7 @@ export function spellObjectivesAsTheWorldDoes(
 	ground: Ground,
 ): RepairResult {
 	const arc = artifact.arc;
-	if (!arc) return { artifact, repairs: [] };
+	if (!arc) return { artifact, repairs: [], refused: [] };
 	const repairs: string[] = [];
 	const terrainAt = (x: number, y: number) => terrainOf(ground.grid, x, y);
 
@@ -484,8 +524,8 @@ export function spellObjectivesAsTheWorldDoes(
 	});
 
 	return beats.some((beat, index) => beat !== arc.beats[index])
-		? { artifact: { ...artifact, arc: { ...arc, beats } }, repairs }
-		: { artifact, repairs: [] };
+		? { artifact: { ...artifact, arc: { ...arc, beats } }, repairs, refused: [] }
+		: { artifact, repairs: [], refused: [] };
 }
 
 /**
@@ -500,17 +540,30 @@ export function spellObjectivesAsTheWorldDoes(
  */
 function dropObjectivesNothingCanTick(artifact: ScenarioArtifact): RepairResult {
 	const arc = artifact.arc;
-	if (!arc) return { artifact, repairs: [] };
+	if (!arc) return { artifact, repairs: [], refused: [] };
 	const written = flagsWritten(artifact);
+	// No state, so both arms of a fork count as main line. Deliberately the conservative
+	// answer: the alternative is deleting an arm because this pass could not tell which one the
+	// player will take.
+	const sacred = new Set(mainLineBeats(arc).map((beat) => beat.id));
 	const repairs: string[] = [];
+	const refused: string[] = [];
 
 	const beats = arc.beats.map((beat) => {
 		if (!beat.quest) return beat;
 		const objectives = beat.quest.objectives.filter((objective) => tickable(objective, written));
 		if (objectives.length === beat.quest.objectives.length) return beat;
 		if (objectives.length === 0) return beat;
-		for (const objective of beat.quest.objectives) {
-			if (tickable(objective, written)) continue;
+		const dead = beat.quest.objectives.filter((objective) => !tickable(objective, written));
+		if (sacred.has(beat.id)) {
+			for (const objective of dead) {
+				refused.push(
+					`"${beat.quest.name}" waits for "${objective.target}" and nothing sets it; beat ${beat.id} is on the main line, so it was left alone rather than shortened`,
+				);
+			}
+			return beat;
+		}
+		for (const objective of dead) {
 			repairs.push(
 				`"${beat.quest.name}" waited for "${objective.target}" to be set and nothing sets it; dropped that objective`,
 			);
@@ -519,8 +572,8 @@ function dropObjectivesNothingCanTick(artifact: ScenarioArtifact): RepairResult 
 	});
 
 	return beats.some((beat, index) => beat !== arc.beats[index])
-		? { artifact: { ...artifact, arc: { ...arc, beats } }, repairs }
-		: { artifact, repairs: [] };
+		? { artifact: { ...artifact, arc: { ...arc, beats } }, repairs, refused }
+		: { artifact, repairs: [], refused };
 }
 
 /**
@@ -547,8 +600,10 @@ function dropErrandsForThingsThatDoNotExist(
 	ground: Ground,
 ): RepairResult {
 	const arc = artifact.arc;
-	if (!arc) return { artifact, repairs: [] };
+	if (!arc) return { artifact, repairs: [], refused: [] };
+	const sacred = new Set(mainLineBeats(arc).map((beat) => beat.id));
 	const repairs: string[] = [];
+	const refused: string[] = [];
 	const terrainAt = (x: number, y: number) => terrainOf(ground.grid, x, y);
 
 	const beats = arc.beats.map((beat) => {
@@ -561,8 +616,16 @@ function dropErrandsForThingsThatDoNotExist(
 		const objectives = beat.quest.objectives.filter((objective) => !missing(objective));
 		if (objectives.length === beat.quest.objectives.length) return beat;
 		if (objectives.length === 0) return beat;
-		for (const objective of beat.quest.objectives) {
-			if (!missing(objective)) continue;
+		const gone = beat.quest.objectives.filter((objective) => missing(objective));
+		if (sacred.has(beat.id)) {
+			for (const objective of gone) {
+				refused.push(
+					`"${beat.quest.name}" asks for "${objective.target}", which nothing here produces; beat ${beat.id} is on the main line, so the errand was left alone rather than shortened`,
+				);
+			}
+			return beat;
+		}
+		for (const objective of gone) {
 			repairs.push(
 				`"${beat.quest.name}" asked for "${objective.target}", which nothing here produces; dropped that objective`,
 			);
@@ -571,8 +634,8 @@ function dropErrandsForThingsThatDoNotExist(
 	});
 
 	return beats.some((beat, index) => beat !== arc.beats[index])
-		? { artifact: { ...artifact, arc: { ...arc, beats } }, repairs }
-		: { artifact, repairs: [] };
+		? { artifact: { ...artifact, arc: { ...arc, beats } }, repairs, refused }
+		: { artifact, repairs: [], refused };
 }
 
 function tickable(objective: QuestObjective, written: ReadonlySet<string>): boolean {
@@ -587,10 +650,14 @@ function tickable(objective: QuestObjective, written: ReadonlySet<string>): bool
  * for good, so a lone arm spends that machinery on nothing while telling every later
  * reader — the ending picker, the outline, this file — that a decision happened. Dropping
  * the branch leaves the beat exactly as it plays.
+ *
+ * Unguarded by the main line, unlike the other two dropping repairs, and for a reason rather
+ * than an oversight: this removes the *branch*, not the beat. Nothing about the story is
+ * shortened.
  */
 function dropOneArmedForks(artifact: ScenarioArtifact): RepairResult {
 	const arc = artifact.arc;
-	if (!arc) return { artifact, repairs: [] };
+	if (!arc) return { artifact, repairs: [], refused: [] };
 
 	const count = new Map<string, number>();
 	for (const beat of arc.beats) {
@@ -598,7 +665,7 @@ function dropOneArmedForks(artifact: ScenarioArtifact): RepairResult {
 		count.set(beat.branch, (count.get(beat.branch) ?? 0) + 1);
 	}
 	const lonely = new Set([...count].filter(([, n]) => n < 2).map(([group]) => group));
-	if (lonely.size === 0) return { artifact, repairs: [] };
+	if (lonely.size === 0) return { artifact, repairs: [], refused: [] };
 
 	const repairs: string[] = [];
 	const beats = arc.beats.map((beat) => {
@@ -607,7 +674,7 @@ function dropOneArmedForks(artifact: ScenarioArtifact): RepairResult {
 		const { branch: _branch, ...without } = beat;
 		return without as ScenarioBeat;
 	});
-	return { artifact: { ...artifact, arc: { ...arc, beats } }, repairs };
+	return { artifact: { ...artifact, arc: { ...arc, beats } }, repairs, refused: [] };
 }
 
 /**
@@ -622,7 +689,7 @@ function dropOneArmedForks(artifact: ScenarioArtifact): RepairResult {
  */
 function forgetPeopleWhoAreNotHere(artifact: ScenarioArtifact): RepairResult {
 	const trees = artifact.trees;
-	if (!trees) return { artifact, repairs: [] };
+	if (!trees) return { artifact, repairs: [], refused: [] };
 	const people = new Set(
 		Object.values(artifact.sites).flatMap((spec) =>
 			spec.npcs.map((npc) => npcId(spec.siteId, npc.slot)),
@@ -662,13 +729,13 @@ function forgetPeopleWhoAreNotHere(artifact: ScenarioArtifact): RepairResult {
 		if (touched) changed = true;
 	}
 
-	if (!changed) return { artifact, repairs: [] };
+	if (!changed) return { artifact, repairs: [], refused: [] };
 	for (const stranger of strangers) {
 		repairs.push(
 			`a conversation asked about "${stranger}", who is not in this scenario; dropped the condition so the line can be reached`,
 		);
 	}
-	return { artifact: { ...artifact, trees: next }, repairs };
+	return { artifact: { ...artifact, trees: next }, repairs, refused: [] };
 }
 
 /**
@@ -737,7 +804,7 @@ function withoutStrangers(
  */
 function sayWhereToGoNext(artifact: ScenarioArtifact, ground: Ground): RepairResult {
 	const arc = artifact.arc;
-	if (!arc) return { artifact, repairs: [] };
+	if (!arc) return { artifact, repairs: [], refused: [] };
 	const repairs: string[] = [];
 
 	const directions = new Map<string, string>();
@@ -750,7 +817,7 @@ function sayWhereToGoNext(artifact: ScenarioArtifact, ground: Ground): RepairRes
 			person ? `Go to ${spec.name} and ask for ${person.name}.` : `Go to ${spec.name}.`,
 		);
 	}
-	if (directions.size === 0) return { artifact, repairs: [] };
+	if (directions.size === 0) return { artifact, repairs: [], refused: [] };
 
 	const beats = arc.beats.map((beat) => {
 		const said = directions.get(beat.id);
@@ -775,7 +842,7 @@ function sayWhereToGoNext(artifact: ScenarioArtifact, ground: Ground): RepairRes
 		};
 	});
 
-	return { artifact: { ...artifact, arc: { ...arc, beats } }, repairs };
+	return { artifact: { ...artifact, arc: { ...arc, beats } }, repairs, refused: [] };
 }
 
 /** A sentence that ends, so the direction after it does not run into it. */
@@ -799,7 +866,7 @@ function withStop(text: string): string {
  */
 function gateTheCastOnTheirOwnScene(artifact: ScenarioArtifact): RepairResult {
 	const arc = artifact.arc;
-	if (!arc) return { artifact, repairs: [] };
+	if (!arc) return { artifact, repairs: [], refused: [] };
 
 	const anchored = new Map<string, ScenarioBeat[]>();
 	for (const beat of orderedBeats(arc)) {
@@ -849,5 +916,7 @@ function gateTheCastOnTheirOwnScene(artifact: ScenarioArtifact): RepairResult {
 		}
 	}
 
-	return changed ? { artifact: { ...artifact, sites }, repairs } : { artifact, repairs: [] };
+	return changed
+		? { artifact: { ...artifact, sites }, repairs, refused: [] }
+		: { artifact, repairs: [], refused: [] };
 }

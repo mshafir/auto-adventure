@@ -15,6 +15,7 @@ import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/
 import { npcId } from "../../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "../../scenario/artifact.js";
 import { inspect, repairUntilClean, score } from "../../scenario/repair.js";
+import { settleTheStory } from "../../scenario/settle.js";
 import { signpostsFor } from "../../scenario/signposts.js";
 import {
 	planFor,
@@ -610,7 +611,15 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			// can point at a node it no longer contains — which `validate.ts` has nothing to
 			// say about and `readScenarioFile` refuses outright — so weighing only the
 			// expensive check would let a mend produce a world the launcher will not open.
-			const after = inspect(mended.artifact);
+			//
+			// The refusals are carried into both sides of the comparison, because they are in
+			// `findings` and `inspect` does not produce them. Leaving them out of `after` alone
+			// would make every mend look like an improvement by exactly the weight of a fault it
+			// had nothing to do with.
+			const after = [
+				...inspect(mended.artifact),
+				...mechanical.refused.map((message) => ({ severity: "error" as const, message })),
+			];
 			if (score(after) < score(findings)) {
 				artifact = mended.artifact;
 				findings = after;
@@ -619,6 +628,54 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 				say("the rewrites made nothing better; kept the world as it was");
 			}
 		}
+	}
+
+	// --- pass 8: play it ------------------------------------------------------
+	// The only pass that makes a claim rather than an inspection: every beat of the main line
+	// opened and closed in a real session. It fixes what it can as it goes — somebody standing
+	// in a building that was never built, a thing hidden in a room that does not exist, a site
+	// with no room for the buildings the story was written against — and where it cannot, it
+	// says which beat and what it tried.
+	//
+	// Nothing is gated on it yet. Offering the player a fresh seed is the next piece of work,
+	// and a pass that could refuse to save a world before there is anything to offer instead
+	// would be a worse outcome than the fault it caught.
+	//
+	// After the rewrites rather than before, so the walk plays the artifact that will actually
+	// be written: a mend that changed a conversation after the walk would make the walk's claim
+	// stale.
+	say("playing the story through");
+	const settled = await settleTheStory(artifact, say);
+	const settledArtifact = settled.artifact;
+	repairs.push(...settled.fixes);
+	if (Object.keys(settled.grown).length > 0) {
+		say(`made room in ${Object.keys(settled.grown).length} place(s) the story had outgrown`);
+	}
+	if (settled.settled) {
+		say(`walked ${settled.opened.length} beat(s) of the main line to the end`);
+	} else {
+		say(
+			`beat ${settled.stuck?.beat} could not be settled: ${settled.stuck?.why}${
+				settled.stuck?.tried.length ? ` (tried ${settled.stuck.tried.join("; ")})` : ""
+			}`,
+		);
+	}
+	for (const concession of settled.concessions) say(`given: ${concession}`);
+	// Re-checked only when settling changed something, because a finding its fixes removed
+	// should not still be reported at the end of the run — and re-deriving them means
+	// generating the whole bounded world again.
+	//
+	// The refusals are carried across rather than recomputed. `inspect` does not know about
+	// them — they are a repair declining to shorten the main story, not a property of the
+	// artifact — and settling cannot resolve one either, because what it declined to delete is
+	// story rather than placement. Dropping them here would make a main-line fault vanish from
+	// the report precisely when the pass beside it had been busy.
+	if (settledArtifact !== artifact) {
+		artifact = settledArtifact;
+		findings = [
+			...inspect(artifact),
+			...mechanical.refused.map((message) => ({ severity: "error" as const, message })),
+		];
 	}
 
 	say(

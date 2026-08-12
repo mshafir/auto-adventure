@@ -3,7 +3,7 @@ import { demoArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
 import type { ScenarioArc, ScenarioBeat } from "../core/rules/arc.js";
 import type { NpcSpec } from "../core/world/spec.js";
 import type { ScenarioArtifact } from "./artifact.js";
-import { repairArtifact, repairUntilClean } from "./repair.js";
+import { applySpatialRepairs, repairArtifact, repairUntilClean } from "./repair.js";
 import { validateArtifact } from "./validate.js";
 
 /**
@@ -42,14 +42,20 @@ function messages(artifact: ScenarioArtifact): string[] {
  *
  * Both halves come from one comparison so they cannot drift apart.
  */
-function difference(broken: ScenarioArtifact): {
+function difference(
+	broken: ScenarioArtifact,
+	// Which pass to measure. The repairs that answer "is this thing somewhere that exists" moved
+	// out of `repairArtifact` and into the settling walk, which can tell whether the fix worked —
+	// so the tests for those ask for them by name rather than through the static list.
+	apply: (artifact: ScenarioArtifact) => ReturnType<typeof repairArtifact> = repairArtifact,
+): {
 	readonly gone: string[];
 	readonly added: string[];
 	readonly repairs: readonly string[];
 	readonly fixed: ScenarioArtifact;
 } {
 	const before = messages(broken);
-	const { artifact: fixed, repairs } = repairArtifact(broken);
+	const { artifact: fixed, repairs } = apply(broken);
 	const after = messages(fixed);
 	return {
 		gone: before.filter((finding) => !after.includes(finding)),
@@ -86,7 +92,7 @@ describe("repairArtifact", SLOW, () => {
 				},
 			},
 		});
-		const { gone, added, repairs, fixed } = difference(broken);
+		const { gone, added, repairs, fixed } = difference(broken, applySpatialRepairs);
 		expect(gone.join("\n")).toContain('asked for a "counter"');
 		expect(added).toEqual([]);
 		expect(repairs.join("\n")).toContain("stood them at");
@@ -96,7 +102,7 @@ describe("repairArtifact", SLOW, () => {
 
 	it("drops a claim on a building that was not built", () => {
 		const broken = withNpcs([{ ...NPC, structureName: "The Salt Exchange" }]);
-		const { gone, added, fixed } = difference(broken);
+		const { gone, added, fixed } = difference(broken, applySpatialRepairs);
 		expect(gone.join("\n")).toContain('belongs to "The Salt Exchange"');
 		expect(added).toEqual([]);
 		expect(Object.values(fixed.sites)[0]?.npcs[0]?.structureName).toBeUndefined();
@@ -104,7 +110,7 @@ describe("repairArtifact", SLOW, () => {
 
 	it("moves somebody standing inside a room that does not exist", () => {
 		const broken = withNpcs([{ ...NPC, indoors: true, structureName: "The Salt Exchange" }]);
-		const { gone, added, fixed } = difference(broken);
+		const { gone, added, fixed } = difference(broken, applySpatialRepairs);
 		expect(gone.join("\n")).toContain("which was not built; they are nowhere");
 		expect(added).toEqual([]);
 		const moved = Object.values(fixed.sites)[0]?.npcs[0];
@@ -124,7 +130,7 @@ describe("repairArtifact", SLOW, () => {
 				},
 			],
 		});
-		const { gone, added, fixed } = difference(broken);
+		const { gone, added, fixed } = difference(broken, applySpatialRepairs);
 		expect(gone.join("\n")).toContain("no smithy");
 		expect(added).toEqual([]);
 		const at = fixed.placements?.[0]?.at;
@@ -141,7 +147,7 @@ describe("repairArtifact", SLOW, () => {
 				},
 			],
 		});
-		const { repairs, fixed } = difference(sound);
+		const { repairs, fixed } = difference(sound, applySpatialRepairs);
 		expect(repairs).toEqual([]);
 		expect(fixed.placements).toBe(sound.placements);
 	});
@@ -163,7 +169,7 @@ describe("repairArtifact", SLOW, () => {
 				}),
 			],
 		};
-		const { gone, added, fixed } = difference(demoArtifact({ arc }));
+		const { gone, added, fixed } = difference(demoArtifact({ arc }), applySpatialRepairs);
 		expect(gone.join("\n")).toContain("is spelled");
 		expect(added).toEqual([]);
 		expect(fixed.arc?.beats[0]?.quest?.objectives[0]?.target).toBe("The Drowned Lamp");
@@ -180,11 +186,14 @@ describe("repairArtifact", SLOW, () => {
 	 * story that quietly cannot be finished.
 	 */
 	it("drops an errand for a thing the scenario's own pack does not stock", () => {
-		const fetch = (target: string): ScenarioArc => ({
+		// Optional, because the drop is only allowed on a side errand now. The main-line case is
+		// the test below, and it is a refusal.
+		const fetch = (target: string, optional = true): ScenarioArc => ({
 			title: "t",
 			premise: "p",
 			beats: [
 				beat("one", 0, {
+					...(optional ? { optional: true } : {}),
 					quest: {
 						id: "the-nails",
 						name: "The nails",
@@ -229,12 +238,15 @@ describe("repairArtifact", SLOW, () => {
 		expect(repairs.join("\n")).not.toContain("nothing here produces");
 	});
 
-	it("drops an objective waiting on a flag nothing sets", () => {
+	it("drops an objective waiting on a flag nothing sets, from a side errand", () => {
+		// Optional, and that is now the whole of why this is allowed to be dropped. On the main
+		// line the same fault is reported instead — see the two tests below.
 		const arc: ScenarioArc = {
 			title: "t",
 			premise: "p",
 			beats: [
 				beat("one", 0, {
+					optional: true,
 					quest: {
 						id: "the-lamp",
 						name: "The lamp",
@@ -251,6 +263,91 @@ describe("repairArtifact", SLOW, () => {
 		expect(gone.join("\n")).toContain('"lamp-lit"');
 		expect(added).toEqual([]);
 		expect(fixed.arc?.beats[0]?.quest?.objectives).toHaveLength(1);
+	});
+
+	it("refuses to drop an objective from a beat the story needs", () => {
+		// The rule the whole track rests on: a main-line beat is not deletable. An errand
+		// waiting on a flag nothing sets is a real fault and dropping the objective is a real
+		// fix — for a side errand. On the main line it is a step of the story removed to make a
+		// finding go away, and the finding was the more useful of the two.
+		const arc: ScenarioArc = {
+			title: "t",
+			premise: "p",
+			beats: [
+				beat("spine", 0, {
+					quest: {
+						id: "the-lamp",
+						name: "The lamp",
+						description: "d",
+						objectives: [
+							{ kind: "talk", target: "Ilse Marrow", done: false },
+							{ kind: "flag", target: "lamp-lit", done: false },
+						],
+					},
+				}),
+			],
+		};
+		const result = repairArtifact(demoArtifact({ arc }));
+		expect(result.artifact.arc?.beats[0]?.quest?.objectives).toHaveLength(2);
+		expect(result.refused.join("\n")).toContain("spine");
+		expect(result.refused.join("\n")).toContain("main line");
+	});
+
+	it("refuses to drop an errand the main story hands out, however unfinishable", () => {
+		// The hardest case for the rule and the one that makes it worth having. An errand naming
+		// something no world stocks genuinely cannot be finished — but it is a step of the main
+		// story, and shortening that to clear a finding is how a story quietly becomes shorter
+		// than the one somebody asked for. The finding stays, and the refusal is reported beside
+		// it so nobody reads the silence as the repair having missed it.
+		const arc: ScenarioArc = {
+			title: "t",
+			premise: "p",
+			beats: [
+				beat("spine", 0, {
+					quest: {
+						id: "the-nails",
+						name: "The nails",
+						description: "d",
+						objectives: [
+							{ kind: "talk", target: "Ilse Marrow", done: false },
+							{ kind: "have", target: "Sheaf of Arrows", done: false },
+						],
+					},
+				}),
+			],
+		};
+		const result = repairArtifact(demoArtifact({ arc }));
+		expect(result.artifact.arc?.beats[0]?.quest?.objectives).toHaveLength(2);
+		expect(result.refused.join("\n")).toContain("Sheaf of Arrows");
+		expect(result.refused.join("\n")).toContain("main line");
+	});
+
+	it("keeps both arms of a fork, having no way to know which one is taken", () => {
+		// A repair pass reasons about the artifact and not about a playthrough, so it cannot
+		// know which arm a player will take — and treating either as droppable side content
+		// would delete half a choice.
+		const arc: ScenarioArc = {
+			title: "t",
+			premise: "p",
+			beats: [
+				beat("left", 0, {
+					branch: "which",
+					quest: {
+						id: "l",
+						name: "Left",
+						description: "d",
+						objectives: [
+							{ kind: "talk", target: "Ilse Marrow", done: false },
+							{ kind: "flag", target: "never-set", done: false },
+						],
+					},
+				}),
+				beat("right", 1, { branch: "which" }),
+			],
+		};
+		const result = repairArtifact(demoArtifact({ arc }));
+		expect(result.artifact.arc?.beats[0]?.quest?.objectives).toHaveLength(2);
+		expect(result.refused.join("\n")).toContain("left");
 	});
 
 	it("leaves an errand alone when the dead objective is its only one", () => {
@@ -369,8 +466,41 @@ describe("repairArtifact", SLOW, () => {
 		});
 	});
 
+	it("runs the repairs once, rather than judging a second round", () => {
+		// The loop existed because static findings were the only available measure of "better".
+		// `settleTheStory` is that check now, and a far stronger one — and a judged round would
+		// throw a deliberate main-line refusal out along with every good repair beside it.
+		const spoken: string[] = [];
+		repairUntilClean(withNpcs([{ ...NPC, structureName: "The Salt Exchange" }]), (message) =>
+			spoken.push(message),
+		);
+		expect(spoken.filter((line) => line.includes("made nothing better"))).toEqual([]);
+	});
+
 	it("hands back what it could not fix, and does not re-check it twice", () => {
-		const broken = withNpcs([{ ...NPC, structureName: "The Salt Exchange" }]);
+		// A side errand waiting on a flag nothing sets: a fault the static pass still fixes, now
+		// that the placement repairs run in the settling walk instead. The subject changed; the
+		// property being tested did not.
+		const broken = demoArtifact({
+			arc: {
+				title: "t",
+				premise: "p",
+				beats: [
+					beat("errand", 0, {
+						optional: true,
+						quest: {
+							id: "the-lamp",
+							name: "The lamp",
+							description: "d",
+							objectives: [
+								{ kind: "talk", target: "Ilse Marrow", done: false },
+								{ kind: "flag", target: "never-written", done: false },
+							],
+						},
+					}),
+				],
+			},
+		});
 		const before = validateArtifact(broken);
 		const cleaned = repairUntilClean(broken);
 		expect(cleaned.repairs.length).toBeGreaterThan(0);
@@ -378,7 +508,7 @@ describe("repairArtifact", SLOW, () => {
 		// The findings are the ones the repaired world produces, not the ones the broken
 		// one did — the whole reason they are returned rather than recomputed upstream.
 		expect(cleaned.findings.map((finding) => finding.message).join("\n")).not.toContain(
-			"The Salt Exchange",
+			"never-written",
 		);
 	});
 

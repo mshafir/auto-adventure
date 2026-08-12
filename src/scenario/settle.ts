@@ -8,12 +8,7 @@ import type { PlaceRecipe } from "../core/world/recipe.js";
 import { buildSession } from "../session.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
 import { canReach, reachableFrom } from "./passability.js";
-import {
-	groundFor,
-	hideThingsWhereThereIsSomewhereToHideThem,
-	spellObjectivesAsTheWorldDoes,
-	standTheCastSomewhereReal,
-} from "./repair.js";
+import { applySpatialRepairs } from "./repair.js";
 import { buildPassability, siteIndex } from "./validate.js";
 import { type StoryWalker, storyWalker } from "./walker.js";
 
@@ -171,31 +166,15 @@ export async function settleTheStory(
 }
 
 /**
- * The fixes that change what the artifact *says* about where things are.
+ * Put everybody and everything somewhere that exists, and say what moved.
  *
- * Three repairs, run together because they answer one question — "is this thing somewhere that
- * exists" — and because none of them touches the map, so the walk carries on from where it was
- * rather than starting again. Each re-derives its own condition, so on a world with nothing
- * wrong they change nothing and this is free.
- *
- * `Ground` is built once and handed to all three: `built` is memoised per site and hits the
- * feature cache the walk has already warmed, and `grid` is lazy, so the one that needs it pays
- * for it only if the first two did not already fix the fault.
+ * The list of which repairs those are lives in `repair.ts`, because they are repairs and
+ * because the alternative is this file and that one each keeping an opinion about it.
  */
 function applySpatialFixes(artifact: ScenarioArtifact, fixes: string[]): ScenarioArtifact {
-	const ground = groundFor(artifact);
-	let current = artifact;
-	for (const fix of [
-		standTheCastSomewhereReal,
-		hideThingsWhereThereIsSomewhereToHideThem,
-		spellObjectivesAsTheWorldDoes,
-	]) {
-		const result = fix(current, ground);
-		if (result.artifact === current) continue;
-		current = result.artifact;
-		fixes.push(...result.repairs);
-	}
-	return current;
+	const result = applySpatialRepairs(artifact);
+	fixes.push(...result.repairs);
+	return result.artifact;
 }
 
 interface Attempt {
