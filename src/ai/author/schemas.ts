@@ -139,6 +139,28 @@ export const ArcSchema = z.object({
 });
 
 /**
+ * One world, offered rather than written.
+ *
+ * Three fields and no more. The player is choosing between four of these on one screen, so
+ * anything that does not help them choose is a line pushing the fourth option off the
+ * bottom — and everything else about the world is the lore pass's job anyway.
+ */
+export const PitchSchema = z.object({
+	title: cappedText(60).describe("The world's name. Two to five words, no subtitle."),
+	tone: cappedText(24).describe("Its register, in one or two words: 'sombre', 'wry'."),
+	premise: cappedText(400).describe("What the player is caught up in, in two to four sentences."),
+});
+
+export const PitchesSchema = z.object({
+	pitches: z
+		.array(PitchSchema)
+		.min(1)
+		.transform((v) => v.slice(0, 8)),
+});
+
+export type PitchResponse = z.infer<typeof PitchSchema>;
+
+/**
  * Something the world does once a step of the story has happened.
  *
  * The condition is an *index into the beats it was shown*, never a flag the model writes,

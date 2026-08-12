@@ -1,7 +1,7 @@
 import { logger } from "../utils/log.js";
 import { CATALOGUE, type ModelPrice } from "./catalogue.js";
 
-export type CallKind = "bible" | "region" | "site" | "dialogue" | "summary";
+export type CallKind = "bible" | "region" | "site" | "dialogue" | "summary" | "pitch";
 
 interface Bucket {
 	calls: number;

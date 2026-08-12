@@ -1,4 +1,4 @@
-import type { ScenarioBrief } from "../../core/world/brief.js";
+import type { Duration, ScenarioBrief } from "../../core/world/brief.js";
 import type { NpcSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 import type { SurveyedSite } from "../../scenario/survey.js";
 
@@ -41,6 +41,56 @@ export const ARC_SYSTEM =
 	"You are given a world that already exists: its towns, their sizes, who lives in " +
 	"them and how far apart they are. Place a story through it. You may not invent a " +
 	"settlement, move one, or add a person — choose from what is listed.";
+
+export const PITCH_SYSTEM =
+	`You pitch worlds for a small terminal roguelike. ${HOUSE_STYLE} ` +
+	"Each pitch is a whole world in three lines: what it is called, its register, and what " +
+	"the player has walked into. They must differ from each other in kind and not merely in " +
+	"decoration — four ways to be a fishing village is one idea told four times.";
+
+/**
+ * What a world could be, before any of it exists.
+ *
+ * The one authoring prompt with no survey behind it, and deliberately so: the premise
+ * decides the scenario's id and therefore its seed, so it has to be settled before a single
+ * tile is generated. The model is inventing rather than describing, which is why this asks
+ * for difference between the options — the failure mode of a list like this is four
+ * paraphrases of whichever one the model thought of first.
+ */
+export function pitchPrompt(input: {
+	readonly duration: Duration;
+	readonly count: number;
+	readonly hint?: string;
+	readonly avoid?: readonly string[];
+}): string {
+	const lines = [
+		`Offer ${input.count} worlds to play in, as different from each other as you can make them.`,
+		`Each will be a ${input.duration} scenario: ${LENGTH_NOTE[input.duration]}`,
+		"A traveller on foot is the protagonist, and a village blacksmith should plausibly have",
+		"an opinion about whatever has happened.",
+	];
+	if (input.hint) {
+		lines.push("", "The player has said what they are after. Follow it:", input.hint);
+	}
+	if (input.avoid && input.avoid.length > 0) {
+		// Named rather than described, because "something different" is advice a model can
+		// satisfy without changing anything.
+		lines.push(
+			"",
+			"These have already been offered and refused. Do not repeat them or reword them:",
+			input.avoid.map((title) => `- ${title}`).join("\n"),
+		);
+	}
+	return lines.join("\n");
+}
+
+/** What each length can actually hold, so a pitch is not bigger than its world. */
+const LENGTH_NOTE: Readonly<Record<Duration, string>> = {
+	tiny: "a few places and two scenes, so keep the stakes local and the cast small.",
+	short: "a handful of places and three scenes — an evening.",
+	medium: "a dozen or so places and six scenes, with room to wander between them.",
+	long: "a large map, ten scenes, side errands and a fork or two.",
+};
 
 function briefLines(brief: ScenarioBrief): string[] {
 	const lines: string[] = [];
