@@ -69,7 +69,7 @@ This is Track B of `docs/superpowers/specs/2026-08-11-generation-integrity-desig
 - Consumes: nothing.
 - Produces: `ScenarioBrief.title?: string`, handled by `normalizeBrief` and `isBriefEmpty`. Tasks 3, 4 and 6 read it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `src/core/world/brief.test.ts` (read the file first and match its existing describe blocks and voice):
 
@@ -107,13 +107,13 @@ And in `src/scenario/schema.test.ts` — or, if no such file exists, in `src/sce
 
 Read `repo.test.ts` first: it already has a temporary `AUTO_ADVENTURE_SCENARIOS` and a `demoArtifact` import to reuse. Follow its setup rather than adding your own.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/core/world/brief.test.ts src/scenario/repo.test.ts`
 
 Expected: FAIL — `title` is not a property of `ScenarioBrief`, so the first two do not compile; the round-trip one fails on `undefined`.
 
-- [ ] **Step 3: Add the field in all three places**
+- [x] **Step 3: Add the field in all three places**
 
 In `src/core/world/brief.ts`, add to the interface, above `premise`:
 
@@ -149,13 +149,13 @@ export const ScenarioBriefSchema = z.object({
 	premise: z.string().optional(),
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/core/world src/scenario && npm run typecheck`
 
 Expected: PASS, typecheck clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/world/brief.ts src/core/world/brief.test.ts src/scenario/schema.ts src/scenario/repo.test.ts
@@ -185,7 +185,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Consumes: `structured` from `../client.js`, `MODELS` from `../../config.js`, `Duration` from `../../core/world/brief.js`.
 - Produces: `interface Pitch { readonly title: string; readonly tone: string; readonly premise: string }` and `suggestPitches(input: PitchRequest): Promise<readonly Pitch[]>` where `PitchRequest` is `{ duration: Duration; hint?: string; count?: number; avoid?: readonly string[]; signal?: AbortSignal }`. Task 5 renders `Pitch`; Task 6 passes `suggestPitches` in.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/ai/author/pitch.test.ts`:
 
@@ -279,13 +279,13 @@ describe("suggesting a premise", () => {
 
 The model id asserted above is whatever `MODELS.bible` resolves to with no `MODEL_BIBLE` set and the default catalogue row — `google/gemini-2.5-flash`. If the default row changes, assert `MODELS.bible` rather than hard-coding the string.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/ai/author/pitch.test.ts`
 
 Expected: FAIL — cannot resolve `./pitch.js`.
 
-- [ ] **Step 3: Add the kind, the schema, the prompt and the call**
+- [x] **Step 3: Add the kind, the schema, the prompt and the call**
 
 In `src/ai/telemetry.ts` line 4:
 
@@ -458,13 +458,13 @@ export async function suggestPitches(input: PitchRequest): Promise<readonly Pitc
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/ai/author/pitch.test.ts && npm run typecheck`
 
 Expected: PASS, 6 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ai/author/pitch.ts src/ai/author/pitch.test.ts src/ai/telemetry.ts src/ai/author/schemas.ts src/ai/author/prompts.ts
@@ -505,7 +505,7 @@ A title the player picked and did not get is worse than never having been asked.
 - Consumes: `ScenarioBrief.title` (Task 1).
 - Produces: `bindLore(written: WorldLore, brief: ScenarioBrief | undefined): WorldLore`, exported from `src/ai/author/author.ts`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `src/ai/author/author.test.ts`:
 
@@ -577,13 +577,13 @@ And in `src/ai/director/prompt.test.ts`, beside the existing `lorePrompt` cases:
 	});
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/ai/author src/ai/director`
 
 Expected: FAIL — the title is whatever the stub returned.
 
-- [ ] **Step 3: Tell the prompt, then overwrite the answer**
+- [x] **Step 3: Tell the prompt, then overwrite the answer**
 
 In `src/ai/director/prompt.ts`, inside `lorePrompt`, after the `briefLines(brief)` spread and before the closing scale guidance, add:
 
@@ -655,13 +655,13 @@ Then replace the lore pass's tail:
 	stopIfAsked("the lore");
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/ai && npm run typecheck`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ai/director/prompt.ts src/ai/director/prompt.test.ts src/ai/author/author.ts src/ai/author/author.test.ts
@@ -695,7 +695,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Consumes: `ScenarioBrief.title` (Task 1).
 - Produces: `freeScenarioId(brief: ScenarioBrief | undefined, taken: readonly string[]): string` — **signature change**, from `(premise, taken)`. Track C's reseed calls this.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `src/scenario/generate.test.ts`, beside the existing `freeScenarioId` cases:
 
@@ -721,13 +721,13 @@ In `src/scenario/generate.test.ts`, beside the existing `freeScenarioId` cases:
 	});
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/scenario/generate.test.ts`
 
 Expected: FAIL — `freeScenarioId` takes a string, so passing an object does not compile.
 
-- [ ] **Step 3: Take the brief instead of the premise**
+- [x] **Step 3: Take the brief instead of the premise**
 
 In `src/scenario/generate.ts`:
 
@@ -756,13 +756,13 @@ Add `import type { ScenarioBrief } from "../core/world/brief.js";` and change th
 
 Note `slug` takes the first five words, so a long title is truncated the same way a premise always was — which is why the first test above expects five words and not six.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/scenario && npm run typecheck`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/scenario/generate.ts src/scenario/generate.test.ts
@@ -791,7 +791,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Consumes: `Pitch` (Task 2), `Chooser`/`ChoiceItem` from `./chooser.js`, `Frame`/`FRAME_CHROME` from `../panels/primitives.js`, `rampRows` from `./gradient.js`, `ColorDepth`/`rgb` from `../render/color.js`.
 - Produces: `PickPremise` component with props `{ columns, rows, depth, duration, hint?, suggest, onChoose, onBack, isActive? }` where `suggest: (input: { hint?: string; avoid?: readonly string[] }) => Promise<readonly Pitch[]>` and `onChoose: (pitch: Pitch) => void`. Task 6 mounts it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/ui/launcher/pick-premise.test.tsx`:
 
@@ -914,13 +914,13 @@ describe("choosing a premise", () => {
 
 Read `test/harness/ink.js` and an existing launcher test first, and match the real `settle`/`type` signatures.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/ui/launcher/pick-premise.test.tsx`
 
 Expected: FAIL — cannot resolve `./pick-premise.js`.
 
-- [ ] **Step 3: Write the page**
+- [x] **Step 3: Write the page**
 
 Create `src/ui/launcher/pick-premise.tsx`:
 
@@ -1140,13 +1140,13 @@ const SHELF: readonly string[] = ["green", "magenta", "yellow", "blue", "red", "
 const HEADING = "Choose a world";
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/ui/launcher/pick-premise.test.tsx && npm run typecheck`
 
 Expected: PASS, 7 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ui/launcher/pick-premise.tsx src/ui/launcher/pick-premise.test.tsx
@@ -1184,7 +1184,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Consumes: `PickPremise` (Task 5), `suggestPitches` (Task 2), `ScenarioBrief.title` (Task 1).
 - Produces: `GenerateConfigProps.onSuggest?`, `LauncherProps.onSuggest?`; the emitted `GenerateRequest.brief` carries `title` and `tone` when a bundle was chosen.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `src/ui/launcher/launcher.test.tsx`, in the config-page describe block:
 
@@ -1254,13 +1254,13 @@ same way `gatewayKey` and `modelSet` already are — conditionally spread, since
 			{...(options.onSuggest ? { onSuggest: options.onSuggest } : {})}
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/ui/launcher/launcher.test.tsx`
 
 Expected: FAIL — ENTER on Premise opens the text field directly, so "Suggest" is not on screen.
 
-- [ ] **Step 3: Add the three-way, the state, and the prop chain**
+- [x] **Step 3: Add the three-way, the state, and the prop chain**
 
 In `src/ui/launcher/generate-config.tsx`:
 
@@ -1363,19 +1363,19 @@ and having `GenerateConfig` close over its own `duration` when it hands `suggest
 
 Then `pick-launch.tsx` is simply `onSuggest={suggestPitches}`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/ui && npm run typecheck`
 
 Expected: PASS.
 
-- [ ] **Step 5: Verify the whole repo**
+- [x] **Step 5: Verify the whole repo**
 
 Run: `npm run check`
 
 Expected: typecheck clean, Biome clean, all tests pass.
 
-- [ ] **Step 6: Verify by hand, in the real program**
+- [x] **Step 6: Verify by hand, in the real program**
 
 Needs `AI_GATEWAY_API_KEY`. If there is none, say so in the commit body rather than claiming a check that did not happen.
 
@@ -1385,7 +1385,7 @@ npm run start
 
 Then: New → Generate a New Scenario → Premise → Suggest some for me. Confirm four worlds appear with names, registers and paragraphs; that `M` produces four *different* ones; that ENTER fills the Premise row with the chosen title; and that writing the world produces `.scenarios/<title-slug>.json` whose `lore.title` is the title you picked.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ui/launcher src/scenario
@@ -1420,3 +1420,39 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 1. **Task 6's prop chain and the duration.** The duration lives in `GenerateConfig`'s state, the AI import must not, and `PickPremise` needs both. Task 6 works this through to `onSuggest({ duration, ...input })` — follow that rather than re-deriving it, because the two wrong answers (importing `suggestPitches` into the component, or reading `CONFIG.brief.duration` in `pick-launch`) both compile and both send the wrong length to the model.
 2. **`premiseWay` replaces `editing`.** Every current use of `editing` in `generate-config.tsx` — the `Chooser`'s `isActive`, the `TextField` branch, and the footer text — has to move together, or the page will take arrow keys in two places at once.
 3. **Task 6's `mount` helper.** The tests need one new option on it, and `exactOptionalPropertyTypes` means forwarding it as `onSuggest={options.onSuggest}` will not compile when it is absent — spread it conditionally, as Task 6 shows and as the neighbouring `gatewayKey` already does.
+
+---
+
+## What it took, in the end
+
+Landed on `premise-picker`, six commits, one per task. `npm run check` clean: 2038 tests.
+Five places the plan needed correcting, recorded here because each was a real thing rather
+than a preference.
+
+1. **Two `Chooser`s in the same position are one `Chooser`.** The plan has the three-way as
+   a page of its own, and both it and the settings page are a `Frame` holding a `Chooser` in
+   the same slot — so React reconciled them as one component and the new page opened on the
+   *settings* cursor's row, which is the Premise row, which is the second choice. They are
+   keyed apart now. That in turn means the settings list really does remount, where before it
+   kept its cursor by accident of reconciliation, so `Chooser` gained an `initialId` and the
+   page tells it to open on `premise`. Adding that prop was not in the plan and is the reason
+   the four existing "type a premise" cases still pass unchanged in what they assert.
+2. **ESC was answered twice.** `PickPremise` handles ESC itself — it has to, because the
+   spinner and the failure screen have no chooser mounted — and the plan also hands `onBack`
+   to the chooser inside it. Every mounted `useInput` fires, so one keypress went back two
+   screens. Caught by the plan's own last test case.
+3. **`freeScenarioId`'s existing cases moved with its signature.** The plan adds three cases
+   and does not mention the four already there, which pass a `string`. They now pass a brief.
+4. **Two prompt defects only a real model showed.** Asked for "two to four sentences" it
+   wrote four long ones and `cappedText(400)` trimmed them, so every premise stopped
+   mid-sentence — on the one screen where the paragraph is the whole content. The budget is
+   stated in characters as well now. And the plan's scale line, taken from `lorePrompt`
+   verbatim, put a literal blacksmith in all four pitches: beside a whole brief it reads as
+   scale, and with nothing else to go on a model reads a named trade as casting.
+5. **The model id is asserted as `MODELS.bible`,** not the string, which the plan sanctions
+   as the fallback. The default catalogue row is a moving target.
+
+**Verified against the gateway** for the pitch call alone: four bundles, four different
+worlds, nothing repeated on a second round, nothing truncated. The walkthrough to a written
+world was not run — sixty calls and several minutes of somebody's money — so Task 6's Step 6
+is done only to the depth one cheap call reaches.
