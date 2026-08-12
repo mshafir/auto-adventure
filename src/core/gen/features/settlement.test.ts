@@ -796,6 +796,67 @@ describe("required structures", () => {
 		// oversubscription directly so that stops being silent.
 		expect(patch.buildings.length, "this site is no longer oversubscribed enough").toBeLessThan(10);
 	});
+
+	it("says which required structures did not fit, instead of quietly building filler", () => {
+		// The signal the solver has always produced and nobody has ever read. Without it the
+		// only evidence that the story's counting house became a shack is the shack.
+		//
+		// A radius of 8 leaves a BSP footprint of about twelve tiles a side, nearly all of it
+		// swallowed by the plaza the square keeps clear — so three large requirements have
+		// nowhere at all to stand, and all three must be named.
+		const { seed, sites } = sampleSites("cramped", 3);
+		const site = sites[0];
+		expect(site, "the sample held no settlement site").toBeDefined();
+		if (!site) return;
+
+		const patch = generateSettlement(
+			worldSeed(seed),
+			{ ...site, radius: 8 },
+			{
+				walled: false,
+				structures: [
+					{ kind: "hall", size: "large", importance: 5, id: "moot-hall", required: true },
+					{ kind: "temple", size: "large", importance: 5, id: "chapel", required: true },
+					{ kind: "barracks", size: "large", importance: 5, id: "watch-house", required: true },
+				],
+			},
+		);
+
+		expect(patch.unplaced.length).toBeGreaterThan(0);
+		// And it names them, so a report can say which building the story lost.
+		expect(patch.unplaced.every((id) => ["moot-hall", "chapel", "watch-house"].includes(id))).toBe(
+			true,
+		);
+	});
+
+	it("reports nothing unplaced for a settlement that fitted everything it was asked for", () => {
+		// The other half: `unplaced` has to be quiet when nothing is missing, or a caller
+		// reading it learns nothing from a non-empty one.
+		// A pinned cell rather than "the first settlement in the sample", because roomy is a
+		// property of the *ground* and not of the radius: the town at -1,0 in this same seed
+		// yields a single plot at this radius, sea and slope having taken the rest. That is
+		// the fault the rest of this track is about; here the point is only that a site with
+		// room reports nothing missing.
+		const { seed, sites } = sampleSites("roomy", 3);
+		const site = sites.find((s) => s.mx === -3 && s.my === -2);
+		expect(site, "the pinned cell no longer holds a settlement").toBeDefined();
+		if (!site) return;
+
+		const patch = generateSettlement(
+			worldSeed(seed),
+			{ ...site, radius: 30 },
+			{
+				walled: false,
+				structures: [
+					{ kind: "inn", size: "small", importance: 3, id: "inn", required: true },
+					{ kind: "smithy", size: "small", importance: 3, id: "smithy", required: true },
+				],
+			},
+		);
+
+		expect(patch.unplaced).toEqual([]);
+		expect(patch.buildings.filter((b) => b.required)).toHaveLength(2);
+	});
 });
 
 describe("buildings seen from outside", () => {

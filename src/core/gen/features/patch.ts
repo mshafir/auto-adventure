@@ -95,6 +95,16 @@ export interface FeaturePatch {
 	readonly flags: Uint8Array;
 	readonly buildings: readonly BuildingPlacement[];
 	readonly anchors: readonly Anchor[];
+	/**
+	 * Ids of structures the spec required that no plot could take.
+	 *
+	 * Empty for the builders that lay out their own buildings from their own rules — a
+	 * castle's ward and a dock's row of sheds are not solved against a roster. For a
+	 * settlement it is `assignPlots`'s own verdict, carried rather than discarded: it was
+	 * computed and read by nothing, so the only evidence that the story's counting house had
+	 * become a shack was the shack.
+	 */
+	readonly unplaced: readonly string[];
 }
 
 export function createPatch(
@@ -104,10 +114,12 @@ export function createPatch(
 	patch: FeaturePatch;
 	buildings: BuildingPlacement[];
 	anchors: Anchor[];
+	unplaced: string[];
 } {
 	const size = bounds.w * bounds.h;
 	const buildings: BuildingPlacement[] = [];
 	const anchors: Anchor[] = [];
+	const unplaced: string[] = [];
 	return {
 		patch: {
 			id,
@@ -117,9 +129,11 @@ export function createPatch(
 			flags: new Uint8Array(size),
 			buildings,
 			anchors,
+			unplaced,
 		},
 		buildings,
 		anchors,
+		unplaced,
 	};
 }
 

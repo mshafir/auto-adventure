@@ -121,7 +121,7 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 	const radius = site.radius;
 	const bounds = settlementRect(site);
 
-	const { patch, buildings, anchors } = createPatch(site.id, bounds);
+	const { patch, buildings, anchors, unplaced } = createPatch(site.id, bounds);
 
 	// --- footprint -----------------------------------------------------------
 	// A circle deformed by a few radial harmonics, so the outline is organic
@@ -303,6 +303,11 @@ function buildSettlement(world: WorldSeed, site: MacroSite, spec: SettlementSpec
 		.map((anchor) => ({ x: anchor.x, y: anchor.y }));
 
 	const solution = assignPlots({ plots, square, gates, centre: site.site, radius }, requests);
+
+	// Carried out of here rather than dropped. `plots.ts` computes this and, until now,
+	// nothing anywhere read it — so a settlement that silently substituted filler for the
+	// building the story sends the player to find looked exactly like one that did not.
+	unplaced.push(...solution.unplaced);
 
 	const specByRequestId = new Map(
 		spec.structures.map((structure, index) => [ids[index] as string, structure] as const),
