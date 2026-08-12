@@ -4,27 +4,19 @@ import {
 	generateFeature,
 	invalidateFeature,
 } from "../core/gen/features/registry.js";
-import { sitePlots } from "../core/gen/features/settlement.js";
 import { type BoundaryStyle, isWellInside, type WorldBounds } from "../core/world/bounds.js";
 import type { Duration } from "../core/world/brief.js";
 import type { RegionContext } from "../core/world/context.js";
-import {
-	ambition,
-	biomeAt,
-	regionContext,
-	type SiteContext,
-	siteContext,
-} from "../core/world/context.js";
+import { biomeAt, regionContext, type SiteContext, siteContext } from "../core/world/context.js";
 import { CHUNK } from "../core/world/coords.js";
+import { growSite, rosterTarget } from "../core/world/growth.js";
 import { isSettlement, MACRO, type MacroSite, macroSite } from "../core/world/macro.js";
 import {
 	type PlaceRecipe,
-	type SettledKind,
 	type WorldRecipe,
 	type WorldSeed,
 	worldSeed,
 } from "../core/world/recipe.js";
-import { GROWTH_CLEARANCE, overlapBy } from "../core/world/spacing.js";
 import { findSpawn } from "../engine/spawn.js";
 import { canReach, gridFor, reachableFrom } from "./passability.js";
 
@@ -173,69 +165,16 @@ function buildsSomething(world: WorldSeed, site: MacroSite): boolean {
 }
 
 /**
- * How much bigger a site gets per attempt.
- *
- * Three tiles, because a plot needs five in either axis and a step smaller than that can
- * spend several rounds buying nothing.
- */
-const GROWTH_STEP = 3;
-
-/**
- * The three kinds that differ only in size.
- *
- * Deliberately not `isSettlement`, which also admits `fort`: a fort is a settlement but not
- * a bigger village, and nothing else on the map has a next size up at all.
- */
-const SIZE_LADDER: readonly SettledKind[] = ["hamlet", "village", "town"];
-
-/**
- * How far a site of this kind may be grown.
- *
- * Measured against what the *recipe* says the kind is worth at this importance, never
- * against the site's current radius — which is what makes growing idempotent. A ceiling of
- * "half again what you are now" would move every time it was applied, so surveying an
- * already-grown world would grow it again, and again, until something else stopped it.
- *
- * Half again, and never past the next rung of the ladder: a hamlet that has to reach
- * village size to hold its roster has stopped being the thing it was, and the story was
- * told a hamlet was there.
- */
-function baselineRadius(world: WorldSeed, site: MacroSite, kind: SettledKind): number {
-	const rule = world.rules.sites.radius[kind];
-	return rule.base + (rule.perImportance ?? 0) * site.importance;
-}
-
-function growthLimit(world: WorldSeed, site: MacroSite, kind: SettledKind): number {
-	const baseline = baselineRadius(world, site, kind);
-	const rung = SIZE_LADDER.indexOf(kind);
-	const next = rung >= 0 ? SIZE_LADDER[rung + 1] : undefined;
-	const ceiling = next
-		? (() => {
-				const up = world.rules.sites.radius[next];
-				return up.base + (up.perImportance ?? 0) * site.importance;
-			})()
-		: Number.POSITIVE_INFINITY;
-	return Math.min(baseline * 1.5, ceiling);
-}
-
-/**
  * Make room, before the model is asked for a roster that needs it.
  *
- * The fix at source. A site short of plots was told to write eight buildings for ground
- * with four, and four of them quietly became filler — the very substitution the placement
- * solver exists to prevent, arriving before the solver ever sees it. Growing the site at
- * survey time costs nothing but arithmetic and happens before a single token is spent.
+ * The fix at source. A site short of plots was told to write eight buildings for ground with
+ * four, and four of them quietly became filler — the very substitution the placement solver
+ * exists to prevent, arriving before the solver ever sees it. Growing the site at survey time
+ * costs nothing but arithmetic and happens before a single token is spent.
  *
- * The target is fixed at the outset, at what the site was worth *before* any growing, and
- * that matters: `ambition` goes as the square of the radius while plots go roughly linearly
- * with it, so a target recomputed at each candidate size would run away from the ground
- * faster than the ground could catch up, and every site would grow to its ceiling.
- *
- * Growth is refused where it would push a footprint into a neighbour or across the
- * boundary band. The neighbour test is `overlapBy`, which is also what `validate.ts` warns
- * with — a grown site is pinned as an authored place and so becomes subject to that very
- * warning, and a generator that produced worlds its own checker complained about would be
- * worse than one that never grew anything.
+ * The rule itself lives in `core/world/growth.ts`, because the settling walk grows a site too
+ * — one at a time, when a required building turns out to have had nowhere to stand — and two
+ * growth rules would mean a world this pass called big enough and that one grew anyway.
  */
 function growSites(
 	world: WorldSeed,
@@ -245,64 +184,18 @@ function growSites(
 ): { readonly places: readonly PlaceRecipe[]; readonly grown: Record<string, number> } {
 	const places: PlaceRecipe[] = [];
 	const grown: Record<string, number> = {};
-
 	for (const site of sites) {
-		// `isSettlement` already excludes "none", but narrowing through it does not reach the
-		// recipe's radius table, which is keyed by the kinds a place can actually be.
-		const kind = site.kind;
-		if (kind === "none" || !isSettlement(kind)) continue;
-		// An authored place is a size somebody chose. Growing it would be the generator
-		// overruling the recipe, and the recipe is the one thing here with an opinion.
-		if (site.authored) continue;
-
-		// The roster this site would be asked for at the size the *recipe* gives it, not at
-		// whatever size it is now. Both halves of that matter. Measured at the recipe's size
-		// it is a fixed point, so surveying an already-grown world asks for the same thing
-		// and stops — where a target read off the current radius would rise every time the
-		// site grew, and each pass would grow it again. And it has to be the recipe's size
-		// rather than a constant because `ambition` goes as the square of the radius while
-		// plots go roughly linearly with it: a target that moved with the footprint would
-		// outrun the ground it was chasing.
-		const wanted = ambition({ ...site, radius: baselineRadius(world, site, kind) });
-		if (sitePlots(world, site).length >= wanted) continue;
-
-		const limit = growthLimit(world, site, kind);
-		const clear = (radius: number): boolean =>
-			neighbours.every(
-				(other) =>
-					other.id === site.id ||
-					overlapBy({ at: site.site, radius }, { at: other.site, radius: other.radius }) <=
-						GROWTH_CLEARANCE,
-			);
-		const fits = (radius: number): boolean =>
-			[
-				{ x: site.site.x - radius, y: site.site.y },
-				{ x: site.site.x + radius, y: site.site.y },
-				{ x: site.site.x, y: site.site.y - radius },
-				{ x: site.site.x, y: site.site.y + radius },
-			].every((point) => isWellInside(bounds, point.x, point.y));
-
-		let chosen: number | undefined;
-		for (let radius = site.radius + GROWTH_STEP; radius <= limit; radius += GROWTH_STEP) {
-			// Both tests only get harder as the radius rises, so the first refusal is the
-			// last word rather than something to try again beyond.
-			if (!fits(radius) || !clear(radius)) break;
-			chosen = radius;
-			// The smallest size that holds the roster wins. Taking the ceiling regardless
-			// would spend the map's spare ground on sites that did not need it.
-			if (sitePlots(world, { ...site, radius }).length >= wanted) break;
-		}
-		if (chosen === undefined) continue;
-
-		grown[String(site.id)] = chosen;
-		places.push({
-			at: site.site,
-			kind,
-			importance: site.importance,
-			radius: chosen,
+		const place = growSite({
+			world,
+			site,
+			bounds,
+			neighbours,
+			wanted: rosterTarget(world, site),
 		});
+		if (place?.radius === undefined) continue;
+		grown[String(site.id)] = place.radius;
+		places.push(place);
 	}
-
 	return { places, grown };
 }
 

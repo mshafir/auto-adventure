@@ -388,9 +388,15 @@ describe("a world with landmarks asked for", () => {
 
 	it("does not grow a world it has already grown", () => {
 		// Surveying an artifact again — the validator does, and so does every reload — must
-		// not make its towns bigger a second time. The ceiling is measured against what the
-		// recipe says the kind is worth, never against the site's current size, and this is
-		// what says so.
+		// not make its towns bigger a second time.
+		//
+		// Two things hold that, and it is worth knowing which does the work. A grown site is
+		// written into the recipe as an authored place, and `growSite` never grows one of those:
+		// that is the load-bearing half, and mutating the other one does not make this test
+		// fail. The other is that the target and the ceiling are both measured against the size
+		// the recipe gives the kind rather than the site's current radius, which is what would
+		// matter if growth ever applied to a site it had already touched. `growth.test.ts` pins
+		// that half directly, since this test cannot.
 		const first = surveyWorld(worldSeed(SEED), "short", undefined);
 		expect(Object.keys(first.grown).length).toBeGreaterThan(0);
 
