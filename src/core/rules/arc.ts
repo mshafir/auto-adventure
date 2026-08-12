@@ -475,8 +475,15 @@ export function arcOutline(arc: ScenarioArc | undefined, state: GameState): ArcO
 	};
 }
 
-/** Whether this beat is an arm of a fork that went the other way. */
-function isBarredBranch(state: GameState, beat: ScenarioBeat): boolean {
+/**
+ * Whether this beat is an arm of a fork that went the other way.
+ *
+ * Exported for the side-quest pass, which has to ask it about an *optional* arm —
+ * `mainLineBeats` filters those out before this could be asked about them, and an optional
+ * arm the player barred by choosing its sibling is a road not taken rather than a side
+ * errand that would not fit.
+ */
+export function isBarredBranch(state: GameState, beat: ScenarioBeat): boolean {
 	if (beat.branch === undefined) return false;
 	const taken = branchTaken(state, beat.branch);
 	return taken !== undefined && taken !== beat.id;

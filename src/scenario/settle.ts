@@ -1,16 +1,12 @@
 import { invalidateFeature } from "../core/gen/features/registry.js";
 import { generateSettlement, sitePlots } from "../core/gen/features/settlement.js";
-import { beatNpcId, mainLineBeats, type ScenarioBeat } from "../core/rules/arc.js";
-import type { GameState } from "../core/rules/state.js";
+import { mainLineBeats } from "../core/rules/arc.js";
 import { growSite } from "../core/world/growth.js";
-import type { MacroSite } from "../core/world/macro.js";
 import type { PlaceRecipe } from "../core/world/recipe.js";
-import { buildSession } from "../session.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
-import { canReach, reachableFrom } from "./passability.js";
+import { walkMainLine, withStory } from "./play.js";
 import { applySpatialRepairs } from "./repair.js";
-import { buildPassability, siteIndex } from "./validate.js";
-import { type StoryWalker, storyWalker } from "./walker.js";
+import { siteIndex } from "./validate.js";
 
 /**
  * Make the main line work, beat by beat, in the engine it will be played in.
@@ -106,7 +102,11 @@ export async function settleTheStory(
 			onProgress(`fixed ${fixes.length} placement fault(s) before walking`);
 		}
 
-		const attempt = await walkMainLine(current, started + BUDGET_MS);
+		// The walk itself is in `play.ts`, because the pass beside this one needs the same one.
+		// What is here is the policy: which fault is worth which fix, and what a fix costs.
+		const attempt = await withStory(current, (playing) =>
+			walkMainLine(current, playing, started + BUDGET_MS),
+		);
 		concessions.push(...attempt.concessions);
 		if (!attempt.stuck) {
 			return {
@@ -175,178 +175,6 @@ function applySpatialFixes(artifact: ScenarioArtifact, fixes: string[]): Scenari
 	const result = applySpatialRepairs(artifact);
 	fixes.push(...result.repairs);
 	return result.artifact;
-}
-
-interface Attempt {
-	readonly opened: readonly string[];
-	readonly concessions: readonly string[];
-	readonly stuck?: {
-		readonly beat: string;
-		readonly siteId: number;
-		readonly why: string;
-	};
-}
-
-async function walkMainLine(artifact: ScenarioArtifact, deadline: number): Promise<Attempt> {
-	const arc = artifact.arc;
-	if (!arc) return { opened: [], concessions: [] };
-
-	const sites = siteIndex(artifact);
-	const session = buildSession(
-		{
-			worldId: `settle-${artifact.id}`,
-			seed: artifact.seed,
-			flavour: "prebuilt",
-			scenario: artifact,
-		},
-		{ saveDebounceMs: 0, persist: false },
-	);
-	const { engine } = session;
-	// The opening card blocks movement until it is read, which is the point of it.
-	engine.dispatch({ t: "DismissCard" });
-	const walker = storyWalker(artifact, engine, sites);
-	const state = () => engine.getState();
-
-	const opened: string[] = [];
-	try {
-		for (const beat of mainLineBeats(arc)) {
-			if (Date.now() > deadline) {
-				return {
-					opened,
-					concessions: [...walker.concessions],
-					stuck: {
-						beat: beat.id,
-						siteId: beat.siteId,
-						why: "the settling budget ran out here",
-					},
-				};
-			}
-
-			// An arm of a fork the story has since taken the other way is not stuck — it is
-			// barred, and permanently, which is what makes a choice a choice. Re-asked per beat
-			// rather than computed once because opening one arm is what bars its siblings: the
-			// static set contains every arm, and walking all of them is impossible by design.
-			// Asked through `mainLineBeats` rather than by testing the branch flag here, so this
-			// cannot drift from what the outline counts.
-			if (!mainLineBeats(arc, state()).some((live) => live.id === beat.id)) continue;
-
-			const site = sites.get(beat.siteId);
-			// A beat at a site the bounded world does not contain is not something a fix can
-			// reach: the arc names somewhere that is not in this world at all.
-			if (!site) {
-				return {
-					opened,
-					concessions: [...walker.concessions],
-					stuck: {
-						beat: beat.id,
-						siteId: beat.siteId,
-						why: `site ${beat.siteId} is not in this world`,
-					},
-				};
-			}
-
-			// A beat gated on carrying something opens the moment the player has it, and finding
-			// it is not something a walker can do.
-			walker.openWith(beat);
-
-			walker.goTo(site);
-			if (!state().flags[beat.setsFlag]) {
-				await walker.talkTo(beatNpcId(beat), walker.roomOf(beat.siteId, beat.npcSlot));
-			}
-			if (state().flags[beat.setsFlag]) {
-				opened.push(beat.id);
-				// Close whatever errands are open before moving on, because the next beat commonly
-				// waits on the last one's. Written without this first, and both shipped stories
-				// stopped at their second scene: the beat had opened, its errand was still in the
-				// log, and the beat gated on that errand could never come.
-				await closeWhatIsOpen(walker, state);
-				continue;
-			}
-
-			// It did not open. Whatever is wrong is wrong here, so stop and say so: the caller
-			// decides whether a fix is available, because only it knows what it has already tried
-			// and how much of its budget is left.
-			return {
-				opened,
-				concessions: [...walker.concessions],
-				stuck: {
-					beat: beat.id,
-					siteId: beat.siteId,
-					why: whyStuck(artifact, walker, beat, site),
-				},
-			};
-		}
-		return { opened, concessions: [...walker.concessions] };
-	} finally {
-		// On every path, including the early returns above. A session left undisposed holds a
-		// debounce timer, and this pass may build several.
-		session.dispose();
-	}
-}
-
-/**
- * Tick whatever the open errands ask for, so the next beat's gate can be met.
- *
- * Judged on whether an objective actually ticked rather than on whether the attempt ran, the
- * same way `walkTheStory` judges it: walking to a town an errand names is always *possible*, so
- * counting the attempt as progress would loop for as long as the budget allowed.
- */
-async function closeWhatIsOpen(walker: StoryWalker, state: () => GameState): Promise<void> {
-	for (let round = 0; round < MAX_CLOSE_ROUNDS; round++) {
-		let moved = false;
-		for (const quest of state().quests) {
-			if (quest.completed) continue;
-			for (const objective of quest.objectives) {
-				if (objective.done) continue;
-				const before = ticked(state());
-				await walker.satisfy(objective, quest.name);
-				if (ticked(state()) > before) moved = true;
-			}
-		}
-		if (!moved) return;
-	}
-}
-
-/**
- * How many times to go round closing errands before moving to the next beat.
- *
- * More than one because an errand can be a step of another — a `quest` objective ticks only
- * once its child is closed — and the child may be satisfied in the same pass that found the
- * parent. Two is enough for that; this is a guard against a cycle, not a budget.
- */
-const MAX_CLOSE_ROUNDS = 3;
-
-/** How much of the errand log is actually done, as one number to compare against. */
-function ticked(state: GameState): number {
-	return state.quests.reduce(
-		(total, quest) => total + quest.objectives.filter((objective) => objective.done).length,
-		0,
-	);
-}
-
-/**
- * Why a beat would not open, cheapest question first.
- *
- * Each answer excludes the ones after it, so the order is the diagnosis.
- */
-function whyStuck(
-	artifact: ScenarioArtifact,
-	walker: StoryWalker,
-	beat: ScenarioBeat,
-	site: MacroSite,
-): string {
-	if (walker.absent.has(beatNpcId(beat))) {
-		return `${beatNpcId(beat)} opens it and the engine put them nowhere`;
-	}
-	// The only sweep of the whole world in the pass, and only on a beat that has already failed.
-	const grid = buildPassability(artifact);
-	if (!canReach(grid, reachableFrom(grid, artifact.spawn), site.site)) {
-		return "there is no way to walk there from the start";
-	}
-	// Honest about whose limit this is. A walker cannot work out which conversation hands over a
-	// ring, and reporting that as the world's fault would send somebody looking for one that is
-	// not there.
-	return `${beatNpcId(beat)} was standing there and the beat did not open`;
 }
 
 /**
