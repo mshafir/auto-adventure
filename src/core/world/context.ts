@@ -1,3 +1,4 @@
+import { sitePlots } from "../gen/features/settlement.js";
 import { type BiomeId, biomeDef, classifyBiome } from "./biome.js";
 import { elevationAt, elevationBand, moistureAt, temperatureAt } from "./fields.js";
 import { isSettlement, MACRO, type MacroSite, macroSite, REGION } from "./macro.js";
@@ -52,8 +53,17 @@ export function biomeAt(world: WorldSeed, x: number, y: number): BiomeId {
 	);
 }
 
-/** Rough building capacity of a site, mirroring what the plot pass can fit. */
-export function buildingBudget(site: MacroSite): number {
+/**
+ * What a site of this kind and size is worth asking for, before the ground has a say.
+ *
+ * A ceiling on *ambition*: a big town still gets a couple of dozen buildings and not
+ * seventy, because a roster is a cast list and a story as well as a row of houses.
+ *
+ * Exported because the survey needs the same number when deciding whether a site has to be
+ * grown, and a growth pass working from its own idea of how big a roster ought to be would
+ * grow sites to fit a target nothing else was using.
+ */
+export function ambition(site: MacroSite): number {
 	// A cave has nothing above ground; a castle's ward and a dock's row of sheds are
 	// smaller than a town of the same radius, because most of the footprint is wall
 	// and water respectively.
@@ -62,7 +72,29 @@ export function buildingBudget(site: MacroSite): number {
 	if (site.kind === "docks") return Math.max(2, Math.min(6, Math.round(site.radius / 4)));
 	if (!isSettlement(site.kind)) return site.kind === "ruins" ? 3 : 1;
 	const area = site.radius * site.radius * 1.9;
-	return Math.max(2, Math.min(14, Math.round(area / 110)));
+	return Math.max(2, Math.min(24, Math.round(area / 110)));
+}
+
+/**
+ * How many buildings a site is worth asking for, and how many it can actually hold.
+ *
+ * {@link ambition} is the first ceiling. The measurement is the second, and it is the half
+ * that was missing: this number reaches the model as "give exactly N structures"
+ * (`director/prompt.ts:181`), so on a coastal or steep site the estimate was a promise the
+ * ground could not keep and the tail of the roster silently became filler. Across a sweep
+ * of eight seeds it overshot at sixty of eighty settlements, once by a town told to write
+ * fourteen buildings on ground with room for two.
+ *
+ * `peopleWanted` is derived from this too (`prompt.ts:141`), so a site with fewer real plots
+ * is now asked for fewer people as well — which is right: they had nowhere to live.
+ *
+ * Only settlements are measured. A castle, a dock and a cave lay out their own buildings
+ * from their own rules, and `sitePlots` does not describe them.
+ */
+export function buildingBudget(world: WorldSeed, site: MacroSite): number {
+	const wanted = ambition(site);
+	if (!isSettlement(site.kind)) return wanted;
+	return Math.min(wanted, sitePlots(world, site).length);
 }
 
 function bearingOf(dx: number, dy: number): string {
@@ -106,7 +138,7 @@ export function siteContext(world: WorldSeed, site: MacroSite): SiteContext {
 		roadCount: roads.length,
 		nearRiver,
 		coastal: elevation < world.rules.climate.seaLevel + 0.06,
-		buildingBudget: buildingBudget(site),
+		buildingBudget: buildingBudget(world, site),
 		neighbours: neighbours.slice(0, 4),
 	};
 }

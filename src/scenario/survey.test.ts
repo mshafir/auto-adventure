@@ -3,6 +3,7 @@ import { fallbackSettlementSpec } from "../core/gen/features/fallback-spec.js";
 import { generateFeature, invalidateFeature } from "../core/gen/features/registry.js";
 import { hashString } from "../core/rand/hash.js";
 import { isBoundary, isWellInside } from "../core/world/bounds.js";
+import { buildingBudget } from "../core/world/context.js";
 import { CHUNK } from "../core/world/coords.js";
 import { isSettlement } from "../core/world/macro.js";
 import { worldSeed } from "../core/world/recipe.js";
@@ -132,9 +133,14 @@ describe("surveyWorld", () => {
 	});
 
 	it("carries the building budget the engine will actually honour", () => {
+		// It used to assert every budget was above zero, which was true only because the
+		// budget was arithmetic on a radius and arithmetic never returns nothing. Now that it
+		// counts real plots, a site the sea or the slope leaves no room on reports zero — and
+		// that is the honest answer, not a regression. What this test is for is that the
+		// survey carries the engine's number rather than one of its own.
 		const survey = surveyWorld(worldSeed(SEED), "short");
 		for (const entry of survey.sites) {
-			expect(entry.context.buildingBudget).toBeGreaterThan(0);
+			expect(entry.context.buildingBudget).toBe(buildingBudget(survey.world, entry.site));
 			expect(entry.context.siteId).toBe(entry.site.id);
 		}
 	});
