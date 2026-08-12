@@ -1,8 +1,5 @@
 import { arcOutline, beatNpcId, orderedBeats, type ScenarioBeat } from "../core/rules/arc.js";
-import { asCondition, itemsRead } from "../core/rules/condition.js";
-import type { DomainEffect } from "../core/rules/effects.js";
-import type { GameState, QuestObjective } from "../core/rules/state.js";
-import { namesMatch } from "../core/rules/surroundings.js";
+import type { GameState } from "../core/rules/state.js";
 import { buildSession } from "../session.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { siteIndex } from "./validate.js";
@@ -88,15 +85,17 @@ export async function walkTheStory(
 
 	const sites = siteIndex(artifact);
 	const opened: string[] = [];
-	const concessions: string[] = [];
 	const state = () => engine.getState();
 
-	const apply = (...effects: DomainEffect[]) => engine.dispatch({ t: "ApplyEffects", effects });
-
-	// How a player gets about, shared with `settleTheStory`. `satisfy` below is *not* in
-	// there and should not be: it is this walk's policy on what to do about an errand it
-	// cannot earn, not a primitive.
-	const { goTo, talkTo, roomOf, absent } = storyWalker(artifact, engine, sites);
+	// How a player gets about and closes an errand, shared with `settleTheStory`. `satisfy`
+	// belongs in there too, which was not obvious until the second caller existed: a main-line
+	// beat commonly waits on the previous beat's errand being closed, so a walk that never
+	// closes one stops at the second scene.
+	const { goTo, talkTo, roomOf, satisfy, openWith, absent, concessions } = storyWalker(
+		artifact,
+		engine,
+		sites,
+	);
 
 	for (let round = 0; round < MAX_ROUNDS; round++) {
 		let moved = false;
@@ -106,19 +105,9 @@ export async function walkTheStory(
 			const site = sites.get(beat.siteId);
 			if (!site) continue;
 
-			// A beat gated on carrying something opens the moment the player has it, and
-			// finding it is not something a walker can do. Granted before the visit so the
-			// scene plays as it would for a player who had already found it.
-			for (const item of itemsRead(asCondition(beat.opensOn))) {
-				if (state().inventory.some((entry) => entry.name === item)) continue;
-				apply({
-					t: "GrantItem",
-					name: item,
-					description: "Given, to walk the story.",
-					quantity: 1,
-				});
-				concessions.push(`gave "${item}" so beat ${beat.id} could open`);
-			}
+			// A beat gated on carrying something opens the moment the player has it, and finding
+			// it is not something a walker can do.
+			openWith(beat);
 
 			goTo(site);
 			if (state().flags[beat.setsFlag]) {
@@ -167,50 +156,14 @@ export async function walkTheStory(
 
 	const finished = arcOutline(arc, state())?.finished === true;
 	session.dispose();
-	return { opened, stuck, concessions, finished, absent: [...absent], unfinished };
-
-	/** Do the thing an objective asks for, or hand it over and say so. */
-	async function satisfy(objective: QuestObjective, questName: string): Promise<boolean> {
-		if (objective.kind === "quest") return false;
-		if (objective.kind === "reach") {
-			const target = [...sites.values()].find((site) =>
-				namesMatch(artifact.sites[String(site.id)]?.name ?? "", objective.target),
-			);
-			if (!target) return false;
-			goTo(target);
-			return true;
-		}
-		if (objective.kind === "talk") {
-			const found = Object.values(artifact.sites).flatMap((spec) =>
-				spec.npcs
-					.filter((npc) => namesMatch(npc.name, objective.target))
-					.map((npc) => ({ spec, npc })),
-			);
-			const person = found[0];
-			if (!person) return false;
-			const site = sites.get(person.spec.siteId);
-			if (site) goTo(site);
-			return talkTo(
-				`npc:${person.spec.siteId >>> 0}:${person.npc.slot}`,
-				roomOf(person.spec.siteId, person.npc.slot),
-			);
-		}
-		if (objective.kind === "have") {
-			if (state().inventory.some((entry) => entry.name === objective.target)) return false;
-			apply({
-				t: "GrantItem",
-				name: objective.target,
-				description: "Given, to walk the story.",
-				quantity: objective.quantity ?? 1,
-			});
-			concessions.push(`gave "${objective.target}" to close "${questName}"`);
-			return true;
-		}
-		if (state().flags[objective.target]) return false;
-		apply({ t: "SetFlag", key: objective.target, value: true });
-		concessions.push(`set "${objective.target}" to close "${questName}"`);
-		return true;
-	}
+	return {
+		opened,
+		stuck,
+		concessions: [...concessions],
+		finished,
+		absent: [...absent],
+		unfinished,
+	};
 }
 
 /**

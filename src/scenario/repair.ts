@@ -59,7 +59,16 @@ export interface RepairResult {
  * Built once and handed round. Generating the bounded world is the most expensive thing
  * in the whole authoring pipeline, and three separate repairs need to ask it questions.
  */
-interface Ground {
+export interface Ground {
+	/**
+	 * The bounded world's passability. Generated on first use: it is the expensive half.
+	 *
+	 * Only two repairs need it — `spellObjectivesAsTheWorldDoes` and
+	 * `dropErrandsForThingsThatDoNotExist`, both through `surroundingsFor` — so a caller that
+	 * only moves people and hidden things about pays nothing for it. `settle.ts` relies on
+	 * that: it applies the placement fixes at every beat and would otherwise sweep the whole
+	 * world each time.
+	 */
 	readonly grid: PassabilityGrid;
 	readonly sites: Map<number, MacroSite>;
 	/** What the generator actually built at a site, or undefined where it built nothing. */
@@ -182,11 +191,27 @@ const REPAIRS: readonly ((artifact: ScenarioArtifact, ground: Ground) => RepairR
 	sayWhereToGoNext,
 ];
 
+/**
+ * The world a set of repairs measures against.
+ *
+ * Exported as `groundFor` because `settleTheStory` applies three of these repairs itself,
+ * with a live session in front of it, and building this is how they are given a world to ask
+ * questions of.
+ */
+export function groundFor(artifact: ScenarioArtifact): Ground {
+	return survey(artifact);
+}
+
 function survey(artifact: ScenarioArtifact): Ground {
 	const sites = siteIndex(artifact);
 	const patches = new Map<number, FeaturePatch | undefined>();
+	let grid: PassabilityGrid | undefined;
 	return {
-		grid: buildPassability(artifact),
+		// Lazy, so the two repairs that never ask do not pay for a sweep of the bounded world.
+		get grid() {
+			grid ??= buildPassability(artifact);
+			return grid;
+		},
 		sites,
 		built: (siteId) => {
 			if (patches.has(siteId)) return patches.get(siteId);
@@ -240,7 +265,10 @@ function anchorAliasFor(placement: AnchorKind): AnchorKind {
  * nowhere at all — not somewhere else, nowhere — so they cannot be walked into, cannot be
  * talked to, and any beat anchored on them is unreachable while every other check passes.
  */
-function standTheCastSomewhereReal(artifact: ScenarioArtifact, ground: Ground): RepairResult {
+export function standTheCastSomewhereReal(
+	artifact: ScenarioArtifact,
+	ground: Ground,
+): RepairResult {
 	const repairs: string[] = [];
 	const sites: Record<string, SiteSpec> = {};
 	let changed = false;
@@ -334,7 +362,7 @@ function standTheCastSomewhereReal(artifact: ScenarioArtifact, ground: Ground): 
  * avoid moving a chest between two rooms. Only a settlement that built nothing at all is
  * beyond helping, and there the placement goes, because there is no room in it to stand.
  */
-function hideThingsWhereThereIsSomewhereToHideThem(
+export function hideThingsWhereThereIsSomewhereToHideThem(
 	artifact: ScenarioArtifact,
 	ground: Ground,
 ): RepairResult {
@@ -427,7 +455,10 @@ function away(ground: Ground, siteId: number, from: { x: number; y: number }): n
  * ticks in another. Assembly already canonicalises this; a generated arc has not been
  * through assembly.
  */
-function spellObjectivesAsTheWorldDoes(artifact: ScenarioArtifact, ground: Ground): RepairResult {
+export function spellObjectivesAsTheWorldDoes(
+	artifact: ScenarioArtifact,
+	ground: Ground,
+): RepairResult {
 	const arc = artifact.arc;
 	if (!arc) return { artifact, repairs: [] };
 	const repairs: string[] = [];

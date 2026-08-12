@@ -1,8 +1,12 @@
 import type { BuildingPlacement } from "../core/gen/features/patch.js";
+import type { ScenarioBeat } from "../core/rules/arc.js";
+import { asCondition, itemsRead } from "../core/rules/condition.js";
 import type { DomainEffect } from "../core/rules/effects.js";
-import type { Facing } from "../core/rules/state.js";
+import type { Facing, QuestObjective } from "../core/rules/state.js";
+import { namesMatch } from "../core/rules/surroundings.js";
 import { toChunk } from "../core/world/coords.js";
 import type { MacroSite } from "../core/world/macro.js";
+import { npcId } from "../core/world/spec.js";
 import type { GameEngine } from "../engine/engine.js";
 import type { PlacedNpc } from "../engine/npc-directory.js";
 import type { ScenarioArtifact } from "./artifact.js";
@@ -34,8 +38,28 @@ export interface StoryWalker {
 		siteId: number,
 		slot: number,
 	) => { readonly siteId: number; readonly structure?: string } | undefined;
+	/**
+	 * Do what an errand asks for, or hand it over and say so.
+	 *
+	 * Here rather than in either caller, because both need it and for the same reason: a
+	 * main-line beat commonly waits on the previous beat's errand being closed, so a walker
+	 * that never closes one cannot get past the second scene. That was found by writing
+	 * `settleTheStory` without it and watching both shipped stories stop at their first gated
+	 * beat.
+	 */
+	readonly satisfy: (objective: QuestObjective, questName: string) => Promise<boolean>;
+	/**
+	 * Hand over whatever a beat needs the player to be carrying before it can open.
+	 *
+	 * Shared for the same reason as `satisfy`: finding a thing is not something a walker can
+	 * do, and both callers have to grant it before the visit so the scene plays as it would for
+	 * a player who had already found it.
+	 */
+	readonly openWith: (beat: ScenarioBeat) => void;
 	/** Ids the walk asked for and the engine had nowhere to put. */
 	readonly absent: ReadonlySet<string>;
+	/** What had to be given rather than earned, in words. */
+	readonly concessions: readonly string[];
 }
 
 /** How many doors to open looking for one person before giving up on them. */
@@ -47,6 +71,7 @@ export function storyWalker(
 	sites: ReadonlyMap<number, MacroSite>,
 ): StoryWalker {
 	const absent = new Set<string>();
+	const concessions: string[] = [];
 	const state = () => engine.getState();
 	const apply = (...effects: DomainEffect[]) => engine.dispatch({ t: "ApplyEffects", effects });
 
@@ -223,5 +248,76 @@ export function storyWalker(
 		return { siteId, ...(npc.structureName ? { structure: npc.structureName } : {}) };
 	};
 
-	return { readCards, goTo, buildingsOf, findIndoors, talkTo, roomOf, absent };
+	const openWith = (beat: ScenarioBeat) => {
+		for (const item of itemsRead(asCondition(beat.opensOn))) {
+			if (state().inventory.some((entry) => entry.name === item)) continue;
+			apply({ t: "GrantItem", name: item, description: "Given, to walk the story.", quantity: 1 });
+			concessions.push(`gave "${item}" so beat ${beat.id} could open`);
+		}
+	};
+
+	/**
+	 * Do the thing an objective asks for, or hand it over and say so.
+	 *
+	 * A walker is not a player. It cannot search a crate it has no reason to look in, or work
+	 * out which conversation hands over a ring — so where an objective cannot be satisfied by
+	 * going somewhere or speaking to somebody, it is granted outright and *recorded*. A story
+	 * that only finishes with four things handed to the player is a different result from one
+	 * that finishes on its own, and reporting both the same way would make the walk worth
+	 * nothing.
+	 */
+	const satisfy = async (objective: QuestObjective, questName: string): Promise<boolean> => {
+		if (objective.kind === "quest") return false;
+		if (objective.kind === "reach") {
+			const target = [...sites.values()].find((site) =>
+				namesMatch(artifact.sites[String(site.id)]?.name ?? "", objective.target),
+			);
+			if (!target) return false;
+			goTo(target);
+			return true;
+		}
+		if (objective.kind === "talk") {
+			const found = Object.values(artifact.sites).flatMap((spec) =>
+				spec.npcs
+					.filter((npc) => namesMatch(npc.name, objective.target))
+					.map((npc) => ({ spec, npc })),
+			);
+			const person = found[0];
+			if (!person) return false;
+			const site = sites.get(person.spec.siteId);
+			if (site) goTo(site);
+			return talkTo(
+				npcId(person.spec.siteId, person.npc.slot),
+				roomOf(person.spec.siteId, person.npc.slot),
+			);
+		}
+		if (objective.kind === "have") {
+			if (state().inventory.some((entry) => entry.name === objective.target)) return false;
+			apply({
+				t: "GrantItem",
+				name: objective.target,
+				description: "Given, to walk the story.",
+				quantity: objective.quantity ?? 1,
+			});
+			concessions.push(`gave "${objective.target}" to close "${questName}"`);
+			return true;
+		}
+		if (state().flags[objective.target]) return false;
+		apply({ t: "SetFlag", key: objective.target, value: true });
+		concessions.push(`set "${objective.target}" to close "${questName}"`);
+		return true;
+	};
+
+	return {
+		readCards,
+		goTo,
+		buildingsOf,
+		findIndoors,
+		talkTo,
+		roomOf,
+		satisfy,
+		openWith,
+		absent,
+		concessions,
+	};
 }
