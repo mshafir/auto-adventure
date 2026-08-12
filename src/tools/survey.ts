@@ -69,8 +69,8 @@ function main() {
 	}
 	const seedArg = args.get("seed") ?? "auto-adventure";
 	const seed = resolveSeed(seedArg);
-	const world = worldFromArgs(seed, args.get("recipe"));
-	const survey = surveyWorld(world, duration);
+	const { world, recipe } = worldFromArgs(seed, args.get("recipe"));
+	const survey = surveyWorld(world, duration, recipe);
 	const plan = planFor(duration);
 
 	const output = {

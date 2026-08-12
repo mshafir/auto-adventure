@@ -261,7 +261,14 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	recipe = mergeRecipe(options.pack?.world, recipe);
 	const world = worldSeed(options.seed, recipe);
 	const pack = mergePack(DEFAULT_PACK, options.pack);
-	const survey = surveyWorld(world, options.brief.duration);
+	const survey = surveyWorld(world, options.brief.duration, recipe);
+	// Sites the survey had to make bigger so they could hold the roster they will be asked
+	// for. Folded into the recipe here, because growth that lived only in the survey would
+	// be a town that shrank the next time the artifact was opened, with every placement in
+	// it written against the larger one.
+	if (survey.places.length > 0) {
+		recipe = { ...recipe, places: [...(recipe?.places ?? []), ...survey.places] };
+	}
 	// Which of them the player can actually get to. A straight line is the right measure
 	// for ordering a story outward and the wrong one for deciding a place can be visited:
 	// a town across an inlet is thirty tiles away and unreachable, and a beat set there is
@@ -279,6 +286,11 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		say(`${stranded} place(s) cannot be walked to from the start; the story will not go there`);
 	if (survey.boundaryAdjustment !== 0)
 		say(`moved the boundary ${survey.boundaryAdjustment} tiles to avoid cutting a town in half`);
+	const madeRoom = Object.keys(survey.grown).length;
+	if (madeRoom > 0)
+		say(
+			`made room in ${madeRoom} place${madeRoom === 1 ? "" : "s"} for what they will be asked to hold`,
+		);
 
 	// What the ground refused, and what it allowed. Both are worth saying out loud: a
 	// recipe asking for six harbours in a landlocked world produces neither an error nor

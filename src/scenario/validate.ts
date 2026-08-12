@@ -24,6 +24,7 @@ import { isWellInside } from "../core/world/bounds.js";
 import { HALO } from "../core/world/coords.js";
 import { MACRO, type MacroSite, maxFeatureRadius, sitesInside } from "../core/world/macro.js";
 import { type PlaceRecipe, placeKey, type WorldRules } from "../core/world/recipe.js";
+import { overlapBy } from "../core/world/spacing.js";
 import { npcId } from "../core/world/spec.js";
 import { resolveBarriers } from "../engine/barriers.js";
 import { resolvePlacements } from "../engine/placements.js";
@@ -310,13 +311,18 @@ function checkRecipe(artifact: ScenarioArtifact, sites: Map<number, MacroSite>):
 		const reach = radiusOf(place, rules);
 		for (const site of sites.values()) {
 			if (site.authored) continue;
-			const gap = Math.hypot(site.site.x - place.at.x, site.site.y - place.at.y);
-			if (gap >= reach + site.radius) continue;
+			// The same predicate the survey grows sites by. Shared rather than written twice,
+			// because the survey pins a grown site as an authored place and so becomes subject
+			// to this very check — two spellings of "how close is too close" would let the
+			// generator produce, in one run, a world its own validator complains about.
+			const over = overlapBy(
+				{ at: place.at, radius: reach },
+				{ at: site.site, radius: site.radius },
+			);
+			if (over <= 0) continue;
 			const name = artifact.sites[String(site.id)]?.name ?? site.kind;
 			findings.push(
-				warning(
-					`${describePlace(place)} overlaps ${name} by ${Math.round(reach + site.radius - gap)} tiles`,
-				),
+				warning(`${describePlace(place)} overlaps ${name} by ${Math.round(over)} tiles`),
 			);
 		}
 	}

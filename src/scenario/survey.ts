@@ -4,13 +4,27 @@ import {
 	generateFeature,
 	invalidateFeature,
 } from "../core/gen/features/registry.js";
+import { sitePlots } from "../core/gen/features/settlement.js";
 import { type BoundaryStyle, isWellInside, type WorldBounds } from "../core/world/bounds.js";
 import type { Duration } from "../core/world/brief.js";
 import type { RegionContext } from "../core/world/context.js";
-import { biomeAt, regionContext, type SiteContext, siteContext } from "../core/world/context.js";
+import {
+	ambition,
+	biomeAt,
+	regionContext,
+	type SiteContext,
+	siteContext,
+} from "../core/world/context.js";
 import { CHUNK } from "../core/world/coords.js";
 import { isSettlement, MACRO, type MacroSite, macroSite } from "../core/world/macro.js";
-import type { WorldSeed } from "../core/world/recipe.js";
+import {
+	type PlaceRecipe,
+	type SettledKind,
+	type WorldRecipe,
+	type WorldSeed,
+	worldSeed,
+} from "../core/world/recipe.js";
+import { GROWTH_CLEARANCE, overlapBy } from "../core/world/spacing.js";
 import { findSpawn } from "../engine/spawn.js";
 import { canReach, gridFor, reachableFrom } from "./passability.js";
 
@@ -97,6 +111,23 @@ export interface Survey {
 	 * fewer places than asked for, which reads as the weights not working.
 	 */
 	readonly declined: Readonly<Record<string, number>>;
+	/**
+	 * Sites that were made bigger so they could hold what they will be asked for, by id.
+	 *
+	 * Empty for a world where the ground was already generous enough, which is most of
+	 * them at the sizes the recipe now asks for. Reported so a player watching a
+	 * generation can see it happen, and so a test can tell growth from luck.
+	 */
+	readonly grown: Readonly<Record<string, number>>;
+	/**
+	 * The grown sites as recipe entries, for whoever writes the artifact.
+	 *
+	 * Growth that lived only in this survey would be a town that shrank the next time the
+	 * artifact was opened, with every placement in it written against the larger one. The
+	 * survey's own `world` already has these folded in; this is the same fact in the form
+	 * that survives being saved.
+	 */
+	readonly places: readonly PlaceRecipe[];
 }
 
 /**
@@ -109,9 +140,20 @@ export interface Survey {
  * would set a beat there, and the result is a named castle, with people in it, standing
  * in an empty field.
  *
+ * A settlement has to produce a *building*. "Something" used to include an anchor, and
+ * every settlement emits a square and a well before it places anything at all — so a town
+ * with nothing in it passed this filter, was named, peopled and given story beats, and the
+ * only symptom was a field with a signpost. The kinds that lay out their own buildings from
+ * their own rules keep the old test, because an empty patch is what *their* refusal looks
+ * like and an anchor is evidence they accepted.
+ *
  * `validate.ts` already catches exactly this and calls it an error for a human to fix.
  * Filtering here is what makes it not happen in the first place, which matters now that
  * a world can be generated with nobody watching.
+ *
+ * Runs *after* growth, and the order is load-bearing: a site with no room at its rolled
+ * size may have plenty once it has been made bigger, and asking this first would drop it
+ * before it ever got the chance.
  *
  * Built with the deterministic roster because the authored one does not exist yet, and
  * dropped again afterwards: `generateFeature` memoises by `(world, kind, siteId)`, so
@@ -122,10 +164,146 @@ function buildsSomething(world: WorldSeed, site: MacroSite): boolean {
 	if (!featureKindFor(site.kind)) return true;
 	try {
 		const patch = generateFeature(world, site, fallbackSettlementSpec(world, site));
-		return !patch || patch.buildings.length > 0 || patch.anchors.length > 0;
+		if (!patch) return true;
+		if (isSettlement(site.kind)) return patch.buildings.length > 0;
+		return patch.buildings.length > 0 || patch.anchors.length > 0;
 	} finally {
 		invalidateFeature(world, site.id);
 	}
+}
+
+/**
+ * How much bigger a site gets per attempt.
+ *
+ * Three tiles, because a plot needs five in either axis and a step smaller than that can
+ * spend several rounds buying nothing.
+ */
+const GROWTH_STEP = 3;
+
+/**
+ * The three kinds that differ only in size.
+ *
+ * Deliberately not `isSettlement`, which also admits `fort`: a fort is a settlement but not
+ * a bigger village, and nothing else on the map has a next size up at all.
+ */
+const SIZE_LADDER: readonly SettledKind[] = ["hamlet", "village", "town"];
+
+/**
+ * How far a site of this kind may be grown.
+ *
+ * Measured against what the *recipe* says the kind is worth at this importance, never
+ * against the site's current radius — which is what makes growing idempotent. A ceiling of
+ * "half again what you are now" would move every time it was applied, so surveying an
+ * already-grown world would grow it again, and again, until something else stopped it.
+ *
+ * Half again, and never past the next rung of the ladder: a hamlet that has to reach
+ * village size to hold its roster has stopped being the thing it was, and the story was
+ * told a hamlet was there.
+ */
+function baselineRadius(world: WorldSeed, site: MacroSite, kind: SettledKind): number {
+	const rule = world.rules.sites.radius[kind];
+	return rule.base + (rule.perImportance ?? 0) * site.importance;
+}
+
+function growthLimit(world: WorldSeed, site: MacroSite, kind: SettledKind): number {
+	const baseline = baselineRadius(world, site, kind);
+	const rung = SIZE_LADDER.indexOf(kind);
+	const next = rung >= 0 ? SIZE_LADDER[rung + 1] : undefined;
+	const ceiling = next
+		? (() => {
+				const up = world.rules.sites.radius[next];
+				return up.base + (up.perImportance ?? 0) * site.importance;
+			})()
+		: Number.POSITIVE_INFINITY;
+	return Math.min(baseline * 1.5, ceiling);
+}
+
+/**
+ * Make room, before the model is asked for a roster that needs it.
+ *
+ * The fix at source. A site short of plots was told to write eight buildings for ground
+ * with four, and four of them quietly became filler — the very substitution the placement
+ * solver exists to prevent, arriving before the solver ever sees it. Growing the site at
+ * survey time costs nothing but arithmetic and happens before a single token is spent.
+ *
+ * The target is fixed at the outset, at what the site was worth *before* any growing, and
+ * that matters: `ambition` goes as the square of the radius while plots go roughly linearly
+ * with it, so a target recomputed at each candidate size would run away from the ground
+ * faster than the ground could catch up, and every site would grow to its ceiling.
+ *
+ * Growth is refused where it would push a footprint into a neighbour or across the
+ * boundary band. The neighbour test is `overlapBy`, which is also what `validate.ts` warns
+ * with — a grown site is pinned as an authored place and so becomes subject to that very
+ * warning, and a generator that produced worlds its own checker complained about would be
+ * worse than one that never grew anything.
+ */
+function growSites(
+	world: WorldSeed,
+	bounds: WorldBounds,
+	sites: readonly MacroSite[],
+	neighbours: readonly MacroSite[],
+): { readonly places: readonly PlaceRecipe[]; readonly grown: Record<string, number> } {
+	const places: PlaceRecipe[] = [];
+	const grown: Record<string, number> = {};
+
+	for (const site of sites) {
+		// `isSettlement` already excludes "none", but narrowing through it does not reach the
+		// recipe's radius table, which is keyed by the kinds a place can actually be.
+		const kind = site.kind;
+		if (kind === "none" || !isSettlement(kind)) continue;
+		// An authored place is a size somebody chose. Growing it would be the generator
+		// overruling the recipe, and the recipe is the one thing here with an opinion.
+		if (site.authored) continue;
+
+		// The roster this site would be asked for at the size the *recipe* gives it, not at
+		// whatever size it is now. Both halves of that matter. Measured at the recipe's size
+		// it is a fixed point, so surveying an already-grown world asks for the same thing
+		// and stops — where a target read off the current radius would rise every time the
+		// site grew, and each pass would grow it again. And it has to be the recipe's size
+		// rather than a constant because `ambition` goes as the square of the radius while
+		// plots go roughly linearly with it: a target that moved with the footprint would
+		// outrun the ground it was chasing.
+		const wanted = ambition({ ...site, radius: baselineRadius(world, site, kind) });
+		if (sitePlots(world, site).length >= wanted) continue;
+
+		const limit = growthLimit(world, site, kind);
+		const clear = (radius: number): boolean =>
+			neighbours.every(
+				(other) =>
+					other.id === site.id ||
+					overlapBy({ at: site.site, radius }, { at: other.site, radius: other.radius }) <=
+						GROWTH_CLEARANCE,
+			);
+		const fits = (radius: number): boolean =>
+			[
+				{ x: site.site.x - radius, y: site.site.y },
+				{ x: site.site.x + radius, y: site.site.y },
+				{ x: site.site.x, y: site.site.y - radius },
+				{ x: site.site.x, y: site.site.y + radius },
+			].every((point) => isWellInside(bounds, point.x, point.y));
+
+		let chosen: number | undefined;
+		for (let radius = site.radius + GROWTH_STEP; radius <= limit; radius += GROWTH_STEP) {
+			// Both tests only get harder as the radius rises, so the first refusal is the
+			// last word rather than something to try again beyond.
+			if (!fits(radius) || !clear(radius)) break;
+			chosen = radius;
+			// The smallest size that holds the roster wins. Taking the ceiling regardless
+			// would spend the map's spare ground on sites that did not need it.
+			if (sitePlots(world, { ...site, radius }).length >= wanted) break;
+		}
+		if (chosen === undefined) continue;
+
+		grown[String(site.id)] = chosen;
+		places.push({
+			at: site.site,
+			kind,
+			importance: site.importance,
+			radius: chosen,
+		});
+	}
+
+	return { places, grown };
 }
 
 /** How thick to make the band. Enough to read as landform, not as a line. */
@@ -286,7 +464,22 @@ function growthCeiling(duration: Duration | undefined): number {
 	return Math.min(plan.radiusChunks + GROWTH_LIMIT_CHUNKS, nextUp);
 }
 
-export function surveyWorld(world: WorldSeed, duration: Duration | undefined): Survey {
+/**
+ * Survey a world, growing the sites that cannot hold what they will be asked for.
+ *
+ * `recipe` is the one the world was built from, and it is required rather than optional on
+ * purpose. Growth works by adding authored places, and the survey's world has to be rebuilt
+ * by exactly the route the artifact will take when it is loaded again — `worldSeed(seed,
+ * recipe)` — or the town the story was written against is not the town the player walks
+ * into. An optional parameter would make forgetting it silent, and the symptom would be a
+ * world that quietly lost its climate the first time a site grew. Pass `undefined` when the
+ * world genuinely has no recipe.
+ */
+export function surveyWorld(
+	world: WorldSeed,
+	duration: Duration | undefined,
+	recipe: WorldRecipe | undefined,
+): Survey {
 	const plan = planFor(duration);
 
 	// Spawn first, unbounded: the bounds are drawn around wherever the world offers
@@ -296,11 +489,11 @@ export function surveyWorld(world: WorldSeed, duration: Duration | undefined): S
 	// Then outward until there is a story's worth of somewhere, and no further. The
 	// first radius that holds enough wins, so an ordinary seed — which has plenty at
 	// the requested size — is surveyed exactly once and comes out exactly as before.
-	let survey = surveyAt(world, spawn, plan.radiusChunks);
+	let survey = surveyAt(world, spawn, plan.radiusChunks, recipe);
 	const ceiling = growthCeiling(duration);
 	for (let radius = plan.radiusChunks + 1; radius <= ceiling; radius++) {
 		if (storySites(survey).length >= Math.min(plan.beats, MIN_STORY_SITES)) break;
-		const wider = surveyAt(world, spawn, radius);
+		const wider = surveyAt(world, spawn, radius, recipe);
 		// Never smaller than what we already had: growing the rectangle can move the
 		// boundary onto a different settlement and push one *out*, and taking that would
 		// be searching for a story by walking away from one.
@@ -322,22 +515,47 @@ function surveyAt(
 	world: WorldSeed,
 	spawn: { readonly x: number; readonly y: number },
 	radiusChunks: number,
+	recipe: WorldRecipe | undefined,
 ): Survey {
 	const radiusTiles = radiusChunks * CHUNK;
 	const style = styleForEdge(world, spawn, radiusTiles);
 	const { bounds, adjustment } = solveBounds(world, spawn, radiusTiles, style);
 
+	const inside = (site: MacroSite) => isWellInside(bounds, site.site.x, site.site.y);
+
+	// Room first. Neighbours are drawn a macro cell wider than the bounds, because a site
+	// just outside the playable rectangle is still ground a grown footprint would run into.
+	const { places, grown } = growSites(
+		world,
+		bounds,
+		sitesWithin(world, bounds).filter(inside),
+		sitesWithin(world, bounds, MACRO),
+	);
+	// Rebuilt rather than patched: `macroSite` is what every later caller consults, so a
+	// radius changed on the objects collected above would leave the rules disagreeing with
+	// them. Positions, kinds and importances are pinned to what they already were, which is
+	// what leaves roads, region ids and site ids exactly as they were.
+	// Appended rather than merged: `mergeRecipe` lets one recipe's `places` *replace*
+	// another's, which is right for a pack override and here would silently delete every
+	// place a scenario's author wrote down — green-chapel lost its two castles, its cave and
+	// its harbour to exactly that, and the cell where the cave had been rolled a landmark.
+	// Nothing authored is ever grown, so these cannot collide with what is already there.
+	const grownWorld =
+		places.length === 0
+			? world
+			: worldSeed(world.seed, { ...recipe, places: [...(recipe?.places ?? []), ...places] });
+
 	const declined: Record<string, number> = {};
-	const sites = sitesWithin(world, bounds)
-		.filter((site) => isWellInside(bounds, site.site.x, site.site.y))
+	const sites = sitesWithin(grownWorld, bounds)
+		.filter(inside)
 		.filter((site) => {
-			if (buildsSomething(world, site)) return true;
+			if (buildsSomething(grownWorld, site)) return true;
 			declined[site.kind] = (declined[site.kind] ?? 0) + 1;
 			return false;
 		})
 		.map((site) => ({
 			site,
-			context: siteContext(world, site),
+			context: siteContext(grownWorld, site),
 			distanceFromSpawn: Math.round(Math.hypot(site.site.x - spawn.x, site.site.y - spawn.y)),
 			settlement: isSettlement(site.kind),
 		}))
@@ -346,10 +564,20 @@ function surveyAt(
 	const regionIds = [...new Set(sites.map((entry) => entry.site.regionId))];
 	const regions = regionIds.map((id) => {
 		const at = sites.find((entry) => entry.site.regionId === id)?.site.site ?? spawn;
-		return regionContext(world, id, at);
+		return regionContext(grownWorld, id, at);
 	});
 
-	return { world, spawn, bounds, sites, regions, boundaryAdjustment: adjustment, declined };
+	return {
+		world: grownWorld,
+		spawn,
+		bounds,
+		sites,
+		regions,
+		boundaryAdjustment: adjustment,
+		declined,
+		grown,
+		places,
+	};
 }
 
 /** The settlements a story can actually be hung on. */

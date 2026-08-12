@@ -13,7 +13,7 @@ const AT = "2026-01-01T00:00:00.000Z";
 
 /** The world the drafts below are written against. */
 const SEED = hashString("draft-test");
-const SURVEY = surveyWorld(worldSeed(SEED), "short");
+const SURVEY = surveyWorld(worldSeed(SEED), "short", undefined);
 const FIRST = SURVEY.sites[0];
 if (!FIRST) throw new Error("survey found no sites");
 const SITE_ID = FIRST.site.id;

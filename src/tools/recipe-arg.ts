@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { type WorldSeed, worldSeed } from "../core/world/recipe.js";
+import { type WorldRecipe, type WorldSeed, worldSeed } from "../core/world/recipe.js";
 import { WorldRecipeSchema } from "../core/world/recipe-schema.js";
 
 /**
@@ -12,9 +12,17 @@ import { WorldRecipeSchema } from "../core/world/recipe-schema.js";
  *
  * Exits rather than throws. These are command-line tools, and a stack trace over a
  * misplaced comma is worse than a line saying which field is wrong.
+ *
+ * The recipe comes back alongside the world it built, because a caller that goes on to
+ * *change* the world — the survey grows sites — has to rebuild it from the recipe rather
+ * than from the resolved rules, or the rebuilt world quietly loses everything the recipe
+ * said that was not about sites.
  */
-export function worldFromArgs(seed: number, path: string | undefined): WorldSeed {
-	if (!path || path === "true") return worldSeed(seed);
+export function worldFromArgs(
+	seed: number,
+	path: string | undefined,
+): { world: WorldSeed; recipe: WorldRecipe | undefined } {
+	if (!path || path === "true") return { world: worldSeed(seed), recipe: undefined };
 
 	let text: string;
 	try {
@@ -45,5 +53,5 @@ export function worldFromArgs(seed: number, path: string | undefined): WorldSeed
 		}
 		process.exit(2);
 	}
-	return worldSeed(seed, result.data);
+	return { world: worldSeed(seed, result.data), recipe: result.data };
 }

@@ -70,7 +70,7 @@ function main() {
 	const xscale = Math.max(1, Math.trunc(Number(args.get("xscale") ?? TILE_WIDTH)) || 1);
 
 	const started = Date.now();
-	const world = worldFromArgs(seed, args.get("recipe"));
+	const { world } = worldFromArgs(seed, args.get("recipe"));
 	const theme = resolveTileTheme(args.get("tiles"));
 	const { chunk, summary, buildings } = generateChunk({ world }, cc);
 	const elapsed = Date.now() - started;

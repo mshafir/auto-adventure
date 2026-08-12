@@ -64,7 +64,7 @@ function main() {
 
 	// Takes `--recipe` for the same reason `preview` and `survey` do: a scenario that
 	// says what its world is cannot be looked at through a tool that only knows the seed.
-	const world = worldFromArgs(seed, args.get("recipe"));
+	const { world } = worldFromArgs(seed, args.get("recipe"));
 	const { chunk } = generateChunk({ world }, cc);
 	const source = createWorldTileSource({
 		seed,

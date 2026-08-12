@@ -32,18 +32,6 @@
 			}
 		},
 		"sites": {
-			"radius": {
-				"town": { "base": 20, "perImportance": 3 },
-				"village": { "base": 14, "perImportance": 2 },
-				"fort": { "base": 13, "perImportance": 1 },
-				"hamlet": { "base": 9, "perImportance": 1 },
-				"ruins": { "base": 10, "perImportance": 1 },
-				"camp": { "base": 6 },
-				"landmark": { "base": 4 },
-				"castle": { "base": 18, "perImportance": 2 },
-				"docks": { "base": 12, "perImportance": 1 },
-				"cave": { "base": 6 }
-			},
 			"weights": {
 				"town": 0.5,
 				"village": 2,
@@ -52,6 +40,45 @@
 				"camp": 3,
 				"ruins": 3,
 				"landmark": 3
+			},
+			"radius": {
+				"town": {
+					"base": 20,
+					"perImportance": 3
+				},
+				"village": {
+					"base": 14,
+					"perImportance": 2
+				},
+				"fort": {
+					"base": 13,
+					"perImportance": 1
+				},
+				"hamlet": {
+					"base": 9,
+					"perImportance": 1
+				},
+				"ruins": {
+					"base": 10,
+					"perImportance": 1
+				},
+				"camp": {
+					"base": 6
+				},
+				"landmark": {
+					"base": 4
+				},
+				"castle": {
+					"base": 18,
+					"perImportance": 2
+				},
+				"docks": {
+					"base": 12,
+					"perImportance": 1
+				},
+				"cave": {
+					"base": 6
+				}
 			}
 		},
 		"places": [
@@ -85,6 +112,42 @@
 				},
 				"kind": "docks",
 				"importance": 3
+			},
+			{
+				"at": {
+					"x": -104,
+					"y": 42
+				},
+				"kind": "village",
+				"importance": 1,
+				"radius": 22
+			},
+			{
+				"at": {
+					"x": -166,
+					"y": 176
+				},
+				"kind": "hamlet",
+				"importance": 2,
+				"radius": 14
+			},
+			{
+				"at": {
+					"x": 172,
+					"y": 157
+				},
+				"kind": "hamlet",
+				"importance": 1,
+				"radius": 13
+			},
+			{
+				"at": {
+					"x": -154,
+					"y": 227
+				},
+				"kind": "village",
+				"importance": 3,
+				"radius": 23
 			}
 		],
 		"zones": [

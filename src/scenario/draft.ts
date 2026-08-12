@@ -363,9 +363,17 @@ export function assembleArtifact(
 	// into the recipe here rather than consulted at runtime — see `PackOverride.world`.
 	// Resolved once and carried on the artifact, so the map no longer depends on the
 	// pack being on disk when the scenario is played.
-	const recipe = mergeRecipe(override?.world, draft.recipe);
-	const world = worldSeed(seed, recipe);
-	const survey = surveyWorld(world, brief.duration);
+	const asDrafted = mergeRecipe(override?.world, draft.recipe);
+	const world = worldSeed(seed, asDrafted);
+	const survey = surveyWorld(world, brief.duration, asDrafted);
+	// Sites the survey had to make bigger so they could hold what they were asked for. They
+	// go into the recipe the artifact carries, because growth that lived only in the survey
+	// would be a town that shrank the next time the file was opened — with every placement
+	// inside it written against the larger one.
+	const recipe =
+		survey.places.length > 0
+			? { ...asDrafted, places: [...(asDrafted?.places ?? []), ...survey.places] }
+			: asDrafted;
 
 	const regions: Record<string, RegionSpec> = {};
 	const drafted = new Map(draft.regions?.map((region) => [region.regionId, region]) ?? []);

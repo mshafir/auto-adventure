@@ -14,7 +14,7 @@ import { generateFeature } from "../core/gen/features/registry.js";
 import { arcOutline, beatEffects, branchKey, orderedBeats } from "../core/rules/arc.js";
 import { type Condition, evaluate } from "../core/rules/condition.js";
 import { pickEnding } from "../core/rules/ending.js";
-import { macroSite } from "../core/world/macro.js";
+import { isSettlement, macroSite } from "../core/world/macro.js";
 import { npcId } from "../core/world/spec.js";
 import { resolveBarriers } from "../engine/barriers.js";
 import { approaches, resolvePlacements } from "../engine/placements.js";
@@ -96,7 +96,13 @@ describe("the shipped Arthurian scenario", () => {
 	});
 
 	it("carries a recipe, a tile pack and a clock into the world", () => {
-		expect(artifact.recipe?.places).toHaveLength(4);
+		// Four places the draft wrote — Camelot, Hautdesert, the chapel and the ferry — and
+		// four the survey added, being rolled settlements it had to make bigger before they
+		// could hold their own rosters. Told apart by kind rather than by counting: the
+		// authored ones are the kinds that decline rather than compromise, and growth never
+		// touches an authored place, so this stays true however many sites grow.
+		const places = artifact.recipe?.places ?? [];
+		expect(places.filter((place) => !isSettlement(place.kind))).toHaveLength(4);
 		expect(artifact.tiles).toBe("gramarye");
 		// The world keeps its day. A fifteen-minute story cannot afford the lord of the
 		// house to be in bed when the errand names him, and the only way to say that used
