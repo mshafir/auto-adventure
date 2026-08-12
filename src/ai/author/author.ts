@@ -189,6 +189,32 @@ export interface AuthorResult {
 	readonly repairs: readonly string[];
 }
 
+/**
+ * The lore, with the player's own choices put back over it.
+ *
+ * `lorePrompt` asks for these too, and asking is not enough on its own: a model told to
+ * preserve a field preserves it most of the time, and the times it does not are a player who
+ * picked a world by its name being overruled by a machine on the one decision they made
+ * before paying for it.
+ *
+ * Two fields and no more. The era, the factions, the deities and the premise as the model
+ * chose to phrase it are the pass's own work, and a brief that named a world is not a brief
+ * that wrote one.
+ *
+ * Exported for its test: the pass around it runs six model calls, and a rule buried inside
+ * one of them is a rule the next person deletes by accident.
+ */
+export function bindLore(written: WorldLore, brief: ScenarioBrief | undefined): WorldLore {
+	const title = brief?.title?.trim();
+	const tone = brief?.tone?.trim();
+	if (!title && !tone) return written;
+	return {
+		...written,
+		...(title ? { title } : {}),
+		...(tone ? { tone } : {}),
+	};
+}
+
 export async function authorScenario(options: AuthorOptions): Promise<AuthorResult> {
 	const say = options.onProgress ?? (() => undefined);
 	const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
@@ -272,7 +298,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	if (landmarks.length > 0) say(`the map has ${landmarks.join(", ")} on it`);
 
 	// --- pass 1: lore --------------------------------------------------------
-	const lore =
+	const written =
 		(await structured({
 			kind: "bible",
 			model: MODELS.bible,
@@ -283,6 +309,7 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			timeoutMs: AUTHOR_TIMEOUT_MS,
 			...abortable,
 		})) ?? fallbackLore();
+	const lore = bindLore(written, options.brief);
 	calls++;
 	say(`lore: ${lore.title}`);
 	stopIfAsked("the lore");

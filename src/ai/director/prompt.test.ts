@@ -62,6 +62,16 @@ describe("lorePrompt", () => {
 		expect(lorePrompt(BRIEF)).toContain("blacksmith");
 		expect(lorePrompt(BRIEF)).toContain("traveller on foot");
 	});
+
+	it("states a chosen title as settled rather than as a suggestion", () => {
+		const prompt = lorePrompt({ title: "The Tide-Glass", premise: "A drowned archipelago." });
+		expect(prompt).toContain("The Tide-Glass");
+		expect(prompt).toMatch(/already called/i);
+	});
+
+	it("says nothing about a name when nobody chose one", () => {
+		expect(lorePrompt({ premise: "A drowned archipelago." })).not.toMatch(/already called/i);
+	});
 });
 
 describe("regionPrompt", () => {

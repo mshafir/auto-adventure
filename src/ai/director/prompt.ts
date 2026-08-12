@@ -72,6 +72,18 @@ export function lorePrompt(raw?: ScenarioBrief): string {
 		"it is silent, invent; where it is specific, obey.",
 		"",
 		...briefLines(brief),
+		// Stated as settled rather than suggested, and enforced afterwards regardless — see
+		// `bindLore` in `author.ts` for why asking is not enough on its own.
+		...(brief.title
+			? [
+					"",
+					`This world is already called "${brief.title}". Use that name exactly; do not`,
+					"rename it or add a subtitle.",
+				]
+			: []),
+		...(brief.tone
+			? [`Its register is already settled: ${brief.tone}. Write everything in it.`]
+			: []),
 		"",
 		"Whatever the brief asks for, keep it small enough that a village blacksmith would plausibly",
 		"have an opinion about it, and keep a traveller on foot a natural protagonist.",
