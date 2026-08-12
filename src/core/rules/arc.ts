@@ -406,6 +406,31 @@ export interface ArcOutline {
 }
 
 /**
+ * The beats the main story is actually made of.
+ *
+ * Two exclusions, and both are the difference between "3/3, and am I done?" and an answer.
+ * Optional beats are side errands and were never part of the count. Arms of a fork the
+ * player did not take can never open — `requirementsMet` bars them permanently — so counting
+ * them would leave the story one step short of finished forever, which is the same silent
+ * dead-end the outline exists to prevent.
+ *
+ * Exported because two other passes need the same set and must not each decide it for
+ * themselves: the repair pass, which may not delete a beat that is in it, and the settling
+ * walk, which walks exactly it. A repair working from its own idea of which beats are sacred
+ * would disagree with the pane the player is reading.
+ *
+ * `state` is optional and the barred filter is what needs it. Without it both arms of a fork
+ * are main line, which is the right answer for a caller reasoning about the artifact rather
+ * than about a playthrough — and the conservative one, since the alternative is a pass that
+ * treats an arm as deletable because it could not tell.
+ */
+export function mainLineBeats(arc: ScenarioArc, state?: GameState): readonly ScenarioBeat[] {
+	return orderedBeats(arc).filter(
+		(beat) => !beat.optional && !(state && isBarredBranch(state, beat)),
+	);
+}
+
+/**
  * The story so far, for a pane that is always on screen.
  *
  * Deliberately backwards-looking. It reports what has been accomplished and what has
@@ -432,16 +457,9 @@ export function arcOutline(arc: ScenarioArc | undefined, state: GameState): ArcO
 		...(beat.optional ? { optional: true as const } : {}),
 	}));
 
-	/**
-	 * The beats the main story is actually made of, for this playthrough.
-	 *
-	 * Two exclusions, and both are the difference between "3/3, and am I done?" and an
-	 * answer. Optional beats are side errands and were never part of the count. Arms of
-	 * a fork the player did not take can never open — `requirementsMet` bars them
-	 * permanently — so counting them would leave the story one step short of finished
-	 * forever, which is the same silent dead-end this whole outline exists to prevent.
-	 */
-	const mainLine = beats.filter((beat) => !beat.optional && !isBarredBranch(state, beat));
+	// For this playthrough, so with state: an arm the player did not take is not a step still
+	// owed to them. See {@link mainLineBeats} for why the set is what it is.
+	const mainLine = mainLineBeats(arc, state);
 	const mainOpened = mainLine.filter((beat) => beatIsOpen(state, beat));
 	const mainSteps = steps.filter((_, index) => !opened[index]?.optional);
 

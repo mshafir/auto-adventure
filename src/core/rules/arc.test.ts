@@ -15,6 +15,7 @@ import {
 	beatsOpenedByState,
 	branchKey,
 	branchTaken,
+	mainLineBeats,
 	orderedBeats,
 	type ScenarioArc,
 	type ScenarioBeat,
@@ -77,6 +78,59 @@ describe("orderedBeats", () => {
 		const original = arc([beat({ id: "b", order: 1 }), beat({ id: "a", order: 0 })]);
 		orderedBeats(original);
 		expect(original.beats.map((b) => b.id)).toEqual(["b", "a"]);
+	});
+});
+
+describe("mainLineBeats", () => {
+	it("leaves out the side errands", () => {
+		const story = arc([
+			beat({ id: "a", order: 1 }),
+			beat({ id: "side", order: 2, optional: true }),
+			beat({ id: "b", order: 3 }),
+		]);
+		expect(mainLineBeats(story).map((entry) => entry.id)).toEqual(["a", "b"]);
+	});
+
+	it("keeps both arms of a fork until the story says which was taken", () => {
+		// Without state there is no answer to "which arm" — and guessing would make the
+		// repair pass treat one arm of every fork as deletable side content.
+		const story = arc([
+			beat({ id: "left", order: 1, branch: "which" }),
+			beat({ id: "right", order: 2, branch: "which" }),
+		]);
+		expect(mainLineBeats(story).map((entry) => entry.id)).toEqual(["left", "right"]);
+	});
+
+	it("drops the arm the player did not take, once it knows", () => {
+		const story = arc([
+			beat({ id: "left", order: 1, branch: "which" }),
+			beat({ id: "right", order: 2, branch: "which" }),
+		]);
+		expect(
+			mainLineBeats(story, stateWith({ [branchKey("which")]: "left" })).map((entry) => entry.id),
+		).toEqual(["left"]);
+	});
+
+	it("is what the outline counts, rather than a second opinion about it", () => {
+		// The whole reason this is exported: `arcOutline` computed the set inline, and a repair
+		// pass with its own idea of which beats are sacred would disagree with the pane the
+		// player is reading.
+		//
+		// Asserted against a number worked out by hand rather than against `mainLineBeats`
+		// itself, because `remaining` is now derived from this function — comparing the two
+		// would be a tautology that passed however wrong both were.
+		//
+		// The side errand is deliberately *unopened*, which took two attempts to get right. An
+		// open one subtracts from both halves of `mainLine.length - mainOpened.length`, so the
+		// answer comes out the same whether or not the outline excludes it, and the test could
+		// not fail. Unopened, it only inflates the first half: two main beats and nothing done
+		// is 2, and an outline that counted the errand would say 3.
+		const story = arc([
+			beat({ id: "a", order: 1, setsFlag: "arc:a" }),
+			beat({ id: "b", order: 2, setsFlag: "arc:b" }),
+			beat({ id: "side", order: 3, optional: true, setsFlag: "arc:side" }),
+		]);
+		expect(arcOutline(story, stateWith({}))?.remaining).toBe(2);
 	});
 });
 
