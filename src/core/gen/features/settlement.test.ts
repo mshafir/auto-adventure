@@ -670,8 +670,16 @@ describe("required structures", () => {
 		// itself stranded. Confirmed by temporarily instrumenting the old
 		// implementation: it demolished this exact building and `patch.buildings` came
 		// back with no "Needed" building at all.
-		const { seed, sites } = sampleSites("sweep2-242", 4);
-		const site = sites.find((s) => s.mx === -2 && s.my === -3);
+		//
+		// Re-found when the default radii were raised and the old pin, sweep2-242 at -2,-3,
+		// stopped stranding anything — exactly as the tripwire below warned it might. A
+		// sweep of 900 seeds over 6,087 settlements turned up four sites that still strand a
+		// *required* doorstep, of which this is one with no expendable neighbour to
+		// sacrifice, so the guard is the only thing between the hall and the wrecking ball.
+		// Confirmed the same way as before, by temporarily dropping the `isRequired` test
+		// from the `doomed` set: this settlement then comes back with no buildings at all.
+		const { seed, sites } = sampleSites("sweep3-547", 4);
+		const site = sites.find((s) => s.mx === -2 && s.my === -1);
 		expect(site).toBeDefined();
 		if (!site) return;
 
@@ -751,13 +759,16 @@ describe("required structures", () => {
 		// nearest non-required neighbour on the chance it would reopen the route and kept it
 		// demolished regardless of whether it actually did — and a 200-seed sweep during
 		// Task 8 never once found that trade paying for itself. Confirmed here the same way
-		// Task 8 confirmed its own pinned case: with the fix reverted (`git stash push --
-		// src/core/gen/features/settlement.ts`), this exact spec produces exactly ONE
-		// building (the required hall, still stranded — the sacrifice never helped, same as
-		// every case in Task 8's sweep); with the fix restored, it produces exactly TWO — the
-		// same hall, plus the neighbour that used to be demolished for nothing.
-		const { seed, sites } = sampleSites("sweep2-242", 4);
-		const site = sites.find((s) => s.mx === -2 && s.my === -3);
+		// Task 8 confirmed its own pinned case.
+		//
+		// Re-pinned along with the test above when the default radii were raised, and
+		// confirmed the same way: with the rollback skipped — returning straight after the
+		// sacrifice instead of testing `opened` — this fort comes back with FIVE buildings,
+		// four neighbours having been demolished across the prune rounds without ever
+		// opening the hall's route. With the rollback in place it comes back with NINE: the
+		// same hall, and the four that used to be knocked down for nothing.
+		const { seed, sites } = sampleSites("sweep3-507", 4);
+		const site = sites.find((s) => s.mx === -1 && s.my === 2);
 		expect(site).toBeDefined();
 		if (!site) return;
 

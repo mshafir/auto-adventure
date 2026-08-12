@@ -438,17 +438,38 @@ const DEFAULT_WILD_WEIGHTS: Record<SettledKind, number> = {
 	docks: 0,
 };
 
+/**
+ * How big each kind of place is, before a recipe has its say.
+ *
+ * Raised across the board, because the number that mattered was never the radius but the
+ * *plots*, and plots go as its square: the old town at 20 held around seven, of which a
+ * coastal or steep site kept rather fewer, against a roster the model was told to fill
+ * exactly. A sweep of eight seeds found sixty of eighty settlements short of the roster
+ * they were asked for. A third more radius is most of a doubling, which turns "the tail of
+ * the roster became filler" from the common case into an unusual one.
+ *
+ * Bounded twice over. `SiteRecipeSchema` caps a base at 64 — one macro cell, beyond which
+ * neighbours are guaranteed to overlap — and `maxFeatureRadius` is asserted against the
+ * halo at `HALO * MACRO`, 128. The largest here is a town at importance 5, which is 48.
+ *
+ * Corroborated rather than guessed: the one shipped scenario whose recipe a model wrote for
+ * itself chose town 26, village 20, hamlet 12 — higher than what this replaces and close to
+ * what it becomes. Given the choice, the author asks for more room.
+ *
+ * Every shipped artifact pins this whole table in its own recipe, so none of their worlds
+ * moved when these numbers did.
+ */
 const DEFAULT_RADIUS: Record<SettledKind, RadiusRule> = {
-	town: { base: 20, perImportance: 3 },
-	village: { base: 14, perImportance: 2 },
-	fort: { base: 13, perImportance: 1 },
-	hamlet: { base: 9, perImportance: 1 },
-	ruins: { base: 10, perImportance: 1 },
-	camp: { base: 6 },
-	landmark: { base: 4 },
-	castle: { base: 18, perImportance: 2 },
-	docks: { base: 12, perImportance: 1 },
-	cave: { base: 6 },
+	town: { base: 28, perImportance: 4 },
+	village: { base: 20, perImportance: 3 },
+	fort: { base: 18, perImportance: 2 },
+	hamlet: { base: 13, perImportance: 2 },
+	ruins: { base: 14, perImportance: 2 },
+	camp: { base: 9 },
+	landmark: { base: 6 },
+	castle: { base: 24, perImportance: 3 },
+	docks: { base: 16, perImportance: 2 },
+	cave: { base: 9 },
 };
 
 /**

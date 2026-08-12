@@ -409,8 +409,15 @@ describe("people indoors", () => {
 		// Walk back out the way they came in, and the same id must stop resolving: out
 		// in the world those coordinates mean a different tile entirely, and there is no
 		// building whose roster to ask.
-		engine.dispatch({ t: "Move", facing: "down" });
-		engine.dispatch({ t: "Move", facing: "down" });
+		//
+		// Stepping until the door rather than a fixed two steps. An interior's exit is at
+		// the foot of its own grid however the building is turned outside, but how far the
+		// player stands from it depends on the room — and a fixed count that overshoots
+		// walks straight back in through the door it just came out of, which is what this
+		// used to do once the towns were laid out on more room.
+		for (let step = 0; step < 8 && engine.getState().player.inside; step++) {
+			engine.dispatch({ t: "Move", facing: "down" });
+		}
 		expect(engine.getState().player.inside).toBeUndefined();
 		expect(engine.personById(someone.id)).toBeUndefined();
 	});

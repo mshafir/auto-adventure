@@ -117,16 +117,19 @@ describe("buildings-reachable", () => {
 	 * made to fail.
 	 *
 	 * Reuses the seed and site `settlement.test.ts` pins for the same reason it pins them:
-	 * `sweep2-242` at macro cell (-2,-3) is a walled town whose BSP gives it room for only
-	 * a couple of plots against this 41-structure spec, so its required hall's own
-	 * doorstep is stranded even after every prune round. Built directly from `macroSite`
-	 * rather than through `findSettlement`, because the fixture needs *this* site and not
-	 * whichever one a sweep from the origin finds first.
+	 * `sweep3-547` at macro cell (-2,-1) is a town whose BSP gives it room for only one plot
+	 * against this 41-structure spec, so its required hall's own doorstep is stranded even
+	 * after every prune round. Built directly from `macroSite` rather than through
+	 * `findSettlement`, because the fixture needs *this* site and not whichever one a sweep
+	 * from the origin finds first.
+	 *
+	 * Re-pinned with those tests when the default radii rose; the old pin, `sweep2-242` at
+	 * (-2,-3), has room for its roster now and strands nothing.
 	 */
 	it("reports a required building the carve could never reach", () => {
 		clearFeatureCache();
-		const seed = hashString("sweep2-242");
-		const site = macroSite(worldSeed(seed), -2, -3);
+		const seed = hashString("sweep3-547");
+		const site = macroSite(worldSeed(seed), -2, -1);
 		const spec = demoSiteSpec(site.id);
 
 		const artifact = demoArtifact({

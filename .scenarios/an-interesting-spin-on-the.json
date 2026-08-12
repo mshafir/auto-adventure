@@ -55,6 +55,18 @@
 			}
 		},
 		"sites": {
+			"radius": {
+				"town": { "base": 20, "perImportance": 3 },
+				"village": { "base": 14, "perImportance": 2 },
+				"fort": { "base": 13, "perImportance": 1 },
+				"hamlet": { "base": 9, "perImportance": 1 },
+				"ruins": { "base": 10, "perImportance": 1 },
+				"camp": { "base": 6 },
+				"landmark": { "base": 4 },
+				"castle": { "base": 18, "perImportance": 2 },
+				"docks": { "base": 12, "perImportance": 1 },
+				"cave": { "base": 6 }
+			},
 			"weights": {
 				"town": 0.9,
 				"village": 1.5,

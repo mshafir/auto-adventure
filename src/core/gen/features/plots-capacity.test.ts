@@ -48,6 +48,21 @@ function settlements(
 	return { world, sites };
 }
 
+/**
+ * The settlement of a seed with the most room on it.
+ *
+ * Not `sites[0]`: a cell holding a settlement is not a cell with anywhere to build, and
+ * `alpha`'s first is a hamlet of radius 17 whose ground yields no plot at all. Picking by
+ * position would make the tests below assert their properties of a site that builds
+ * nothing, which several of them cannot do.
+ */
+function roomiest(
+	world: ReturnType<typeof worldSeed>,
+	sites: readonly MacroSite[],
+): MacroSite | undefined {
+	return [...sites].sort((a, b) => sitePlots(world, b).length - sitePlots(world, a).length)[0];
+}
+
 /** Enough seeds to cross coast, slope, river and open ground. */
 const SEEDS = ["alpha", "harrow", "vale", "cramped"] as const;
 
@@ -90,7 +105,7 @@ describe("what a settlement site can hold", () => {
 
 	it("answers the same way twice, because generation is pure in seed and recipe", () => {
 		const { world, sites } = settlements("alpha");
-		const site = sites[0];
+		const site = roomiest(world, sites);
 		expect(site).toBeDefined();
 		if (!site) return;
 		expect(sitePlots(world, site)).toEqual(sitePlots(world, site));
@@ -102,7 +117,7 @@ describe("what a settlement site can hold", () => {
 		// plots used to be drawn after the ground pass had rolled a tile for every square of
 		// the footprint, so the answer depended on how much had already been made.
 		const { world, sites } = settlements("harrow");
-		const site = sites[0];
+		const site = roomiest(world, sites);
 		expect(site).toBeDefined();
 		if (!site) return;
 
@@ -119,7 +134,7 @@ describe("what a settlement site can hold", () => {
 		// the site it is measured on is one that has plots in abundance at its own size, so
 		// this is the geometry answering and not an accident of where the site sits.
 		const { world, sites } = settlements("alpha");
-		const site = sites[0];
+		const site = roomiest(world, sites);
 		expect(site).toBeDefined();
 		if (!site) return;
 

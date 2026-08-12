@@ -3,9 +3,9 @@ import { generateChunk } from "../gen/pipeline.js";
 import { hashString } from "../rand/hash.js";
 import { T } from "../tiles/terrain.js";
 import { biomeDef } from "./biome.js";
-import { CHUNK, localIndex } from "./coords.js";
+import { CHUNK, HALO, localIndex } from "./coords.js";
 import { elevationAt, elevationBand, moistureAt, roughnessAt } from "./fields.js";
-import { macroSite, maxFeatureRadius, sitesAround } from "./macro.js";
+import { MACRO, macroSite, maxFeatureRadius, sitesAround } from "./macro.js";
 import {
 	DEFAULT_RULES,
 	resolveRecipe,
@@ -57,8 +57,10 @@ describe("the defaults are the old constants", () => {
 
 	it("keeps a town within reach of the halo", () => {
 		// The one bound that cannot be violated: a feature reaching further than the halo
-		// looks exists in some chunks and not others.
-		expect(maxFeatureRadius(DEFAULT_RULES)).toBe(35);
+		// looks exists in some chunks and not others. 48 is a town at the highest
+		// importance, `28 + 4 * 5`; it was 35 before the radii were raised, and the ceiling
+		// it is measured against — 128 — has not moved.
+		expect(maxFeatureRadius(DEFAULT_RULES)).toBe(48);
 	});
 });
 
@@ -163,6 +165,47 @@ describe("authored places", () => {
 	it("counts an oversized place against the halo budget", () => {
 		const huge = resolveRecipe({ places: [{ at: AT, kind: "town", radius: 118 }] });
 		expect(maxFeatureRadius(huge)).toBe(118);
+	});
+});
+
+describe("how much room a place gets by default", () => {
+	it("gives a town room for the roster a town is asked for", () => {
+		// The estimate and the ground used to disagree most on the sites the story cares
+		// about most: across eight seeds, sixty of eighty settlements held fewer plots than
+		// the roster they were told to fill. Bigger baselines are the cheap half of closing
+		// that, because plots go as the square of the radius — a third more radius is most
+		// of a doubling.
+		expect(DEFAULT_RULES.sites.radius.town.base).toBeGreaterThanOrEqual(28);
+		expect(DEFAULT_RULES.sites.radius.village.base).toBeGreaterThanOrEqual(20);
+		expect(DEFAULT_RULES.sites.radius.hamlet.base).toBeGreaterThanOrEqual(13);
+	});
+
+	it("keeps a hamlet smaller than a village and a village smaller than a town", () => {
+		// The ladder the survey's growth ceiling walks up. A hamlet that reaches village
+		// size has stopped being the thing it was, and a ladder whose rungs crossed would
+		// make that ceiling meaningless.
+		const { radius, maxImportance } = DEFAULT_RULES.sites;
+		const at = (kind: "hamlet" | "village" | "town") =>
+			radius[kind].base + (radius[kind].perImportance ?? 0) * maxImportance;
+		expect(radius.hamlet.base).toBeLessThan(radius.village.base);
+		expect(radius.village.base).toBeLessThan(radius.town.base);
+		expect(at("hamlet")).toBeLessThan(at("village"));
+		expect(at("village")).toBeLessThan(at("town"));
+	});
+
+	it("keeps every kind inside the halo a chunk actually consults", () => {
+		// The one failure the seam contract cannot absorb: a feature reaching further than
+		// the halo exists in some chunks and not in others.
+		expect(maxFeatureRadius(DEFAULT_RULES)).toBeLessThanOrEqual(HALO * MACRO);
+	});
+
+	it("leaves a scenario that pinned its own radii exactly as it was", () => {
+		// Every shipped artifact pins the whole table, so raising these defaults moved none
+		// of their worlds. Without the pin they would each have grown a size, and the
+		// hand-placed gates and doorways written against them would have been left standing
+		// in the wrong field.
+		const pinned = resolveRecipe({ sites: { radius: { town: { base: 20, perImportance: 3 } } } });
+		expect(pinned.sites.radius.town).toEqual({ base: 20, perImportance: 3 });
 	});
 });
 
