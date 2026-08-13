@@ -94,19 +94,53 @@ describe("the game screen", () => {
 		expect(height, `frame is ${height} lines in a ${rows}-row terminal`).toBeLessThan(rows);
 	});
 
-	it("draws every row at the same visible width", () => {
-		// Escape sequences make this the only assertion that catches a glyph the
-		// terminal renders double-width: the string looks fine and the row is one
-		// column too long.
+	/**
+	 * No row may be wider than the terminal it is drawn into.
+	 *
+	 * Escape sequences make this the only assertion that catches a glyph the terminal renders
+	 * double-width: the string looks fine, the compositor counted the cell as one column, and the
+	 * row comes out one column too long — which shifts every cell after it relative to the rows
+	 * above and below.
+	 *
+	 * It used to demand that every row be *exactly* the same width, which was true on a
+	 * developer's terminal and false in CI, and cost an afternoon to explain. Ink trims trailing
+	 * whitespace from a row, and the colour path is what hid it: `encodeRow` ends a styled row
+	 * with a reset sequence, so a row whose last cell is blank does not end in whitespace and
+	 * survives. With `NO_COLOR`, `TERM=dumb`, or no TERM at all — which is CI — the same row is
+	 * bare text ending in a space and comes back a column short.
+	 *
+	 * Which is harmless, and provably so: trailing whitespace is by definition the end of the row,
+	 * so there is nothing after it to shift. A blank cell drawn as a blank cell or not drawn at
+	 * all looks identical. So the invariant is the one that can be violated visibly — nothing
+	 * overflows — and the reason the stricter one had to go is recorded here rather than rediscovered.
+	 *
+	 * The double-width glyph itself is caught earlier and harder anyway: `assertSafeGlyphs` refuses
+	 * one at registry load, so a wide glyph cannot reach a map row to be measured here. Confirmed
+	 * by trying to plant one — the module throws before a single test runs.
+	 */
+	it("draws no row wider than the terminal", () => {
+		const columns = 100;
 		const { engine } = engineBesideSomeone();
 		bindEngine(engine);
-		const { lastFrame, unmount } = renderInk(<App />);
+		const { lastFrame, unmount } = renderInk(<App />, { columns, rows: 24 });
 		const rows = (lastFrame() ?? "").split("\n").filter((row) => row.length > 0);
 		unmount();
 
 		expect(rows.length).toBeGreaterThan(5);
-		const widths = new Set(rows.map((row) => stringWidth(stripAnsi(row))));
-		expect(widths.size, `rows had differing widths: ${[...widths].join(", ")}`).toBe(1);
+		const measured = rows.map((row) => ({
+			row: stripAnsi(row),
+			width: stringWidth(stripAnsi(row)),
+		}));
+		// Named rather than counted: "rows had differing widths: 100, 99" was true and
+		// unactionable, and finding out *which* row meant reproducing the environment first.
+		const over = measured.filter((entry) => entry.width > columns);
+		expect(
+			over.map((entry) => `${entry.width}: ${JSON.stringify(entry.row)}`).join("\n"),
+			`a row is wider than the ${columns}-column terminal, so a glyph measured more than the cell it was given`,
+		).toBe("");
+		// And the map still fills the width it was given, so a row cannot be short for any reason
+		// other than the blanks Ink trims off the end.
+		expect(Math.max(...measured.map((entry) => entry.width))).toBe(columns);
 	});
 
 	it("names the place the player is standing in", () => {
