@@ -103,4 +103,12 @@ export interface GenerateRequest {
 	readonly dayAndNight: boolean;
 	/** Whether a model runs during play, for conversations nobody wrote a tree for. */
 	readonly liveInGame: boolean;
+	/**
+	 * Which try this is. 1 is the first, and absent means the same.
+	 *
+	 * Set only when a player has been shown a world whose story would not settle and has asked
+	 * for another. Everything about the brief is unchanged; this salts the seed, so what they get
+	 * is a different country rather than the same one written again.
+	 */
+	readonly attempt?: number;
 }

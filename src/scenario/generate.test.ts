@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { demoArtifact, demoSiteSpec } from "../../test/fixtures/scenario.js";
 import { AuthoringStopped, type AuthorResult } from "../ai/author/author.js";
 import type { ScenarioArtifact } from "./artifact.js";
-import { freeScenarioId, generateScenario, polishScenario } from "./generate.js";
+import { acceptScenario, freeScenarioId, generateScenario, polishScenario } from "./generate.js";
 import { verifyArtifact } from "./repo.js";
 import type { GenerateRequest } from "./scenario.js";
 import type { Finding } from "./validate.js";
@@ -52,9 +52,27 @@ afterAll(() => {
  * them means generating the whole bounded world a second time — so a fake author that
  * always claimed a clean world would be testing a contract nothing keeps.
  */
-function author(artifact: ScenarioArtifact, calls = 12, findings: readonly Finding[] = []) {
-	return async (): Promise<AuthorResult> => ({ artifact, calls, findings, repairs: [] });
+function author(
+	artifact: ScenarioArtifact,
+	calls = 12,
+	findings: readonly Finding[] = [],
+	unplayable?: AuthorResult["unplayable"],
+) {
+	return async (): Promise<AuthorResult> => ({
+		artifact,
+		calls,
+		findings,
+		repairs: [],
+		...(unplayable ? { unplayable } : {}),
+	});
 }
+
+/** What the authoring pass hands back when the story stopped at a beat it could not settle. */
+const STUCK = {
+	beat: "report-to-corbin",
+	why: "there is no way to walk there from the start",
+	tried: ["re-applied the placement fixes at report-to-corbin"],
+} as const;
 
 /** A world with a fault in it, and the findings the authoring pass would hand over with it. */
 function broken(): { artifact: ScenarioArtifact; findings: readonly Finding[] } {
@@ -175,6 +193,59 @@ describe("generating a world", () => {
 		await generateScenario(REQUEST, h.deps);
 		expect(h.written[0]?.time).toBeUndefined();
 		expect(h.written[0]?.liveInGame).toBeUndefined();
+	});
+
+	it("writes nothing when the main line could not be settled", async () => {
+		// The gate the whole track is for. A finding is a blemish on a world that still plays and
+		// is reported; a story that stops is not a world at all, and keeping one puts it in the
+		// Continue list looking exactly like one that works.
+		const h = harness({ author: author(demoArtifact(), 12, [], STUCK) });
+		const outcome = await generateScenario(REQUEST, h.deps);
+
+		expect(h.written, "an unplayable world was kept").toHaveLength(0);
+		expect(outcome.choice).toBeUndefined();
+		expect(outcome.path).toBeUndefined();
+		expect(outcome.unplayable?.beat).toBe(STUCK.beat);
+		expect(outcome.unplayable?.tried).toEqual(STUCK.tried);
+		// And it is still in hand, because the player may decide to take it anyway.
+		expect(outcome.held).toBeDefined();
+	});
+
+	it("writes it when the player accepts it anyway", async () => {
+		const h = harness({ author: author(demoArtifact(), 12, [], STUCK) });
+		const stuck = await generateScenario(REQUEST, h.deps);
+		const written: ScenarioArtifact[] = [];
+		const after = acceptScenario(stuck, {
+			write: (artifact) => {
+				written.push(artifact);
+				return "/tmp/anyway.json";
+			},
+		});
+
+		expect(written).toEqual([stuck.held]);
+		expect(after.choice?.scenario).toBe(stuck.held);
+		expect(after.path).toBe("/tmp/anyway.json");
+		// Still said, on the screen after this one: accepting a fault does not remove it.
+		expect(after.unplayable?.beat).toBe(STUCK.beat);
+	});
+
+	it("keeps the id and salts the seed on a second attempt", async () => {
+		// Same premise, same title, same packs, same file name — a different country. What the
+		// player asked for again is the world, not the brief.
+		const seeds: number[] = [];
+		const ids: string[] = [];
+		const h = harness({
+			author: async (options) => {
+				seeds.push(options.seed);
+				ids.push(options.id);
+				return { artifact: demoArtifact(), calls: 1, findings: [], repairs: [] };
+			},
+		});
+		await generateScenario(REQUEST, h.deps);
+		await generateScenario({ ...REQUEST, attempt: 2 }, h.deps);
+
+		expect(ids[0]).toBe(ids[1]);
+		expect(seeds[1]).not.toBe(seeds[0]);
 	});
 
 	it("reports progress as it goes", async () => {

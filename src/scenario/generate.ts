@@ -48,6 +48,26 @@ export interface GenerationOutcome {
 	 * Only ever set by the polish pass, which is the only thing that asks.
 	 */
 	readonly verdict?: string;
+	/**
+	 * The main-line beat that could not be settled. Nothing was written.
+	 *
+	 * The one fault that is not merely reported. Everything else here is a blemish on a world
+	 * that still plays; this is a story that stops, and handing one to a player who has just
+	 * paid four minutes for it — with nothing on the file to say so — is what the Continue list
+	 * was quietly filling up with.
+	 */
+	readonly unplayable?: {
+		readonly beat: string;
+		readonly why: string;
+		readonly tried: readonly string[];
+	};
+	/**
+	 * The world that was written and not kept, so the player can take it anyway.
+	 *
+	 * Held rather than written: `path` and `choice` are absent precisely because nothing reached
+	 * the disk, and this is what {@link acceptScenario} needs to change that.
+	 */
+	readonly held?: ScenarioArtifact;
 }
 
 /**
@@ -131,9 +151,16 @@ export async function generateScenario(
 	const taken = deps.taken ?? (() => listScenarios().map((scenario) => scenario.id));
 
 	const id = freeScenarioId(request.brief, taken());
-	// From the id, so the same name always names the same country — the rule the CLI
-	// already follows, and what makes a run reproducible from its filename alone.
-	const seed = resolveSeed(id);
+	// From the id, so the same name always names the same country — the rule the CLI already
+	// follows, and what makes a run reproducible from its filename alone.
+	//
+	// A reseed breaks that property deliberately. The premise, the title, the tone, the packs and
+	// the id are all the same on the second attempt; the *world* is the thing the player asked to
+	// be given again, so the seed is salted with which attempt this is. A kept world is still
+	// exactly reproducible — `artifact.seed` is authoritative and is what a save records — so
+	// what is lost is only guessing a seed from a filename.
+	const attempt = request.attempt ?? 1;
+	const seed = resolveSeed(attempt > 1 ? `${id}#${attempt}` : id);
 	// Opened here rather than by the caller, because here is where the id first exists and
 	// the record is named after it. Closed by the caller, which is the only thing that knows
 	// when the run is actually over — a polish pass afterwards belongs in the same record.
@@ -194,6 +221,23 @@ export async function generateScenario(
 		logger.warn(`generated ${id}: ${finding.severity} ${finding.message}`);
 	}
 
+	// Nothing reaches the disk when the story does not play. The world is handed back in `held`
+	// instead, the screen names the beat that could not be settled and what was tried, and the
+	// player chooses between another attempt and taking this one anyway. Writing it regardless —
+	// which is what this did — meant a world whose story stops at its second scene sat in the
+	// Continue list looking exactly like one that works.
+	if (result.unplayable) {
+		logger.warn(
+			`"${id}" was not kept: beat ${result.unplayable.beat} could not be settled (${result.unplayable.why})`,
+		);
+		return {
+			findings,
+			calls: result.calls,
+			unplayable: result.unplayable,
+			held: artifact,
+		};
+	}
+
 	const path = write(artifact);
 	logger.info(`wrote ${path} after ${result.calls} model calls`);
 
@@ -201,13 +245,51 @@ export async function generateScenario(
 		path,
 		findings,
 		calls: result.calls,
+		choice: playable(id, artifact, request),
+	};
+}
+
+/**
+ * Keep a world whose story stops, because the player asked for it.
+ *
+ * The only path by which an unsettled story reaches the disk, and it is a decision rather than a
+ * fallback: everything is already paid for, the fault is named on the screen in front of them,
+ * and a world that stops at its last beat is still most of a world. `unplayable` is deliberately
+ * carried through, so the review screen after this still says what is wrong with it.
+ */
+export function acceptScenario(
+	outcome: GenerationOutcome,
+	deps: { readonly write?: (artifact: ScenarioArtifact) => string } = {},
+): GenerationOutcome {
+	const artifact = outcome.held;
+	if (!artifact) return outcome;
+	const write = deps.write ?? writeScenario;
+	const path = write(artifact);
+	logger.info(`kept "${artifact.id}" at the player's asking, story unsettled`);
+	return {
+		...outcome,
+		path,
 		choice: {
-			worldId: id,
+			worldId: artifact.id,
 			seed: artifact.seed,
 			flavour: "prebuilt",
 			scenario: artifact,
-			...(request.liveInGame ? { liveInGame: true } : {}),
+			...(artifact.liveInGame ? { liveInGame: true } : {}),
 		},
+	};
+}
+
+function playable(
+	id: string,
+	artifact: ScenarioArtifact,
+	request: GenerateRequest,
+): NonNullable<GenerationOutcome["choice"]> {
+	return {
+		worldId: id,
+		seed: artifact.seed,
+		flavour: "prebuilt",
+		scenario: artifact,
+		...(request.liveInGame ? { liveInGame: true } : {}),
 	};
 }
 

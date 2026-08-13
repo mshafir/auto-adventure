@@ -14,6 +14,7 @@ import { mergeRecipe, type WorldRecipe, worldSeed } from "../../core/world/recip
 import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/spec.js";
 import { npcId } from "../../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "../../scenario/artifact.js";
+import { fitSideQuests } from "../../scenario/fit.js";
 import { inspect, repairUntilClean, score } from "../../scenario/repair.js";
 import { settleTheStory } from "../../scenario/settle.js";
 import { signpostsFor } from "../../scenario/signposts.js";
@@ -38,6 +39,7 @@ import {
 	sitePrompt,
 } from "../director/prompt.js";
 import { RegionSpecSchema, SiteSpecSchema, WorldLoreSchema } from "../director/schemas.js";
+import { adjustTheStory } from "./adjust.js";
 import { mendArtifact } from "./mend.js";
 import {
 	ARC_SYSTEM,
@@ -188,6 +190,20 @@ export interface AuthorResult {
 	readonly findings: readonly Finding[];
 	/** What the repair pass changed, in the words of the faults it removed. */
 	readonly repairs: readonly string[];
+	/**
+	 * The main-line beat that could not be settled, when one could not.
+	 *
+	 * Absent means every main-line beat opened and closed in a real session, which is a far
+	 * stronger statement than "no findings". Present means the story does not play, and the
+	 * boundary declines to write the world on the strength of it — so this is the one field here
+	 * that decides something rather than reporting it.
+	 */
+	readonly unplayable?: {
+		readonly beat: string;
+		readonly why: string;
+		/** Every fix tried on it, in words, in the order they were tried. */
+		readonly tried: readonly string[];
+	};
 }
 
 /**
@@ -637,16 +653,21 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	// with no room for the buildings the story was written against — and where it cannot, it
 	// says which beat and what it tried.
 	//
-	// Nothing is gated on it yet. Offering the player a fresh seed is the next piece of work,
-	// and a pass that could refuse to save a world before there is anything to offer instead
-	// would be a worse outcome than the fault it caught.
+	// A beat it cannot settle is carried out in {@link AuthorResult.unplayable}, and the boundary
+	// declines to write the world on the strength of it. That is the whole point of the pass: a
+	// story that stops at its second scene is not a world with a blemish, it is a world that
+	// cannot be played, and the player is offered another rather than handed this one.
 	//
 	// After the rewrites rather than before, so the walk plays the artifact that will actually
 	// be written: a mend that changed a conversation after the walk would make the walk's claim
 	// stale.
 	say("playing the story through");
 	const settled = await settleTheStory(artifact, say);
-	const settledArtifact = settled.artifact;
+	let settledArtifact = settled.artifact;
+	// Every fault a pass looked at and deliberately left, in one list. The repairs' refusals are
+	// already in `findings`; the two passes below add their own, and both kinds are the same
+	// thing — something wrong that could only have been fixed by taking story away.
+	const refusals = [...mechanical.refused];
 	repairs.push(...settled.fixes);
 	if (Object.keys(settled.grown).length > 0) {
 		say(`made room in ${Object.keys(settled.grown).length} place(s) the story had outgrown`);
@@ -661,8 +682,48 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		);
 	}
 	for (const concession of settled.concessions) say(`given: ${concession}`);
-	// Re-checked only when settling changed something, because a finding its fixes removed
-	// should not still be reported at the end of the run — and re-deriving them means
+
+	// --- pass 9: fit the side quests ------------------------------------------
+	// Only once the main line stands, and both of the next two passes are skipped otherwise for
+	// the same reason: arranging the side errands of a story that does not play is arranging the
+	// furniture in a house with no floor, and the pass after this one would be a paid call about
+	// it.
+	const sideQuests: string[] = [];
+	if (settled.settled) {
+		const fitted = await fitSideQuests(settledArtifact, say);
+		sideQuests.push(...fitted.fitted);
+		repairs.push(...fitted.fixes, ...fitted.dropped);
+		// The refusals join the findings, as the repair pass's do: a side errand that would not
+		// fit and could not be dropped is a fault a person should be shown.
+		refusals.push(...fitted.refused);
+		for (const concession of fitted.concessions) say(`given: ${concession}`);
+		if (fitted.fitted.length > 0 || fitted.dropped.length > 0) {
+			say(`fitted ${fitted.fitted.length} side errand(s), dropped ${fitted.dropped.length}`);
+		}
+		settledArtifact = fitted.artifact;
+	}
+
+	// --- pass 10: say what the story makes of them -----------------------------
+	// Gated on `skipTrees` as well, since that is the flag that already means "spend no model
+	// calls" and this is the last one in the run.
+	if (settled.settled && sideQuests.length > 0 && !options.skipTrees) {
+		const adjusted = await adjustTheStory({
+			artifact: settledArtifact,
+			fitted: sideQuests,
+			onProgress: say,
+			...abortable,
+		});
+		calls += adjusted.calls;
+		repairs.push(...adjusted.changes);
+		// Reported rather than swallowed. A pass that quietly declines to keep its own work reads
+		// exactly like a pass that was never run.
+		if (adjusted.discarded)
+			refusals.push(`the story's own adjustment was dropped: ${adjusted.discarded}`);
+		settledArtifact = adjusted.artifact;
+	}
+
+	// Re-checked only when the last three passes changed something, because a finding their fixes
+	// removed should not still be reported at the end of the run — and re-deriving them means
 	// generating the whole bounded world again.
 	//
 	// The refusals are carried across rather than recomputed. `inspect` does not know about
@@ -670,12 +731,15 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	// artifact — and settling cannot resolve one either, because what it declined to delete is
 	// story rather than placement. Dropping them here would make a main-line fault vanish from
 	// the report precisely when the pass beside it had been busy.
+	const asError = (message: string) => ({ severity: "error" as const, message });
 	if (settledArtifact !== artifact) {
 		artifact = settledArtifact;
-		findings = [
-			...inspect(artifact),
-			...mechanical.refused.map((message) => ({ severity: "error" as const, message })),
-		];
+		findings = [...inspect(artifact), ...refusals.map(asError)];
+	} else if (refusals.length > mechanical.refused.length) {
+		// Nothing was written to, so the expensive half would answer exactly what it answered
+		// before; only the refusals are new, and re-deriving the rest would cost a sweep of the
+		// bounded world to be told so.
+		findings = [...findings, ...refusals.slice(mechanical.refused.length).map(asError)];
 	}
 
 	say(
@@ -685,7 +749,13 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 					findings.filter((finding) => finding.severity !== "error").length
 				} warning(s)`,
 	);
-	return { artifact, calls, findings, repairs };
+	return {
+		artifact,
+		calls,
+		findings,
+		repairs,
+		...(settled.stuck ? { unplayable: settled.stuck } : {}),
+	};
 }
 
 /**
