@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mainLineBeats, type ScenarioBeat } from "../../core/rules/arc.js";
+import { npcId } from "../../core/world/spec.js";
 import type { ScenarioArtifact } from "../../scenario/artifact.js";
 import { readScenarioFile, scenarioPath } from "../../scenario/repo.js";
 import { adjustTheStory, lowerAdjustment } from "./adjust.js";
@@ -80,6 +81,56 @@ describe("what an adjustment is allowed to name", () => {
 		expect(lowered).toBeUndefined();
 	});
 
+	it("rejects an errand to speak to somebody two towns away", () => {
+		// Found on a real run: the model wrote "speak to Oster" at a beat two towns from Oster,
+		// which is somebody this world does contain — and `checkQuests` resolves an objective
+		// against the surroundings of the beat that handed it out, so it called the target one
+		// nothing answers to. Accepting it made the whole adjustment score worse and got it
+		// discarded wholesale, which is a call spent for nothing.
+		const artifact = thornwick();
+		const sites = Object.values(artifact.sites);
+		const elsewhere = sites[1]?.npcs[0]?.name as string;
+		expect(elsewhere).toBeDefined();
+		const lowered = lowerAdjustment(
+			response({
+				beats: [
+					newBeat({
+						siteIndex: 0,
+						quest: {
+							name: "A Word Far Away",
+							description: "Go and find them.",
+							objective: { kind: "talk", target: elsewhere },
+						},
+					}),
+				],
+			}),
+			artifact,
+			sideQuests(artifact),
+		);
+		expect(lowered).toBeUndefined();
+	});
+
+	it("rejects a beat opened by somebody with nothing written to say", () => {
+		// A beat added *after* the dialogue pass has run is a beat whose anchor has no
+		// conversation, and the validator says so. Every adjustment that added one scored worse
+		// than the world it was written for and was thrown away — so the anchor has to be
+		// somebody who already speaks.
+		const artifact = thornwick();
+		const sites = Object.values(artifact.sites);
+		const mute = sites.findIndex((spec) =>
+			spec.npcs.some((npc) => !artifact.trees?.[npcId(spec.siteId, npc.slot)]),
+		);
+		expect(mute, "every single person in thornwick has a conversation").toBeGreaterThanOrEqual(0);
+		const spec = sites[mute] as (typeof sites)[number];
+		const slot = spec.npcs.findIndex((npc) => !artifact.trees?.[npcId(spec.siteId, npc.slot)]);
+		const lowered = lowerAdjustment(
+			response({ beats: [newBeat({ siteIndex: mute, npcIndex: slot })] }),
+			artifact,
+			sideQuests(artifact),
+		);
+		expect(lowered).toBeUndefined();
+	});
+
 	it("rejects an errand naming something this world does not contain", () => {
 		const artifact = thornwick();
 		const lowered = lowerAdjustment(
@@ -111,11 +162,22 @@ describe("what an adjustment is allowed to name", () => {
 	it("adds a beat everything about which exists, and only ever as a side errand", () => {
 		const artifact = thornwick();
 		const fitted = sideQuests(artifact);
-		const site = Object.values(artifact.sites)[0];
+		const sites = Object.values(artifact.sites);
+		// Somebody who already speaks, since a beat opened by somebody with nothing written for
+		// them is the case above.
+		const at = sites.findIndex((spec) =>
+			spec.npcs.some((npc) => artifact.trees?.[npcId(spec.siteId, npc.slot)]),
+		);
+		const site = sites[at];
+		const slot = (site?.npcs ?? []).findIndex(
+			(npc) => artifact.trees?.[npcId(site?.siteId as number, npc.slot)],
+		);
 		const lowered = lowerAdjustment(
 			response({
 				beats: [
 					newBeat({
+						siteIndex: at,
+						npcIndex: slot,
 						quest: {
 							name: "The Carter's Thanks",
 							description: "Go back and hear him out.",

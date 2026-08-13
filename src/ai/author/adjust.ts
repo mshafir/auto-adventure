@@ -4,7 +4,7 @@ import { orderedBeats } from "../../core/rules/arc.js";
 import type { Condition } from "../../core/rules/condition.js";
 import type { QuestObjective } from "../../core/rules/state.js";
 import { namesMatch } from "../../core/rules/surroundings.js";
-import type { SiteSpec } from "../../core/world/spec.js";
+import { npcId, type SiteSpec } from "../../core/world/spec.js";
 import type { ScenarioArtifact } from "../../scenario/artifact.js";
 import { walkMainLine, withStory } from "../../scenario/play.js";
 import { inspect, score } from "../../scenario/repair.js";
@@ -233,10 +233,26 @@ export function lowerAdjustment(
 			rejected.push(`beat ${raw.id} is already the name of a beat in this story; dropped it`);
 			continue;
 		}
+		// Somebody who already has something to say. A beat added *after* the dialogue pass has
+		// written the conversations is a beat whose anchor has nothing written for it, and the
+		// validator says so — "the errand lands in the journal with only the deterministic menu
+		// to account for it". Measured on a real run: the one beat this pass added carried
+		// exactly that finding, which made the whole adjustment score worse and got it discarded
+		// wholesale. A pass that can never keep its own work is a call spent for nothing.
+		//
+		// Skipped where the world has no conversations at all, which is what `--no-trees` leaves:
+		// there is no better anchor to insist on, and the finding lands on every beat equally.
+		const speaks = Object.keys(artifact.trees ?? {}).length === 0;
+		if (!speaks && !artifact.trees?.[npcId(spec.siteId, npc.slot)]) {
+			rejected.push(
+				`beat ${raw.id} opens at ${npc.name}, who has no written conversation to open it with; dropped it`,
+			);
+			continue;
+		}
 		const requires = needed(raw.needs, `beat ${raw.id}`);
 		if (!requires) continue;
 		const objective = raw.quest?.objective
-			? lowerObjective(raw.quest.objective, artifact, raw.id, rejected)
+			? lowerObjective(raw.quest.objective, artifact, spec, raw.id, rejected)
 			: undefined;
 		// An objective that named something absent is the whole beat's problem, not the
 		// objective's: an errand that hands out nothing to do closes the moment it is given.
@@ -315,10 +331,17 @@ export function lowerAdjustment(
  * Resolved by the same loose name matching the engine ticks objectives with, so a target this
  * accepts is one the game will accept: anything else is an errand the player can never close,
  * handed out by a pass whose whole warrant is that it changes nothing that has to work.
+ *
+ * A `talk` target has to be at the beat's *own* settlement, which is stricter than "somewhere in
+ * this world" and is the rule the validator actually applies: it resolves an objective against
+ * the surroundings of the beat that handed it out. Found on a real run — the model wrote "speak
+ * to Oster" at a beat two towns away from Oster, this accepted it, and `checkQuests` immediately
+ * called it a target nothing answers to.
  */
 function lowerObjective(
 	raw: { readonly kind: "reach" | "talk"; readonly target: string },
 	artifact: ScenarioArtifact,
+	here: SiteSpec,
 	beatId: string,
 	rejected: string[],
 ): QuestObjective | undefined {
@@ -326,11 +349,12 @@ function lowerObjective(
 	const found =
 		raw.kind === "reach"
 			? specs.find((spec) => namesMatch(spec.name, raw.target))?.name
-			: specs.flatMap((spec: SiteSpec) => spec.npcs).find((npc) => namesMatch(npc.name, raw.target))
-					?.name;
+			: here.npcs.find((npc) => namesMatch(npc.name, raw.target))?.name;
 	if (!found) {
 		rejected.push(
-			`beat ${beatId} asks the player to ${raw.kind} "${raw.target}", which is not in this world; dropped it`,
+			raw.kind === "talk"
+				? `beat ${beatId} asks the player to speak to "${raw.target}", who is not at ${here.name}; dropped it`
+				: `beat ${beatId} asks the player to reach "${raw.target}", which is not in this world; dropped it`,
 		);
 		return undefined;
 	}

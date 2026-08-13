@@ -681,7 +681,10 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			}`,
 		);
 	}
-	for (const concession of settled.concessions) say(`given: ${concession}`);
+	// Once each. Settling walks the story again after every fix that changes the map, and each
+	// walk needs the same hand-outs — so a real run reported "gave X to close Y" three times for
+	// one item, which reads as three hand-outs rather than one fact about one errand.
+	for (const concession of new Set(settled.concessions)) say(`given: ${concession}`);
 
 	// --- pass 9: fit the side quests ------------------------------------------
 	// Only once the main line stands, and both of the next two passes are skipped otherwise for
