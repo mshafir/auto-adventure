@@ -7,6 +7,14 @@ export default defineConfig({
 	test: {
 		include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
 		environment: "node",
+		/**
+		 * A home directory per test file, so no test can read the developer's own.
+		 *
+		 * See `test/harness/home.ts`. A saved gateway key made every guarded model call go out
+		 * for real and fail unauthenticated, ten retries deep, and turned a two-minute suite into
+		 * a twenty-minute one on a machine where no code had changed.
+		 */
+		setupFiles: ["test/harness/home.ts"],
 		// Phase 0 ships the harness before the first suite; Phase 1 adds real tests.
 		passWithNoTests: true,
 		/**
