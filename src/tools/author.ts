@@ -107,7 +107,7 @@ async function main() {
 	const seed = resolveSeed(args.get("seed") ?? id);
 	const started = Date.now();
 
-	const { artifact, calls, findings, repairs } = await authorScenario({
+	const { artifact, calls, findings, repairs, unplayable } = await authorScenario({
 		id,
 		brief,
 		seed,
@@ -130,9 +130,24 @@ async function main() {
 		);
 	}
 
+	// The story would not play. Reported separately from the findings and refused separately,
+	// because it is a different kind of answer: a finding is something that reads wrong about a
+	// world that works, and this is a world that was played through and stopped.
+	if (unplayable) {
+		process.stdout.write(
+			`\nthe story stops at "${unplayable.beat}": ${unplayable.why}\n${unplayable.tried
+				.map((attempt) => `  tried    ${attempt}\n`)
+				.join("")}`,
+		);
+	}
+
 	const broken = hasErrors(findings);
-	if (broken && !args.has("force")) {
-		process.stderr.write("\nnot writing a scenario with errors in it; pass --force to override.\n");
+	if ((broken || unplayable) && !args.has("force")) {
+		process.stderr.write(
+			unplayable
+				? "\nnot writing a scenario whose story stops; run it again for a different world, or pass --force.\n"
+				: "\nnot writing a scenario with errors in it; pass --force to override.\n",
+		);
 		logTelemetry();
 		process.exit(1);
 	}

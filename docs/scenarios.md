@@ -499,6 +499,56 @@ its sibling, or it can never open at all. And the beat after a fork waits on
 the pre-fork beat lets the fork be skipped — which leaves `remaining` above zero for
 good, since neither arm was ever barred.
 
+## How a generated world is written
+
+Ten passes, in this order. The first seven produce the world; the last three decide whether
+it is any good, and one of them can stop it being written at all.
+
+| | Pass | What it does | Costs |
+|---|---|---|---|
+| 0 | shape | asks what kind of country this is | a call |
+| 1 | survey | measures the real plots at every site, and grows the ones too small for the roster they will be asked for | free |
+| 2–5 | author | lore, regions, sites, the arc, the reactions, the conversations | most of the bill |
+| 5b | signposts | boards on the road out of town | free |
+| 6 | repairs | the faults with exactly one right answer, once, unjudged | free |
+| 7 | mend | rewrites the conversations the checks complained about | a call each |
+| 8 | settle | **plays the main line in a real session**, fixing what it can | free |
+| 9 | fit | places the side errands, with no growth and one attempt each | free |
+| 10 | adjust | one call: what the story makes of the side errands that survived | a call |
+
+The last three are what makes a generated world different from a validated one.
+
+**A generated world is played before it is kept.** Pass 8 builds a real session — real
+chunks, real settlement patches, real NPC placement, the real reducer settling after every
+command — and walks the main line, beat by beat. Where a beat will not open it fixes what it
+can and tries again: somebody standing in a building the ground never built, a thing hidden in
+a room that does not exist, a site with no room for the buildings the story was written
+against. Only that last one touches the map, and only that one restarts the walk.
+
+There is deliberately no "drop it and carry on" branch on the main line. Deleting a step of
+the story to make a fault go away is the one thing none of these passes may do, so a beat that
+cannot be settled stops the pass and is reported. Side errands are the opposite: pass 9 gives
+each one attempt, no growth at all — growing a site re-rolls its layout and would move every
+plot the main line was just settled against — and drops the ones that will not fit, unless the
+main line waits on one, in which case it stays and the fault is reported.
+
+**An unplayable world is not kept.** If the main line does not settle, nothing is written. The
+screen names the beat, says why, lists what was tried, and offers three things:
+
+```
+R   another world — same premise, same title, same tone, same packs, same file name,
+    a different country (the seed is salted with the attempt)
+P   keep this one and play it anyway
+ESC give up; nothing is written
+```
+
+There is no cap on attempts: each one is an explicit keypress with what the last one cost on
+the screen beside it. `npm run author` follows the same rule and refuses to write, with
+`--force` to override.
+
+The working record is written for a discarded attempt too, so a world that was thrown away can
+still be diagnosed afterwards.
+
 ## Editing a scenario somebody is playing
 
 `arc`, `triggers`, `barriers` and `placements` are all re-read from the artifact when a
