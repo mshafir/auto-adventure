@@ -9,6 +9,7 @@ import { tilePackCatalogue } from "../../content/tiles.js";
 import { deleteSave, listSaves } from "../../persist/save-repo.js";
 import { displaySettingsPath, readSettings, writeSettings } from "../../persist/settings.js";
 import {
+	acceptScenario,
 	type GenerationOutcome,
 	generateScenario,
 	polishScenario,
@@ -188,6 +189,8 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	// over the same faults and goes back to showing progress lines.
 	let polishing = false;
 	let polish: (() => void) | undefined;
+	// What the unplayable page's three keys resolve, while it is up.
+	let decide: ((answer: "again" | "anyway" | "leave") => void) | undefined;
 	// Whether the review page is what should be on screen. Declared here rather than beside
 	// the loop that owns it because `view` closes over it and is called long before that
 	// loop is reached.
@@ -212,8 +215,17 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 			// second reading of a world the reader has already passed on would be a call spent
 			// to be told the same thing.
 			{...(polish && canUseModel && !outcome?.verdict ? { onPolish: polish } : {})}
+			{...(decide && outcome?.unplayable ? { unplayable: outcome.unplayable } : {})}
+			{...(decide ? { onRetry: () => decide?.("again"), onAccept: () => decide?.("anyway") } : {})}
 			onDismiss={() => dismiss?.()}
 			onStop={() => {
+				// On the unplayable page ESC means "give up on this world", and there is nothing
+				// left running to abort — so it answers the decision instead of stopping a run
+				// that has already finished.
+				if (decide) {
+					decide("leave");
+					return;
+				}
 				if (stopping) return;
 				stopping = true;
 				stop.abort();
@@ -225,22 +237,65 @@ async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice
 	const instance = render(view(), { exitOnCtrlC: true });
 	const draw = () => instance.rerender(view());
 
-	outcome = await generateScenario(request, {
-		signal: stop.signal,
-		onProgress: (message) => {
-			lines.push(message);
-			// `calls` is not reported per-message, so it is inferred from the lore line
-			// onward the same way the CLI's summary does — close enough for a progress
-			// display and not worth threading a counter through five passes for.
-			calls = lines.length;
-			if (!title && message.startsWith("lore: ")) title = message.slice("lore: ".length);
+	/*
+	 * Attempts, rather than one go.
+	 *
+	 * A world whose main line could not be settled is not written, so there is nothing to offer
+	 * the player except another world — same premise, same title, same tone, same packs, same
+	 * file name, a different country. There is no cap: each round is an explicit keypress with
+	 * what the last one cost on the screen beside it.
+	 *
+	 * The working record is opened per attempt by `generateScenario`, which is what lets a
+	 * discarded world still be diagnosed afterwards even though its artifact is gone.
+	 */
+	for (let attempt = 1; ; attempt++) {
+		outcome = await generateScenario(
+			{ ...request, ...(attempt > 1 ? { attempt } : {}) },
+			{
+				signal: stop.signal,
+				onProgress: (message) => {
+					lines.push(message);
+					// `calls` is not reported per-message, so it is inferred from the lore line
+					// onward the same way the CLI's summary does — close enough for a progress
+					// display and not worth threading a counter through five passes for.
+					calls = lines.length;
+					if (!title && message.startsWith("lore: ")) title = message.slice("lore: ".length);
+					draw();
+				},
+			},
+		);
+		calls = outcome.calls;
+		if (!outcome.unplayable || !outcome.held) break;
+
+		const answer = await new Promise<"again" | "anyway" | "leave">((resolve) => {
+			decide = resolve;
 			draw();
-		},
-	});
-	calls = outcome.calls;
+		});
+		decide = undefined;
+		if (answer === "anyway") {
+			outcome = acceptScenario(outcome);
+			break;
+		}
+		if (answer === "leave") {
+			lines.push("nothing was kept.");
+			break;
+		}
+		// Round again. The title comes from the next world's own lore pass, so it goes with the
+		// world it described rather than sitting above a country it has nothing to do with.
+		title = undefined;
+		lines.push("");
+		lines.push(`writing another world (attempt ${attempt + 1})`);
+		draw();
+	}
 
 	if (!outcome.choice) {
-		lines.push(outcome.stopped ? "stopped. nothing was written." : `failed: ${outcome.failure}`);
+		// Three ways to arrive here and they are different things: the player stopped the run
+		// mid-pass, the run fell over, or the story would not play and the player chose not to
+		// take it. The third is a decision rather than a failure, and saying "failed" at it would
+		// be the program blaming them for their own answer.
+		if (outcome.unplayable) lines.push("gave up on this one. nothing was written.");
+		else
+			lines.push(outcome.stopped ? "stopped. nothing was written." : `failed: ${outcome.failure}`);
 		instance.rerender(view("Nothing was kept. Press Ctrl-C to go back to the shell."));
 		await instance.waitUntilExit();
 		finish();

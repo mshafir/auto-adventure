@@ -212,6 +212,97 @@ describe("offering to mend it", () => {
 });
 
 /**
+ * The world that was written, played, and put down again.
+ *
+ * The one screen here about something that does not exist. A player who has just watched four
+ * minutes of work assumes it was kept — so this page has to say outright that it was not, name
+ * what stopped it, and offer the only two things that are still available: another world, or
+ * this one anyway.
+ */
+describe("when the story would not play", () => {
+	const STUCK = {
+		beat: "report-to-corbin",
+		why: "there is no way to walk there from the start",
+		tried: ["re-applied the placement fixes at report-to-corbin"],
+	};
+
+	function mountStuck(props: Partial<Parameters<typeof GenerateProgress>[0]> = {}) {
+		const retried: number[] = [];
+		const accepted: number[] = [];
+		const m = mount({
+			unplayable: STUCK,
+			onRetry: () => retried.push(1),
+			onAccept: () => accepted.push(1),
+			...props,
+		});
+		return { ...m, retried, accepted };
+	}
+
+	it("names the beat that stopped it, and what was tried", () => {
+		const m = mountStuck();
+		const text = m.screen();
+		expect(text).toContain("report-to-corbin");
+		expect(text).toContain("no way to walk there");
+		expect(text).toContain("re-applied the placement fixes");
+		m.ink.unmount();
+	});
+
+	it("says nothing was kept, which is the thing the player does not otherwise know", () => {
+		const m = mountStuck();
+		expect(m.screen()).toContain("Nothing was kept");
+		// And never the sentence about a world that was written, which is what the review says.
+		expect(m.screen()).not.toContain("A world written");
+		m.ink.unmount();
+	});
+
+	it("offers another world on R and this one on P", async () => {
+		const m = mountStuck();
+		await m.ink.settle();
+		await m.ink.type("r");
+		expect(m.retried).toHaveLength(1);
+		await m.ink.type("p");
+		expect(m.accepted).toHaveLength(1);
+		m.ink.unmount();
+	});
+
+	it("starts nothing on any other key, because there is nothing to start", async () => {
+		// The review screen plays the world on any key at all. Here that would open a world that
+		// is not on the disk, which is the worst possible answer to a page saying it was not kept.
+		const m = mountStuck();
+		await m.ink.settle();
+		await m.ink.type(KEY.space);
+		expect(m.dismissed).toHaveLength(0);
+		expect(m.retried).toHaveLength(0);
+		expect(m.accepted).toHaveLength(0);
+		m.ink.unmount();
+	});
+
+	it("gives up on ESC", async () => {
+		const m = mountStuck();
+		await m.ink.settle();
+		await m.ink.type(KEY.escape);
+		expect(m.stopped).toHaveLength(1);
+		m.ink.unmount();
+	});
+
+	it("stays inside its frame however much was tried", () => {
+		const m = mountStuck({
+			unplayable: {
+				...STUCK,
+				tried: Array.from({ length: 40 }, (_, i) => `attempt number ${i}`),
+			},
+		});
+		expect(
+			m
+				.screen()
+				.split("\n")
+				.filter((row) => row.length > 0),
+		).toHaveLength(24);
+		m.ink.unmount();
+	});
+});
+
+/**
  * The working, for the run where the last world came out wrong.
  *
  * The point of keeping it in the program rather than only in the log: by the time

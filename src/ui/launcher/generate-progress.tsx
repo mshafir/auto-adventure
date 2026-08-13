@@ -87,6 +87,22 @@ export interface GenerateProgressProps {
 	readonly onPolish?: () => void;
 	/** A reader's verdict on the world, once one has read it. */
 	readonly verdict?: string;
+	/**
+	 * The beat whose scene could not be made to work, when the story does not play.
+	 *
+	 * The one outcome where nothing was kept. Every other screen here is about a world that
+	 * exists and can be walked into; this one is about a world that was written, played, and put
+	 * down again — so it offers a different world rather than a keypress to get on with it.
+	 */
+	readonly unplayable?: {
+		readonly beat: string;
+		readonly why: string;
+		readonly tried: readonly string[];
+	};
+	/** Throw this one away and write another with the same brief and a new seed. */
+	readonly onRetry?: () => void;
+	/** Keep this one anyway and play it. */
+	readonly onAccept?: () => void;
 	readonly onStop: () => void;
 }
 
@@ -106,9 +122,14 @@ export function GenerateProgress({
 	onDismiss,
 	onPolish,
 	verdict,
+	unplayable,
+	onRetry,
+	onAccept,
 	onStop,
 }: GenerateProgressProps) {
-	const reviewing = done ?? Boolean(findings && findings.length > 0);
+	// The unplayable page is a review too, in the one sense this flag controls: the work is over,
+	// so the clock stops and the keys stop meaning "stop the run".
+	const reviewing = Boolean(unplayable) || (done ?? Boolean(findings && findings.length > 0));
 
 	// The clock is the one thing that has to move without anything arriving: between two
 	// passes nothing is printed for a minute at a time, and a frozen screen during that
@@ -203,6 +224,16 @@ export function GenerateProgress({
 			setShowing(true);
 			return;
 		}
+		// The unplayable page takes its keys before everything below, and takes *only* them.
+		// Nothing was written, so there is no "any other key to play it" to fall through to —
+		// a screen that started a world that is not on the disk would be the worst possible
+		// answer to a page saying the world was not kept.
+		if (unplayable) {
+			if (letter === "r") onRetry?.();
+			else if (letter === "p") onAccept?.();
+			else if (key.escape) onStop();
+			return;
+		}
 		// Before the catch-all below, for the same reason `D` is: this screen dismisses on
 		// any key, so a key that means something has to be taken out of "any" first.
 		if (reviewing && onPolish && letter === "p") {
@@ -252,9 +283,23 @@ export function GenerateProgress({
 	const shown = lines.slice(-room);
 
 	// Past tense once the work is done, because a screen that still says "writing" while it
-	// waits for a keypress reads as one that has hung.
-	const banner = reviewing ? WRITTEN : HEADING;
+	// waits for a keypress reads as one that has hung. And never "a world written" for a world
+	// that was not kept — that sentence is the one thing this page must not say.
+	const banner = unplayable ? UNPLAYABLE : reviewing ? WRITTEN : HEADING;
 	const heading = rampRows([banner], RAMP, depth)[0] ?? banner;
+
+	if (unplayable) {
+		return (
+			<Unplayable
+				columns={columns}
+				rows={rows}
+				heading={heading}
+				{...(title ? { title } : {})}
+				stuck={unplayable}
+				spent={spend}
+			/>
+		);
+	}
 
 	if (reviewing) {
 		return (
@@ -453,6 +498,94 @@ function Review({
 	);
 }
 
+/**
+ * A world that was written, played, and put down again.
+ *
+ * The only screen here about something that does not exist. Everything else reports on a world
+ * sitting in `.scenarios` — this one reports that the story stopped at a beat nothing local could
+ * fix, and that nothing was kept because of it.
+ *
+ * Three things it must say, in this order, because that is the order the questions arrive in:
+ * what went wrong, that nothing was kept, and what it cost. The fixes that were tried are on the
+ * page rather than in the log for the same reason the findings are: the log is a file the player
+ * has no reason to know about, and this is the moment they are deciding whether to spend again.
+ */
+function Unplayable({
+	columns,
+	rows,
+	heading,
+	title,
+	stuck,
+	spent,
+}: {
+	readonly columns: number;
+	readonly rows: number;
+	readonly heading: string;
+	readonly title?: string;
+	readonly stuck: {
+		readonly beat: string;
+		readonly why: string;
+		readonly tried: readonly string[];
+	};
+	readonly spent: TelemetrySnapshot;
+}) {
+	const inner = columns - CHROME;
+	// The heading and its blank, the rule, two lines of explanation, the cost and the keys.
+	const room = Math.max(1, rows - FRAME_CHROME - 8);
+	const tried = stuck.tried.slice(0, room);
+
+	return (
+		<Frame style="menu" width={columns} height={rows}>
+			<Box marginBottom={1}>
+				<Text bold>{heading}</Text>
+				{title ? <Text dimColor>{`  “${title}”`}</Text> : null}
+			</Box>
+
+			<Box flexGrow={1} flexDirection="column">
+				<Text wrap="truncate">
+					<Text color="red">{"  stopped  "}</Text>
+					<Text>{clampLine(`the scene "${stuck.beat}" would not open`, inner - 11)}</Text>
+				</Text>
+				{wrapToLines(`  ${stuck.why}.`, inner, 2).map((line) => (
+					<Text key={line} dimColor wrap="truncate">
+						{line}
+					</Text>
+				))}
+				{tried.length > 0 ? <Text dimColor>{"  What was tried:"}</Text> : null}
+				{tried.map((attempt) => (
+					<Text key={attempt} dimColor wrap="truncate">
+						{`    ${clampLine(attempt, inner - 4)}`}
+					</Text>
+				))}
+			</Box>
+
+			<Rule width={inner} />
+			{/* The sentence the whole screen exists for. Said plainly and said first, because a
+			    player who has just watched four minutes of work assumes it was kept. */}
+			<Text wrap="truncate">
+				Nothing was kept. The rest of this world is fine; its story stops here.
+			</Text>
+			<Text wrap="truncate">
+				<Text dimColor>{"Cost so far "}</Text>
+				<Text color="yellow">{money(spent.totalCost)}</Text>
+				<Text dimColor>
+					{` over ${spent.calls} call${spent.calls === 1 ? "" : "s"}, ${tokens(spent.totalTokens)} tokens`}
+				</Text>
+			</Text>
+			{/* Another world costs about what this one did, and the number above is the estimate:
+			    the player is deciding whether to spend it again, and there is no cap on how often
+			    they may — each attempt is a keypress with the price on the screen beside it. */}
+			<Text color="cyan" wrap="truncate">
+				{[
+					"R for another world, same story, new country",
+					"P to keep this one and play it anyway",
+					"ESC to give up",
+				].join(" · ")}
+			</Text>
+		</Frame>
+	);
+}
+
 /** "2 errors, 3 warnings" — the size of the problem, before any of it is read. */
 function tally(errors: number, warnings: number): string {
 	const parts: string[] = [];
@@ -469,4 +602,5 @@ function clock(seconds: number): string {
 
 const HEADING = "Writing a world";
 const WRITTEN = "A world written";
+const UNPLAYABLE = "A world put down";
 const WORKING = "The working";
