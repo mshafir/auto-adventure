@@ -109,11 +109,20 @@ function briefLines(brief: ScenarioBrief): string[] {
 	return lines;
 }
 
-/** One line per settlement, with everything the model needs to choose. */
-function siteLine(index: number, entry: SurveyedSite, spec: SiteSpec): string {
+/**
+ * One line per settlement, with everything the model needs to choose.
+ *
+ * The survey is optional because one caller has no survey to hand: the adjustment pass runs
+ * against a finished artifact, where how far a town is from the start stopped being a choice
+ * several passes ago. Everything a beat is *anchored* on — the name, the description, who is
+ * there and at which slot — is on the artifact either way, and that is what the indices mean.
+ */
+function siteLine(index: number, entry: SurveyedSite | undefined, spec: SiteSpec): string {
 	const people = spec.npcs.map((npc, slot) => `${slot}=${npc.name} the ${npc.role}`).join(", ");
 	return [
-		`[${index}] ${spec.name} — a ${entry.site.kind}, ${entry.distanceFromSpawn} tiles from the start.`,
+		entry
+			? `[${index}] ${spec.name} — a ${entry.site.kind}, ${entry.distanceFromSpawn} tiles from the start.`
+			: `[${index}] ${spec.name}`,
 		`     ${spec.description}`,
 		`     People: ${people || "nobody"}`,
 	].join("\n");
@@ -391,6 +400,72 @@ export function readingPrompt(input: {
 	]
 		.filter((line) => line !== "")
 		.join("\n");
+}
+
+export const ADJUST_SYSTEM =
+	`You are handed a finished, playable adventure and asked to write the part of it that ` +
+	`could not be written earlier. ${HOUSE_STYLE} ` +
+	"Some side errands were placed in this world and some could not be; only now is it known " +
+	"which. Your job is what the story says about the ones that survived — a last page for the " +
+	"player who did them, a line acknowledging them where the story passes by, at most a small " +
+	"errand that follows from them. " +
+	"You are not adding to the world. You may only name settlements, people, buildings and " +
+	"things that are listed below, exactly as they are spelled there. Do not invent a place, a " +
+	"person or an object, and do not change what any existing step of the story requires: the " +
+	"main line has already been played through and works, and it is not yours to alter.";
+
+/**
+ * Ask what the story wants to say about the side errands that fitted.
+ *
+ * The one call in the pipeline made *after* the world has been played, and the only one that
+ * could not have been made earlier: which side errands survived is a fact about the ground, and
+ * the ground has the last word. So the story is shown as it now stands, the surviving errands are
+ * numbered because everything written here is gated on them by index, and the cast is listed
+ * because an objective may name a person or a place and nothing else.
+ */
+export function adjustPrompt(input: {
+	readonly lore: WorldLore;
+	readonly beats: readonly {
+		readonly place: string;
+		readonly person: string;
+		readonly summary: string;
+		readonly optional: boolean;
+	}[];
+	readonly fitted: readonly { readonly summary: string }[];
+	readonly sites: readonly { readonly spec: SiteSpec }[];
+}): string {
+	return [
+		`World: ${input.lore.title}. ${input.lore.premise}`,
+		`Tone: ${input.lore.tone}.`,
+		"",
+		"The story as it now stands, in the order the player meets it:",
+		...input.beats.map(
+			(beat, index) =>
+				`  [${index}] at ${beat.place}, from ${beat.person}${beat.optional ? " (a side errand)" : ""}: ${beat.summary}`,
+		),
+		"",
+		"The side errands that are actually in this world:",
+		...input.fitted.map((side, index) => `  [${index}] ${side.summary}`),
+		"",
+		"The settlements and their people, which are all you may name:",
+		...input.sites.map((site, index) => siteLine(index, undefined, site.spec)),
+		"",
+		"Write up to three things, and none of them is required:",
+		"",
+		"  ending     A last page for a player who did the side errands you name. It is shown",
+		"             instead of the ordinary ending, and only to a player who did them, so it",
+		"             should read as though their trouble was noticed.",
+		"  revisions  New words for beats that are already in the story. Text only: the journal",
+		"             line and the errand's description. Say what the player now knows because",
+		"             of a side errand — never where a beat happens or who opens it.",
+		"  beats      A small new side errand that follows from the ones that fitted. It opens",
+		"             only once those are done, it is opened by somebody listed above, and its",
+		"             objective may only be reaching a settlement or speaking to a person named",
+		"             above.",
+		"",
+		"If the side errands do not suggest anything worth saying, write nothing at all. A page",
+		"that says less than the story already said is worse than no page.",
+	].join("\n");
 }
 
 export const TREE_SYSTEM =

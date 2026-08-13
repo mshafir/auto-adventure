@@ -167,6 +167,81 @@ export const PitchesSchema = z.object({
 export type PitchResponse = z.infer<typeof PitchSchema>;
 
 /**
+ * A side errand written *after* it is known which of the others fitted.
+ *
+ * Always optional, and gated on the side errands it is about, which is what makes this call
+ * cheap and safe. An *alternative main-line* beat is the one thing it may not produce: adding
+ * one means changing what an existing beat requires, and the main line has already been walked
+ * and settled against what it requires now. A story that gained an unreachable step at the last
+ * pass would be exactly the failure the walk exists to prevent, arriving after the walk.
+ */
+export const AdjustBeatSchema = z.object({
+	id: slugText(48).describe("Short stable slug, e.g. 'the-carters-thanks'."),
+	/** Index into the list of settlements the prompt showed. */
+	siteIndex: z.number().int().min(0),
+	/** Index into that settlement's people, as listed. */
+	npcIndex: z.number().int().min(0),
+	summary: cappedText(200).describe("What happens, for the author's eyes."),
+	journal: cappedText(240)
+		.nullable()
+		.describe("One line written into the player's journal, in their voice."),
+	needs: cappedList(z.number().int().min(0), 4).describe(
+		"Indices into the side errands that fitted. This opens once those are done.",
+	),
+	quest: z
+		.object({
+			name: cappedText(80),
+			description: cappedText(240),
+			objective: z
+				.object({
+					// No `have`: an item has to be hidden somewhere, a hiding place is a building, and
+					// a building is the map. Deliberately absent rather than filtered out later.
+					kind: z.enum(["reach", "talk"]),
+					target: cappedText(80).describe("A place or a person, named exactly as listed above."),
+				})
+				.nullable(),
+		})
+		.nullable(),
+});
+
+/**
+ * What the story says about the side errands that survived.
+ *
+ * Which of them fitted is not known until they have been placed in a real world, so anything the
+ * story wants to say *about* them has to be written afterwards. Everything here references what
+ * the artifact already contains — a settlement, a person, a beat, an errand — by index into a
+ * list the prompt showed, which is the same safety property the arc schema rests on: a model
+ * that cannot name a site cannot invent one.
+ */
+export const AdjustmentSchema = z.object({
+	/** An ending for a player who did the side errands. Null to leave the endings alone. */
+	ending: z
+		.object({
+			title: cappedText(80),
+			heading: cappedText(40).pipe(z.string().min(1)).describe("A short heading, e.g. 'After'."),
+			body: cappedText(600).describe("The last page, in two or three short paragraphs."),
+			needs: cappedList(z.number().int().min(0), 4).describe(
+				"Indices into the side errands this ending is for. It is shown only to a player who did them.",
+			),
+		})
+		.nullable(),
+	/** Existing beats whose words should acknowledge what is now reachable. Text only. */
+	revisions: cappedList(
+		z.object({
+			beat: z.number().int().min(0).describe("Index into the list of beats shown."),
+			journal: cappedText(240).nullable().describe("A new journal line, or null to keep it."),
+			errand: cappedText(240)
+				.nullable()
+				.describe("A new description for this beat's errand, or null to keep it."),
+		}),
+		6,
+	),
+	beats: cappedList(AdjustBeatSchema, 3),
+});
+
+export type AdjustmentResponse = z.infer<typeof AdjustmentSchema>;
+
+/**
  * Something the world does once a step of the story has happened.
  *
  * The condition is an *index into the beats it was shown*, never a flag the model writes,
