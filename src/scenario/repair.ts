@@ -585,6 +585,20 @@ export function hideWhatTheStoryAsksFor(artifact: ScenarioArtifact, ground: Grou
 	// each one: `surroundingsFor` reads `artifact.placements`, and the artifact is not rebuilt
 	// until this returns, so two beats asking for the same thing would otherwise hide two.
 	const placed = new Set(placements.map((placement) => placement.item.name.toLowerCase()));
+	// Which building at which site already holds something. Two placements resolving into one
+	// building land on the same *tile* — the resolver is deterministic, so the later one wins and
+	// the earlier is unreachable, which is the same silent failure as being nowhere. Caught on a
+	// live run: a beat that hides a thing of its own *and* asks for an unobtainable one had both
+	// put in the settlement's first building.
+	const claimed = new Set(
+		placements
+			.filter((placement) => placement.at.kind === "site" && placement.at.structure)
+			.map((placement) =>
+				placement.at.kind === "site"
+					? `${placement.at.siteId}:${placement.at.structure?.toLowerCase()}`
+					: "",
+			),
+	);
 	const repairs: string[] = [];
 
 	for (const beat of orderedBeats(arc)) {
@@ -596,10 +610,11 @@ export function hideWhatTheStoryAsksFor(artifact: ScenarioArtifact, ground: Grou
 			if (placed.has(objective.target.toLowerCase())) continue;
 			if (resolveObjectiveTarget("have", objective.target, surroundings) !== undefined) continue;
 
-			const where = roomFor(artifact, ground, beat.siteId);
+			const where = roomFor(artifact, ground, beat.siteId, claimed);
 			// Nothing in this whole world has a room to hide anything in. Left for the drop below
 			// to report, which is the honest outcome: there is nowhere to put it.
 			if (!where) continue;
+			claimed.add(`${where.siteId}:${where.structure.toLowerCase()}`);
 			placements.push({
 				id: `asked:${beat.id}:${objective.target.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
 				at: { kind: "site", siteId: where.siteId, structure: where.structure },
@@ -622,29 +637,47 @@ export function hideWhatTheStoryAsksFor(artifact: ScenarioArtifact, ground: Grou
 }
 
 /**
- * Somewhere with a room in it, this settlement for preference.
+ * Somewhere with a room in it that nothing else is using, this settlement for preference.
  *
  * Same order of preference as {@link hideThingsWhereThereIsSomewhereToHideThem}: where the
  * errand was handed out, then the nearest place that built anything. Being sent across a finite
  * world for a thing is what a fetch errand *is*.
+ *
+ * A building already holding a placement is skipped, because two placements in one building
+ * resolve to one tile and the earlier of them is then unreachable. When every building at every
+ * candidate is taken, the first is used anyway and the validator says so — a second thing in a
+ * crowded town is a better answer than an errand for a thing that is nowhere, and either way
+ * somebody is told.
  */
 function roomFor(
 	artifact: ScenarioArtifact,
 	ground: Ground,
 	siteId: number,
+	claimed: ReadonlySet<string>,
 ): { siteId: number; structure: string; place: string } | undefined {
-	const at =
-		(ground.built(siteId)?.buildings.length ?? 0) > 0
-			? siteId
-			: elsewhere(artifact, ground, siteId);
-	if (at === undefined) return undefined;
-	const building = ground.built(at)?.buildings[0];
-	if (!building) return undefined;
-	return {
+	const here = (ground.built(siteId)?.buildings.length ?? 0) > 0 ? siteId : undefined;
+	const candidates = [here, elsewhere(artifact, ground, siteId)];
+	const found = (at: number, building: { name?: string; kind: string }) => ({
 		siteId: at,
 		structure: building.name ?? building.kind,
 		place: artifact.sites[String(at)]?.name ?? `site ${at}`,
-	};
+	});
+
+	// A free building anywhere it may go, before a crowded one anywhere: a thing hidden in the
+	// next town along is a fetch errand, and a thing hidden under another thing is lost.
+	for (const at of candidates) {
+		if (at === undefined) continue;
+		const free = (ground.built(at)?.buildings ?? []).find(
+			(building) => !claimed.has(`${at}:${(building.name ?? building.kind).toLowerCase()}`),
+		);
+		if (free) return found(at, free);
+	}
+	for (const at of candidates) {
+		if (at === undefined) continue;
+		const any = (ground.built(at)?.buildings ?? [])[0];
+		if (any) return found(at, any);
+	}
+	return undefined;
 }
 
 /**

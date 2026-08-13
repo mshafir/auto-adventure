@@ -223,6 +223,48 @@ describe("repairArtifact", SLOW, () => {
 		expect(placed?.at.kind).toBe("site");
 	});
 
+	it("does not hide it under something else that is already hidden there", () => {
+		// Caught by a live run the moment the repair above existed. A beat that hides a thing of
+		// its own *and* asks for an unobtainable one had both put in the settlement's first
+		// building — and two placements in one building resolve to one tile, so the resolver keeps
+		// the later and the earlier is unreachable. Which is the same silent failure as being
+		// nowhere, arrived at by the repair for being nowhere.
+		const arc: ScenarioArc = {
+			title: "t",
+			premise: "p",
+			beats: [
+				beat("one", 0, {
+					quest: {
+						id: "the-nails",
+						name: "The nails",
+						description: "d",
+						objectives: [{ kind: "have", target: "Sheaf of Arrows", done: false }],
+					},
+				}),
+			],
+		};
+		const broken = demoArtifact({
+			arc,
+			placements: [
+				{
+					id: "find:one",
+					at: { kind: "site", siteId: SITE_ID, structure: "The Drowned Lamp" },
+					item: { name: "Salt Ledger", description: "A wet book of debts." },
+				},
+			],
+		});
+		const { added, fixed } = difference(broken);
+		const where = (fixed.placements ?? []).map((placement) =>
+			placement.at.kind === "site" ? `${placement.at.siteId}:${placement.at.structure}` : "",
+		);
+		expect(new Set(where).size, `two placements in one building: ${where.join(", ")}`).toBe(
+			where.length,
+		);
+		// And nothing new is wrong with the world, which is the assertion that would have caught
+		// this the first time.
+		expect(added).toEqual([]);
+	});
+
 	it("leaves an errand for a thing the world does stock exactly as it found it", () => {
 		const arc: ScenarioArc = {
 			title: "t",
