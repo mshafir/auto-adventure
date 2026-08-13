@@ -83,23 +83,19 @@ export interface ModelChoice {
  *   ("'messages' must contain the word 'json'"). Meeting that would mean editing
  *   the system prompt of every authoring pass to suit one provider, which is a
  *   worse trade than one fewer row. Worth retrying if it changes.
+ * - `zai/glm-4.7-flash` — answered the villager schema six times out of six and the
+ *   *arc* schema zero times out of three, by leaving out the beats. That is the
+ *   whole story, and nothing can stand in for it. Removed on the same rule as the
+ *   rows above, and it is worth saying why it survived so long: the bar below was
+ *   measured with a two-field object, and the call that decides whether a world has
+ *   a story at all is the largest object this pipeline ever asks for.
  *
  * The bar is not "a good model". It is "a good model that can be relied on to
- * answer in a schema", and the second half is the part that has to be measured.
+ * answer in a schema", and the second half is the part that has to be measured —
+ * against the schemas that actually matter. `catalogue-live.test.ts` asks every row
+ * for a whole arc for that reason.
  */
 export const CATALOGUE: readonly ModelChoice[] = [
-	{
-		id: "glm",
-		label: "GLM-4.7 Flash",
-		provider: "Z.ai (open weights)",
-		openWeights: true,
-		// One small model throughout, and deliberately: the full-size GLM-4.7 writes
-		// better prose and answers in the requested schema about one time in six,
-		// which is not a trade this game can make. See the note above the table.
-		fast: { model: "zai/glm-4.7-flash", price: { input: 0.07, output: 0.4 } },
-		prose: { model: "zai/glm-4.7-flash", price: { input: 0.07, output: 0.4 } },
-		note: "The cheapest way to see a world get written, and quick with it. Prose is plainer than the rest of this list; the towns and the people are as real either way.",
-	},
 	{
 		id: "deepseek",
 		label: "DeepSeek V3.2",
@@ -107,7 +103,7 @@ export const CATALOGUE: readonly ModelChoice[] = [
 		openWeights: true,
 		fast: { model: "deepseek/deepseek-v3.2", price: { input: 0.28, output: 0.42 } },
 		prose: { model: "deepseek/deepseek-v3.2", price: { input: 0.28, output: 0.42 } },
-		note: "One model for both jobs, priced almost the same for what it reads and what it writes — so a talkative world costs about what a terse one does.",
+		note: "One model for both jobs, priced almost the same for what it reads and what it writes — so a talkative world costs about what a terse one does. The cheapest row that can still plot a story.",
 	},
 	{
 		id: "gpt-5-mini",

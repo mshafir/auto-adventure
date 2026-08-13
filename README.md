@@ -113,7 +113,6 @@ named after the half you can see, and priced against the default.
 
 | `MODEL_SET` | Writes | Bookkeeping | ≈ cost |
 |---|---|---|---|
-| `glm` | `zai/glm-4.7-flash` | the same | 0.4× |
 | `deepseek` | `deepseek/deepseek-v3.2` | the same | 0.5× |
 | `gpt-5-mini` | `openai/gpt-5-mini` | `openai/gpt-5-nano` | 0.8× |
 | `gemini-2.5` | `google/gemini-2.5-flash` | `google/gemini-2.5-flash-lite` | 1× |

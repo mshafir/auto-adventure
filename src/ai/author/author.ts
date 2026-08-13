@@ -821,7 +821,12 @@ async function plotArc(input: {
 		...(input.signal ? { signal: input.signal } : {}),
 	});
 	if (!response) return undefined;
-	return lowerArc(response, input.sites);
+	// The world's own name and premise, for a model that plotted the beats and left the title
+	// blank. Both Anthropic rows do exactly that, three times out of three — see `ArcSchema`.
+	return lowerArc(response, input.sites, {
+		title: input.lore.title,
+		premise: input.lore.premise,
+	});
 }
 
 /**
@@ -854,6 +859,14 @@ function hidingPlace(wanted: string, spec: SiteSpec): string {
 export function lowerArc(
 	response: ArcResponse,
 	sites: readonly { readonly entry: { site: { id: number } }; readonly spec: SiteSpec }[],
+	/**
+	 * What to call the story when the model did not.
+	 *
+	 * The world's own title and premise, which is where a story's name comes from anyway. Only
+	 * `beats` is the arc; a missing title is not a reason to throw a plotted story away, and
+	 * before this it was — see `ArcSchema` for the measurement that made the case.
+	 */
+	fallback?: { readonly title: string; readonly premise: string },
 ): { arc: ScenarioArc; placements: Placement[] } | undefined {
 	const seen = new Set<string>();
 	/** Which fork each beat written so far belongs to, for the sibling check below. */
@@ -971,7 +984,7 @@ export function lowerArc(
 	}
 
 	const ids = new Set(beats.map((beat) => beat.id));
-	const endings: ArcEnding[] = response.endings
+	const endings: ArcEnding[] = (response.endings ?? [])
 		.filter((ending) => ids.has(ending.beat))
 		.map((ending) => ({
 			id: `end:${ending.beat}`,
@@ -985,8 +998,8 @@ export function lowerArc(
 
 	return {
 		arc: {
-			title: response.title,
-			premise: response.premise,
+			title: response.title ?? fallback?.title ?? "An untitled story",
+			premise: response.premise ?? fallback?.premise ?? "",
 			beats,
 			...(endings.length > 0 ? { endings } : {}),
 		},

@@ -67,8 +67,8 @@ describe("settings", () => {
 
 	it("leaves no temporary file behind", () => {
 		// The write goes via a temp file and a rename, the same as saves do.
-		writeSettings({ modelSet: "glm" });
-		expect(readFileSync(settingsPath(), "utf8")).toContain("glm");
+		writeSettings({ modelSet: "deepseek" });
+		expect(readFileSync(settingsPath(), "utf8")).toContain("deepseek");
 		expect(() => statSync(`${settingsPath()}.tmp`)).toThrow();
 	});
 });

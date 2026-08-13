@@ -276,6 +276,36 @@ describe("what it refuses to build", () => {
 	});
 });
 
+/*
+ * A plotted story with no title on it.
+ *
+ * The most expensive thing in the pipeline is the beats, and until this the whole answer was
+ * thrown away when the two prose fields beside them were missing. Both Anthropic rows in the
+ * catalogue do exactly that — beats, no title, no premise, no endings, three arcs out of three
+ * — which cost two live runs their entire story and reported it as one line saying no story
+ * could be plotted.
+ */
+describe("a story the model did not name", () => {
+	it("takes the world's name and premise rather than throwing the beats away", () => {
+		const result = lowerArc(
+			{ title: null, premise: null, beats: [beat({ id: "one" })], endings: null },
+			SITES,
+			{ title: "The Reed Tithe", premise: "The marsh owes more than it can cut." },
+		);
+		expect(result?.arc.beats).toHaveLength(1);
+		expect(result?.arc.title).toBe("The Reed Tithe");
+		expect(result?.arc.premise).toBe("The marsh owes more than it can cut.");
+	});
+
+	it("still has a title when there is no world to borrow one from", () => {
+		const result = lowerArc(
+			{ title: null, premise: null, beats: [beat({ id: "one" })], endings: null },
+			SITES,
+		);
+		expect(result?.arc.title).toBeTruthy();
+	});
+});
+
 describe("the shape of the world", () => {
 	/** An unremarkable world, which every test here varies one setting of. */
 	const shape = (overrides: Partial<WorldShapeResponse> = {}): WorldShapeResponse => ({

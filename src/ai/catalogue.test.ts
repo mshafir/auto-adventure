@@ -69,9 +69,9 @@ describe("the model catalogue", () => {
 	it("says which way the dearest and cheapest rows go", () => {
 		// By id, so a row quietly dropped from the table fails here rather than
 		// falling back to the default and comparing it against itself.
-		expect(CATALOGUE.map((entry) => entry.id)).toContain("glm");
+		expect(CATALOGUE.map((entry) => entry.id)).toContain("deepseek");
 		expect(costRatio(modelChoice("claude-sonnet"))).toBeGreaterThan(1);
-		expect(costRatio(modelChoice("glm"))).toBeLessThan(1);
+		expect(costRatio(modelChoice("deepseek"))).toBeLessThan(1);
 	});
 
 	it("falls back to the default rather than to nothing", () => {

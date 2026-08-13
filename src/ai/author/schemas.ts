@@ -127,15 +127,33 @@ export const ArcEndingSchema = z.object({
 	body: cappedText(600).describe("The last page, in two or three short paragraphs."),
 });
 
+/**
+ * The story, as the model plots it.
+ *
+ * Three of these four fields are optional, and that is the same rule as the caps in
+ * `limits.ts` rather than a different one: a budget is not a correctness property, and neither
+ * is a title. `beats` is the arc; everything else has an obvious answer if it is missing, and
+ * refusing the whole story for want of one throws away the only expensive thing in the call.
+ *
+ * Measured, against every model in the catalogue, three arcs each: both Anthropic rows answer
+ * with beats and *no* title, premise or endings, three times out of three, while both Google
+ * rows and both OpenAI rows fill everything in. That cost two live runs their entire story —
+ * "no story could be plotted", a world with people in it who have nothing to say about
+ * anything — and nothing in the pipeline could tell that the model had done the hard part
+ * perfectly well. `lowerArc` fills the title and the premise from the world's own lore, which
+ * is where they came from anyway.
+ */
 export const ArcSchema = z.object({
-	title: cappedText(80).describe("The story's name, not the world's."),
-	premise: cappedText(400).describe("What the player is caught up in, in two sentences."),
+	// `nullish` rather than `nullable`, and the difference is the whole fix: a nullable field
+	// still has to be *there*, and what these models do is leave the key out altogether.
+	title: cappedText(80).nullish().describe("The story's name, not the world's."),
+	premise: cappedText(400).nullish().describe("What the player is caught up in, in two sentences."),
 	beats: z
 		.array(ArcBeatSchema)
 		.min(1)
 		.transform((v) => v.slice(0, 12)),
 	/** One per arm of each fork. An ending with no matching arm is dropped. */
-	endings: cappedList(ArcEndingSchema, 6),
+	endings: cappedList(ArcEndingSchema, 6).nullish(),
 });
 
 /**
