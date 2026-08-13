@@ -111,6 +111,17 @@ describe("plotting an arc", () => {
 		expect(prompt).toContain("Every beat must say where the player goes next");
 		expect(prompt).toContain("name the person to ask for");
 	});
+
+	/*
+	 * Asked for outright, because leaving them to the schema lost every story this pass wrote.
+	 * `cappedText` trims rather than refuses — which is what stopped half the pipeline throwing
+	 * good answers away — and both Claude models answered this prompt with a perfectly good list
+	 * of beats, no title, no premise, and a schema failure that discarded the lot. Two live runs
+	 * in a row came out with no story at all.
+	 */
+	it("asks for the story's own title and premise, which the schema alone did not get", () => {
+		expect(arc(6)).toContain("Give the story a title and a premise of its own");
+	});
 });
 
 describe("writing a conversation", () => {

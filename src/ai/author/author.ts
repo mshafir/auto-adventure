@@ -749,12 +749,33 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 					findings.filter((finding) => finding.severity !== "error").length
 				} warning(s)`,
 	);
+	/*
+	 * A world with no story at all is unplayable too, and nothing else here can say so.
+	 *
+	 * `settleTheStory` reports a world with no arc as settled, correctly — there is nothing to
+	 * walk and walking nothing succeeds — so a run whose arc pass came back empty passed every
+	 * check in the pipeline and was written out as a finished scenario. What the player got was
+	 * a map with people on it who have nothing to say about anything, which is the one thing a
+	 * *prebuilt* scenario is for and the one thing it did not have.
+	 *
+	 * Found by running this for real: two live runs in a row printed "no story could be plotted"
+	 * and everything after it reported a clean world.
+	 */
+	const storyless =
+		!artifact.arc || artifact.arc.beats.length === 0
+			? {
+					beat: "the story itself",
+					why: "no story could be plotted for this world",
+					tried: [] as string[],
+				}
+			: undefined;
+
 	return {
 		artifact,
 		calls,
 		findings,
 		repairs,
-		...(settled.stuck ? { unplayable: settled.stuck } : {}),
+		...(settled.stuck ? { unplayable: settled.stuck } : storyless ? { unplayable: storyless } : {}),
 	};
 }
 

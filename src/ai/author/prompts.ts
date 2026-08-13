@@ -170,6 +170,17 @@ export function arcPrompt(input: {
 		"The world, as it already stands:",
 		...lines,
 		"",
+		// Asked for outright, because leaving them to the schema lost every story this pass
+		// wrote. `cappedText` is a transform rather than a `.max()` — it trims instead of
+		// refusing, which is what stopped half the authoring pipeline throwing answers away —
+		// and a transformed field does not reach the model as *required*. So a prompt that
+		// described the beats in detail and never mentioned a title got back a perfectly good
+		// list of beats, no title, no premise, and a schema failure that discarded the lot.
+		// Two live runs in a row came out with no story at all and the only trace was one line
+		// saying so.
+		"Give the story a title and a premise of its own — its name and what the player is caught",
+		"up in, not the world's — and then plot the beats.",
+		"",
 		`Plot exactly ${input.beats} beats. Each is one thing the player learns or is asked to do,`,
 		"and each is opened by talking to one specific person from the lists above — give the index",
 		"of the settlement and the index of the person within it.",
