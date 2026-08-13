@@ -542,9 +542,14 @@ function Unplayable({
 			</Box>
 
 			<Box flexGrow={1} flexDirection="column">
+				{/* "stops at" rather than "would not open", because there are two ways a story stops
+				    and only one of them is a scene that will not start. The other is a scene that
+				    opens and hands out an errand nothing can close, which leaves the player at the
+				    last beat waiting for an ending that cannot come. The sentence below says
+				    which. */}
 				<Text wrap="truncate">
 					<Text color="red">{"  stopped  "}</Text>
-					<Text>{clampLine(`the scene "${stuck.beat}" would not open`, inner - 11)}</Text>
+					<Text>{clampLine(`the story stops at "${stuck.beat}"`, inner - 11)}</Text>
 				</Text>
 				{wrapToLines(`  ${stuck.why}.`, inner, 2).map((line) => (
 					<Text key={line} dimColor wrap="truncate">

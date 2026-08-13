@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { arcOutline, orderedBeats } from "../../core/rules/arc.js";
+import { arcOutline, orderedBeats, type ScenarioArc } from "../../core/rules/arc.js";
 import type { GameState } from "../../core/rules/state.js";
 import type { SiteSpec } from "../../core/world/spec.js";
-import { lowerArc } from "./author.js";
+import type { ScenarioArtifact } from "../../scenario/artifact.js";
+import { lowerArc, whatStopsIt } from "./author.js";
 import type { ArcResponse, WorldShapeResponse } from "./schemas.js";
 import { recipeFor } from "./shape.js";
 
@@ -380,5 +381,62 @@ describe("the shape of the world", () => {
 		const crowded = recipeFor(shape({ settled: "crowded", strongholds: "few" }));
 		const sparse = recipeFor(shape({ settled: "sparse", strongholds: "few" }));
 		expect(crowded?.sites?.weights?.castle).toBe(sparse?.sites?.weights?.castle);
+	});
+});
+
+/**
+ * The three ways a world is not worth keeping.
+ *
+ * Each of the last two was found by a live run whose own output said the world was fine, which
+ * is the argument for this being a function with tests rather than four lines at the end of a
+ * pass nothing can call without a key.
+ */
+describe("what stops a world being played", () => {
+	const arc: ScenarioArc = {
+		title: "t",
+		premise: "p",
+		beats: [{ id: "one", order: 0, siteId: 1, npcSlot: 0, requires: [], setsFlag: "arc:one" }],
+	};
+	const world = (over: Partial<ScenarioArtifact> = {}) =>
+		({ id: "w", seed: 1, sites: {}, arc, ...over }) as ScenarioArtifact;
+
+	it("says nothing about a world that plays", () => {
+		expect(whatStopsIt({ artifact: world(), refusals: [] })).toBeUndefined();
+	});
+
+	it("names the beat that would not open, before anything else", () => {
+		const stuck = { beat: "two", why: "nobody there", tried: ["moved them"] };
+		const result = whatStopsIt({
+			artifact: world(),
+			stuck,
+			refusals: [{ beat: "one", message: "an errand nothing can close" }],
+		});
+		// The walk's own answer wins: it is the most specific thing anybody knows, and it carries
+		// what was tried.
+		expect(result).toBe(stuck);
+	});
+
+	it("refuses a world with no story in it", () => {
+		// Settling calls this settled, correctly — there is nothing to walk. What the player would
+		// get is a map with people on it who have nothing to say about anything.
+		const { arc: _none, ...storyless } = world();
+		expect(whatStopsIt({ artifact: storyless as ScenarioArtifact, refusals: [] })?.why).toContain(
+			"no story",
+		);
+		expect(
+			whatStopsIt({ artifact: world({ arc: { ...arc, beats: [] } }), refusals: [] }),
+		).toBeDefined();
+	});
+
+	it("refuses a story whose main line hands out an errand nothing can close", () => {
+		// Every beat opens, so the walk reports it settled — and `arcOutline.finished` needs every
+		// opened main-line beat's quest *completed*, so the player reaches the last scene and waits
+		// for an ending that cannot come.
+		const result = whatStopsIt({
+			artifact: world(),
+			refusals: [{ beat: "one", message: '"A Debt in Salt" asks for "silver from Sable"' }],
+		});
+		expect(result?.beat).toBe("one");
+		expect(result?.why).toContain("silver from Sable");
 	});
 });

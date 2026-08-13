@@ -4,6 +4,7 @@ import { generateFeature, invalidateFeature } from "../core/gen/features/registr
 import { standingRoom } from "../core/gen/features/residents.js";
 import { beatNpcId, mainLineBeats, orderedBeats, type ScenarioBeat } from "../core/rules/arc.js";
 import { asCondition, type Condition, flagsRead } from "../core/rules/condition.js";
+import type { Placement } from "../core/rules/placement.js";
 import type { QuestObjective } from "../core/rules/state.js";
 import { resolveObjectiveTarget } from "../core/rules/surroundings.js";
 import type { MacroSite } from "../core/world/macro.js";
@@ -59,7 +60,22 @@ export interface RepairResult {
 	 * looked at it and deliberately left it, which reads exactly like a repair that failed to
 	 * notice.
 	 */
-	readonly refused: readonly string[];
+	readonly refused: readonly Refusal[];
+}
+
+/**
+ * A fault left in place because clearing it meant shortening the main story.
+ *
+ * The beat travels beside the sentence rather than inside it. Every repair here re-derives its
+ * own condition instead of reading the validator's findings, for the reason given above — a
+ * finding is prose written for a person — and the pass that decides a world is unplayable needs
+ * to name the beat, which is the same argument one layer further out.
+ */
+export interface Refusal {
+	/** The beat whose story was left alone. */
+	readonly beat: string;
+	/** What is wrong with it, in the words a person is shown. */
+	readonly message: string;
 }
 
 /**
@@ -104,17 +120,17 @@ export function repairUntilClean(
 	artifact: ScenarioArtifact;
 	findings: readonly Finding[];
 	repairs: readonly string[];
-	refused: readonly string[];
+	refused: readonly Refusal[];
 } {
 	const attempt = repairArtifact(artifact);
 	const findings = [
 		...inspect(attempt.artifact),
-		...attempt.refused.map((message) => ({ severity: "error" as const, message })),
+		...attempt.refused.map((refusal) => ({ severity: "error" as const, message: refusal.message })),
 	];
 	if (attempt.repairs.length > 0) {
 		onProgress(`repaired ${attempt.repairs.length}, ${describe(findings)} left`);
 	}
-	for (const message of attempt.refused) onProgress(message);
+	for (const refusal of attempt.refused) onProgress(refusal.message);
 	return {
 		artifact: attempt.artifact,
 		findings,
@@ -153,7 +169,7 @@ function describe(findings: readonly Finding[]): string {
 export function repairArtifact(artifact: ScenarioArtifact): RepairResult {
 	const ground = survey(artifact);
 	const repairs: string[] = [];
-	const refused: string[] = [];
+	const refused: Refusal[] = [];
 	let current = artifact;
 	for (const repair of REPAIRS) {
 		const result = repair(current, ground);
@@ -190,6 +206,10 @@ export function repairArtifact(artifact: ScenarioArtifact): RepairResult {
  */
 const REPAIRS: readonly ((artifact: ScenarioArtifact, ground: Ground) => RepairResult)[] = [
 	spellObjectivesAsTheWorldDoes,
+	// Between the respelling and the drop, which is the only place it can go: after, because an
+	// item written in the wrong words needs respelling rather than placing, and before, because
+	// an item that has been placed is no longer one the world does not have.
+	hideWhatTheStoryAsksFor,
 	// After the respelling, and that order matters: an item this would delete for not
 	// existing may simply have been written in the wrong words, and the two repairs
 	// disagree about which is the case only because one of them has not run yet.
@@ -529,6 +549,105 @@ export function spellObjectivesAsTheWorldDoes(
 }
 
 /**
+ * The thing a story asks for, put somewhere it can be found.
+ *
+ * The other end of {@link dropErrandsForThingsThatDoNotExist}, and it has to run first. An
+ * errand naming an item nothing in this world produces has exactly three possible answers:
+ * delete the errand, refuse the world, or *put the item in it*. The third is obviously right
+ * and was missing, so for a beat on the main line — where deleting is forbidden — the pipeline
+ * had no answer at all: the errand stayed, unclosable, and the story could be walked to its
+ * last beat and never end. `arcOutline.finished` needs every opened main-line beat's quest
+ * completed, and a quest with an objective that can never tick never completes.
+ *
+ * Found on a live run of a generated world: "A Debt in Salt" asked for "silver from Sable",
+ * nothing in that world produced any, the repair refused to shorten the main line — correctly —
+ * and the launcher wrote the world anyway with one red line about it. A player would have walked
+ * three beats and waited forever for an ending.
+ *
+ * This invents an object, which is further than a repair normally goes, and the line it does not
+ * cross is the one that matters: the item is *already named by the story*. Its name comes from
+ * the objective and its description says which errand wants it, because a repair may make a
+ * world more playable and never more interesting — inventing flavour for it would be writing
+ * content nobody asked for, and inventing the item is the only way to honour content somebody
+ * did.
+ *
+ * Applies to side errands too, and that is where it earns most: an errand whose *only* objective
+ * is an unobtainable item is left alone by the drop below, on the rule that an errand which
+ * closes the moment it is given is a different kind of wrong — so today those sit open forever
+ * whether they are on the main line or not.
+ */
+export function hideWhatTheStoryAsksFor(artifact: ScenarioArtifact, ground: Ground): RepairResult {
+	const arc = artifact.arc;
+	if (!arc) return { artifact, repairs: [], refused: [] };
+	const terrainAt = (x: number, y: number) => terrainOf(ground.grid, x, y);
+	const placements: Placement[] = [...(artifact.placements ?? [])];
+	// Compared against what is already placed rather than re-deriving the surroundings after
+	// each one: `surroundingsFor` reads `artifact.placements`, and the artifact is not rebuilt
+	// until this returns, so two beats asking for the same thing would otherwise hide two.
+	const placed = new Set(placements.map((placement) => placement.item.name.toLowerCase()));
+	const repairs: string[] = [];
+
+	for (const beat of orderedBeats(arc)) {
+		const quest = beat.quest;
+		if (!quest) continue;
+		const surroundings = surroundingsFor(artifact, beat.siteId, ground.sites, terrainAt);
+		for (const objective of quest.objectives) {
+			if (objective.kind !== "have") continue;
+			if (placed.has(objective.target.toLowerCase())) continue;
+			if (resolveObjectiveTarget("have", objective.target, surroundings) !== undefined) continue;
+
+			const where = roomFor(artifact, ground, beat.siteId);
+			// Nothing in this whole world has a room to hide anything in. Left for the drop below
+			// to report, which is the honest outcome: there is nowhere to put it.
+			if (!where) continue;
+			placements.push({
+				id: `asked:${beat.id}:${objective.target.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+				at: { kind: "site", siteId: where.siteId, structure: where.structure },
+				item: { name: objective.target, description: `What "${quest.name}" asks for.` },
+				// Marked, unlike a placement an author chose to conceal. Nobody wrote a clue
+				// pointing at this one, so a container the player has no reason to open would be
+				// the same as not placing it.
+				showDecor: true,
+			});
+			placed.add(objective.target.toLowerCase());
+			repairs.push(
+				`"${quest.name}" asks for "${objective.target}", which nothing here produced; hid one in the ${where.structure} at ${where.place}`,
+			);
+		}
+	}
+
+	return repairs.length > 0
+		? { artifact: { ...artifact, placements }, repairs, refused: [] }
+		: { artifact, repairs: [], refused: [] };
+}
+
+/**
+ * Somewhere with a room in it, this settlement for preference.
+ *
+ * Same order of preference as {@link hideThingsWhereThereIsSomewhereToHideThem}: where the
+ * errand was handed out, then the nearest place that built anything. Being sent across a finite
+ * world for a thing is what a fetch errand *is*.
+ */
+function roomFor(
+	artifact: ScenarioArtifact,
+	ground: Ground,
+	siteId: number,
+): { siteId: number; structure: string; place: string } | undefined {
+	const at =
+		(ground.built(siteId)?.buildings.length ?? 0) > 0
+			? siteId
+			: elsewhere(artifact, ground, siteId);
+	if (at === undefined) return undefined;
+	const building = ground.built(at)?.buildings[0];
+	if (!building) return undefined;
+	return {
+		siteId: at,
+		structure: building.name ?? building.kind,
+		place: artifact.sites[String(at)]?.name ?? `site ${at}`,
+	};
+}
+
+/**
  * Objectives waiting on a flag nothing sets.
  *
  * The errand is handed out, it appears in the log, and it stays there forever — and
@@ -547,7 +666,7 @@ function dropObjectivesNothingCanTick(artifact: ScenarioArtifact): RepairResult 
 	// player will take.
 	const sacred = new Set(mainLineBeats(arc).map((beat) => beat.id));
 	const repairs: string[] = [];
-	const refused: string[] = [];
+	const refused: Refusal[] = [];
 
 	const beats = arc.beats.map((beat) => {
 		if (!beat.quest) return beat;
@@ -557,9 +676,10 @@ function dropObjectivesNothingCanTick(artifact: ScenarioArtifact): RepairResult 
 		const dead = beat.quest.objectives.filter((objective) => !tickable(objective, written));
 		if (sacred.has(beat.id)) {
 			for (const objective of dead) {
-				refused.push(
-					`"${beat.quest.name}" waits for "${objective.target}" and nothing sets it; beat ${beat.id} is on the main line, so it was left alone rather than shortened`,
-				);
+				refused.push({
+					beat: beat.id,
+					message: `"${beat.quest.name}" waits for "${objective.target}" and nothing sets it; beat ${beat.id} is on the main line, so it was left alone rather than shortened`,
+				});
 			}
 			return beat;
 		}
@@ -603,7 +723,7 @@ function dropErrandsForThingsThatDoNotExist(
 	if (!arc) return { artifact, repairs: [], refused: [] };
 	const sacred = new Set(mainLineBeats(arc).map((beat) => beat.id));
 	const repairs: string[] = [];
-	const refused: string[] = [];
+	const refused: Refusal[] = [];
 	const terrainAt = (x: number, y: number) => terrainOf(ground.grid, x, y);
 
 	const beats = arc.beats.map((beat) => {
@@ -619,9 +739,10 @@ function dropErrandsForThingsThatDoNotExist(
 		const gone = beat.quest.objectives.filter((objective) => missing(objective));
 		if (sacred.has(beat.id)) {
 			for (const objective of gone) {
-				refused.push(
-					`"${beat.quest.name}" asks for "${objective.target}", which nothing here produces; beat ${beat.id} is on the main line, so the errand was left alone rather than shortened`,
-				);
+				refused.push({
+					beat: beat.id,
+					message: `"${beat.quest.name}" asks for "${objective.target}", which nothing here produces; beat ${beat.id} is on the main line, so the errand was left alone rather than shortened`,
+				});
 			}
 			return beat;
 		}

@@ -185,9 +185,10 @@ describe("repairArtifact", SLOW, () => {
 	 * So: a hostile pack must produce a reported fault and a repaired scenario, never a
 	 * story that quietly cannot be finished.
 	 */
-	it("drops an errand for a thing the scenario's own pack does not stock", () => {
-		// Optional, because the drop is only allowed on a side errand now. The main-line case is
-		// the test below, and it is a refusal.
+	it("hides what an errand asks for, rather than dropping the errand", () => {
+		// The answer that was missing. An errand naming an item nothing in this world produces has
+		// three possible outcomes — delete the errand, refuse the world, or put the item in it —
+		// and until a live run went looking for the third, the pipeline only had the first two.
 		const fetch = (target: string, optional = true): ScenarioArc => ({
 			title: "t",
 			premise: "p",
@@ -210,12 +211,16 @@ describe("repairArtifact", SLOW, () => {
 		// Nothing in any world stocks this, so it stands for an errand written against a
 		// catalogue this scenario's pack does not have.
 		const broken = demoArtifact({ arc: fetch("Sheaf of Arrows") });
-		const { gone, added, repairs, fixed } = difference(broken);
+		const { repairs, fixed } = difference(broken);
 		expect(messages(broken).join("\n")).toContain("Sheaf of Arrows");
-		expect(gone.join("\n")).toContain("Sheaf of Arrows");
-		expect(added).toEqual([]);
-		expect(repairs.join("\n")).toContain("nothing here produces");
-		expect(fixed.arc?.beats[0]?.quest?.objectives).toHaveLength(1);
+		expect(repairs.join("\n")).toContain("hid one in the");
+		// The errand is exactly as long as it was, and the thing it asks for is now somewhere.
+		expect(fixed.arc?.beats[0]?.quest?.objectives).toHaveLength(2);
+		const placed = (fixed.placements ?? []).find(
+			(placement) => placement.item.name === "Sheaf of Arrows",
+		);
+		expect(placed, "the errand's item was not put anywhere").toBeDefined();
+		expect(placed?.at.kind).toBe("site");
 	});
 
 	it("leaves an errand for a thing the world does stock exactly as it found it", () => {
@@ -289,16 +294,19 @@ describe("repairArtifact", SLOW, () => {
 		};
 		const result = repairArtifact(demoArtifact({ arc }));
 		expect(result.artifact.arc?.beats[0]?.quest?.objectives).toHaveLength(2);
-		expect(result.refused.join("\n")).toContain("spine");
-		expect(result.refused.join("\n")).toContain("main line");
+		expect(result.refused.map((refusal) => refusal.message).join("\n")).toContain("spine");
+		expect(result.refused.map((refusal) => refusal.message).join("\n")).toContain("main line");
 	});
 
-	it("refuses to drop an errand the main story hands out, however unfinishable", () => {
-		// The hardest case for the rule and the one that makes it worth having. An errand naming
-		// something no world stocks genuinely cannot be finished — but it is a step of the main
-		// story, and shortening that to clear a finding is how a story quietly becomes shorter
-		// than the one somebody asked for. The finding stays, and the refusal is reported beside
-		// it so nobody reads the silence as the repair having missed it.
+	it("puts the main line's item in the world rather than leaving the errand unfinishable", () => {
+		// This used to be a refusal, and the refusal was correct and not good enough. A main-line
+		// errand naming something nothing produces cannot be shortened — that is the rule — so the
+		// errand stayed, unclosable, and `arcOutline.finished` needs every opened main-line beat's
+		// quest *completed*: the story could be walked to its last beat and never end. A live run
+		// produced exactly that and the launcher wrote the world anyway.
+		//
+		// The refusal is still there for a `flag` objective nothing sets, which is the test above:
+		// nothing can be placed to satisfy one of those.
 		const arc: ScenarioArc = {
 			title: "t",
 			premise: "p",
@@ -318,8 +326,15 @@ describe("repairArtifact", SLOW, () => {
 		};
 		const result = repairArtifact(demoArtifact({ arc }));
 		expect(result.artifact.arc?.beats[0]?.quest?.objectives).toHaveLength(2);
-		expect(result.refused.join("\n")).toContain("Sheaf of Arrows");
-		expect(result.refused.join("\n")).toContain("main line");
+		expect(result.refused.map((refusal) => refusal.message).join("\n")).not.toContain(
+			"Sheaf of Arrows",
+		);
+		expect(
+			(result.artifact.placements ?? []).some(
+				(placement) => placement.item.name === "Sheaf of Arrows",
+			),
+			"the main line's errand is still unfinishable",
+		).toBe(true);
 	});
 
 	it("keeps both arms of a fork, having no way to know which one is taken", () => {
@@ -347,7 +362,7 @@ describe("repairArtifact", SLOW, () => {
 		};
 		const result = repairArtifact(demoArtifact({ arc }));
 		expect(result.artifact.arc?.beats[0]?.quest?.objectives).toHaveLength(2);
-		expect(result.refused.join("\n")).toContain("left");
+		expect(result.refused.map((refusal) => refusal.message).join("\n")).toContain("left");
 	});
 
 	it("leaves an errand alone when the dead objective is its only one", () => {

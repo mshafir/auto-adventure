@@ -211,6 +211,26 @@ describe("generating a world", () => {
 		expect(outcome.held).toBeDefined();
 	});
 
+	it("writes nothing when a main-line errand can never be closed", async () => {
+		// The case a live run found and the gate missed. Every beat opens, so the walk reports the
+		// story settled — it hands the item over and records a concession — and `arcOutline`
+		// still needs every opened main-line beat's quest *completed*. A quest with an objective
+		// nothing can tick never completes, so the player reaches the last scene and waits for an
+		// ending that cannot come. It used to be written out with one red line about it on a
+		// screen that starts the game on any key.
+		const unfinishable = {
+			beat: "the-merchant-daughter",
+			why: '"A Debt in Salt" asks for "silver from Sable", which nothing here produces; beat the-merchant-daughter is on the main line, so the errand was left alone rather than shortened',
+			tried: [] as string[],
+		};
+		const h = harness({ author: author(demoArtifact(), 12, [], unfinishable) });
+		const outcome = await generateScenario(REQUEST, h.deps);
+
+		expect(h.written, "a story that can never end was kept").toHaveLength(0);
+		expect(outcome.unplayable?.beat).toBe("the-merchant-daughter");
+		expect(outcome.held).toBeDefined();
+	});
+
 	it("writes it when the player accepts it anyway", async () => {
 		const h = harness({ author: author(demoArtifact(), 12, [], STUCK) });
 		const stuck = await generateScenario(REQUEST, h.deps);

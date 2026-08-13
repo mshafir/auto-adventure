@@ -15,7 +15,7 @@ import type { NpcSpec, RegionSpec, SiteSpec, WorldLore } from "../../core/world/
 import { npcId } from "../../core/world/spec.js";
 import { ARTIFACT_VERSION, type ScenarioArtifact } from "../../scenario/artifact.js";
 import { fitSideQuests } from "../../scenario/fit.js";
-import { inspect, repairUntilClean, score } from "../../scenario/repair.js";
+import { inspect, type Refusal, repairUntilClean, score } from "../../scenario/repair.js";
 import { settleTheStory } from "../../scenario/settle.js";
 import { signpostsFor } from "../../scenario/signposts.js";
 import {
@@ -634,7 +634,10 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 			// had nothing to do with.
 			const after = [
 				...inspect(mended.artifact),
-				...mechanical.refused.map((message) => ({ severity: "error" as const, message })),
+				...mechanical.refused.map((refusal) => ({
+					severity: "error" as const,
+					message: refusal.message,
+				})),
 			];
 			if (score(after) < score(findings)) {
 				artifact = mended.artifact;
@@ -664,10 +667,25 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	say("playing the story through");
 	const settled = await settleTheStory(artifact, say);
 	let settledArtifact = settled.artifact;
-	// Every fault a pass looked at and deliberately left, in one list. The repairs' refusals are
-	// already in `findings`; the two passes below add their own, and both kinds are the same
-	// thing — something wrong that could only have been fixed by taking story away.
+	/*
+	 * Every fault a pass looked at and deliberately left, in one list.
+	 *
+	 * These are fatal, and it took a live run to see why. Both refusing repairs refuse *only* for
+	 * a beat on the main line, so a refusal is by construction a main-line errand that can never
+	 * be closed — and `arcOutline.finished` needs every opened main-line beat's quest completed,
+	 * so the story can be walked to its last beat and never end. That is exactly as unplayable as
+	 * a beat that will not open, and it was not gated: the world was written, with one red line
+	 * about it on a screen that starts the game on any key.
+	 *
+	 * The walk does not catch it, and cannot. A `have` objective is satisfied for the *walker* by
+	 * handing the item over — a concession, recorded and never gated on, which is the right rule
+	 * for an item some conversation gives out and the wrong one for an item the validator has
+	 * already proved nothing produces.
+	 */
 	const refusals = [...mechanical.refused];
+	/** Faults worth showing that are not reasons to throw the world away. */
+	const alsoWrong: Finding[] = [];
+	const asError = (message: string): Finding => ({ severity: "error", message });
 	repairs.push(...settled.fixes);
 	if (Object.keys(settled.grown).length > 0) {
 		say(`made room in ${Object.keys(settled.grown).length} place(s) the story had outgrown`);
@@ -696,9 +714,10 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		const fitted = await fitSideQuests(settledArtifact, say);
 		sideQuests.push(...fitted.fitted);
 		repairs.push(...fitted.fixes, ...fitted.dropped);
-		// The refusals join the findings, as the repair pass's do: a side errand that would not
-		// fit and could not be dropped is a fault a person should be shown.
-		refusals.push(...fitted.refused);
+		// Reported rather than gated on, unlike the repairs' refusals below. A main-line beat
+		// waiting on a side errand that would not fit is a beat the walk has *already* failed to
+		// open, so `settled.stuck` is set and this would be the second voice saying so.
+		alsoWrong.push(...fitted.refused.map(asError));
 		for (const concession of fitted.concessions) say(`given: ${concession}`);
 		if (fitted.fitted.length > 0 || fitted.dropped.length > 0) {
 			say(`fitted ${fitted.fitted.length} side errand(s), dropped ${fitted.dropped.length}`);
@@ -720,8 +739,14 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 		repairs.push(...adjusted.changes);
 		// Reported rather than swallowed. A pass that quietly declines to keep its own work reads
 		// exactly like a pass that was never run.
-		if (adjusted.discarded)
-			refusals.push(`the story's own adjustment was dropped: ${adjusted.discarded}`);
+		// A warning, not an error: the world was playable before this pass and is playable after
+		// it, and the pass throwing its own work away is the design working.
+		if (adjusted.discarded) {
+			alsoWrong.push({
+				severity: "warning",
+				message: `the story's own adjustment was dropped: ${adjusted.discarded}`,
+			});
+		}
 		settledArtifact = adjusted.artifact;
 	}
 
@@ -734,15 +759,18 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 	// artifact — and settling cannot resolve one either, because what it declined to delete is
 	// story rather than placement. Dropping them here would make a main-line fault vanish from
 	// the report precisely when the pass beside it had been busy.
-	const asError = (message: string) => ({ severity: "error" as const, message });
 	if (settledArtifact !== artifact) {
 		artifact = settledArtifact;
-		findings = [...inspect(artifact), ...refusals.map(asError)];
-	} else if (refusals.length > mechanical.refused.length) {
+		findings = [
+			...inspect(artifact),
+			...refusals.map((refusal) => asError(refusal.message)),
+			...alsoWrong,
+		];
+	} else if (alsoWrong.length > 0) {
 		// Nothing was written to, so the expensive half would answer exactly what it answered
-		// before; only the refusals are new, and re-deriving the rest would cost a sweep of the
-		// bounded world to be told so.
-		findings = [...findings, ...refusals.slice(mechanical.refused.length).map(asError)];
+		// before — and the repairs' refusals are already in `findings`. Only these are new, and
+		// re-deriving the rest would cost a sweep of the bounded world to be told so.
+		findings = [...findings, ...alsoWrong];
 	}
 
 	say(
@@ -752,34 +780,62 @@ export async function authorScenario(options: AuthorOptions): Promise<AuthorResu
 					findings.filter((finding) => finding.severity !== "error").length
 				} warning(s)`,
 	);
-	/*
-	 * A world with no story at all is unplayable too, and nothing else here can say so.
-	 *
-	 * `settleTheStory` reports a world with no arc as settled, correctly — there is nothing to
-	 * walk and walking nothing succeeds — so a run whose arc pass came back empty passed every
-	 * check in the pipeline and was written out as a finished scenario. What the player got was
-	 * a map with people on it who have nothing to say about anything, which is the one thing a
-	 * *prebuilt* scenario is for and the one thing it did not have.
-	 *
-	 * Found by running this for real: two live runs in a row printed "no story could be plotted"
-	 * and everything after it reported a clean world.
-	 */
-	const storyless =
-		!artifact.arc || artifact.arc.beats.length === 0
-			? {
-					beat: "the story itself",
-					why: "no story could be plotted for this world",
-					tried: [] as string[],
-				}
-			: undefined;
-
+	const unplayable = whatStopsIt({ artifact, stuck: settled.stuck, refusals });
 	return {
 		artifact,
 		calls,
 		findings,
 		repairs,
-		...(settled.stuck ? { unplayable: settled.stuck } : storyless ? { unplayable: storyless } : {}),
+		...(unplayable ? { unplayable } : {}),
 	};
+}
+
+/**
+ * Why this world cannot be played, if it cannot.
+ *
+ * Three ways, and they had to be found one at a time — each of the last two by a live run whose
+ * output said the world was fine.
+ *
+ * 1. **A beat that will not open.** The walk says so, and it is the obvious one.
+ * 2. **No story at all.** `settleTheStory` calls a world with no arc settled, correctly: there is
+ *    nothing to walk and walking nothing succeeds. So a run whose arc pass came back empty passed
+ *    every check in the pipeline, and what the player got was a map with people on it who have
+ *    nothing to say about anything — the one thing a *prebuilt* scenario is for.
+ * 3. **An errand on the main line that can never be closed**, which is the same thing as a story
+ *    that never ends. Every beat opens, so the walk reports the story settled; it hands the item
+ *    over and records a concession. But `arcOutline.finished` needs every opened main-line beat's
+ *    quest *completed*, and a quest with an objective nothing can tick never completes — so the
+ *    player reaches the last scene and waits for an ending that cannot come.
+ *
+ * A refusal is exactly case 3 and nothing else: both refusing repairs refuse only for a beat on
+ * the main line, and only once they have proved the objective unsatisfiable. Where that objective
+ * was an item, `hideWhatTheStoryAsksFor` has put one in the world long before this, so what
+ * reaches here is a gate nothing opens.
+ *
+ * Its own function because `authorScenario` cannot be tested without a key, and a rule that
+ * decides whether a paid-for world is thrown away should not be the one thing in the pass that
+ * nothing checks.
+ */
+export function whatStopsIt(input: {
+	readonly artifact: ScenarioArtifact;
+	readonly stuck?: {
+		readonly beat: string;
+		readonly why: string;
+		readonly tried: readonly string[];
+	};
+	readonly refusals: readonly Refusal[];
+}): AuthorResult["unplayable"] {
+	if (input.stuck) return input.stuck;
+	if (!input.artifact.arc || input.artifact.arc.beats.length === 0) {
+		return {
+			beat: "the story itself",
+			why: "no story could be plotted for this world",
+			tried: [],
+		};
+	}
+	const refusal = input.refusals[0];
+	if (refusal) return { beat: refusal.beat, why: refusal.message, tried: [] };
+	return undefined;
 }
 
 /**
