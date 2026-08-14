@@ -1,17 +1,11 @@
 import { Text } from "ink";
-import { telemetrySnapshot } from "../../ai/telemetry.js";
-import { transcript } from "../../ai/transcript.js";
 import { arcOutline } from "../../core/rules/arc.js";
 import { bearingTo, questMarks } from "../../core/rules/quest-map.js";
 import { describeObjective, questNeeding, questRows } from "../../core/rules/quests.js";
 import { type GameState, type Quest, worldAnchor } from "../../core/rules/state.js";
 import { toChunk } from "../../core/world/coords.js";
-import { logRing } from "../../utils/log.js";
 import { type HudState, PANEL_TABS, type PanelTab } from "../hud-state.js";
-import { tileMode } from "../viewport.js";
-import { mapLegend } from "./legend.js";
 import { Bullet, Field, FRAME_CHROME, Frame, Prose, Rule, ScrollList } from "./primitives.js";
-import { TranscriptView } from "./transcript-view.js";
 
 /**
  * A page, given the whole frame.
@@ -39,9 +33,9 @@ export interface ReaderProps {
 	/**
 	 * Which tabs the strip should show.
 	 *
-	 * Passed in rather than read from the module because the debug page comes and goes,
-	 * and a strip drawing four while the reducer cycles five leaves one tab that can be
-	 * reached and not seen.
+	 * Passed in rather than read from the module so the strip and the reducer cannot
+	 * disagree: a screen drawing three tabs while the reducer cycles four would leave one
+	 * that could be reached and not seen.
 	 */
 	readonly tabs?: readonly PanelTab[];
 }
@@ -62,8 +56,6 @@ const TAB_LABELS: Readonly<Record<PanelTab, string>> = {
 	inventory: "Carrying",
 	quests: "Errands",
 	journal: "Journal",
-	key: "Key",
-	debug: "Working",
 };
 
 export function Reader({ state, hud, width, height, tab, tabs = PANEL_TABS }: ReaderProps) {
@@ -79,8 +71,6 @@ export function Reader({ state, hud, width, height, tab, tabs = PANEL_TABS }: Re
 			{tab === "quests" && <QuestReader state={state} hud={hud} width={inner} rows={rows} />}
 			{tab === "journal" && <JournalReader state={state} hud={hud} width={inner} rows={rows} />}
 			{tab === "inventory" && <InventoryReader state={state} hud={hud} width={inner} rows={rows} />}
-			{tab === "key" && <KeyReader width={inner} rows={rows} />}
-			{tab === "debug" && <WorkingReader hud={hud} width={inner} rows={rows} />}
 		</Frame>
 	);
 }
@@ -117,75 +107,6 @@ function TabStrip({
 				);
 			})}
 		</Text>
-	);
-}
-
-/**
- * What is on the map, in whichever terms the map is currently drawn in.
- *
- * A page of its own because the map is full width now and there is no panel to
- * put a key in. That is no loss: read at full width it fits in one column with
- * room for the labels, where in the panel it was a two-column grid the bottom of
- * which fell off a short terminal.
- *
- * The renderer is asked rather than assumed. A key listing `♠ ▒ ~` beside "trees"
- * and "water" is describing characters that are not on screen at all in pixel
- * mode, where the same registry entries are drawn as shapes in colour.
- */
-function KeyReader({ width, rows }: { width: number; rows: number }) {
-	const pixels = tileMode() === "kitty";
-	const entries = mapLegend(tileMode()).slice(0, Math.max(0, rows - 1));
-	return (
-		<>
-			<Rule width={width} label={pixels ? "the colours on the map" : "what you are looking at"} />
-			{entries.map((entry) => (
-				<Text key={entry.label} wrap="truncate">
-					<Text bold={entry.bold ?? false} color={entry.color}>
-						{entry.ch}
-					</Text>
-					<Text color="gray">{`  ${entry.label}`}</Text>
-				</Text>
-			))}
-		</>
-	);
-}
-
-/**
- * Every model call this session, and what it cost.
- *
- * A page rather than a log line, because the log is a file the player has no reason to
- * know about and every reason not to be reading while inside a full-screen program.
- *
- * On the strip for every world. A scenario carries the record of its own authoring beside
- * it, so this page has something in it even for a world written last week by somebody else
- * — which is the case it is most wanted in, and the one it used to be missing for.
- *
- * The question and the answer are drawn as one document rather than as two panes to be
- * switched between: what a reader actually does is find where the prompt described the
- * town and then check what came back about it, and that is one continuous read.
- */
-function WorkingReader({
-	hud,
-	width,
-	rows,
-}: {
-	readonly hud: HudState;
-	readonly width: number;
-	readonly rows: number;
-}) {
-	const exchanges = transcript();
-	const log = logRing();
-	return (
-		<TranscriptView
-			exchanges={exchanges}
-			cursor={hud.cursor}
-			offset={hud.detail * DETAIL_PAGE}
-			part="both"
-			width={width}
-			rows={rows}
-			totals={telemetrySnapshot()}
-			{...(log.length > 0 ? { log } : {})}
-		/>
 	);
 }
 
@@ -394,8 +315,22 @@ function JournalReader({
 
 	const cursor = Math.min(hud.cursor, entries.length - 1);
 	const selected = entries[cursor];
-	const detail = Math.min(6, Math.max(3, Math.floor(rows * 0.3)));
+	/*
+	 * The selected entry gets most of the page when it has more than a line in it.
+	 *
+	 * An entry used to be one sentence and a fixed six rows was plenty. Now an entry can
+	 * carry what was actually said — the whole of a card, the direction an NPC gave — and the
+	 * player opening the journal an hour later is looking for exactly that. So the list
+	 * shrinks to a third and the words get the rest, with SPACE and B to scroll when even
+	 * that is not enough.
+	 */
+	const expandable = (selected?.detail?.length ?? 0) > 0;
+	const detail = expandable
+		? Math.max(6, Math.floor(rows * 0.6))
+		: Math.min(6, Math.max(3, Math.floor(rows * 0.3)));
 	const listRows = Math.max(1, rows - detail - 2);
+	const body = selected ? [selected.text, ...(selected.detail ?? [])].join("\n\n") : "";
+	const offset = hud.detail * DETAIL_PAGE;
 
 	return (
 		<>
@@ -412,6 +347,7 @@ function JournalReader({
 						<>
 							<Text color={KIND_COLOR[entry.kind] ?? "gray"}>{`[${entry.kind}] `}</Text>
 							<Text>{entry.text}</Text>
+							{(entry.detail?.length ?? 0) > 0 && <Text color="gray"> …</Text>}
 						</>
 					);
 				}}
@@ -421,8 +357,11 @@ function JournalReader({
 					{/* The kind, not the source: a source is an internal id — "weight",
 					    "arc:the-short-tally" — and reading one in a heading is reading the
 					    implementation. It earns its keep as a filter, not as a label. */}
-					<Rule width={width} label={selected.kind} />
-					<Prose text={selected.text} width={width} rows={detail} />
+					<Rule
+						width={width}
+						label={expandable ? `${selected.kind} — SPACE to read on` : selected.kind}
+					/>
+					<Prose text={body} width={width} rows={detail} offset={offset} />
 				</>
 			)}
 		</>

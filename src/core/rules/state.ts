@@ -189,6 +189,19 @@ export interface JournalEntry {
 	readonly kind: "lore" | "place" | "rumor" | "event";
 	readonly text: string;
 	readonly source?: string;
+	/**
+	 * What was actually said, kept under the one-line summary.
+	 *
+	 * The journal used to hold only `text`: a single sentence written by whoever raised the
+	 * entry. That is the right thing in a list and the wrong thing an hour later, when the
+	 * player has forgotten which of three names the ferryman told them to ask for. Every
+	 * direction the game gives arrives either in a conversation or on a full screen of prose,
+	 * and both of those used to be gone the moment they were dismissed.
+	 *
+	 * So an entry may carry the words themselves. The list still shows one line; the reader
+	 * underneath shows this, and can be scrolled.
+	 */
+	readonly detail?: readonly string[];
 }
 
 /**

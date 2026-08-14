@@ -1,6 +1,5 @@
 import { Box, useApp, useStdout } from "ink";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { transcript } from "../ai/transcript.js";
 import { CONFIG } from "../config.js";
 import { resolveTileTheme } from "../content/tiles.js";
 import { computeFov, lightAt } from "../core/geom/fov.js";
@@ -26,9 +25,8 @@ import {
 	type HudState,
 	hudReducer,
 	initialHud,
-	LIST_TABS,
+	PANEL_TABS,
 	type PanelTab,
-	panelTabs,
 } from "./hud-state.js";
 import { useGameInput } from "./input/use-game-input.js";
 import { CardScreen } from "./panels/card-screen.js";
@@ -100,13 +98,10 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	const state = useGameState();
 	const { width, height } = useTerminalSize();
 	const { exit } = useApp();
-	// Which pages the menu offers. Fixed rather than per-run: a scenario carries the record
-	// of its own authoring, so the working page has something in it for any world.
-	const tabs = panelTabs();
 	const [hud, hudDispatch] = useReducer(
 		// Bound to this run's tab list, so the strip the player sees and the ring the
 		// arrow keys walk are the same list by construction.
-		(current: HudState, action: HudAction) => hudReducer(current, action, tabs),
+		(current: HudState, action: HudAction) => hudReducer(current, action, PANEL_TABS),
 		initialTab,
 		(tab) => ({
 			// `ZOOM` is where zoom starts; the keys take it from there.
@@ -122,11 +117,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 			? state.inventory.length
 			: hud.tab === "quests"
 				? activeQuests(state).length
-				: hud.tab === "journal"
-					? state.journal.length
-					: hud.tab === "debug"
-						? transcript().length
-						: 0;
+				: state.journal.length;
 
 	// Only once the arrow keys are actually in the list. On the tab strip the
 	// cursor is not yet the player's — offering to destroy what it happens to be
@@ -468,9 +459,11 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 			? {
 					t: "menu",
 					canDrop: held !== undefined,
-					hasList: LIST_TABS.has(hud.tab),
+					hasList: true,
 					inList: hud.inList,
-					...(hud.tab === "debug" ? { canPage: true } : {}),
+					// The journal is the one page whose entries can be longer than the pane: an
+					// entry keeps the whole of what a card said, or what somebody told you.
+					...(hud.tab === "journal" ? { canPage: true } : {}),
 				}
 			: state.dialogue
 				? { t: "dialogue" }
@@ -495,14 +488,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	if (hud.tab !== undefined) {
 		return (
 			<Box flexDirection="column" width={width} height={frameHeight}>
-				<Reader
-					state={state}
-					hud={hud}
-					tab={hud.tab}
-					tabs={tabs}
-					width={width}
-					height={bodyHeight}
-				/>
+				<Reader state={state} hud={hud} tab={hud.tab} width={width} height={bodyHeight} />
 				<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />
 			</Box>
 		);

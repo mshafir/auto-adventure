@@ -154,7 +154,7 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		 * Space and B rather than the arrow keys, which already move the selection and
 		 * the tab strip — and rather than PageUp/PageDown, which Ink does not report.
 		 */
-		if (hud.tab === "debug" && plain) {
+		if (hud.tab === "journal" && plain) {
 			if (input === " " || key.return) {
 				return { t: "hud", action: { t: "ScrollDetail", delta: 1 } };
 			}

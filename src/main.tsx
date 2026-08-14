@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { render } from "ink";
-import { loadWorkingInto } from "./ai/working-file.js";
 import { CONFIG, installGatewayKey } from "./config.js";
 import type { LaunchChoice } from "./scenario/scenario.js";
 import { buildSession } from "./session.js";
@@ -125,12 +124,6 @@ async function startGame() {
 
 	const choice = wantsLauncher() ? await pickLaunch() : choiceFromEnv();
 	if (!choice) return;
-
-	// A scenario carries the record of its own authoring beside it, so the working page has
-	// the prompts that produced this world even though this process did not write it. Silent
-	// when there is nothing to read, and a no-op for a world just written on the previous
-	// screen — `loadWorkingInto` will not read over a transcript already in memory.
-	if (choice.scenario) loadWorkingInto(choice.scenario.id);
 
 	const session = buildSession(choice, { saveDebounceMs: CONFIG.saveDebounceMs });
 	// Only the real game coalesces frames. A test or a screenshot dispatches and

@@ -9,7 +9,7 @@ import {
 	toLocalY,
 } from "../world/coords.js";
 import { arcEndEffects, arcOutline, beatEffects, beatsOpenedByState } from "./arc.js";
-import { cardKey, cardSeen, tidyCard } from "./card.js";
+import { type Card, cardKey, cardSeen, tidyCard } from "./card.js";
 import type { Command } from "./commands.js";
 import { evaluate } from "./condition.js";
 import { withCachedTurn } from "./dialogue-cache.js";
@@ -505,7 +505,7 @@ function step(state: GameState, command: Command, world: WorldProbe): Reduction 
 			};
 		}
 		case "CloseDialogue":
-			return { state: withoutDialogue(state), effects: [] };
+			return { state: withoutDialogue(keepWhatWasSaid(state)), effects: [] };
 		case "DialogueOpened":
 			return {
 				state: {
@@ -881,6 +881,64 @@ function openDialogue(
 
 // --- dialogue ---------------------------------------------------------------
 
+/**
+ * Keep the words of a conversation that moved the story on.
+ *
+ * Every direction this game gives arrives in one of two places — a full screen of prose, or
+ * somebody's mouth — and until now both were gone the moment they were dismissed. The
+ * journal held a one-line summary written by the author, which is the right thing in a list
+ * and no help at all an hour later when the player has forgotten which of three names the
+ * ferryman told them to ask for.
+ *
+ * Attached to the last entry rather than added as a new one, because it is not a separate
+ * event: it is what that event *was*. A beat writes its entry the moment its conversation
+ * opens, and nothing else may write one while a conversation is open — a trigger's card and
+ * the arc's ending both wait now — so the last entry is this conversation's, or there is no
+ * entry to attach to and this does nothing.
+ *
+ * Ordinary chat is therefore silent, which is the point. A villager with nothing to do with
+ * the story never opened a beat, so nothing here has anywhere to write.
+ */
+function keepWhatWasSaid(state: GameState): GameState {
+	const lines = state.dialogue?.lines ?? [];
+	if (lines.length === 0) return state;
+
+	// `arc:` is what `beatClueSource` writes — a beat's own clue, which is the only journal
+	// entry a conversation produces.
+	const last = state.journal.at(-1);
+	if (!last?.source?.startsWith("arc:") || last.detail) return state;
+
+	const said = lines.map((line) => `${line.speaker}: ${line.text}`);
+	return {
+		...state,
+		journal: [...state.journal.slice(0, -1), { ...last, detail: said }],
+	};
+}
+
+/**
+ * A card, as a journal entry.
+ *
+ * The title is the line in the list and the prose is what the reader opens. Headings go in
+ * because a card's sections are how it is organised — "Where you are", "What you know" — and
+ * stripping them would run three separate things into one paragraph.
+ *
+ * The card's own id is the source, which is what keeps a card that is somehow shown twice
+ * from writing itself into the journal twice: `ShowCard` refuses a card already read, so
+ * reaching here at all means this is the first time.
+ */
+function cardEntry(card: Card, tick: number): JournalEntry {
+	const detail = card.sections.flatMap((section) =>
+		section.heading ? [`${section.heading}: ${section.body}`] : [section.body],
+	);
+	return {
+		tick,
+		kind: "lore",
+		text: card.subtitle ? `${card.title} — ${card.subtitle}` : card.title,
+		source: cardKey(card.id),
+		...(detail.length > 0 ? { detail } : {}),
+	};
+}
+
 function withoutNotice(state: GameState): GameState {
 	if (state.notice === undefined) return state;
 	const { notice: _notice, ...rest } = state;
@@ -1097,19 +1155,29 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 			const card = tidyCard(effect.card);
 			if (card.sections.length === 0 && !card.subtitle) return state;
 			const flags = { ...state.flags, [cardKey(card.id)]: true };
+			// Kept, because a card is read once and gone. Everything the game says on a full
+			// screen — the opening, a chapter turning, the end — is prose the player was meant
+			// to act on, and it used to survive exactly as long as it took to press SPACE.
+			const journal = [...state.journal, cardEntry(card, state.time.tick)];
 			// Behind whatever is already up rather than over it. The flag is set either
 			// way, because a queued card *will* be shown — it is the replacing that lost
 			// one, not the queueing.
 			if (state.card) {
-				return { ...state, flags, pendingCards: [...(state.pendingCards ?? []), card] };
+				return {
+					...state,
+					flags,
+					journal,
+					pendingCards: [...(state.pendingCards ?? []), card],
+				};
 			}
-			return { ...state, card, flags };
+			return { ...state, card, flags, journal };
 		}
 		case "RecordJournal":
 			return {
 				...state,
 				journal: [...state.journal, { ...effect.entry, tick: state.time.tick }],
 			};
+
 		case "OpenBarrier":
 			return openBarrier(state, effect.id);
 		case "PlayScene":

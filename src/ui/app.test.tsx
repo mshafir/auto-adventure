@@ -1,10 +1,9 @@
 import stringWidth from "string-width";
 import stripAnsi from "strip-ansi";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { KEY, renderInk } from "../../test/harness/ink.js";
 import { createDialogueService } from "../ai/dialogue/dialogue.js";
 import { fallbackLore, fallbackSite } from "../ai/director/fallback.js";
-import { clearTranscript, recordExchange } from "../ai/transcript.js";
 import { hashString } from "../core/rand/hash.js";
 import type { ScenarioArc } from "../core/rules/arc.js";
 import { createInitialState } from "../core/rules/state.js";
@@ -13,7 +12,6 @@ import { type MacroSite, macroSite } from "../core/world/macro.js";
 import { worldSeed } from "../core/world/recipe.js";
 import { GameEngine } from "../engine/engine.js";
 import App from "./app.js";
-import { mapLegend } from "./panels/legend.js";
 import { MAX_PLACEHOLDER_INDEX, PLACEHOLDER } from "./render/kitty.js";
 import { bindEngine } from "./store.js";
 import { setTileMode } from "./viewport.js";
@@ -393,50 +391,6 @@ describe("a very tall window", () => {
 });
 
 describe("the pages", () => {
-	it("explains the map's glyphs rather than leaving them to be guessed", () => {
-		const { engine } = engineBesideSomeone();
-		bindEngine(engine);
-		const { lastFrame, unmount } = renderInk(<App initialTab="key" />);
-		const text = stripAnsi(lastFrame() ?? "");
-		unmount();
-		for (const label of ["you", "folk", "door", "chest", "water"]) {
-			expect(text, `the key does not mention ${label}`).toContain(label);
-		}
-	});
-
-	/*
-	 * The same page, drawn for the other renderer. It used to list glyph characters
-	 * whichever one was running, so a player looking at sprites was handed a key to
-	 * a map nobody was showing them.
-	 */
-	it("keys the colours instead, once the map is drawn as pixels", () => {
-		const { engine } = engineBesideSomeone();
-		bindEngine(engine);
-		setTileMode("kitty");
-		try {
-			const { lastFrame, unmount } = renderInk(<App initialTab="key" />);
-			const text = stripAnsi(lastFrame() ?? "");
-			unmount();
-
-			// The rule uppercases its label.
-			expect(text).toContain("COLOURS ON THE MAP");
-			// The things are still named; only the way they are shown has changed.
-			for (const label of ["you", "door", "chest", "water"]) {
-				expect(text, `the key does not mention ${label}`).toContain(label);
-			}
-			// And what pixel mode alone has to say: everyone is the same figure, so
-			// disposition is carried entirely by colour.
-			expect(text).toContain("wary");
-			// No map glyph anywhere on the page.
-			for (const glyph of mapLegend("glyph").map((entry) => entry.ch)) {
-				if (glyph === "A") continue; // a capital A is also just a letter in prose
-				expect(text, `the pixel key still shows ${glyph}`).not.toContain(glyph);
-			}
-		} finally {
-			setTileMode(undefined);
-		}
-	});
-
 	it("shows what is carried, with a cursor on it and its description below", () => {
 		const { engine } = engineBesideSomeone();
 		engine.dispatch({
@@ -644,7 +598,7 @@ describe("reading a list in full", () => {
 		await harness.type("m");
 		const menu = harness.screen();
 		harness.unmount();
-		for (const label of ["Carrying", "Errands", "Journal", "Key"]) {
+		for (const label of ["Carrying", "Errands", "Journal"]) {
 			expect(menu, `the strip does not offer ${label}`).toContain(label);
 		}
 	});
@@ -765,59 +719,5 @@ describe("the people the story turns on", () => {
 		const text = stripAnsi(lastFrame() ?? "");
 		unmount();
 		expect(text).not.toContain("the story turns on them");
-	});
-});
-
-/**
- * The working, readable from inside the game.
- *
- * A page rather than a log line, because the log is a file the player has no reason to
- * know about and every reason not to be reading while inside a full-screen program.
- *
- * It used to come and go with whether the recording was on, so that a page most players
- * have no use for was not one everybody had to step past. It is always here now for the
- * same reason the recording is: a tab that appears only when this process did the writing
- * is a tab that is missing for exactly the case somebody wants it in — a world generated
- * last week that is behaving oddly now.
- */
-describe("the working page", () => {
-	afterEach(() => {
-		clearTranscript();
-	});
-
-	it("is on the strip for every world, not only one just written", () => {
-		const { engine } = engineBesideSomeone();
-		bindEngine(engine);
-		const { lastFrame, unmount } = renderInk(<App initialTab="key" />);
-		const text = stripAnsi(lastFrame() ?? "");
-		unmount();
-		expect(text).toContain("Key");
-		expect(text).toContain("Working");
-	});
-
-	it("shows what was asked and what came back", () => {
-		clearTranscript();
-		recordExchange({
-			kind: "site",
-			model: "google/gemini-2.5-flash",
-			system: "You name places.",
-			prompt: "A village on a river called SLUICEFORD.",
-			millis: 800,
-			attempt: 1,
-			usage: { inputTokens: 2000, outputTokens: 400 },
-			object: { name: "Millford" },
-		});
-
-		const { engine } = engineBesideSomeone();
-		bindEngine(engine);
-		const { lastFrame, unmount } = renderInk(<App initialTab="debug" />, {
-			columns: 100,
-			rows: 40,
-		});
-		const text = stripAnsi(lastFrame() ?? "");
-		unmount();
-		expect(text).toContain("Working");
-		expect(text).toContain("SLUICEFORD");
-		expect(text).toContain("Millford");
 	});
 });

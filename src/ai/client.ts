@@ -3,7 +3,6 @@ import type { z } from "zod";
 import { hasGatewayKey } from "../config.js";
 import { logger } from "../utils/log.js";
 import { type CallKind, recordCall, recordFailure } from "./telemetry.js";
-import { recordExchange } from "./transcript.js";
 
 /**
  * The only place the game talks to a model.
@@ -73,20 +72,23 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_RETRIES = 2;
 
 /**
- * File the whole exchange, if anybody asked for one.
+ * File the whole exchange in the log.
  *
- * Here rather than at the call sites because this is the only place that has all of
- * it — the system prompt, the prompt, the answer and how long it took are together for
- * exactly the width of this function and nowhere else. `recordExchange` returns
- * immediately when debugging is off, so the cost of this on an ordinary run is a
- * function call and a boolean.
+ * Here rather than at the call sites because this is the only place that has all of it —
+ * the system prompt, the prompt, the answer and how long it took are together for exactly
+ * the width of this function and nowhere else.
+ *
+ * It used to go to an in-memory buffer with a page in the menu to read it. Nobody read the
+ * page, so both are gone and this is what is left: `logger.debug` is off unless asked for,
+ * the file survives a run that ended badly, and there is one copy rather than two that can
+ * disagree.
  *
  * `attempt` is one-based on the way out, because "attempt 0" is a thing only the loop
  * counter believes.
  *
  * `model` is passed rather than read off the request, because the last attempt may have
- * gone to a dearer one — and a transcript that labelled an escalated call with the model
- * that had already failed would be lying about the one line a reader is looking for.
+ * gone to a dearer one — and a record that labelled an escalated call with the model that
+ * had already failed would be lying about the one line a reader is looking for.
  */
 function keep<T>(
 	request: StructuredRequest<T>,
@@ -99,17 +101,16 @@ function keep<T>(
 	},
 	model: string,
 ): void {
-	recordExchange({
-		kind: request.kind,
-		model,
-		system: request.system,
-		prompt: request.prompt,
-		millis,
-		attempt: attempt + 1,
-		...(outcome.usage ? { usage: outcome.usage } : {}),
-		...(outcome.object === undefined ? {} : { object: outcome.object }),
-		...(outcome.error === undefined ? {} : { error: outcome.error }),
-	});
+	logger.debug(
+		`ai ${request.kind} ${model} attempt ${attempt + 1} in ${Math.round(millis)}ms` +
+			`${outcome.usage ? ` (${outcome.usage.inputTokens ?? 0}/${outcome.usage.outputTokens ?? 0} tokens)` : ""}`,
+		{
+			system: request.system,
+			prompt: request.prompt,
+			...(outcome.object === undefined ? {} : { object: outcome.object }),
+			...(outcome.error === undefined ? {} : { error: String(outcome.error) }),
+		},
+	);
 }
 
 export function aiAvailable(): boolean {

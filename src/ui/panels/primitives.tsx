@@ -112,18 +112,43 @@ export function Prose({
 	width,
 	rows,
 	color = "white",
+	offset = 0,
 }: {
 	text: string;
 	width: number;
 	rows: number;
 	color?: string;
+	/**
+	 * How many wrapped lines to skip, for text longer than the room it has.
+	 *
+	 * Clamped so scrolling cannot run off the end into a blank pane: a reader who has held
+	 * the key down should find the last page, not nothing. Wrapping happens first and the
+	 * skip is applied to the result, because a line is a *drawn* line — the caller is
+	 * counting rows on a screen, not sentences in a string.
+	 */
+	offset?: number;
 }) {
+	// Paragraph by paragraph, because `wrapToLines` splits on whitespace and would otherwise
+	// run a card's three sections into one block of prose. A blank line between them is the
+	// only thing that says they are separate things.
+	const all = text
+		.split(/\n\s*\n/)
+		.flatMap((paragraph, index) =>
+			index === 0
+				? wrapToLines(paragraph, width, Number.POSITIVE_INFINITY)
+				: ["", ...wrapToLines(paragraph, width, Number.POSITIVE_INFINITY)],
+		);
+	const room = Math.max(0, rows);
+	const start = Math.max(0, Math.min(offset, Math.max(0, all.length - room)));
 	return (
 		<>
-			{wrapToLines(text, width, Math.max(0, rows)).map((line, index) => (
+			{all.slice(start, start + room).map((line, index) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: wrapped lines are positional
 				<Text key={index} color={color} wrap="truncate">
-					{line}
+					{/* A space rather than the empty string: Ink draws nothing at all for an empty
+					    child, so the blank line separating two paragraphs would simply not exist
+					    and the paragraphs would run together. */}
+					{line === "" ? " " : line}
 				</Text>
 			))}
 		</>

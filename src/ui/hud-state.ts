@@ -12,54 +12,29 @@
 /**
  * The pages that can take the frame.
  *
- * There used to be five, two of which — the map summary and the minimap — were
- * views of the standing state of the world rather than pages to open. Those are
- * on screen always now: the first along the top, the second composited into the
- * map. What is left is the three lists and the key, all of them things you go
- * and look at and then come back from.
+ * There used to be five, two of which — the map summary and the minimap — were views of the
+ * standing state of the world rather than pages to open. Those are on screen always now: the
+ * first along the top, the second composited into the map.
+ *
+ * Two more have gone since, on the report that nobody used them. The key described glyphs
+ * that are not on screen at all in pixel mode and terrain nobody needed named; the working
+ * page listed every model call, which is a thing to read in a log rather than a page to step
+ * past on the way to the journal. What is left is three lists, and every one of them answers
+ * a question a player actually has: what am I carrying, what do I owe, what happened.
  */
-export type PanelTab = "inventory" | "quests" | "journal" | "key" | "debug";
+export type PanelTab = "inventory" | "quests" | "journal";
 
 /**
  * The tabs, in the order they are laid out and stepped through.
  *
- * An array rather than a set because left and right move along it, so the order
- * on screen and the order under the keys are the same thing by construction.
- * Carrying most often first: what you have, then what you owe, then what
- * happened, then what the map means.
+ * An array rather than a set because left and right move along it, so the order on screen and
+ * the order under the keys are the same thing by construction. Carrying most often first:
+ * what you have, then what you owe, then what happened.
+ *
+ * Every one of them is a list now, so there is no longer a tab that stepping into does
+ * nothing on — which is why nothing here distinguishes the two any more.
  */
-export const PANEL_TABS: readonly PanelTab[] = ["inventory", "quests", "journal", "key"];
-
-/**
- * The tabs on offer.
- *
- * `debug` used to come and go with whether the recording was on, so that a page most
- * players have no use for — and which was empty unless somebody had asked for the
- * recording — was not one everybody had to step past forever.
- *
- * It is always here now, for the same reason the recording always runs: a scenario carries
- * the record of its own authoring beside it, so the page has something in it for any world
- * rather than only one this process happened to write. A tab that appears only when this
- * process did the writing is a tab that is missing for exactly the case somebody wants it
- * in — a world generated last week that is behaving oddly now.
- *
- * Still a function rather than a constant, because the reducer has to agree with the strip:
- * stepping is modular arithmetic over this list, so a screen drawing four tabs while the
- * reducer cycled five would leave one that could be reached and not seen.
- */
-export function panelTabs(): readonly PanelTab[] {
-	return [...PANEL_TABS, "debug"];
-}
-
-/** Tabs holding a list the player can move a cursor through. */
-export const LIST_TABS: ReadonlySet<PanelTab> = new Set<PanelTab>([
-	"inventory",
-	"quests",
-	"journal",
-	// The list of exchanges. It behaves exactly like the other three — a cursor down a
-	// list, with the detail of the selected row underneath — so it gets the same keys.
-	"debug",
-]);
+export const PANEL_TABS: readonly PanelTab[] = ["inventory", "quests", "journal"];
 
 /**
  * Something irreversible, waiting on a yes.
@@ -145,7 +120,7 @@ export type HudAction =
 	/** Open the menu, on a given tab or on the first. */
 	| { readonly t: "OpenMenu"; readonly tab?: PanelTab }
 	| { readonly t: "CloseMenu" }
-	/** Step along the tab strip. Wraps, because four tabs is a short ring. */
+	/** Step along the tab strip. Wraps, because three tabs is a short ring. */
 	| { readonly t: "StepTab"; readonly delta: number }
 	/** Hand the arrow keys to the list on the open tab. */
 	| { readonly t: "EnterList" }
@@ -175,9 +150,9 @@ export function initialHud(tab?: PanelTab, zoom = 1): HudState {
 }
 
 /**
- * `tabs` defaults to the always-present four, so every existing caller and test reads
- * exactly as it did. The one caller that passes something else is the app, which knows
- * whether the debug page is on offer this run.
+ * `tabs` is a parameter rather than a constant so the reducer and the strip cannot disagree:
+ * stepping is modular arithmetic over this list, and a screen drawing three tabs while the
+ * reducer cycled four would leave one that could be reached and not seen.
  */
 export function hudReducer(
 	state: HudState,
@@ -205,9 +180,7 @@ export function hudReducer(
 			return { ...withoutConfirm(state), tab: next, inList: false, cursor: 0, detail: 0 };
 		}
 		case "EnterList":
-			// The key tab has nothing to select, so stepping into it would take the
-			// arrow keys and give nothing back for them.
-			if (state.tab === undefined || !LIST_TABS.has(state.tab)) return state;
+			if (state.tab === undefined) return state;
 			return { ...withoutConfirm(state), inList: true };
 		case "MoveCursor":
 			// The scroll goes back to the top with the selection. Keeping it would open the

@@ -38,10 +38,10 @@ describe("the menu", () => {
 		expect(open.inList).toBe(true);
 	});
 
-	// The key tab has nothing to select, so stepping in would take the arrow keys
-	// and give nothing back for them.
-	it("refuses to step into a tab with no list", () => {
-		expect(hudReducer(initialHud("key"), { t: "EnterList" }).inList).toBe(false);
+	// Every tab is a list now — the key page, which had nothing to select, has gone — so
+	// stepping in always lands somewhere. Only the map has no list to step into.
+	it("refuses to step into a list when the menu is not open", () => {
+		expect(hudReducer(initialHud(), { t: "EnterList" }).inList).toBe(false);
 	});
 
 	it("comes back out to the strip when the tab changes", () => {

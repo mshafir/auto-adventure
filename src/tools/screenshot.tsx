@@ -535,8 +535,6 @@ async function main() {
 		1,
 	);
 
-	await capture("key", "What the glyphs on the map mean", () => undefined, "key");
-
 	await capture("opening", "How a game introduces itself", (engine) => {
 		// The card every flavour opens on, assembled from what the world knows about
 		// itself. Raised directly here because the screenshot tool builds its own engine

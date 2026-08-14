@@ -246,7 +246,12 @@ describe("a trigger that would take the screen", () => {
 	const card: Trigger = {
 		id: "news",
 		when: { flag: "ready" },
-		effects: [{ t: "ShowCard", card: { id: "news", title: "News", sections: ["It is over."] } }],
+		effects: [
+			{
+				t: "ShowCard",
+				card: { id: "news", title: "News", sections: [{ heading: "", body: "It is over." }] },
+			},
+		],
 	};
 
 	it("waits while a conversation is open", () => {

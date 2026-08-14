@@ -604,7 +604,13 @@ function journal(state: GameState, out: (line: string) => void): void {
 		out("nothing learned yet");
 		return;
 	}
-	for (const entry of entries) out(`${entry.kind}: ${entry.text}`);
+	for (const entry of entries) {
+		out(`${entry.kind}: ${entry.text}`);
+		// What was actually said, indented under the summary. A reviewer asking "was I ever
+		// told where to go" is asking about exactly these lines, and a one-line summary
+		// written by the author cannot answer it — the author knows where the ledger is.
+		for (const line of entry.detail ?? []) out(`    ${line}`);
+	}
 }
 
 function items(state: GameState, out: (line: string) => void): void {
