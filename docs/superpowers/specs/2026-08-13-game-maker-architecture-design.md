@@ -154,6 +154,11 @@ it is dealt, in a deliberate order of preference:
 2. **Claim** a surveyed candidate cell, name it, populate it.
 3. **Terraform** — authored edits in `world/terraform.json`, applied at chunk build.
 
+> **Superseded 2026-08-14.** The generator no longer decides where settlements exist: an
+> authored world settles nothing, the survey reports which *ground* will hold a place, and
+> `craft found` puts one there. The order of preference is otherwise unchanged, and the
+> reason for the change is in "The pass after the first play" below.
+
 Terraform has two layers:
 
 - **Tile stamps** — paths, bridges, clearings, walls. These land on machinery that
@@ -255,7 +260,8 @@ Encoded in the skill:
 - **The agent may over-terraform**, producing worlds that look hand-mangled and
   scenarios that are large. Mitigated by guidance rather than by a limit, since the
   story is allowed to win.
-- **Elevation terraform is deferred**, so the first worlds cannot have authored rivers.
+- **Elevation terraform is deferred**, so the first worlds cannot have authored rivers. *(Built
+  on 2026-08-14; see "The pass after the first play".)*
   Accepted.
 
 ---
@@ -289,8 +295,42 @@ implementing it meant inverting the runtime rule, because "anyone the author did
 conversation for" made a model the default for everybody not yet reached — so a half-written town
 was full of people inventing facts about a story nobody had told them.
 
-**Elevation terraform is still deferred**, so authored rivers are not possible. A story that
-needs a river needs a seed that has one.
+## The pass after the first play (2026-08-14)
+
+The world was played and five things came back. Two were bugs, one was a lie the map told,
+and two were the design being wrong rather than the code.
+
+**A refused terminal write killed the game and the terminal with it.** Node reports a failed
+asynchronous write by destroying the stream, and a destroyed stream with nobody listening
+emits the error globally — so one `EIO` became an uncaught exception, and the handler meant to
+restore the screen wrote through the very stream that had just been destroyed. Nothing took
+stdin out of raw mode either. `restoreTerminal` writes the escapes to the file descriptor with
+`writeSync` and drops raw mode first; every exit path now goes through one `leave()`.
+
+**The cutscene was over before it registered.** Three faults at once: the pan lived in the
+renderer, so the scene treated aiming the camera as instantaneous and ran on regardless — and
+the view memoised the interpolation on a target that by definition does not change during a
+pan, so the camera moved one tile and stopped. `fast` walking covered two tiles a frame,
+twenty-two tiles a second. And the scene itself was written with `"hold": 3` throughout, which
+reads as three beats and is a quarter of a second. The pan is the machine's now and a step
+waits for it; nobody covers more than a tile a frame; and `craft check` warns when a step
+changes what is on screen and then moves straight on.
+
+**The minimap drew no boundary**, so a finite world looked infinite — and because a chunk is
+marked discovered when it is *built*, which runs a chunk ahead of the player, ground past the
+wall counted as found and `macroSite` cheerfully reported settlements out there. The edge is
+drawn before the discovered check, deliberately: a finite world's shape is not a spoiler, and
+hiding the walls is what made the far side look reachable.
+
+**Generation is land only now.** A seed scattered eight villages across a short world, a story
+used two, and the rest were places with names, houses and nobody with anything to say.
+`craft new` writes `LAND_ONLY` into the recipe and `claim` becomes `found`, which writes the
+recipe entry and the spec together. The engine's default is untouched, so the launcher's
+unwritten world — where there is no author to place anything — still settles itself.
+
+**Elevation terraform is built**, so authored rivers are possible. It is a zone with an
+`elevation` term, reversing a documented decision: the hazard it was excluded for is real, so
+it is guarded rather than ignored. See the commit and `gamecraft/shopping-for-a-world.md`.
 
 ## The bugs the work found
 
@@ -307,3 +347,9 @@ Each was silent, and each is now covered by a test.
 | `craft play` | Routed straight through people, then stopped dead at them; and reported the route's length rather than the distance walked |
 | `craft story` | A condition reader returned on its first match, leaving later flags unread — and an unread flag is refused as unknown |
 | `craft new` | Stubbed the world's era with a placeholder, which `openingCard` puts on the first screen of the game |
+| `main.tsx` | A failed stdout write was fatal by default, and the crash handler's own writes went through the stream that had just been destroyed |
+| `app.tsx` | A scene's camera pan was memoised on its target, which does not change during a pan — so every pan moved one tile and stopped |
+| `scene.ts` | A step containing a pan finished immediately, so a rider could arrive and speak over a camera still travelling |
+| `minimap-data.ts` | Drew settlements past the world's edge as places to go, because chunks are discovered when built and `macroSite` knows nothing about bounds |
+| `survey.ts` | The growth loop widened the boundary hunting for settlements a land-only world cannot have, taking every scenario to its largest size |
+| `validate.ts` | The radius rule was written twice, so the generator and its own validator could disagree about how close two places may be |
