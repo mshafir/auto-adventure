@@ -44,8 +44,7 @@ daylight. (`Tick` also turns out to be dead — nothing in the tree dispatches i
     terraform.json   authored tile stamps
     placements.json  { placements, signs, barriers }
   phases/
-    1-<slug>.json    the base phase: triggers, beats, and nothing else
-    2-<slug>.json    a diff
+    2-<slug>.json    a diff, and every file here has a `when`
   scenes/
     <scene-id>.json  one scene per file
   trees/
@@ -113,6 +112,13 @@ export function composeScenario(
 Pure. Entered phases are those whose `when` holds, applied in file order, each diff over
 the result of the last. Memoised on the joined ids of the entered set, because it runs on
 every command.
+
+**`world/` is the first chapter, and has no phase file.** Everything in `phases/` is a
+later chapter and carries a `when`. The asymmetry is deliberate: a "phase 1" file holding
+the base would make composition allocate a fresh content object even in a world where
+nothing has happened yet, and the engine compares composed content by identity to decide
+whether anything has to be rebuilt. With `phases/` holding only later chapters, a world at
+its opening composes to the base object itself and costs nothing per command.
 
 **Phase membership is derived, never stored.** Nothing about which phase is active goes
 into the save. A save is flags and deltas, as it is today, and correcting a phase file
