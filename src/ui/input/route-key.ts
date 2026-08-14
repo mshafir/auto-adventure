@@ -34,6 +34,8 @@ export interface RouteContext {
 	readonly inDialogue: boolean;
 	/** Whether a full screen of prose is waiting to be read. */
 	readonly onCard: boolean;
+	/** Whether a cutscene has the world. */
+	readonly inScene: boolean;
 	readonly hud: HudState;
 	/** How long the focused pane's list is, so a cursor cannot run off it. */
 	readonly listCount: number;
@@ -100,6 +102,20 @@ export function routeKey(input: string, key: KeyFlags, context: RouteContext): R
 		if (input === " " || key.return || key.escape) {
 			return { t: "command", command: { t: "DismissCard" } };
 		}
+		return undefined;
+	}
+
+	/*
+	 * A scene has the world, and gives back exactly two keys.
+	 *
+	 * Below the card because a scene can raise one, and the card is what the player is
+	 * looking at; above everything else because a cutscene is not a moment for the quest log.
+	 * The reducer swallows the rest anyway — this is here so the keys that *do* mean something
+	 * are the ones sent, and so ESC means "I have seen enough of this" rather than "quit".
+	 */
+	if (context.inScene) {
+		if (input === " " || key.return) return { t: "command", command: { t: "Advance" } };
+		if (key.escape) return { t: "command", command: { t: "SkipScene" } };
 		return undefined;
 	}
 

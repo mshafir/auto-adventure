@@ -6,6 +6,7 @@ function context(overrides: Partial<RouteContext> = {}): RouteContext {
 	return {
 		inDialogue: false,
 		onCard: false,
+		inScene: false,
 		hud: initialHud(),
 		listCount: 0,
 		canDrop: false,
@@ -311,5 +312,57 @@ describe("the menu over the map", () => {
 		expect(
 			routeKey("", { downArrow: true }, context({ hud: inList(), inDialogue: true, listCount: 3 })),
 		).toEqual({ t: "hud", action: { t: "MoveCursor", delta: 1, count: 3 } });
+	});
+});
+
+describe("a cutscene", () => {
+	const playing = (overrides: Partial<RouteContext> = {}) =>
+		context({ inScene: true, ...overrides });
+
+	it("takes SPACE and RETURN as 'go on'", () => {
+		for (const [input, key] of [
+			[" ", NONE],
+			["", { return: true } as KeyFlags],
+		] as const) {
+			expect(routeKey(input, key, playing()), input || "return").toEqual({
+				t: "command",
+				command: { t: "Advance" },
+			});
+		}
+	});
+
+	it("takes ESC as 'I have seen enough of this', not as quit", () => {
+		expect(routeKey("", { escape: true }, playing())).toEqual({
+			t: "command",
+			command: { t: "SkipScene" },
+		});
+	});
+
+	/*
+	 * The reducer swallows the rest anyway, so this is not the guard — it is what stops the UI
+	 * *sending* keys that would do nothing, and in particular what stops the menu opening over a
+	 * scene where its arrow keys would fight the one the player needs.
+	 */
+	it("ignores everything else, including the keys that open the menu", () => {
+		for (const [input, key] of [
+			["m", NONE],
+			["", { tab: true } as KeyFlags],
+			["", { upArrow: true } as KeyFlags],
+			["i", NONE],
+			["q", NONE],
+		] as const) {
+			expect(routeKey(input, key, playing()), input || "key").toBeUndefined();
+		}
+	});
+
+	/*
+	 * A scene can raise a full screen of prose, and while one is up it is what the player is
+	 * looking at — so SPACE has to put the card down before it advances the scene behind it.
+	 */
+	it("lets a card it raised take the keys first", () => {
+		expect(routeKey(" ", NONE, playing({ onCard: true }))).toEqual({
+			t: "command",
+			command: { t: "DismissCard" },
+		});
 	});
 });

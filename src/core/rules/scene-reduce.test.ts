@@ -172,6 +172,54 @@ describe("scenes in the reducer", () => {
 		expect(rescued.flags[triggerKey("arrive")]).toBe(true);
 	});
 
+	/*
+	 * A scene may raise a full screen of prose, and a screen the player cannot put down is a
+	 * game that has stopped. So `DismissCard` is the one ordinary command a scene lets through —
+	 * and while the card is up the scene waits behind it rather than playing on unseen.
+	 */
+	it("lets the player put down a card the scene raised", () => {
+		const withCard: StagedScene = {
+			id: "chapter",
+			skippable: true,
+			steps: [
+				{
+					do: [
+						{
+							t: "Card",
+							card: {
+								id: "chapter-two",
+								title: "Chapter Two",
+								// A card with no sections and no subtitle is dropped by `ShowCard` as
+								// having nothing on it, so a scene that raises one has to say something.
+								sections: [{ heading: "The second day", body: "The water did not go out." }],
+							},
+						},
+					],
+				},
+				{ do: [{ t: "Say", actor: "player", text: "Well." }] },
+			],
+		};
+		const probe: WorldProbe = { ...world, stagedScene: () => withCard };
+		// Opening a scene sets the stage; the first step runs on the frame after, which is when
+		// the card goes up.
+		const opened = reduce(
+			reduce(start(), { t: "SceneFrame" }, probe).state,
+			{ t: "SceneFrame" },
+			probe,
+		).state;
+		expect(opened.card).toBeDefined();
+		expect(opened.scene).toBeDefined();
+
+		// Frames do not get past it.
+		const held = reduce(opened, { t: "SceneFrame" }, probe).state;
+		expect(held.card).toBeDefined();
+		expect(held.scene?.step).toBe(opened.scene?.step);
+
+		const read = reduce(held, { t: "DismissCard" }, probe).state;
+		expect(read.card).toBeUndefined();
+		expect(read.scene).toBeDefined();
+	});
+
 	it("does not advance the clock, so a cutscene costs no daylight", () => {
 		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
 		const finished = playThrough(opened);

@@ -297,6 +297,14 @@ function duringScene(
 		return { state: rescued.state, effects: [{ t: "Save", reason: "checkpoint" }] };
 	}
 
+	// A scene's `Card` step puts a full screen of prose up, and the player has to be able to
+	// put it down again — so this one command goes through to the ordinary handler. Everything
+	// else stays swallowed, and the scene waits behind the card rather than playing on under it.
+	if (state.card) {
+		if (command.t === "DismissCard") return step(withoutNotice(state), command, world);
+		return { state, effects: [] };
+	}
+
 	if (command.t === "SkipScene") {
 		if (!staged.skippable) return { state, effects: [] };
 		// Skipping skips the *prose*, never the consequences. A scene is where a chapter

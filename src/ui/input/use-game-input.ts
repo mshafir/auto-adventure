@@ -38,11 +38,13 @@ export function useGameInput({
 }: InputHandlers): void {
 	const inDialogue = useGameSelector((state) => state.dialogue !== undefined);
 	const onCard = useGameSelector((state) => state.card !== undefined);
+	const inScene = useGameSelector((state) => state.scene !== undefined);
 
 	useInput((input, key) => {
 		const routed = routeKey(input, key, {
 			inDialogue,
 			onCard,
+			inScene,
 			hud,
 			listCount,
 			canDrop: onDrop !== undefined,

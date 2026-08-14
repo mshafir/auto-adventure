@@ -11,7 +11,7 @@ import { forageKey, isForageable } from "../core/rules/forage.js";
 import { isContainer, lootKey } from "../core/rules/loot.js";
 import { takenKey } from "../core/rules/placement.js";
 import { questNeeding } from "../core/rules/quests.js";
-import { activeQuests, worldAnchor } from "../core/rules/state.js";
+import { activeQuests, type Facing, type GameState, worldAnchor } from "../core/rules/state.js";
 import { D, type DecorId, decorDef } from "../core/tiles/decor.js";
 import { TFlag } from "../core/tiles/flags.js";
 import { terrainDef } from "../core/tiles/terrain.js";
@@ -35,7 +35,9 @@ import { CardScreen } from "./panels/card-screen.js";
 import { DialoguePanel, panelHeightFor } from "./panels/dialogue-panel.js";
 import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
 import { Reader } from "./panels/reader.js";
+import { SCENE_CAPTION_ROWS, SceneCaption } from "./panels/scene-caption.js";
 import { TOP_BAR_ROWS, TopBar } from "./panels/top-bar.js";
+import { cameraTowards } from "./render/camera.js";
 import type { Camera } from "./render/compose.js";
 import { mapFit } from "./render/fit.js";
 import { PLAYER_GLYPH } from "./render/glyphs.js";
@@ -50,6 +52,25 @@ import { cameraFollowing, tileMode, Viewport } from "./viewport.js";
 
 /** How far a lamp carries indoors. */
 const INTERIOR_SIGHT = 9;
+
+/**
+ * How long one frame of a cutscene lasts.
+ *
+ * Ninety milliseconds is about eleven tiles a second at a normal walk, which reads as
+ * somebody crossing a square on purpose — a slideshow at twice this, and a scramble at half.
+ * It is not the render rate: the store already coalesces frames on its own budget, so a slow
+ * machine makes a scene take longer rather than skip any of it.
+ */
+const SCENE_FRAME_MS = 90;
+
+/**
+ * How fast a scene's camera pans, in tiles per frame.
+ *
+ * A cut is instant and needs no number. These are what "slow" and "fast" buy an author: at
+ * ninety milliseconds a frame, slow crosses about eleven tiles a second and fast about
+ * thirty-three, which are a considered look and a snap of the head.
+ */
+const PAN_RATE = { cut: 0, slow: 1, fast: 3 } as const;
 
 /**
  * Slope shading costs bandwidth: it bands terrain into more distinct styles, so
@@ -156,8 +177,50 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		},
 	});
 
+	/*
+	 * A scene is the one thing in this game that happens without the player doing anything, so
+	 * it needs a clock of its own. Its own interval rather than a global one: with no scene
+	 * playing there is nothing to advance, and a game sitting at a title screen should not be
+	 * waking up sixty times a second to discover that.
+	 */
+	const scene = state.scene;
+	const playing = scene !== undefined;
+	useEffect(() => {
+		if (!playing) return;
+		const timer = setInterval(() => engine.dispatch({ t: "SceneFrame" }), SCENE_FRAME_MS);
+		// Nothing left to advance matters once the process is going away, and an outstanding
+		// frame must not be the reason it stays.
+		timer.unref?.();
+		return () => clearInterval(timer);
+	}, [playing, engine]);
+
 	const view = engine.getView();
 	const player = state.player;
+
+	/*
+	 * How fast the camera is moving toward what the scene is looking at.
+	 *
+	 * Zero is a cut, which `cameraTowards` reads as "go straight there". The rate is not on the
+	 * scene state because a pan is presentation: the state carries only where the camera is
+	 * aimed, and how it gets there is the renderer's business.
+	 */
+	const panRate = scene ? PAN_RATE.slow : 0;
+
+	/*
+	 * Who is speaking, by their real name rather than by their stage alias.
+	 *
+	 * A scene calls somebody `rider` so that it reads as prose and can be recast; the band under
+	 * the map has to say the name the player knows them by. Somebody the world has never heard
+	 * of has no name to find, and the alias is what there is.
+	 */
+	const captionSpeaker = useMemo(() => {
+		const alias = scene?.caption?.speaker;
+		if (!alias || !scene) return undefined;
+		if (alias === "player") return "You";
+		const cast = state.scenes?.[scene.id]?.cast?.[alias];
+		return cast ? engine.personById(cast)?.name : undefined;
+	}, [engine, scene, state.scenes]);
+	const sceneSkippable = scene ? (state.scenes?.[scene.id]?.skippable ?? true) : true;
 
 	// The camera and the tile source both depend on the player's position, so
 	// they are rebuilt only when it actually changes rather than every render.
@@ -187,6 +250,20 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		return tileSourceFrom(view, {
 			decorAt: (x, y) => marks.get(`${x},${y}`),
 			entityAt: (x, y) => {
+				// A scene's actors are drawn where the scene has them, over whoever the world would
+				// otherwise put here — including the player, so nobody appears twice while their
+				// double walks across the square.
+				const actor = sceneActorAt(scene, x, y);
+				if (actor) {
+					return actor.who === "player"
+						? { ch: PLAYER_GLYPH, fg: PAL.player, bold: true, facing: actor.facing }
+						: { ch: glyphOf(engine, scene, actor.who), fg: PAL.story, bold: true };
+				}
+				if (scene && x === player.x && y === player.y) {
+					// While a scene is playing the player is drawn from the scene's own actor list, so
+					// the tile they are standing on is left to whatever is under them.
+					return undefined;
+				}
 				if (x === player.x && y === player.y) {
 					// The facing rides on the player rather than being painted on the
 					// tile in front. Only the pixel renderer can use it — a sprite has
@@ -216,6 +293,8 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		npcs,
 		npcs.revision,
 		storyPeople,
+		// The whole scene state, because the actors move every frame and that is the point.
+		scene,
 		player.x,
 		player.y,
 		player.facing,
@@ -234,8 +313,12 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	// everything above it gets one row less.
 	const bodyHeight = Math.max(8, frameHeight - 1);
 	// The conversation panel has two fixed sizes; the map takes whatever is left,
-	// so the total is constant either way.
-	const panelHeight = panelHeightFor(state.dialogue !== undefined);
+	// so the total is constant either way. A scene's caption band takes the same rows in the
+	// same place, so a cutscene beginning does not move the map — which matters because the
+	// viewport memoises its whole frame on its dimensions.
+	const panelHeight = playing
+		? Math.max(SCENE_CAPTION_ROWS, panelHeightFor(false))
+		: panelHeightFor(state.dialogue !== undefined);
 	// What the map *may* have. What it takes is `fit`, which stops well short of
 	// this on a large window — see `fit.ts` for why filling the screen made the
 	// game worse the bigger the screen got.
@@ -292,7 +375,12 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		: "world";
 	const camera = useMemo(() => {
 		const held = spaceRef.current === space ? cameraRef.current : undefined;
-		const next = cameraFollowing(held, [player.x, player.y], fit.width, fit.height);
+		// A scene aims the camera deliberately — at a gate, at a well — so it must not inherit
+		// the dead zone, which exists to stop the world lurching under a walking player. A pan
+		// slides toward the target a few tiles a frame; a cut is simply centred.
+		const next = scene?.camera
+			? cameraTowards(held, [scene.camera.x, scene.camera.y], fit.width, fit.height, panRate)
+			: cameraFollowing(held, [player.x, player.y], fit.width, fit.height);
 		spaceRef.current = space;
 		// The previous object when nothing moved, not an equal new one: the viewport
 		// memoises its whole frame on the camera's identity, so a fresh object for a
@@ -300,7 +388,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		const settled = held && next.x === held.x && next.y === held.y ? held : next;
 		cameraRef.current = settled;
 		return settled;
-	}, [player.x, player.y, fit.width, fit.height, space]);
+	}, [player.x, player.y, fit.width, fit.height, space, scene?.camera, panRate]);
 
 	// Where the player is *in the world*. Indoors their coordinates are local to the
 	// interior grid, so anything asked in chunk space — which region is this, what is
@@ -471,14 +559,23 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 			 * that stopped short of the diacritic table.
 			 */}
 			<Box flexGrow={1} />
-			<DialoguePanel
-				width={mapWidth}
-				height={panelHeight}
-				looking={looking}
-				facing={player.facing}
-				{...(facedNpc ? { nearbyName: facedNpc.name } : {})}
-				{...(facedNpc && storyPeople.has(facedNpc.id) ? { nearbyIsStory: true } : {})}
-			/>
+			{scene?.caption ? (
+				<SceneCaption
+					caption={scene.caption}
+					{...(captionSpeaker ? { speakerName: captionSpeaker } : {})}
+					width={mapWidth}
+					skippable={sceneSkippable}
+				/>
+			) : (
+				<DialoguePanel
+					width={mapWidth}
+					height={panelHeight}
+					looking={looking}
+					facing={player.facing}
+					{...(facedNpc ? { nearbyName: facedNpc.name } : {})}
+					{...(facedNpc && storyPeople.has(facedNpc.id) ? { nearbyIsStory: true } : {})}
+				/>
+			)}
 			<KeyBar width={width} mode={keyMode} {...(hud.confirm ? { confirm: hud.confirm } : {})} />
 		</Box>
 	);
@@ -575,4 +672,36 @@ function describeFaced(
 	}
 
 	return terrainDef(view.terrainAt(standingX, standingY)).describe;
+}
+
+/**
+ * The scene actor standing on this tile, if any.
+ *
+ * A linear scan, and it is meant to be: a cutscene has a handful of people in it, and this is
+ * asked once per visible tile of every frame — a Map keyed by position would be rebuilt every
+ * frame to save a scan of four.
+ */
+function sceneActorAt(
+	scene: GameState["scene"],
+	x: number,
+	y: number,
+): { readonly who: string; readonly facing: Facing } | undefined {
+	if (!scene) return undefined;
+	for (const [who, actor] of Object.entries(scene.actors)) {
+		if (actor.x === x && actor.y === y) return { who, facing: actor.facing };
+	}
+	return undefined;
+}
+
+/**
+ * The letter to draw a scene's actor with.
+ *
+ * A scene names people by stage alias, so the alias is looked up in the cast and then in the
+ * world. Somebody the world has never heard of — a rider off the road — falls back to the
+ * first letter of the alias, which is at least stable and at least theirs.
+ */
+function glyphOf(engine: GameEngine, scene: GameState["scene"], alias: string): string {
+	const cast = scene ? engine.getState().scenes?.[scene.id]?.cast?.[alias] : undefined;
+	const person = cast ? engine.personById(cast) : undefined;
+	return person?.glyph ?? alias[0]?.toUpperCase() ?? "?";
 }
