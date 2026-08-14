@@ -1,0 +1,180 @@
+import { describe, expect, it } from "vitest";
+import { reduce, type WorldProbe } from "./reduce.js";
+import type { StagedScene } from "./scene.js";
+import { createInitialState, type GameState } from "./state.js";
+import { triggerKey } from "./trigger.js";
+
+const ARRIVAL: StagedScene = {
+	id: "the-messenger-arrives",
+	skippable: true,
+	steps: [
+		{ do: [{ t: "Camera", to: { x: 9, y: 9 }, pan: "cut" }] },
+		{ do: [{ t: "Say", actor: "player", text: "The abbey has fallen." }] },
+		{ do: [{ t: "Effects", effects: [{ t: "SetFlag", key: "chapter", value: 2 }] }] },
+	],
+};
+
+/** A probe that lets the player walk anywhere and knows one scene. */
+const world: WorldProbe = {
+	isPassable: () => true,
+	isLoaded: () => true,
+	npcAt: () => undefined,
+	stagedScene: (id) => (id === ARRIVAL.id ? ARRIVAL : undefined),
+};
+
+/** A probe that has forgotten the scene its triggers ask for. */
+const forgetful: WorldProbe = { ...world, stagedScene: () => undefined };
+
+function start(): GameState {
+	const base = createInitialState({ id: "w", name: "W", seed: 1, createdAt: "" }, { x: 5, y: 5 });
+	return {
+		...base,
+		triggers: [
+			{ id: "arrive", when: { flag: "ready" }, effects: [{ t: "PlayScene", id: ARRIVAL.id }] },
+		],
+		flags: { ready: true },
+	};
+}
+
+/** Play a scene out, pressing the advance key whenever a line is waiting. */
+function playThrough(from: GameState, probe: WorldProbe = world): GameState {
+	let state = from;
+	for (let frame = 0; frame < 20 && state.scene; frame++) {
+		state = reduce(
+			state,
+			state.scene.caption ? { t: "Advance" } : { t: "SceneFrame" },
+			probe,
+		).state;
+	}
+	return state;
+}
+
+describe("scenes in the reducer", () => {
+	it("opens the scene a trigger asked for", () => {
+		const { state } = reduce(start(), { t: "SceneFrame" }, world);
+		expect(state.scene?.id).toBe(ARRIVAL.id);
+	});
+
+	it("puts the player on stage where they are standing", () => {
+		const { state } = reduce(start(), { t: "SceneFrame" }, world);
+		expect(state.scene?.actors.player).toMatchObject({ x: 5, y: 5 });
+	});
+
+	it("swallows movement while a scene is playing", () => {
+		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
+		const moved = reduce(opened, { t: "Move", facing: "right" }, world).state;
+		expect(moved.player.x).toBe(opened.player.x);
+		expect(moved).toBe(opened);
+	});
+
+	it("swallows interaction too, so a scene cannot be talked over", () => {
+		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
+		expect(reduce(opened, { t: "Interact" }, world).state).toBe(opened);
+	});
+
+	/*
+	 * The correctness crux. If the trigger were marked fired when it fired, a player who quit
+	 * mid-cutscene would come back to a world that believed the scene had happened: it would
+	 * never play again, and the chapter flag it was going to set would never be set either.
+	 */
+	it("leaves the trigger unfired until the scene finishes", () => {
+		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
+		expect(opened.flags[triggerKey("arrive")]).toBeUndefined();
+
+		const finished = playThrough(opened);
+		expect(finished.scene).toBeUndefined();
+		expect(finished.flags[triggerKey("arrive")]).toBe(true);
+		expect(finished.flags.chapter).toBe(2);
+	});
+
+	it("does not replay a scene whose trigger has fired", () => {
+		const finished = playThrough(reduce(start(), { t: "SceneFrame" }, world).state);
+		expect(reduce(finished, { t: "SceneFrame" }, world).state.scene).toBeUndefined();
+	});
+
+	it("replays a scene that was interrupted, because nothing was written down", () => {
+		// What an interruption looks like: the scene is dropped from state the way loading a
+		// save would drop it, and the trigger is still waiting.
+		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
+		const midway = reduce(opened, { t: "SceneFrame" }, world).state;
+		const { scene: interrupted, ...reloaded } = midway;
+		void interrupted;
+
+		const again = reduce(reloaded as GameState, { t: "SceneFrame" }, world).state;
+		expect(again.scene?.id).toBe(ARRIVAL.id);
+		expect(again.scene?.step).toBe(0);
+	});
+
+	it("marks the trigger fired when the player skips", () => {
+		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
+		const skipped = reduce(opened, { t: "SkipScene" }, world).state;
+		expect(skipped.scene).toBeUndefined();
+		expect(skipped.flags[triggerKey("arrive")]).toBe(true);
+	});
+
+	it("still applies a skipped scene's effects, so skipping cannot stop the story", () => {
+		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
+		expect(reduce(opened, { t: "SkipScene" }, world).state.flags.chapter).toBe(2);
+	});
+
+	it("refuses to skip a scene that says it may not be skipped", () => {
+		const fixed: StagedScene = { ...ARRIVAL, skippable: false };
+		const probe: WorldProbe = { ...world, stagedScene: () => fixed };
+		const opened = reduce(start(), { t: "SceneFrame" }, probe).state;
+		expect(reduce(opened, { t: "SkipScene" }, probe).state.scene).toBeDefined();
+	});
+
+	/*
+	 * The command that *opens* a scene does check-point, and should: its trigger pass may have
+	 * granted an item or opened a gate, and that is worth keeping. What makes it safe is that
+	 * the trigger is still unfired and `withoutPlayingScene` keeps the scene itself off disk —
+	 * so what gets written is a world in which the cutscene has yet to play.
+	 */
+	it("emits no save on the frames of a playing scene", () => {
+		const opened = reduce(start(), { t: "SceneFrame" }, world);
+		const frame = reduce(opened.state, { t: "SceneFrame" }, world);
+		expect(frame.effects).toEqual([]);
+
+		const answered = reduce(frame.state, { t: "Advance" }, world);
+		expect(answered.effects).toEqual([]);
+	});
+
+	it("saves once the scene is over, because that is a checkpoint worth keeping", () => {
+		let state = reduce(start(), { t: "SceneFrame" }, world).state;
+		let saves = 0;
+		for (let frame = 0; frame < 20 && state.scene; frame++) {
+			const outcome = reduce(
+				state,
+				state.scene.caption ? { t: "Advance" } : { t: "SceneFrame" },
+				world,
+			);
+			state = outcome.state;
+			saves += outcome.effects.filter((effect) => effect.t === "Save").length;
+		}
+		expect(saves).toBe(1);
+	});
+
+	/*
+	 * A scene the world cannot stage must not lock the player out of their own game. Ending it
+	 * is the only honest option — and its effects still apply, so the story does not stop at a
+	 * cutscene that failed to load.
+	 */
+	it("does not open a scene the world cannot stage, and leaves the trigger waiting", () => {
+		const { state } = reduce(start(), { t: "SceneFrame" }, forgetful);
+		expect(state.scene).toBeUndefined();
+		expect(state.flags[triggerKey("arrive")]).toBeUndefined();
+	});
+
+	it("ends a playing scene whose staging has gone, applying what it had left to do", () => {
+		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
+		const rescued = reduce(opened, { t: "SceneFrame" }, forgetful).state;
+		expect(rescued.scene).toBeUndefined();
+		expect(rescued.flags[triggerKey("arrive")]).toBe(true);
+	});
+
+	it("does not advance the clock, so a cutscene costs no daylight", () => {
+		const opened = reduce(start(), { t: "SceneFrame" }, world).state;
+		const finished = playThrough(opened);
+		expect(finished.time.tick).toBe(opened.time.tick);
+	});
+});

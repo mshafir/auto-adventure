@@ -197,7 +197,7 @@ export class SaveRepository {
 		const state = this.latest;
 		this.dirty = false;
 		try {
-			writeFileAtomic(savePath(state.world.id), JSON.stringify(state));
+			writeFileAtomic(savePath(state.world.id), JSON.stringify(withoutPlayingScene(state)));
 		} catch (error) {
 			logger.error("failed to write save", error);
 			// Keep the state pending so a later flush can retry.
@@ -212,6 +212,27 @@ export class SaveRepository {
 		}
 		this.flush();
 	}
+}
+
+/**
+ * The state as it goes to disk: everything except the scene currently playing.
+ *
+ * A scene is the one part of `GameState` that must not survive a reload. Its steps are
+ * applied as they run, so resuming from the middle of one would mean either replaying the
+ * effects already applied or skipping the ones still to come — and the whole design picks
+ * neither: an interrupted scene replays from its first step, which is safe precisely
+ * because the trigger that opened it is still unfired and its non-idempotent effects are
+ * confined to its last step.
+ *
+ * Done here, at the one place anything is written, rather than by the callers. Every caller
+ * is a place that does not know a scene exists, and a save written from one of them that
+ * happened to carry a half-finished cutscene would be indistinguishable from a good one.
+ */
+function withoutPlayingScene(state: GameState): GameState {
+	if (!state.scene) return state;
+	const { scene: playing, ...rest } = state;
+	void playing;
+	return rest;
 }
 
 export function isCurrentVersion(state: { version?: number }): boolean {

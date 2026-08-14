@@ -91,6 +91,34 @@ describe("SaveRepository", () => {
 	});
 });
 
+describe("what does not go to disk", () => {
+	/*
+	 * A scene is the one part of GameState that must not survive a reload. Its steps apply as
+	 * they run, so resuming from the middle would either repeat what it had already done or
+	 * skip what it had not. An interrupted scene replays from its first step instead, which is
+	 * safe because the trigger that opened it is still unfired.
+	 */
+	it("leaves a playing scene out of the save", () => {
+		const repo = new SaveRepository(0);
+		repo.schedule({
+			...newState("mid-scene"),
+			scene: { id: "the-messenger-arrives", step: 1, elapsed: 2, actors: {} },
+		});
+		repo.flush();
+		expect(new SaveRepository(0).load("mid-scene")?.scene).toBeUndefined();
+	});
+
+	it("keeps the scene definitions, which are content rather than progress", () => {
+		const repo = new SaveRepository(0);
+		repo.schedule({
+			...newState("with-scenes"),
+			scenes: { "the-messenger-arrives": { id: "the-messenger-arrives", steps: [] } },
+		});
+		repo.flush();
+		expect(new SaveRepository(0).load("with-scenes")?.scenes).toBeDefined();
+	});
+});
+
 describe("listing and deleting worlds", () => {
 	function write(id: string) {
 		const repo = new SaveRepository(0);

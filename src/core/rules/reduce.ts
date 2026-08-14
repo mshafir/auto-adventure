@@ -19,6 +19,13 @@ import type { LootItem } from "./loot.js";
 import { clampDisposition, createNpcRecord, MAX_FACTS, type NpcRecord } from "./npc.js";
 import { describeObjective, verifyQuests } from "./quests.js";
 import {
+	advanceScene,
+	beginScene,
+	type SceneState,
+	type StagedScene,
+	type StagedStep,
+} from "./scene.js";
+import {
 	type GameState,
 	type InventoryItem,
 	type JournalEntry,
@@ -27,7 +34,7 @@ import {
 	visitedKey,
 	type WorldTime,
 } from "./state.js";
-import { MAX_TRIGGER_PASSES, pendingTriggers } from "./trigger.js";
+import { MAX_TRIGGER_PASSES, pendingTriggers, triggerKey } from "./trigger.js";
 
 /**
  * The world the reducer is allowed to ask about.
@@ -71,6 +78,15 @@ export interface WorldProbe {
 	 * depend on state the reducer already holds.
 	 */
 	barrierAt?(x: number, y: number): Barrier | undefined;
+	/**
+	 * A scene with its points resolved and its walks already pathfound.
+	 *
+	 * Staged by the engine, which has the world; the reducer only ever plays what it is
+	 * handed. That is what keeps the scene machine pure and its tests free of a world, and
+	 * it is why an unstageable scene is simply never opened rather than opened and then
+	 * found to be impossible halfway through.
+	 */
+	stagedScene?(id: string): StagedScene | undefined;
 	/** Where the player lands on entering an interior. */
 	interiorEntrance?(interiorId: number): { readonly x: number; readonly y: number } | undefined;
 	/**
@@ -116,6 +132,12 @@ export interface WorldProbe {
  * player saw the step.
  */
 export function reduce(state: GameState, command: Command, world: WorldProbe): Reduction {
+	// A scene has the world, and takes every command with it. Handled here rather than
+	// guarded inside each case, because the list of things that must not happen mid-cutscene
+	// is "all of them" — so a command added later joins that list by default rather than by
+	// somebody remembering to add a check.
+	if (state.scene) return duringScene(state, state.scene, command, world);
+
 	// A notice reports what just happened, so whatever happens next clears it —
 	// otherwise "You find 3 Timber." sits under the map for the rest of the game.
 	const result = step(withoutNotice(state), command, world);
@@ -221,10 +243,25 @@ function settle(
 		if (pass >= MAX_TRIGGER_PASSES) break;
 		// Beats that open on their own come first, so a trigger written to react to a
 		// beat opening sees it in this pass rather than the next.
-		const fired = applyEffects(current, [
+		const due = [
 			...beatsOpenedByState(current.arc, current).flatMap(beatEffects),
 			...pendingTriggers(current.triggers, current),
-		]);
+		];
+		const fired = applyEffects(current, due);
+
+		// A scene opens *after* the pass that asked for it has been applied, so that
+		// everything else that pass did — a flag set, a gate opened, an item granted — is
+		// already true on the scene's first frame. Opening it needs the world, which the
+		// effect layer has no access to, so it happens here where the probe is.
+		// Broken out of rather than returned from, so the journal this pass collected is
+		// still appended below.
+		const opened = openScene(fired.state, due, world);
+		if (opened) {
+			current = opened;
+			notable = true;
+			break;
+		}
+
 		if (fired.state === current) break;
 		current = fired.state;
 		notable = true;
@@ -232,6 +269,114 @@ function settle(
 
 	if (journal.length > 0) current = { ...current, journal: [...current.journal, ...journal] };
 	return { state: current, notable };
+}
+
+/**
+ * What a command means while a scene is playing.
+ *
+ * Three things get through. A frame advances it, the advance key gets past a line somebody
+ * is saying, and a skip ends it. Everything else is dropped on the floor.
+ *
+ * No `Save` is emitted on any path but the last, which is the other half of the
+ * interruption rule: a scene that is still running has written nothing to disk, so quitting
+ * mid-cutscene replays it from the start next time rather than resuming a half-applied
+ * middle.
+ */
+function duringScene(
+	state: GameState,
+	scene: SceneState,
+	command: Command,
+	world: WorldProbe,
+): Reduction {
+	const staged = world.stagedScene?.(scene.id);
+	// A scene whose staging has gone is a scene that cannot be played. Ending it is the only
+	// honest option available — leaving it up would lock the player out of their own game
+	// with no way back — and its effects still apply, so the story does not stop here.
+	if (!staged) {
+		const rescued = applyEffects(closeScene(state, scene.id), remainingEffects(scene.step, []));
+		return { state: rescued.state, effects: [{ t: "Save", reason: "checkpoint" }] };
+	}
+
+	if (command.t === "SkipScene") {
+		if (!staged.skippable) return { state, effects: [] };
+		// Skipping skips the *prose*, never the consequences. A scene is where a chapter
+		// turns, and a player who has read enough must not be left in a world where the turn
+		// never happened.
+		const applied = applyEffects(
+			closeScene(state, scene.id),
+			remainingEffects(scene.step, staged.steps),
+		);
+		return { state: applied.state, effects: [{ t: "Save", reason: "checkpoint" }] };
+	}
+
+	// `Advance` and `Confirm` are both "yes, go on" elsewhere in the game, so both get past a
+	// caption. Anything else is swallowed.
+	const advance = command.t === "Advance" || command.t === "Confirm";
+	if (command.t !== "SceneFrame" && !advance) return { state, effects: [] };
+
+	const outcome = advanceScene(staged, scene, { advance });
+	const applied = applyEffects(state, outcome.effects);
+	if (outcome.scene) {
+		return { state: { ...applied.state, scene: outcome.scene }, effects: [] };
+	}
+	return {
+		state: closeScene(applied.state, scene.id),
+		effects: [{ t: "Save", reason: "checkpoint" }],
+	};
+}
+
+/**
+ * Open a scene one of these effects asked for, if the world can stage it.
+ *
+ * Returns undefined when nothing asked, when one is already playing, or when the scene
+ * cannot be staged — a missing scene is logged by the engine that does the staging, and
+ * refusing to open it here leaves the trigger unfired, so a corrected scenario plays it
+ * next time rather than having silently skipped it.
+ */
+function openScene(
+	state: GameState,
+	effects: readonly DomainEffect[],
+	world: WorldProbe,
+): GameState | undefined {
+	if (state.scene) return undefined;
+	const asked = effects.find((effect) => effect.t === "PlayScene");
+	if (!asked || asked.t !== "PlayScene") return undefined;
+	const staged = world.stagedScene?.(asked.id);
+	if (!staged) return undefined;
+	return {
+		...state,
+		scene: beginScene(staged, { x: state.player.x, y: state.player.y }, state.player.facing),
+	};
+}
+
+/**
+ * Take the scene down and record that whatever opened it is done.
+ *
+ * The fired flag is written *here* rather than by `pendingTriggers`, so that only a scene
+ * which actually reached its end counts as having happened. See {@link playsAScene}.
+ */
+function closeScene(state: GameState, sceneId: string): GameState {
+	const flags = { ...state.flags };
+	for (const trigger of state.triggers ?? []) {
+		if (trigger.once === false) continue;
+		if (trigger.effects.some((effect) => effect.t === "PlayScene" && effect.id === sceneId))
+			flags[triggerKey(trigger.id)] = true;
+	}
+	const { scene: over, ...rest } = state;
+	void over;
+	return { ...rest, flags };
+}
+
+/** Every effect a scene has not applied yet, from this step onwards. */
+function remainingEffects(from: number, steps: readonly StagedStep[]): DomainEffect[] {
+	const effects: DomainEffect[] = [];
+	for (const step of steps.slice(from)) {
+		for (const action of step.do) {
+			if (action.t === "Effects") effects.push(...action.effects);
+			if (action.t === "Card") effects.push({ t: "ShowCard", card: action.card });
+		}
+	}
+	return effects;
 }
 
 /**
@@ -360,6 +505,13 @@ function step(state: GameState, command: Command, world: WorldProbe): Reduction 
 		}
 		case "Tick":
 			return { state: { ...state, time: advanceTime(state, command.amount) }, effects: [] };
+		case "SceneFrame":
+		case "SkipScene":
+			// Both are handled by `duringScene`, which `reduce` reaches first whenever a scene
+			// is playing — so arriving here means one turned up when there was no scene to
+			// advance or skip. The UI only dispatches frames while `state.scene` is set, and a
+			// stray one is nothing to report.
+			return { state, effects: [] };
 		case "ChunkReady": {
 			// Folded rather than mapped, so a batch in which nothing is new returns the
 			// state it was given and costs no render at all.
@@ -914,6 +1066,10 @@ function applyEffect(state: GameState, effect: DomainEffect): GameState {
 			};
 		case "OpenBarrier":
 			return openBarrier(state, effect.id);
+		case "PlayScene":
+			// Nothing here. Opening a scene means staging it against the world, and this layer
+			// has no probe — `openScene`, called from `settle`, is where it happens.
+			return state;
 		case "Teleport":
 			return { ...state, player: { ...state.player, x: effect.x, y: effect.y } };
 		case "Damage":

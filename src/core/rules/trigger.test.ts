@@ -26,6 +26,24 @@ function tick(state: GameState, probe = world()): GameState {
 }
 
 describe("pendingTriggers", () => {
+	/*
+	 * The exception to "mark it fired when it fires", and it is not a tidy-up. A cutscene that
+	 * was interrupted has applied only part of itself, so a world that recorded it as done
+	 * would never play it again and never apply the rest — the chapter it was turning simply
+	 * would not turn. `closeScene` writes the flag once the scene has actually ended.
+	 */
+	it("does not mark a scene-playing trigger fired when it fires", () => {
+		const trigger: Trigger = {
+			id: "arrive",
+			when: { flag: "ready" },
+			effects: [{ t: "PlayScene", id: "the-messenger-arrives" }],
+		};
+		const state = { ...base([trigger]), flags: { ready: true } };
+		expect(pendingTriggers([trigger], state)).toEqual([
+			{ t: "PlayScene", id: "the-messenger-arrives" },
+		]);
+	});
+
 	it("returns nothing when there are no triggers", () => {
 		expect(pendingTriggers(undefined, base())).toEqual([]);
 		expect(pendingTriggers([], base())).toEqual([]);

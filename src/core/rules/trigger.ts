@@ -45,6 +45,23 @@ export function triggerFired(state: GameState, trigger: Trigger): boolean {
 }
 
 /**
+ * Whether these effects hand the world over to a scene.
+ *
+ * A trigger that plays a scene must not be marked fired when it *fires*, only once the
+ * scene it started has finished. Otherwise a player who quits halfway through a cutscene
+ * comes back to a world that believes the scene has happened: it never plays again, and
+ * whatever it was going to change — the chapter flag, the item, the gate — never happens
+ * either. The story stops there, silently, which is the failure this whole format exists
+ * to make impossible.
+ *
+ * The flag is written by `closeScene` in the reducer instead, on the two paths that count
+ * as the scene being over: running out of steps, and the player skipping it.
+ */
+export function playsAScene(effects: readonly DomainEffect[]): boolean {
+	return effects.some((effect) => effect.t === "PlayScene");
+}
+
+/**
  * How many times the trigger pass may go round in one command.
  *
  * A trigger's effects can satisfy another trigger's condition, and an author will
@@ -81,7 +98,11 @@ export function pendingTriggers(
 		effects.push(...trigger.effects);
 		// Set last, so a partially-applied trigger is retried rather than skipped —
 		// the rule `beatEffects` follows, and for the same failure.
-		if (once) effects.push({ t: "SetFlag", key: triggerKey(trigger.id), value: true });
+		//
+		// A trigger that plays a scene is the exception, and the flag is written by the scene
+		// player instead. See {@link playsAScene}.
+		if (once && !playsAScene(trigger.effects))
+			effects.push({ t: "SetFlag", key: triggerKey(trigger.id), value: true });
 	}
 	return effects;
 }

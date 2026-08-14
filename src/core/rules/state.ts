@@ -11,6 +11,7 @@ import type { CachedTurn } from "./dialogue-cache.js";
 import type { Barrier } from "./lock.js";
 import type { NpcRecord } from "./npc.js";
 import type { Placement } from "./placement.js";
+import type { Scene, SceneState } from "./scene.js";
 import type { Sign } from "./signage.js";
 import type { Trigger } from "./trigger.js";
 
@@ -332,6 +333,24 @@ export interface GameState {
 	 * directions.
 	 */
 	readonly signs?: readonly Sign[];
+	/**
+	 * The cutscenes this world can play, by id.
+	 *
+	 * Persisted, like the arc and the triggers and for the same reason: a trigger whose
+	 * scene has gone missing fails silently, and a story told through scenes that no longer
+	 * exist stops with nothing on screen to say why.
+	 */
+	readonly scenes?: Readonly<Record<string, Scene>>;
+	/**
+	 * The scene playing right now.
+	 *
+	 * Deliberately *not* persisted, unlike the definitions above. The save is held back
+	 * while a scene runs, so an interrupted scene replays from its first step rather than
+	 * resuming from a half-applied middle — far cheaper than making every step resumable,
+	 * and a scene is seconds long. That replay is also why a scene may only apply
+	 * non-idempotent effects in its final step; see `sceneEffectProblems`.
+	 */
+	readonly scene?: SceneState;
 	readonly regions: Readonly<Record<string, RegionSpec>>;
 	readonly sites: Readonly<Record<string, SiteSpec>>;
 	readonly specSources: Readonly<Record<string, SpecSource>>;

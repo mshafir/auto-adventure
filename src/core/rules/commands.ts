@@ -68,4 +68,24 @@ export type Command =
 	| { readonly t: "RegionLearned"; readonly spec: RegionSpec }
 	| { readonly t: "SiteLearned"; readonly spec: SiteSpec; readonly source: SpecSource }
 	| { readonly t: "Tick"; readonly amount: number }
+	/**
+	 * One frame of a playing scene.
+	 *
+	 * Its own command rather than `Tick`, which is an *action* counter: one per player
+	 * command, sixty to the game hour, and what the day, the weather and every NPC's
+	 * schedule are derived from. A three-second cutscene run off it would burn an hour of
+	 * daylight, so a scene deliberately happens in no time at all.
+	 *
+	 * Dispatched by the UI on an interval for as long as `state.scene` is set, and ignored
+	 * when it is not.
+	 */
+	| { readonly t: "SceneFrame" }
+	/**
+	 * End a playing scene early.
+	 *
+	 * Its effects still apply — see `duringScene`. A scene is where a chapter turns, and a
+	 * player who has seen enough of the prose must not be left in a world where the turn
+	 * never happened.
+	 */
+	| { readonly t: "SkipScene" }
 	| { readonly t: "Error"; readonly scope: string; readonly message: string };

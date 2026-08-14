@@ -89,6 +89,15 @@ export type DomainEffect =
 	 * passability check see. Both go down together so the two cannot disagree.
 	 */
 	| { readonly t: "OpenBarrier"; readonly id: string }
+	/**
+	 * Hand the world over to a scene, by id.
+	 *
+	 * Ignored when a scene is already playing. The guard against playing one *twice* is not
+	 * here but on the trigger that raised it: a trigger whose effects include this keeps its
+	 * fired flag unwritten until the scene finishes, so an interrupted cutscene replays
+	 * rather than being silently lost. See `playsAScene` and `closeScene`.
+	 */
+	| { readonly t: "PlayScene"; readonly id: string }
 	| { readonly t: "Teleport"; readonly x: number; readonly y: number }
 	| { readonly t: "Damage"; readonly amount: number }
 	| { readonly t: "Heal"; readonly amount: number }
