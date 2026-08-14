@@ -419,7 +419,25 @@ export const DialogueTreeSchema = z.object({
 	nodes: z.record(z.string(), DialogueNodeSchema),
 });
 
-const ScenePointSchema = PlacementSiteSchema;
+/**
+ * Where a scene puts something.
+ *
+ * Not `PlacementSiteSchema`, although they look alike: a placement's site spelling resolves
+ * *inside* a building, and a cutscene happens outdoors. See `ScenePoint`.
+ */
+const ScenePointSchema = z.discriminatedUnion("kind", [
+	z.object({ kind: z.literal("world"), x: z.number().int(), y: z.number().int() }),
+	z.object({
+		kind: z.literal("anchor"),
+		siteId: z.number().int(),
+		anchor: z.enum(PLACEMENTS),
+	}),
+	z.object({
+		kind: z.literal("door"),
+		siteId: z.number().int(),
+		structure: z.string().min(1).max(60),
+	}),
+]);
 
 /**
  * One thing a scene does.

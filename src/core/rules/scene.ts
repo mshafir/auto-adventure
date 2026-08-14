@@ -1,7 +1,7 @@
+import type { AnchorKind } from "../gen/features/patch.js";
 import type { Vec2 } from "../geom/vec.js";
 import type { Card } from "./card.js";
 import type { DomainEffect } from "./effects.js";
-import type { PlacementSite } from "./placement.js";
 import type { Facing } from "./state.js";
 
 /**
@@ -43,12 +43,20 @@ export interface SceneStep {
 /**
  * Where a scene puts something.
  *
- * Exactly a {@link PlacementSite}, rather than a spelling of its own. A scene point that
- * could mean something a placement could not would be a second address space over the
- * same world, and the first thing to disagree with it would be the resolver — so both go
- * through one.
+ * Deliberately *not* a {@link PlacementSite}, although the two look alike. A placement's
+ * site spelling resolves to a tile *inside a building* — that is its whole purpose, since a
+ * story hides things in chests — and a cutscene happens outdoors, in the square, at the
+ * gate, by the well. Sharing the spelling would have meant a rider walking to the well and
+ * arriving in somebody's pantry.
+ *
+ * What these three name, in descending order of how much the author has to know: an exact
+ * tile, an outdoor anchor the generator laid down, and a building's doorstep.
  */
-export type ScenePoint = PlacementSite;
+export type ScenePoint =
+	| { readonly kind: "world"; readonly x: number; readonly y: number }
+	| { readonly kind: "anchor"; readonly siteId: number; readonly anchor: AnchorKind }
+	/** The tile outside a building's door, by the building's proper name or its kind. */
+	| { readonly kind: "door"; readonly siteId: number; readonly structure: string };
 
 export type PanKind = "cut" | "slow" | "fast";
 export type WalkSpeed = "slow" | "normal" | "fast";

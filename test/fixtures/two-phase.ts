@@ -202,26 +202,33 @@ export function twoPhaseArtifact(): ScenarioArtifact {
 		scenes: {
 			"the-messenger-arrives": {
 				id: "the-messenger-arrives",
-				cast: { rider: npcIdFor(ASH_HOLLOW, 0) },
+				// The keeper already lives here and is standing at the well all day, so she needs no
+				// `Spawn` — staging starts a cast member wherever the world has them. The rider is
+				// genuinely not in the world and has to be put on stage.
+				cast: { keeper: npcIdFor(ASH_HOLLOW, 0) },
 				steps: [
 					{
 						do: [
 							{
 								t: "Camera",
-								to: { kind: "site", siteId: ASH_HOLLOW, anchor: "well" },
+								to: { kind: "anchor", siteId: ASH_HOLLOW, anchor: "well" },
 								pan: "slow",
 							},
-							{ t: "Face", actor: "player", at: "up" },
+							// A world tile rather than an anchor, because Ash Hollow has four gates and
+							// "the first one" is not a thing an author means. This is the western gate, on
+							// the road from Wenthollow, which is the direction the news comes from.
+							{ t: "Spawn", actor: "rider", at: { kind: "world", x: 61, y: -24 } },
+							{ t: "Face", actor: "keeper", at: "left" },
 						],
-						hold: 4,
+						hold: 3,
 					},
 					{
 						do: [
 							{
 								t: "WalkTo",
 								actor: "rider",
-								to: { kind: "site", siteId: ASH_HOLLOW, anchor: "well" },
-								speed: "normal",
+								to: { kind: "anchor", siteId: ASH_HOLLOW, anchor: "well" },
+								speed: "fast",
 							},
 						],
 					},
@@ -245,9 +252,10 @@ export function twoPhaseArtifact(): ScenarioArtifact {
 						],
 					},
 					{
-						// Last step, so the non-idempotent grant is allowed here and nowhere earlier —
-						// an interrupted scene replays, and a ledger handed out twice is a ledger
-						// handed out twice.
+						// Last step, so the non-idempotent grant is allowed here and nowhere earlier — an
+						// interrupted scene replays, and a ledger handed out twice is a ledger handed out
+						// twice. The hold keeps the final frame on screen long enough to be seen, which
+						// a scene's last step does not otherwise get.
 						do: [
 							{
 								t: "Effects",
@@ -262,7 +270,7 @@ export function twoPhaseArtifact(): ScenarioArtifact {
 								],
 							},
 						],
-						hold: 2,
+						hold: 3,
 					},
 				],
 			},
