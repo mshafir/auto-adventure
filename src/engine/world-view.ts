@@ -9,6 +9,14 @@ export interface ChunkProvider {
 	readonly seed: number;
 	/** Returns the chunk if it is resident; `undefined` if it is not yet built. */
 	chunkAt(cx: number, cy: number): Chunk | undefined;
+	/**
+	 * A number that changes whenever a resident chunk has been dropped or replaced.
+	 *
+	 * Optional, and a provider that omits it is taken to be immutable. Supplying it is what
+	 * keeps the memo below honest: the memo holds a chunk *object*, so one that has been
+	 * regenerated since would otherwise go on being read from the old copy.
+	 */
+	revision?: () => number;
 }
 
 /**
@@ -47,13 +55,20 @@ export function createWorldView(provider: ChunkProvider): WorldView {
 	let lastCx = Number.NaN;
 	let lastCy = Number.NaN;
 	let lastChunk: Chunk | undefined;
+	let lastRevision = -1;
 
 	const resolve = (x: number, y: number): Chunk | undefined => {
 		const cx = toChunkX(x);
 		const cy = toChunkY(y);
-		if (cx !== lastCx || cy !== lastCy) {
+		// The revision check is what makes the memo safe across an invalidation. Without it the
+		// first tile read after a chapter relaid the ground came from the chunk that had just
+		// been thrown away, and the seam only healed when the next read happened to fall in a
+		// different chunk.
+		const revision = provider.revision?.() ?? 0;
+		if (cx !== lastCx || cy !== lastCy || revision !== lastRevision) {
 			lastCx = cx;
 			lastCy = cy;
+			lastRevision = revision;
 			lastChunk = provider.chunkAt(cx, cy);
 		}
 		return lastChunk;

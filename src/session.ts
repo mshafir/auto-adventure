@@ -27,6 +27,7 @@ import { GameEngine } from "./engine/engine.js";
 import { findSpawn } from "./engine/spawn.js";
 import { SaveRepository } from "./persist/save-repo.js";
 import { artifactWorld, type ScenarioArtifact } from "./scenario/artifact.js";
+import { baseContent } from "./scenario/dir.js";
 import { type Flavour, type LaunchChoice, usesLiveModel } from "./scenario/scenario.js";
 import { logger } from "./utils/log.js";
 
@@ -191,6 +192,11 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 			content: pack,
 			runDialogueTurn: dialogue.runDialogueTurn,
 			summarizeNpc: dialogue.summarizeNpc,
+			// The chapters, and the world as the first of them. Content rather than progress, so
+			// they come from the artifact every session and never from the save — which is what
+			// lets a phase file be corrected while somebody is halfway through.
+			...(choice.scenario ? { base: baseContent(choice.scenario) } : {}),
+			...(choice.scenario?.phases?.length ? { phases: choice.scenario.phases } : {}),
 		}),
 	);
 	host.engine = engine;
@@ -471,5 +477,9 @@ function scenarioRules(artifact: ScenarioArtifact): Partial<GameState> {
 		// worked out later and from the world, so an edit that moves a town is picked up by
 		// every sign pointing at it without the file being touched.
 		...(artifact.signs?.length ? { signs: artifact.signs } : {}),
+		// Cutscenes, for the same reason as the triggers that raise them: a trigger whose scene
+		// went missing fails silently, and a story told through scenes that are not there stops
+		// with nothing on screen to say why.
+		...(artifact.scenes && Object.keys(artifact.scenes).length ? { scenes: artifact.scenes } : {}),
 	};
 }

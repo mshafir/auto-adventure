@@ -18,6 +18,9 @@ export interface RunnerDeps {
 	readonly specFor?: EngineServices["specFor"];
 	readonly siteSpec?: EngineServices["siteSpec"];
 	readonly content?: EngineServices["content"];
+	/** The world as its first chapter, and the chapters after it. See `EngineServices`. */
+	readonly base?: EngineServices["base"];
+	readonly phases?: EngineServices["phases"];
 	/**
 	 * How the background chunk builder gets its slices of time.
 	 *
@@ -43,6 +46,8 @@ export function createEffectRunner(deps: RunnerDeps): EngineServices {
 		...(deps.specFor ? { specFor: deps.specFor } : {}),
 		...(deps.siteSpec ? { siteSpec: deps.siteSpec } : {}),
 		...(deps.content ? { content: deps.content } : {}),
+		...(deps.base ? { base: deps.base } : {}),
+		...(deps.phases?.length ? { phases: deps.phases } : {}),
 		runEffect(effect: Effect, engine: GameEngine) {
 			switch (effect.t) {
 				case "EnsureChunk":

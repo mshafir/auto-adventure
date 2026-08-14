@@ -19,6 +19,7 @@ import {
 	takenKey,
 } from "../core/rules/placement.js";
 import { reduce, type WorldProbe } from "../core/rules/reduce.js";
+import type { StagedScene } from "../core/rules/scene.js";
 import { type Sign, signBoard, signIndex, signTiles } from "../core/rules/signage.js";
 import { type GameState, worldAnchor } from "../core/rules/state.js";
 import { EMPTY_SURROUNDINGS, type Surroundings } from "../core/rules/surroundings.js";
@@ -26,12 +27,20 @@ import { type ChunkKey, chunkKey, parseChunkKey, toChunk } from "../core/world/c
 import { type MacroSite, regionIdAt, sitesAround, sitesInside } from "../core/world/macro.js";
 import { type WorldSeed, worldSeed } from "../core/world/recipe.js";
 import { npcId as makeNpcId, type SiteSpec } from "../core/world/spec.js";
+import {
+	composeScenario,
+	enteredPhaseIds,
+	type Phase,
+	type ScenarioContent,
+} from "../scenario/phase.js";
 import { logger } from "../utils/log.js";
+import { resolveBarriers } from "./barriers.js";
 import { ChunkManager } from "./chunk-manager.js";
 import { type AuthoredResident, InteriorPeople } from "./interior-people.js";
 import { createInteriorView } from "./interior-view.js";
 import { NpcDirectory, type PlacedNpc } from "./npc-directory.js";
 import { approaches, resolvePlacements } from "./placements.js";
+import { stageScene } from "./scene-staging.js";
 import { createWorldView, type WorldView } from "./world-view.js";
 
 export interface EngineServices {
@@ -51,6 +60,18 @@ export interface EngineServices {
 	siteSpec?: (siteId: number) => SiteSpec | undefined;
 	/** The flavour tables this world's residents are named and described from. */
 	content?: ContentPack;
+	/**
+	 * The world as its first chapter, and the chapters that come after it.
+	 *
+	 * Held here rather than in `GameState` because they are *content*, not progress: which
+	 * chapter the player is in is derived from the flags after every command, so nothing about
+	 * it is worth writing down. That is what lets a phase file be corrected while a save is in
+	 * flight — the save records what the player did, and the chapter follows from it.
+	 *
+	 * Absent for a live or procedural world, and for a scenario with only one chapter.
+	 */
+	base?: ScenarioContent;
+	phases?: readonly Phase[];
 }
 
 /**
@@ -112,6 +133,15 @@ export class GameEngine {
 	private sitePositions?: Map<number, MacroSite>;
 	/** Authored items, by the tile they sit on. Rebuilt on `hydrate`. */
 	private placements: Map<string, ResolvedPlacement>;
+	/**
+	 * Which chapters are in force, as their joined ids.
+	 *
+	 * Composition runs after every command, so the cheap thing has to be the *check*. When
+	 * this string is unchanged there is nothing to recompose and nothing to re-index.
+	 */
+	private entered = "";
+	/** Staged scenes, by id. Cached because staging sweeps for sites and builds settlements. */
+	private readonly staged = new Map<string, StagedScene | undefined>();
 	private draining = false;
 	private readonly queue: Effect[] = [];
 
@@ -130,6 +160,10 @@ export class GameEngine {
 			...(initial.world.bounds ? { bounds: initial.world.bounds } : {}),
 			...(initial.barriers?.length ? { barriers: barrierTiles(initial.barriers) } : {}),
 			...(initial.signs?.length ? { signs: signTiles(initial.signs) } : {}),
+			// The base chapter's authored ground. Later chapters change it through
+			// `setTerraform`, which invalidates what it has to; this is the world as the player
+			// first finds it, and it has to be in place before the opening chunks are built.
+			...(services.base?.terraform.length ? { terraform: services.base.terraform } : {}),
 		});
 		this.chunks.setDeltas(initial.deltas);
 		this.npcs = new NpcDirectory(this.chunks, (siteId) => this.services.siteSpec?.(siteId));
@@ -143,6 +177,10 @@ export class GameEngine {
 		this.view = createWorldView({
 			seed: initial.world.seed,
 			chunkAt: (cx, cy) => this.chunks.get(cx, cy),
+			// So the memo inside the view lets go of a chunk the manager has dropped. Without it
+			// the first tile read after a chapter relays the ground comes from the copy that was
+			// just thrown away.
+			revision: () => this.chunks.revision,
 		});
 
 		// The chunk the player stands in must exist before the first frame.
@@ -570,6 +608,7 @@ export class GameEngine {
 				return { kind: "level", level: portal.to, x: at.x, y: at.y };
 			},
 			placeNameAt: (x, y) => this.placeNameAt(x, y),
+			stagedScene: (id) => this.stagedScene(id),
 			searchableAt: (x, y) => {
 				const view = this.getView();
 
@@ -624,9 +663,13 @@ export class GameEngine {
 		// A gate that has just been unbarred, patched into the chunks already on screen
 		// rather than by dropping them — see `applyAddedDeltas`.
 		if (state.deltas !== this.state.deltas) this.chunks.applyAddedDeltas(state.deltas);
-		if (state !== this.state) {
-			const gated = gateInputsChanged(this.state, state);
-			this.state = state;
+		// The chapter may have turned as a result of this command — the scene's last step sets
+		// the flag a phase watches. Recomposed *after* the reducer rather than before, so the
+		// flags it reads are the ones the command just wrote.
+		const composed = this.recompose(state);
+		if (composed !== this.state) {
+			const gated = gateInputsChanged(this.state, composed);
+			this.state = composed;
 			// After the assignment, because the gate predicate reads `this.state` live,
 			// and before notifying, so the frame the player sees on the step that brought
 			// somebody on already has them standing in it.
@@ -644,7 +687,13 @@ export class GameEngine {
 
 	/** Replace state wholesale. Used only by save loading. */
 	hydrate(state: GameState): void {
-		this.state = state;
+		// The chapter is derived from the flags, so a save resumed after a turning point has to
+		// be recomposed before anything reads it — otherwise the world opens in chapter one with
+		// the flags of chapter two, which is a world whose story has already happened in it.
+		this.entered = "";
+		this.staged.clear();
+		this.state = this.recompose(state);
+		state = this.state;
 		this.barriers = barrierIndex(state.barriers);
 		this.signs = signIndex(state.signs);
 		this.placements = this.resolvePlaced(state);
@@ -659,6 +708,116 @@ export class GameEngine {
 		this.npcs.recheckGate();
 		this.residents.clear();
 		this.notify();
+	}
+
+	/**
+	 * A scene with its points resolved and its walks pathfound, staged once.
+	 *
+	 * Cached because staging sweeps the bounded world for a site and builds its settlement,
+	 * and the reducer asks for the staged scene on *every frame* of a cutscene. Cached even
+	 * when staging failed — a scene that could not be staged will not stage on the next frame
+	 * either, and re-deriving the same failure sixty times a second would put the sweep on the
+	 * frame path.
+	 *
+	 * A failure is logged and returned as undefined, which the reducer reads as "do not open
+	 * this". The trigger is then left unfired, so a corrected scenario plays the scene next
+	 * time rather than having silently skipped it.
+	 */
+	private stagedScene(id: string): StagedScene | undefined {
+		if (this.staged.has(id)) return this.staged.get(id);
+
+		const scene = this.state.scenes?.[id];
+		const bounds = this.state.world.bounds;
+		if (!scene || !bounds) {
+			if (!scene) logger.warn(`scene "${id}" was asked for and this world has none`);
+			this.staged.set(id, undefined);
+			return undefined;
+		}
+
+		const { staged, problems } = stageScene(scene, {
+			world: this.world,
+			bounds,
+			siteSpec: (siteId) => this.state.sites[String(siteId)] ?? this.services.siteSpec?.(siteId),
+			isPassable: (x, y) => this.view.isPassable(x, y),
+			player: { x: this.state.player.x, y: this.state.player.y },
+			npcAt: (npcId) => {
+				const found = this.npcs.byNpcId(npcId);
+				return found ? { x: found.x, y: found.y } : undefined;
+			},
+		});
+		for (const problem of problems) logger.warn(`scene "${id}" cannot be staged: ${problem}`);
+		this.staged.set(id, staged);
+		return staged;
+	}
+
+	/**
+	 * Lay the chapters that are now in force over the base world.
+	 *
+	 * Returns the state unchanged — by identity — when the set of entered chapters has not
+	 * moved, which is almost every command. That identity matters: the caller only re-indexes
+	 * and only notifies when something actually came back different.
+	 *
+	 * Everything derived from the composed content is rebuilt here rather than left to drift:
+	 * the gate and sign indexes, the resolved placements, and the authored ground. A chapter
+	 * that lays a road has to invalidate the chunks it crosses, because a stamped tile cannot
+	 * be un-stamped from a chunk already carrying it.
+	 */
+	private recompose(state: GameState): GameState {
+		const phases = this.services.phases;
+		const base = this.services.base;
+		if (!phases?.length || !base) return state;
+
+		const entered = enteredPhaseIds(phases, state).join(",");
+		if (entered === this.entered) return state;
+		this.entered = entered;
+
+		const content = composeScenario(base, phases, state);
+		// Gates are authored by site-and-anchor and resolved against the built settlement, the
+		// same way placements are — so a chapter that adds one has to resolve it here rather
+		// than handing the reducer a span it cannot read.
+		const { resolved: barriers, unresolved } = resolveBarriers(content.barriers, {
+			world: this.world,
+			...(state.world.bounds ? { bounds: state.world.bounds } : {}),
+		});
+		for (const problem of unresolved) {
+			logger.warn(`gate ${problem.id} is nowhere: ${problem.reason}`);
+		}
+
+		const next: GameState = {
+			...state,
+			sites: content.sites,
+			...(content.placements.length > 0 ? { placements: content.placements } : {}),
+			...(content.signs.length > 0 ? { signs: content.signs } : {}),
+			...(barriers.length > 0 ? { barriers } : {}),
+			...(content.triggers.length > 0 ? { triggers: content.triggers } : {}),
+			...(content.arc ? { arc: content.arc } : {}),
+			...(Object.keys(content.scenes).length > 0 ? { scenes: content.scenes } : {}),
+		};
+
+		this.barriers = barrierIndex(next.barriers);
+		this.signs = signIndex(next.signs);
+		this.placements = this.resolvePlaced(next);
+		// A chapter can replace a conversation or take one away, so a scene staged against the
+		// old chapter may name somebody who is no longer standing there.
+		this.staged.clear();
+
+		const dropped = this.chunks.setTerraform(content.terraform);
+		if (dropped.length > 0) {
+			// Rebuild what was dropped before anything reads it, so the frame the chapter turns on
+			// does not show a hole where the ground used to be.
+			for (const key of dropped) {
+				const { cx, cy } = parseChunkKey(key);
+				this.chunks.ensure(cx, cy);
+			}
+		}
+		// The roster is derived from the site specs, which a chapter may have replaced.
+		this.npcs.forgetAll();
+		this.populateNpcs(toChunk(worldAnchor(next.player).x, worldAnchor(next.player).y));
+		this.npcs.recheckGate();
+		this.residents.clear();
+
+		logger.info(`chapter now: ${entered || "the opening"}`);
+		return next;
 	}
 
 	/**

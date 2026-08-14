@@ -56,6 +56,17 @@ export class ChunkManager {
 	 */
 	private terraform: ReadonlyMap<string, TerrainId>;
 	private edits: readonly TerraformEdit[];
+	/**
+	 * Bumped whenever a resident chunk is dropped or replaced.
+	 *
+	 * `WorldView` memoises the last chunk it resolved, because a render pass asks about a whole
+	 * row of tiles from the same one. That memo holds an *object*, so a chunk that has been
+	 * dropped and regenerated leaves the view answering from the old copy until it happens to
+	 * be asked about somewhere else. Harmless while the only invalidation was a settlement spec
+	 * arriving before anything was on screen; not harmless when a chapter turns and relays the
+	 * ground under the player's feet.
+	 */
+	revision = 0;
 
 	constructor(private readonly options: ChunkManagerOptions) {
 		this.capacity = options.capacity ?? 49;
@@ -99,6 +110,7 @@ export class ChunkManager {
 		this.deltas = deltas;
 		// Deltas changed, so any resident chunk may now be stale.
 		this.entries.clear();
+		this.revision++;
 	}
 
 	/**
@@ -114,6 +126,9 @@ export class ChunkManager {
 		if (this.deltas === deltas) return;
 		this.deltas = deltas;
 		for (const [key, entry] of this.entries) this.applyDelta(entry.chunk, deltas[key]);
+		// The chunk objects are the same ones, patched in place, so a view memoising them is
+		// still correct — but the tiles it may already have read are not.
+		this.revision++;
 	}
 
 	get(cx: number, cy: number): Chunk | undefined {
@@ -208,7 +223,10 @@ export class ChunkManager {
 		for (let cy = y0; cy <= y1; cy++) {
 			for (let cx = x0; cx <= x1; cx++) {
 				const key = chunkKey(cx, cy);
-				if (this.entries.delete(key)) dropped.push(key);
+				if (this.entries.delete(key)) {
+					dropped.push(key);
+					this.revision++;
+				}
 			}
 		}
 		return dropped;
