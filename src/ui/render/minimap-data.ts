@@ -2,9 +2,14 @@
  * The explored world, one cell per chunk, as data.
  *
  * An infinite map needs something that makes the shape of a journey legible; a
- * list of coordinates does not. Only chunks the player has actually walked into
- * are drawn — everything else is blank, so the map fills in as a record of where
- * they have been rather than as a spoiler for where they have not.
+ * list of coordinates does not. Only chunks that have been *built* are drawn —
+ * everything else is blank, so the map fills in behind the player rather than
+ * being a spoiler for where they have not gone.
+ *
+ * "Built" and "walked into" are not the same thing, and the difference has bitten
+ * once: ground is built a chunk ahead of the player, so the map knows about a
+ * little more than has been visited. Harmless for terrain, and not harmless for
+ * the world's edge — see `cellAt`.
  *
  * This is deliberately not a component. The minimap has to appear over the map
  * in both renderers, and Ink cannot lay anything beside a row of kitty
@@ -15,6 +20,7 @@
  */
 import { questChunks } from "../../core/rules/quest-map.js";
 import { type GameState, worldAnchor } from "../../core/rules/state.js";
+import { type BoundaryStyle, safeInterior, type WorldBounds } from "../../core/world/bounds.js";
 import { biomeAt } from "../../core/world/context.js";
 import { CHUNK, chunkKey, toChunk } from "../../core/world/coords.js";
 import { isSettlement, macroSite } from "../../core/world/macro.js";
@@ -58,7 +64,10 @@ interface Mark {
  * it summarises; a literal `#rrggbb` also works.
  */
 const THEME: {
-	readonly marks: Readonly<Record<"here" | "errand" | "town" | "village" | "unseen", Mark>>;
+	readonly marks: Readonly<
+		Record<"here" | "errand" | "town" | "village" | "unseen" | "beyond", Mark>
+	>;
+	readonly edges: Readonly<Record<BoundaryStyle, Mark>>;
 	readonly biomes: Readonly<Record<string, Mark>>;
 	readonly unknownBiome: Mark;
 } = {
@@ -72,6 +81,22 @@ const THEME: {
 		town: { ch: "▣", color: "lamplight", bold: true },
 		village: { ch: "□", color: "lamplight", bold: true },
 		unseen: { ch: " ", color: "ash", fill: true },
+		// Past the edge there is no world at all, so it is drawn as nothing rather than
+		// as somewhere unvisited. The two look the same and mean different things: one
+		// is ground the player has not reached, the other is ground that does not exist.
+		beyond: { ch: " ", color: "ash", fill: true },
+	},
+	/**
+	 * The wall, in the three things a wall can be made of.
+	 *
+	 * The same character for all three because at a chunk a cell the shape is the
+	 * message — a closed ring around the playable world — and only the colour has room
+	 * to say whether it is water, rock or height.
+	 */
+	edges: {
+		ocean: { ch: "#", color: "deep", fill: true },
+		cliffs: { ch: "#", color: "slate", fill: true },
+		mountains: { ch: "#", color: "stone", fill: true },
 	},
 	biomes: {
 		ocean: { ch: "~", color: "deep", fill: true },
@@ -104,6 +129,7 @@ const THEME: {
 export function minimapGlyphs(): string[] {
 	return [
 		...Object.values(THEME.marks).map((mark) => mark.ch),
+		...Object.values(THEME.edges).map((mark) => mark.ch),
 		...Object.values(THEME.biomes).map((mark) => mark.ch),
 		THEME.unknownBiome.ch,
 	];
@@ -155,6 +181,29 @@ export function minimapCells(state: GameState, width: number, height: number): M
 	return rows;
 }
 
+/**
+ * How a whole chunk stands to the edge of a bounded world.
+ *
+ * Asked of the chunk rather than of a tile in it, because one cell of the minimap *is* a
+ * chunk: a chunk with any of the impassable band in it is where the wall runs, and only a
+ * chunk clear of the band all the way across is somewhere the player can move about.
+ */
+function standing(
+	bounds: WorldBounds | undefined,
+	cx: number,
+	cy: number,
+): "inside" | "edge" | "beyond" {
+	if (!bounds) return "inside";
+	const x0 = cx * CHUNK;
+	const y0 = cy * CHUNK;
+	const x1 = x0 + CHUNK - 1;
+	const y1 = y0 + CHUNK - 1;
+	if (x1 < bounds.minX || x0 > bounds.maxX || y1 < bounds.minY || y0 > bounds.maxY) return "beyond";
+	const safe = safeInterior(bounds);
+	const clear = x0 >= safe.minX && x1 <= safe.maxX && y0 >= safe.minY && y1 <= safe.maxY;
+	return clear ? "inside" : "edge";
+}
+
 function cellAt(
 	state: GameState,
 	cx: number,
@@ -165,6 +214,24 @@ function cellAt(
 ): MiniCell {
 	const { marks } = THEME;
 	if (isHere) return cellFor(marks.here);
+
+	/*
+	 * The edge comes before everything, including before whether the chunk has been
+	 * seen. A bounded world is a finite one and its shape is not a spoiler — whereas a
+	 * map that does not draw its walls is one where the far side of them looks like
+	 * somewhere still to go.
+	 *
+	 * It also settles a bug. Chunks are marked discovered when they are *built*, not
+	 * when they are walked into, and building runs a chunk ahead of the player — so the
+	 * ground past the wall was "discovered" without being reachable. Sites are a pure
+	 * function of the seed and know nothing about bounds, so `macroSite` cheerfully
+	 * reported settlements out there and the minimap drew them as towns nobody could
+	 * ever get to.
+	 */
+	const bounds = state.world.bounds;
+	const where = standing(bounds, cx, cy);
+	if (where === "beyond") return cellFor(marks.beyond);
+	if (where === "edge" && bounds) return cellFor(THEME.edges[bounds.style]);
 
 	const key = chunkKey(cx, cy);
 	if (!seen.has(key)) return cellFor(marks.unseen);

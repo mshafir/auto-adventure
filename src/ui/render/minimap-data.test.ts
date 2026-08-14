@@ -188,6 +188,87 @@ describe("a world that has just been opened and walked in", () => {
 	});
 });
 
+/*
+ * A world with an edge has to look like one.
+ *
+ * Reported from play: a town on the minimap that could not be reached. Two things were
+ * behind it. The map drew no boundary at all, so a finite world looked infinite; and a
+ * chunk is marked discovered when it is *built*, which runs a chunk ahead of the player,
+ * so ground past the wall counted as found. Sites are a pure function of the seed and know
+ * nothing about bounds, so `macroSite` reported settlements out there and the map drew
+ * them as somewhere to go.
+ */
+describe("the edge of a bounded world", () => {
+	/** A world eight chunks across, so a minimap can hold the whole of it and its wall. */
+	function bounded(style: "cliffs" | "ocean" | "mountains" = "cliffs"): GameState {
+		const base = stateAt(0, 0, { discovered: allSeen(0, 0, 8) });
+		return {
+			...base,
+			world: {
+				...base.world,
+				bounds: { minX: -256, minY: -256, maxX: 255, maxY: 255, style, thickness: 8 },
+			},
+		};
+	}
+
+	it("draws the wall the world ends at", () => {
+		// Bounds of ±256 put the rectangle's edge exactly on a chunk boundary, so the outermost
+		// chunks of the world — cx and cy of -4 and 3 — are the ones the band runs through.
+		const rows = minimapCells(bounded(), 13, 13);
+		const middle = rows[6] as { ch: string }[];
+		expect(middle[6]?.ch).toBe("@");
+		// Four chunks west of the player is the wall, and everything past it is nothing.
+		expect(middle[2]?.ch).toBe("#");
+		expect(middle[1]?.ch).toBe(" ");
+	});
+
+	it("closes the ring on every side", () => {
+		const rows = minimapCells(bounded(), 13, 13);
+		const at = (x: number, y: number) => rows[y]?.[x]?.ch;
+		for (const [x, y] of [
+			[2, 6],
+			[9, 6],
+			[6, 2],
+			[6, 9],
+		] as const) {
+			expect(at(x, y), `${x},${y}`).toBe("#");
+		}
+	});
+
+	it("colours the wall by what it is made of", () => {
+		const wall = (style: "cliffs" | "ocean" | "mountains") =>
+			(minimapCells(bounded(style), 13, 13)[6] as { fg: unknown }[])[2]?.fg;
+		expect(wall("ocean")).not.toEqual(wall("cliffs"));
+		expect(wall("mountains")).not.toEqual(wall("ocean"));
+	});
+
+	it("draws no settlement past the edge, however discovered it is", () => {
+		// The bug as reported. Every chunk here is marked discovered, including the ones
+		// outside the world, and none of them may come back as a town.
+		const rows = minimapCells(bounded(), 21, 21);
+		const outside = rows
+			.flatMap((row, y) => row.map((cell, x) => ({ cell, x, y })))
+			.filter(({ x, y }) => Math.abs(x - 10) > 4 || Math.abs(y - 10) > 4);
+		expect(outside.length).toBeGreaterThan(0);
+		for (const { cell, x, y } of outside) {
+			expect(cell.ch, `${x},${y}`).not.toMatch(/[▣□]/);
+		}
+	});
+
+	it("shows the wall before the player has been anywhere near it", () => {
+		// A finite world's shape is not a spoiler, and a map that hides its walls is one
+		// where the far side of them looks like somewhere still to go.
+		const unexplored = { ...bounded(), discovered: [] };
+		const rows = minimapCells(unexplored, 13, 13);
+		expect((rows[6] as { ch: string }[])[2]?.ch).toBe("#");
+	});
+
+	it("draws no wall at all in a world that has no edge", () => {
+		const rows = minimapCells(stateAt(0, 0, { discovered: allSeen(0, 0, 8) }), 13, 13);
+		expect(rows.flat().some((cell) => cell.ch === "#")).toBe(false);
+	});
+});
+
 // The minimap is composited into map rows now, so it is held to the same rule as
 // the terrain it is drawn over: one terminal column per glyph, everywhere. `▪`
 // was the obvious village mark and is banned for exactly this reason — it has an
