@@ -46,7 +46,17 @@ function walkerFor(name: string) {
 	return { artifact, sites, session, walker: storyWalker(artifact, session.engine, sites) };
 }
 
-describe("the story walker", { timeout: 60_000 }, () => {
+/*
+ * Skipped until the `two-phase` fixture directory exists.
+ *
+ * These suites are parameterised over the scenarios that used to ship in `.scenarios/`,
+ * and those were deleted with the pipeline that wrote them — so they currently assert
+ * things about content that is not there. The checkers themselves are kept deliberately:
+ * they become `craft check` and `craft playtest`. Task 11 of
+ * docs/superpowers/plans/2026-08-14-scenario-v2-and-scenes.md points them at
+ * test/fixtures/scenarios/two-phase and turns them back on.
+ */
+describe.skip("the story walker", { timeout: 60_000 }, () => {
 	it("stands the player in the town it was sent to, out of doors", () => {
 		// The failure this pins is silent and total: indoors the player's coordinates are
 		// interior-local and the reducer asks which place they are in about the doorstep they

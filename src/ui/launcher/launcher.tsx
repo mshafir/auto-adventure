@@ -1,15 +1,11 @@
 import { useApp, useStdout } from "ink";
 import { useState } from "react";
-import type { PackEntry } from "../../content/load.js";
-import type { TilePackEntry } from "../../content/tiles.js";
-import type { ScenarioBrief } from "../../core/world/brief.js";
 import type { SaveSummary } from "../../persist/save-repo.js";
 import type { ScenarioSummary } from "../../scenario/repo.js";
-import type { GenerateRequest, LaunchChoice } from "../../scenario/scenario.js";
+import type { LaunchChoice } from "../../scenario/scenario.js";
 import { detectColorDepth } from "../render/color.js";
 import { type ChoiceContext, choiceFor } from "./choice.js";
 import { Continue } from "./continue.js";
-import { GenerateConfig, type GenerateConfigProps } from "./generate-config.js";
 import { NewWorld } from "./new-world.js";
 import { Options } from "./options.js";
 import { Title } from "./title.js";
@@ -27,12 +23,10 @@ import { Title } from "./title.js";
  * the only navigation rule, and it is why each page is mounted alone: `useInput`
  * handlers all fire, so two pages on screen would both act on every arrow key.
  *
- * Three of these pages end in a `LaunchChoice`. Asking for a world to be written does
- * not: it produces a `GenerateRequest`, because the world does not exist yet and will
- * not until several minutes of authoring have run. That work happens after this app has
- * unmounted — see `pick-launch.tsx` — which is also why the page that used to ask for a
- * premise is gone. It was the front half of a wizard whose back half was "and now play
- * immediately"; the premise is a field on the config page now.
+ * Three of these pages end in a `LaunchChoice`, and there is no fourth. Worlds are not
+ * made from here: authoring is a dev-time activity done by an agent driving the `craft`
+ * CLI, and what it produces is a directory in `.scenarios/` that the New world page lists
+ * like any other. What this screen offers is a choice between things that already exist.
  *
  * Options ends in nothing at all, which makes it the odd one out. It changes the machine
  * rather than the run, so coming back from it lands on the title screen with the rest of
@@ -40,7 +34,7 @@ import { Title } from "./title.js";
  * whole point of it being reachable from the front door.
  */
 
-type Page = "title" | "new" | "generate" | "continue" | "options";
+type Page = "title" | "new" | "continue" | "options";
 
 /**
  * The settings page's whole dependency on the disk, passed in.
@@ -68,27 +62,6 @@ export interface LauncherProps {
 	/** Everything the Options page needs, and what it does with an answer. */
 	readonly options?: OptionsBinding;
 	readonly context: ChoiceContext;
-	/** A brief from the environment, offered as a starting point. */
-	readonly initialBrief?: ScenarioBrief;
-	/** Tile packs on disk, resolved, offered on the config page beside the built-in look. */
-	readonly tilePacks?: readonly TilePackEntry[];
-	/** Content packs on disk, likewise. */
-	readonly contentPacks?: readonly PackEntry[];
-	/**
-	 * The player asked for a world to be written.
-	 *
-	 * Reported instead of `onChoose`, because there is nothing to choose yet — the
-	 * caller runs the authoring passes and builds the real choice from what comes back.
-	 */
-	readonly onGenerate?: (request: GenerateRequest) => void;
-	/**
-	 * Writes a few premises to choose between, on the config page's Premise row.
-	 *
-	 * Passed down rather than imported anywhere below here, so every page in this app still
-	 * renders in a test with no gateway key. Absent means the row offers only the two answers
-	 * that need no model.
-	 */
-	readonly onSuggest?: GenerateConfigProps["onSuggest"];
 	/**
 	 * Wall-clock, for the "last played" line. Passed in so the page is a function of
 	 * its inputs and a test does not have to freeze the clock.
@@ -106,14 +79,9 @@ export function Launcher({
 	unavailableNote,
 	options,
 	context,
-	initialBrief,
-	tilePacks = [],
-	contentPacks = [],
 	now = Date.now(),
 	onChoose,
 	onDelete,
-	onGenerate,
-	onSuggest,
 	onQuit,
 }: LauncherProps) {
 	const { exit } = useApp();
@@ -194,33 +162,6 @@ export function Launcher({
 		);
 	}
 
-	if (page === "generate") {
-		return (
-			<GenerateConfig
-				columns={columns}
-				rows={rows}
-				depth={depth}
-				tilePacks={tilePacks}
-				contentPacks={contentPacks}
-				{...(modelSet ? { modelSet } : {})}
-				onModelSet={(id) => {
-					options?.onChooseModel(id);
-					setModelSet(id);
-				}}
-				{...(initialBrief?.premise ? { initialPremise: initialBrief.premise } : {})}
-				{...(onSuggest ? { onSuggest } : {})}
-				onBegin={(request) => {
-					// Resolved into a world by `pickLaunch`, after this app has unmounted: there
-					// is no seed, no spawn and no artifact yet, so there is nothing a
-					// `LaunchChoice` could honestly be built from here.
-					onGenerate?.(request);
-					exit();
-				}}
-				onBack={() => setPage("new")}
-			/>
-		);
-	}
-
 	if (page === "new") {
 		return (
 			<NewWorld
@@ -231,7 +172,7 @@ export function Launcher({
 				canUseModel={modelUsable}
 				{...(note ? { unavailableNote: note } : {})}
 				onScenario={(scenario) => take(choiceFor({ kind: "scenario", scenario }, here))}
-				onGenerate={() => setPage("generate")}
+				onUnwritten={(flavour) => take(choiceFor({ kind: "new", flavour }, here))}
 				onBack={() => setPage("title")}
 			/>
 		);

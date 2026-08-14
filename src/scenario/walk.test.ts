@@ -37,7 +37,17 @@ afterEach(() => {
 // Building a session, generating chunks and walking between towns is real work.
 const SLOW = { timeout: 120_000 };
 
-describe("walkTheStory", SLOW, () => {
+/*
+ * Skipped until the `two-phase` fixture directory exists.
+ *
+ * These suites are parameterised over the scenarios that used to ship in `.scenarios/`,
+ * and those were deleted with the pipeline that wrote them — so they currently assert
+ * things about content that is not there. The checkers themselves are kept deliberately:
+ * they become `craft check` and `craft playtest`. Task 11 of
+ * docs/superpowers/plans/2026-08-14-scenario-v2-and-scenes.md points them at
+ * test/fixtures/scenarios/two-phase and turns them back on.
+ */
+describe.skip("walkTheStory", SLOW, () => {
 	for (const name of ["thornwick-road", "green-chapel"]) {
 		it(`plays ${name} to its ending`, async () => {
 			const artifact = readScenarioFile(scenarioPath(name));

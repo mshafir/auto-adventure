@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { TreeSchema } from "./author/schemas.js";
 import { DialogueTurnSchema } from "./dialogue/schema.js";
 import { RegionSpecSchema, SiteSpecSchema } from "./director/schemas.js";
 import { cappedInt, cappedList, cappedText, toSlug, trimTo } from "./limits.js";
@@ -131,35 +130,6 @@ describe("an identifier that is normalised rather than refused", () => {
 		for (const input of ["___", "9lives", "-leading", "trailing-", "", "!!!"]) {
 			expect(toSlug(input, 48), input).toMatch(/^[a-z0-9][a-z0-9-]*$/);
 		}
-	});
-
-	it("maps a reference and its target the same way", () => {
-		// The whole reason this is one shared function: `goto`, `entry` and `partOf` point
-		// at ids, so a normalised node must stay reachable from a reference that was
-		// written in the same words.
-		const node = TreeSchema.parse({
-			entry: "Ask_About_Siege",
-			entryAfter: [],
-			revisit: null,
-			nodes: [
-				{
-					id: "Ask_About_Siege",
-					speech: "Well?",
-					requiresFlag: null,
-					choices: [{ text: "Go on", goto: "Tell_More", requiresFlag: null }],
-					actions: [],
-				},
-				{
-					id: "Tell_More",
-					speech: "It has been nine years.",
-					requiresFlag: null,
-					choices: [],
-					actions: [],
-				},
-			],
-		});
-		expect(node.entry).toBe(node.nodes[0]?.id);
-		expect(node.nodes[0]?.choices[0]?.goto).toBe(node.nodes[1]?.id);
 	});
 });
 

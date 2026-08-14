@@ -6,19 +6,18 @@ import { type ChoiceItem, Chooser } from "./chooser.js";
 import { rampRows } from "./gradient.js";
 
 /**
- * Where a world comes from: one somebody wrote, or one written to order.
+ * Where a world comes from: one somebody wrote, or one that invents itself as you walk.
  *
- * This used to offer four ways to start — briefed, unguided, without a model, and a
- * written scenario — which was four points on one axis pretending to be four kinds of
- * thing. The axis is *how much of the world is decided before you walk into it*, and the
- * far end turned out to be the only end worth being at: a world with a plotted story,
- * named people and written conversations beats one that invents them as you arrive, and
- * it costs a wait rather than a compromise. So there are two rows' worth of choice here
- * now, and they differ only in whether the waiting has already been done for you.
+ * The axis is *how much of the world is decided before you walk into it*, and both ends
+ * are worth being at. A written scenario has a plotted story, named people, written
+ * conversations and cutscenes; an unwritten one is endless and has none of those, and
+ * names its towns as you reach them.
  *
- * The finished ones come first. Generating sits under a rule because it is the same kind
- * of world arrived at the long way round, and a player should see that at a glance
- * instead of reading four paragraphs to work it out.
+ * What is deliberately absent is a way to *make* a written scenario from here. Authoring
+ * is a dev-time activity now — an agent driving the `craft` CLI, taking as long as it
+ * takes — and its output is a directory in `.scenarios/` that shows up in this list like
+ * anything else. The row that used to promise "a few minutes" was promising the pipeline
+ * that produced worlds whose people asked after documents that did not exist.
  */
 
 /** Border and padding, taken off before anything is laid out inside the frame. */
@@ -52,16 +51,24 @@ export interface NewWorldProps {
 	readonly columns: number;
 	readonly rows: number;
 	readonly depth: ColorDepth;
+	/**
+	 * Whether a model can be reached.
+	 *
+	 * An unwritten world is playable either way — `procedural` names its places from the
+	 * flavour tables rather than asking anybody — so this changes what the row promises
+	 * rather than whether it is on offer.
+	 */
 	readonly canUseModel: boolean;
-	/** Why generating is not on offer, when it is not, in the caller's words. */
+	/** Why a live world is not on offer, when it is not, in the caller's words. */
 	readonly unavailableNote?: string;
 	readonly onScenario: (scenario: ScenarioSummary) => void;
-	readonly onGenerate: () => void;
+	/** Start an endless world. Live when a model can be reached, procedural otherwise. */
+	readonly onUnwritten: (flavour: "live" | "procedural") => void;
 	readonly onBack: () => void;
 	readonly isActive?: boolean;
 }
 
-/** The row id a scenario is offered under. Prefixed so it cannot collide with `generate`. */
+/** The row id a scenario is offered under. Prefixed so it cannot collide with `unwritten`. */
 function rowId(scenario: ScenarioSummary): string {
 	return `scenario:${scenario.id}`;
 }
@@ -74,7 +81,7 @@ export function NewWorld({
 	canUseModel,
 	unavailableNote,
 	onScenario,
-	onGenerate,
+	onUnwritten,
 	onBack,
 	isActive = true,
 }: NewWorldProps) {
@@ -87,18 +94,17 @@ export function NewWorld({
 	}));
 
 	items.push({
-		id: "generate",
-		label: "Generate a New Scenario",
-		detail: "a few minutes",
+		id: "unwritten",
+		label: "An unwritten world",
+		detail: canUseModel ? "endless" : "endless, offline",
 		// No rule when it is the only row: a separator with nothing above it separates
 		// nothing, and reads as a heading for a list of one.
-		...(scenarios.length > 0 ? { rule: "or have one written" } : {}),
+		...(scenarios.length > 0 ? { rule: "or somewhere nobody has written about" } : {}),
 		accent: "cyan",
 		body: canUseModel
-			? "Written to order: the country, the towns, the people in them and a story running through the lot. Takes a few minutes, and is kept — so you can play the same world again exactly."
+			? "No story and no ending: ground in every direction, and towns that are named and populated as you reach them. Nothing is decided until you get there, which also means nothing is waiting for you."
 			: (unavailableNote ??
-				"Written to order. Not available here: there is no model to write it with."),
-		...(canUseModel ? {} : { disabled: true }),
+				"No story and no ending: ground in every direction, with places named out of the flavour tables rather than by a model. Free, offline, and the same world every time for a given seed."),
 	});
 
 	// One row, so `rampRows` returns one string. The fallback is for `depth: "none"`,
@@ -111,8 +117,8 @@ export function NewWorld({
 				<Text bold>{heading}</Text>
 				<Text dimColor>
 					{scenarios.length > 0
-						? "  something written, or something written for you"
-						: "  nothing written here yet, so let it be written"}
+						? "  somewhere written, or somewhere nobody has been"
+						: "  nothing written here yet"}
 				</Text>
 			</Box>
 
@@ -124,8 +130,8 @@ export function NewWorld({
 					isActive={isActive}
 					onBack={onBack}
 					onChoose={(item) => {
-						if (item.id === "generate") {
-							onGenerate();
+						if (item.id === "unwritten") {
+							onUnwritten(canUseModel ? "live" : "procedural");
 							return;
 						}
 						const scenario = scenarios.find((each) => rowId(each) === item.id);

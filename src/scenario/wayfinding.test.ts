@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoJourneyArtifact } from "../../test/fixtures/scenario.js";
 import type { ScenarioArtifact } from "./artifact.js";
-import { repairArtifact } from "./repair.js";
 import { signpostsFor } from "./signposts.js";
 import { buildPassability, siteIndex, validateArtifact } from "./validate.js";
 
@@ -156,58 +155,6 @@ describe("a story that does not say where to go", SLOW, () => {
 		const first = arc?.beats[0]?.siteId as number;
 		const beats = (arc?.beats ?? []).map((beat) => ({ ...beat, siteId: first }));
 		expect(lost({ ...BASE, arc: { ...(arc as NonNullable<typeof arc>), beats } })).toEqual([]);
-	});
-});
-
-describe("the repair that says it", SLOW, () => {
-	it("appends a plain direction to the journal and to the errand", () => {
-		const { artifact, repairs } = repairArtifact(BASE);
-		expect(repairs.some((repair) => repair.includes("did not say where to go next"))).toBe(true);
-		const journal = artifact.arc?.beats[0]?.journal ?? "";
-		expect(journal).toContain("Go to Aldermoor and ask for Lune Harrowgate.");
-		// The story it was already telling is still there. This is the direction, not a
-		// replacement for the scene.
-		expect(journal).toContain("signed for rope that never came ashore");
-	});
-
-	it("removes the finding it was written for, and adds none", () => {
-		const before = validateArtifact(BASE).map((finding) => finding.message);
-		const { artifact } = repairArtifact(BASE);
-		const after = validateArtifact(artifact).map((finding) => finding.message);
-		expect(lost(artifact)).toEqual([]);
-		expect(after.filter((message) => !before.includes(message))).toEqual([]);
-	});
-
-	/*
-	 * Signposts are ignored when deciding whether to *say* it, deliberately. A board on the
-	 * road out answers "which way" and answers nothing at all to somebody reading their errand
-	 * log two towns later, so a world with both is better than a world with one — and since
-	 * the check accepts either, saying it where a board exists costs a sentence and removes no
-	 * finding, which is the right way round for a repair that is free.
-	 */
-	it("says it even where a board already points there, since the two are read elsewhere", () => {
-		const posted = signpostsFor(BASE, GRID, SITES);
-		const { artifact } = repairArtifact({ ...BASE, signs: posted.signs });
-		expect(artifact.arc?.beats[0]?.journal).toContain("Go to Aldermoor");
-	});
-
-	it("leaves a beat that already says it exactly as it was", () => {
-		const named = withJournal("Ilse says to ask for the clerk at Aldermoor.");
-		const { artifact, repairs } = repairArtifact(named);
-		expect(repairs.some((repair) => repair.includes("where to go next"))).toBe(false);
-		expect(artifact.arc?.beats[0]?.journal).toBe("Ilse says to ask for the clerk at Aldermoor.");
-	});
-
-	/*
-	 * Two runs of the repair must not stack two directions on one journal line. It is run
-	 * twice in practice — `repairUntilClean` goes round up to twice — and the second round
-	 * re-derives its own condition, which the first round has already satisfied.
-	 */
-	it("does not say it twice when run again", () => {
-		const once = repairArtifact(BASE).artifact;
-		const twice = repairArtifact(once).artifact;
-		const journal = twice.arc?.beats[0]?.journal ?? "";
-		expect(journal.match(/Go to Aldermoor/g)?.length).toBe(1);
 	});
 });
 

@@ -1,24 +1,10 @@
 import { render } from "ink";
-import { suggestPitches } from "../../ai/author/pitch.js";
-import { logTelemetry } from "../../ai/telemetry.js";
-import { clearTranscript, sizeTranscript } from "../../ai/transcript.js";
-import { endWorking } from "../../ai/working-file.js";
 import { CONFIG, gatewayKey, hasGatewayKey } from "../../config.js";
-import { packCatalogue } from "../../content/load.js";
-import { tilePackCatalogue } from "../../content/tiles.js";
 import { deleteSave, listSaves } from "../../persist/save-repo.js";
 import { displaySettingsPath, readSettings, writeSettings } from "../../persist/settings.js";
-import {
-	acceptScenario,
-	type GenerationOutcome,
-	generateScenario,
-	polishScenario,
-} from "../../scenario/generate.js";
 import { listScenarios, loadScenario } from "../../scenario/repo.js";
-import type { GenerateRequest, LaunchChoice } from "../../scenario/scenario.js";
+import type { LaunchChoice } from "../../scenario/scenario.js";
 import { logger } from "../../utils/log.js";
-import { detectColorDepth } from "../render/color.js";
-import { GenerateProgress } from "./generate-progress.js";
 import { Launcher } from "./launcher.js";
 
 /**
@@ -26,16 +12,15 @@ import { Launcher } from "./launcher.js";
  *
  * Rendered and unmounted before the game is built, so the two never share a
  * screen or an input handler. Resolves undefined when the player quits.
+ *
+ * There are exactly three ways in: continue a save, play a scenario that has been
+ * written, or start a live procedural world. Worlds are no longer *made* from here —
+ * authoring is a dev-time activity done by an agent driving the `craft` CLI, and its
+ * output is a scenario directory that shows up in the list below like any other.
  */
 export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 	const saves = listSaves();
 	const scenarios = listScenarios();
-	// Read once, here, rather than inside the config page. Resolving a tile pack means
-	// reading a manifest, decoding an atlas and building two glyph tables, and the page
-	// re-renders on every keypress — so doing it there would pay for all of them on each
-	// arrow key. It is also the rule the render layer is built on: components take values.
-	const tilePacks = tilePackCatalogue();
-	const contentPacks = packCatalogue();
 	const canUseModel = hasGatewayKey() && !CONFIG.noAi;
 	const settings = readSettings();
 	// A key in the environment outranks the settings file everywhere, so the page
@@ -43,7 +28,6 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 	const keyFromEnv = Boolean(process.env.AI_GATEWAY_API_KEY?.trim());
 
 	let chosen: LaunchChoice | undefined;
-	let requested: GenerateRequest | undefined;
 	const instance = render(
 		<Launcher
 			saves={saves}
@@ -80,21 +64,9 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 				...(CONFIG.seedExplicit ? { configuredSeed: CONFIG.seed } : {}),
 				noAi: CONFIG.noAi,
 			}}
-			{...(CONFIG.brief ? { initialBrief: CONFIG.brief } : {})}
-			tilePacks={tilePacks}
-			contentPacks={contentPacks}
 			onChoose={(choice) => {
 				chosen = choice;
 			}}
-			onGenerate={(request) => {
-				requested = request;
-			}}
-			// The one model call that happens *inside* this app rather than after it unmounts,
-			// and the exception the paragraph below is written around: it is a single short call
-			// with a spinner on it, not minutes of authoring, and the answers are the thing the
-			// player has to read in order to make the choice. Only offered when there is a key;
-			// without one the Premise row keeps the two answers that need nobody.
-			{...(canUseModel ? { onSuggest: suggestPitches } : {})}
 			onDelete={(worldId) => {
 				// Done here rather than in the component, which must stay renderable in a
 				// test without a temporary home directory to delete things out of.
@@ -108,10 +80,6 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 	);
 
 	await instance.waitUntilExit();
-	// Generating happens here rather than inside the component, and only once the
-	// launcher has unmounted: it takes minutes, it needs a screen of its own, and two Ink
-	// apps sharing stdin would both act on every keypress.
-	if (requested) return await generateAndLaunch(requested);
 	if (!chosen) return undefined;
 
 	// A scenario row only carries its id; the artifact itself is read here, where a
@@ -129,232 +97,6 @@ export async function pickLaunch(): Promise<LaunchChoice | undefined> {
 	return chosen;
 }
 
-/**
- * Write a world, showing the work, then hand it back as something to play.
- *
- * The expensive path, and the only one where the player waits: sixty-odd model calls for a
- * medium world. It runs here rather than inside the launcher because the launcher has to be
- * gone first — two Ink apps both hold stdin and would both act on every keypress — and
- * because a component that has to survive being unmounted mid-`await` is a component that
- * will eventually be unmounted mid-`await`.
- *
- * Everything that decides anything lives in `generateScenario`; this draws it. The result
- * lands in `.scenarios` before the game starts, so the world can be played again exactly.
- */
-async function generateAndLaunch(request: GenerateRequest): Promise<LaunchChoice | undefined> {
-	// The launcher has already saved this, but saving it and spending it are two
-	// different things and only one of them is this run's business. Written again
-	// here so the world about to be paid for is provably the one the price on the
-	// config page described, even if something else edited settings in between.
-	if (request.models) writeSettings({ modelSet: request.models });
-
-	// Before the first call, or the first pass is the one exchange nobody can read.
-	// Cleared as well as sized: the launcher may have been round this loop already, and a
-	// transcript that opens on the previous world's prompts is worse than none.
-	clearTranscript();
-	sizeTranscript(request.brief.duration);
-
-	/**
-	 * The run is over: stop recording, and say what it cost.
-	 *
-	 * Paired because they are one moment, and because the record has to stay open across
-	 * the polish loop below — a pass that rewrites six conversations belongs in the same
-	 * file as the pass that wrote them. `generateScenario` opens it, since that is where
-	 * the id it is named after first exists.
-	 */
-	const finish = () => {
-		endWorking();
-		logTelemetry();
-	};
-
-	const startedAt = Date.now();
-	const stop = new AbortController();
-	// Recomputed here rather than passed down from `pickLaunch`: the key can be typed on the
-	// options page during the same session, so the answer that matters is the one at the
-	// moment the offer is made.
-	const canUseModel = hasGatewayKey() && !CONFIG.noAi;
-
-	const lines: string[] = [];
-	let calls = 0;
-	let title: string | undefined;
-	let stopping = false;
-	let outcome: GenerationOutcome | undefined;
-	let dismiss: (() => void) | undefined;
-
-	const columns = process.stdout.columns ?? 80;
-	const rows = Math.max(12, (process.stdout.rows ?? 24) - 1);
-	const depth = detectColorDepth();
-
-	// Set while the world is being read back, so the screen stops offering a second pass
-	// over the same faults and goes back to showing progress lines.
-	let polishing = false;
-	let polish: (() => void) | undefined;
-	// What the unplayable page's three keys resolve, while it is up.
-	let decide: ((answer: "again" | "anyway" | "leave") => void) | undefined;
-	// Whether the review page is what should be on screen. Declared here rather than beside
-	// the loop that owns it because `view` closes over it and is called long before that
-	// loop is reached.
-	let reviewing = false;
-
-	const view = (failure?: string) => (
-		<GenerateProgress
-			columns={columns}
-			rows={rows}
-			depth={depth}
-			{...(title ? { title } : {})}
-			lines={lines}
-			calls={calls}
-			startedAt={startedAt}
-			stopping={stopping}
-			{...(failure ? { failure } : {})}
-			{...(outcome?.findings.length ? { findings: outcome.findings } : {})}
-			{...(outcome?.path ? { path: outcome.path } : {})}
-			done={reviewing && !polishing}
-			{...(outcome?.verdict ? { verdict: outcome.verdict } : {})}
-			// Offered only when there is a model to ask and the pass has not already run. A
-			// second reading of a world the reader has already passed on would be a call spent
-			// to be told the same thing.
-			{...(polish && canUseModel && !outcome?.verdict ? { onPolish: polish } : {})}
-			{...(decide && outcome?.unplayable ? { unplayable: outcome.unplayable } : {})}
-			{...(decide ? { onRetry: () => decide?.("again"), onAccept: () => decide?.("anyway") } : {})}
-			onDismiss={() => dismiss?.()}
-			onStop={() => {
-				// On the unplayable page ESC means "give up on this world", and there is nothing
-				// left running to abort — so it answers the decision instead of stopping a run
-				// that has already finished.
-				if (decide) {
-					decide("leave");
-					return;
-				}
-				if (stopping) return;
-				stopping = true;
-				stop.abort();
-				draw();
-			}}
-		/>
-	);
-
-	const instance = render(view(), { exitOnCtrlC: true });
-	const draw = () => instance.rerender(view());
-
-	/*
-	 * Attempts, rather than one go.
-	 *
-	 * A world whose main line could not be settled is not written, so there is nothing to offer
-	 * the player except another world — same premise, same title, same tone, same packs, same
-	 * file name, a different country. There is no cap: each round is an explicit keypress with
-	 * what the last one cost on the screen beside it.
-	 *
-	 * The working record is opened per attempt by `generateScenario`, which is what lets a
-	 * discarded world still be diagnosed afterwards even though its artifact is gone.
-	 */
-	for (let attempt = 1; ; attempt++) {
-		outcome = await generateScenario(
-			{ ...request, ...(attempt > 1 ? { attempt } : {}) },
-			{
-				signal: stop.signal,
-				onProgress: (message) => {
-					lines.push(message);
-					// `calls` is not reported per-message, so it is inferred from the lore line
-					// onward the same way the CLI's summary does — close enough for a progress
-					// display and not worth threading a counter through five passes for.
-					calls = lines.length;
-					if (!title && message.startsWith("lore: ")) title = message.slice("lore: ".length);
-					draw();
-				},
-			},
-		);
-		calls = outcome.calls;
-		if (!outcome.unplayable || !outcome.held) break;
-
-		const answer = await new Promise<"again" | "anyway" | "leave">((resolve) => {
-			decide = resolve;
-			draw();
-		});
-		decide = undefined;
-		if (answer === "anyway") {
-			outcome = acceptScenario(outcome);
-			break;
-		}
-		if (answer === "leave") {
-			lines.push("nothing was kept.");
-			break;
-		}
-		// Round again. The title comes from the next world's own lore pass, so it goes with the
-		// world it described rather than sitting above a country it has nothing to do with.
-		title = undefined;
-		lines.push("");
-		lines.push(`writing another world (attempt ${attempt + 1})`);
-		draw();
-	}
-
-	if (!outcome.choice) {
-		// Three ways to arrive here and they are different things: the player stopped the run
-		// mid-pass, the run fell over, or the story would not play and the player chose not to
-		// take it. The third is a decision rather than a failure, and saying "failed" at it would
-		// be the program blaming them for their own answer.
-		if (outcome.unplayable) lines.push("gave up on this one. nothing was written.");
-		else
-			lines.push(outcome.stopped ? "stopped. nothing was written." : `failed: ${outcome.failure}`);
-		instance.rerender(view("Nothing was kept. Press Ctrl-C to go back to the shell."));
-		await instance.waitUntilExit();
-		finish();
-		return undefined;
-	}
-
-	/*
-	 * Read before played, and mended before played if that is what the player wants.
-	 *
-	 * A loop rather than a single wait, because reading the world back is a *second* pass
-	 * over it: it produces its own findings, which the player is owed a look at on the same
-	 * terms as the first set. It goes round at most twice in practice — the offer is
-	 * withdrawn once a reader has given a verdict, since a second reading of a world the
-	 * reader has already passed on is a call spent to be told the same thing.
-	 */
-	reviewing = outcome.findings.length > 0;
-	while (reviewing) {
-		const next = await new Promise<"play" | "polish">((resolve) => {
-			dismiss = () => resolve("play");
-			polish = () => resolve("polish");
-			draw();
-		});
-		dismiss = undefined;
-		polish = undefined;
-		if (next === "play") break;
-
-		// Back to the progress screen while it works. The findings are still true, but a page
-		// of faults with a spinner nowhere on it looks like a game that has stopped.
-		polishing = true;
-		lines.push("");
-		draw();
-		outcome = await polishScenario(outcome, {
-			signal: stop.signal,
-			onProgress: (message) => {
-				lines.push(message);
-				calls += 1;
-				draw();
-			},
-		});
-		calls = outcome.calls;
-		polishing = false;
-		// Shown even when it comes back clean, which is the whole reason `done` exists: a
-		// world with nothing left wrong with it is the outcome most worth telling somebody
-		// about, and it used to be the one case that said nothing at all.
-		reviewing = true;
-	}
-
-	instance.unmount();
-	finish();
-	// Asked again rather than remembered from above: `outcome` has been replaced since, by a
-	// pass that returns a whole new one, and the narrowing that came with the first answer
-	// does not survive that.
-	const playing = outcome.choice;
-	if (!playing) return undefined;
-	// The last thing before the world opens, so that a run which dies between here and the
-	// first frame says where it got to rather than simply ending.
-	logger.info(`starting the generated world "${playing.worldId}"`);
-	return playing;
-}
 /**
  * Which scenario a prebuilt choice refers to.
  *

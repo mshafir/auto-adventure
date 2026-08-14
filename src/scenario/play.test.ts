@@ -28,7 +28,17 @@ afterEach(() => {
 	rmSync(home, { recursive: true, force: true });
 });
 
-describe("walking the main line", { timeout: 180_000 }, () => {
+/*
+ * Skipped until the `two-phase` fixture directory exists.
+ *
+ * These suites are parameterised over the scenarios that used to ship in `.scenarios/`,
+ * and those were deleted with the pipeline that wrote them — so they currently assert
+ * things about content that is not there. The checkers themselves are kept deliberately:
+ * they become `craft check` and `craft playtest`. Task 11 of
+ * docs/superpowers/plans/2026-08-14-scenario-v2-and-scenes.md points them at
+ * test/fixtures/scenarios/two-phase and turns them back on.
+ */
+describe.skip("walking the main line", { timeout: 180_000 }, () => {
 	it("walks a good story to the end", async () => {
 		const artifact = readScenarioFile(scenarioPath("thornwick-road"));
 		expect(artifact?.arc, "thornwick-road has no arc, so this test proves nothing").toBeDefined();

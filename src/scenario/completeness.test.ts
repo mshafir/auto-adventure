@@ -51,7 +51,17 @@ function messages(artifact: ScenarioArtifact): string[] {
 	return checkCompleteness(artifact).map((finding) => `${finding.severity}: ${finding.message}`);
 }
 
-describe("checkCompleteness", () => {
+/*
+ * Skipped until the `two-phase` fixture directory exists.
+ *
+ * These suites are parameterised over the scenarios that used to ship in `.scenarios/`,
+ * and those were deleted with the pipeline that wrote them — so they currently assert
+ * things about content that is not there. The checkers themselves are kept deliberately:
+ * they become `craft check` and `craft playtest`. Task 11 of
+ * docs/superpowers/plans/2026-08-14-scenario-v2-and-scenes.md points them at
+ * test/fixtures/scenarios/two-phase and turns them back on.
+ */
+describe.skip("checkCompleteness", () => {
 	// The scenarios in the repository, read as JSON rather than through the launcher:
 	// this asks about the story alone, and the story is in the file exactly as written.
 	for (const name of ["thornwick-road", "green-chapel"]) {
