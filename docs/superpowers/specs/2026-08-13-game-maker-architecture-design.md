@@ -1,6 +1,8 @@
 # Game-Maker Architecture
 
-**Status:** approved 2026-08-13. Umbrella design for the `game-maker` branch.
+**Status:** approved 2026-08-13. **Built 2026-08-14** — all four sub-projects landed on the
+`game-maker` branch. What follows is the design as approved; the deviations it took are recorded
+at the end.
 
 ## The problem
 
@@ -73,12 +75,12 @@ exactly the validation vocabulary the new pipeline needs:
 
 Each gets its own spec and produces something testable on its own.
 
-| # | Sub-project | Done when |
-|---|---|---|
-| 1 | The deletions above, then scenario format v2, phase composition, scene runtime | a hand-written scenario directory with a cutscene and two phases plays |
-| 2 | The `craft` CLI — full vocabulary, `check`, `playtest`, `play --headless` | that same scenario can be built end to end by CLI alone |
-| 3 | Skill, `docs/gamecraft/`, first authored world | an agent makes a playable world unattended |
-| 4 | Review agent loop | review feedback demonstrably improves a world |
+| # | Sub-project | Done when | |
+|---|---|---|---|
+| 1 | The deletions above, then scenario format v2, phase composition, scene runtime | a hand-written scenario directory with a cutscene and two phases plays | ✅ |
+| 2 | The `craft` CLI — full vocabulary, `check`, `playtest`, `play --headless` | that same scenario can be built end to end by CLI alone | ✅ |
+| 3 | Skill, `docs/gamecraft/`, first authored world | an agent makes a playable world unattended | ✅ |
+| 4 | Review agent loop | review feedback demonstrably improves a world | ✅ |
 
 **Deletion comes first, in sub-project 1.** It is not a matter of taste: the moment
 `readScenario` loads directories instead of files, `generate.ts` — which writes single
@@ -255,3 +257,53 @@ Encoded in the skill:
   story is allowed to win.
 - **Elevation terraform is deferred**, so the first worlds cannot have authored rivers.
   Accepted.
+
+---
+
+## What it took that the design did not say
+
+Recorded because each was a decision made against the spec rather than within it.
+
+**The fixture is a typed builder, not committed JSON.** A committed blob cannot be
+type-checked; the builder is verified against the artifact's own types at compile time and the
+tests exercise the write-read round trip. `test/fixtures/two-phase.ts`.
+
+**`ScenePoint` is its own union, not `PlacementSite`.** A placement's site spelling resolves
+*inside* a building — its purpose, since stories hide things in chests — and a cutscene happens
+in the square. Sharing the spelling sent the rider to the well and landed him in somebody's
+pantry.
+
+**Scenes needed their own clock.** `Tick` is an action counter driving the hour, the weather and
+every NPC's schedule, so a three-second cutscene run off it would burn an hour of daylight.
+`SceneFrame` is new. (`Tick` also turned out to be dead code.)
+
+**Two things were already there.** `ChunkManager.invalidateRect` existed for late settlement
+specs, so phase terraform was not new machinery; and `findPath` is a deterministic A*, which is
+what let a scene be staged once and then advanced by a pure function.
+
+**`--phase` rather than a second vocabulary.** Every mutating CLI verb takes the flag and routes
+into a chapter's diff. There is no `craft phase place`.
+
+**Improvisation became opt-in per person.** The spec said the scenario marks who may improvise;
+implementing it meant inverting the runtime rule, because "anyone the author did not write a
+conversation for" made a model the default for everybody not yet reached — so a half-written town
+was full of people inventing facts about a story nobody had told them.
+
+**Elevation terraform is still deferred**, so authored rivers are not possible. A story that
+needs a river needs a seed that has one.
+
+## The bugs the work found
+
+Each was silent, and each is now covered by a test.
+
+| Where | What |
+|---|---|
+| `WorldView` | Memoised the last chunk *object*, so the first tile read after a chapter relaid the ground came from the copy just thrown away |
+| `reduce` | `DismissCard` was swallowed during a scene, so a card raised by a scene's own `Card` step could never be put down |
+| `save-repo` | A playing scene would have been persisted, which resumes a half-applied cutscene |
+| `listScenarioDirs` | Counted the `.working` authoring record as a scenario |
+| `two-phase.test.ts` | Wrote into the repository's own `.scenarios/`, because `writeScenario` goes to the configured root and nothing had redirected it |
+| `craft play` | Fabricated a `DialogueTurn` to answer a choice; that command *commits* a turn, so every reply in the game came back as "nothing more to say" |
+| `craft play` | Routed straight through people, then stopped dead at them; and reported the route's length rather than the distance walked |
+| `craft story` | A condition reader returned on its first match, leaving later flags unread — and an unread flag is refused as unknown |
+| `craft new` | Stubbed the world's era with a placeholder, which `openingCard` puts on the first screen of the game |
