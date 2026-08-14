@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { listSaves } from "../persist/save-repo.js";
-import { readScenarioFile, scenarioPath } from "./repo.js";
+import { readScenarioAt, scenarioPath } from "./repo.js";
 import { walkTheStory } from "./walk.js";
 
 /**
@@ -50,7 +50,7 @@ const SLOW = { timeout: 120_000 };
 describe.skip("walkTheStory", SLOW, () => {
 	for (const name of ["thornwick-road", "green-chapel"]) {
 		it(`plays ${name} to its ending`, async () => {
-			const artifact = readScenarioFile(scenarioPath(name));
+			const artifact = readScenarioAt(scenarioPath(name));
 			expect(artifact, `${name} did not load`).toBeDefined();
 			if (!artifact) return;
 
@@ -69,7 +69,7 @@ describe.skip("walkTheStory", SLOW, () => {
 		// a checked scenario appeared in Continue as a half-played world nobody started. That
 		// was tolerable while this was a tool somebody ran by hand and is not once generation
 		// walks every story it writes.
-		const artifact = readScenarioFile(scenarioPath("thornwick-road"));
+		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
 		expect(artifact).toBeDefined();
 		if (!artifact) return;
 
@@ -78,7 +78,7 @@ describe.skip("walkTheStory", SLOW, () => {
 	});
 
 	it("says a world with no story is finished, without building one", async () => {
-		const artifact = readScenarioFile(scenarioPath("thornwick-road"));
+		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
 		if (!artifact) return;
 		const { arc: _arc, ...storyless } = artifact;
 		const walk = await walkTheStory(storyless, "walk-test-storyless");

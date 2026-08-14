@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { npcId } from "../core/world/spec.js";
 import { buildSession } from "../session.js";
-import { readScenarioFile, scenarioPath } from "./repo.js";
+import { readScenarioAt, scenarioPath } from "./repo.js";
 import { siteIndex } from "./validate.js";
 import { storyWalker } from "./walker.js";
 
@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 function walkerFor(name: string) {
-	const artifact = readScenarioFile(scenarioPath(name));
+	const artifact = readScenarioAt(scenarioPath(name));
 	if (!artifact) throw new Error(`${name} did not load`);
 	const sites = siteIndex(artifact);
 	const session = buildSession(

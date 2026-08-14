@@ -13,7 +13,7 @@
  * commit.
  */
 import { checkInvariants, type InvariantId } from "../scenario/invariants.js";
-import { listScenarios, readScenarioFile, scenarioPath } from "../scenario/repo.js";
+import { listScenarios, readScenarioAt, scenarioPath } from "../scenario/repo.js";
 
 function parseArgs(argv: readonly string[]): Map<string, string> {
 	const args = new Map<string, string>();
@@ -47,7 +47,7 @@ function main(): void {
 
 	let broken = false;
 	for (const id of ids) {
-		const artifact = readScenarioFile(scenarioPath(id));
+		const artifact = readScenarioAt(scenarioPath(id));
 		if (!artifact) {
 			process.stdout.write(`${id} — could not be read\n\n`);
 			broken = true;

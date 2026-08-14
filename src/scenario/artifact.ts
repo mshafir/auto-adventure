@@ -4,12 +4,15 @@ import type { ScenarioArc } from "../core/rules/arc.js";
 import type { TimeOptions } from "../core/rules/clock.js";
 import type { AuthoredBarrier } from "../core/rules/lock.js";
 import type { Placement } from "../core/rules/placement.js";
+import type { Scene } from "../core/rules/scene.js";
 import type { Sign } from "../core/rules/signage.js";
 import type { Trigger } from "../core/rules/trigger.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import type { ScenarioBrief } from "../core/world/brief.js";
 import { type WorldRecipe, type WorldSeed, worldSeed } from "../core/world/recipe.js";
 import type { RegionSpec, SiteSpec, WorldLore } from "../core/world/spec.js";
+import type { Phase } from "./phase.js";
+import type { TerraformEdit } from "./terraform.js";
 
 /**
  * A whole world, authored ahead of time.
@@ -24,7 +27,15 @@ import type { RegionSpec, SiteSpec, WorldLore } from "../core/world/spec.js";
  * rebuild, and no commitment race.
  */
 
-export const ARTIFACT_VERSION = 1;
+/**
+ * Version two: a scenario is a directory rather than a file.
+ *
+ * There is deliberately no migration from version one. Every scenario written by the
+ * pipeline that produced them has been deleted along with it, so a migration would be code
+ * with nothing to convert — and the shape it converted *from* described a world whose story
+ * and whose contents were assembled by different passes that argued with each other.
+ */
+export const ARTIFACT_VERSION = 2;
 
 export interface ArtifactProvenance {
 	/** Which model produced which call type. */
@@ -50,7 +61,7 @@ export interface ScenarioArtifact {
 	 * which is a second copy to keep in step by hand.
 	 *
 	 * Resolved when the file is read, and the *resolved* tables are what reach the save
-	 * (see {@link readScenarioFile}). So the reference is an authoring convenience, not
+	 * (see {@link readScenarioAt}). So the reference is an authoring convenience, not
 	 * a runtime dependency: a pack deleted next month renames nobody who has already
 	 * met them.
 	 */
@@ -124,6 +135,30 @@ export interface ScenarioArtifact {
 	 * of step with the map the way a hand-copied coordinate can. See `core/rules/signage.ts`.
 	 */
 	readonly signs?: readonly Sign[];
+	/**
+	 * Authored changes to the ground, laid over what the generator made.
+	 *
+	 * The base chapter's, only. A later phase's edits live on the phase, so that entering it
+	 * can invalidate exactly the chunks whose ground has changed.
+	 */
+	readonly terraform?: readonly TerraformEdit[];
+	/**
+	 * Cutscenes, by id.
+	 *
+	 * Raised by a trigger's `PlayScene`, which is the only thing that starts one. Persisted
+	 * into the save with the arc and the triggers, because a trigger whose scene has gone
+	 * missing fails silently.
+	 */
+	readonly scenes?: Readonly<Record<string, Scene>>;
+	/**
+	 * Later chapters, in the order they are laid over the base.
+	 *
+	 * `world/` is the first chapter and has no entry here — every phase in this list carries
+	 * a `when`. The asymmetry earns something: a world at its opening composes to the base
+	 * content object itself, so the engine's identity check finds nothing to rebuild rather
+	 * than allocating a fresh copy after every command.
+	 */
+	readonly phases?: readonly Phase[];
 	/**
 	 * Whether this world has a clock, and what it drives.
 	 *

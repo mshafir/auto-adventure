@@ -14,7 +14,7 @@ import { npcId } from "../core/world/spec.js";
 import {
 	listScenarios,
 	loadScenario,
-	readScenarioFile,
+	readScenarioAt,
 	scenarioPath,
 	scenarioRoot,
 	verifyArtifact,
@@ -41,10 +41,10 @@ const SITE = findSettlement(SEED);
 const siteSpec = demoSiteSpec;
 const artifact = demoArtifact;
 
-describe("writeScenario and readScenarioFile", () => {
+describe("writeScenario and readScenarioAt", () => {
 	it("round trips an artifact", () => {
 		const path = writeScenario(artifact());
-		const read = readScenarioFile(path);
+		const read = readScenarioAt(path);
 		expect(read).toEqual(artifact());
 	});
 
@@ -67,7 +67,7 @@ describe("writeScenario and readScenarioFile", () => {
 			tiles: "gramarye",
 			liveInGame: true,
 		});
-		const read = readScenarioFile(path);
+		const read = readScenarioAt(path);
 		expect(read?.time).toEqual({ enabled: false });
 		expect(read?.tiles).toBe("gramarye");
 		expect(read?.liveInGame).toBe(true);
@@ -82,7 +82,7 @@ describe("writeScenario and readScenarioFile", () => {
 				brief: { premise: "a drowned archipelago", title: "The Tide-Glass", tone: "sombre" },
 			}),
 		);
-		const read = readScenarioFile(path);
+		const read = readScenarioAt(path);
 		expect(read?.brief.title).toBe("The Tide-Glass");
 		expect(read?.brief.tone).toBe("sombre");
 	});
@@ -106,7 +106,7 @@ describe("writeScenario and readScenarioFile", () => {
 				},
 			],
 		});
-		const read = readScenarioFile(path);
+		const read = readScenarioAt(path);
 		expect(read?.signs?.[0]?.arms).toEqual([
 			{ siteId: SITE.id },
 			{ siteId: SITE.id, label: "the weighing station" },
@@ -122,7 +122,7 @@ describe("writeScenario and readScenarioFile", () => {
 	it("treats a world that said nothing about improvising as one that does not", () => {
 		// Which is every hand-written scenario. `prebuilt` meant "never calls a model"
 		// before this existed, and it has to go on meaning that where nobody said otherwise.
-		const read = readScenarioFile(writeScenario(artifact()));
+		const read = readScenarioAt(writeScenario(artifact()));
 		expect(read?.liveInGame).toBeUndefined();
 	});
 
@@ -151,7 +151,7 @@ describe("writeScenario and readScenarioFile", () => {
 		});
 
 		const path = writeScenario(built);
-		const read = readScenarioFile(path);
+		const read = readScenarioAt(path);
 
 		const structure = read?.sites[String(site.id)]?.settlement.structures[0];
 		expect(structure?.id).toBe("counting-house");
@@ -192,7 +192,7 @@ describe("writeScenario and readScenarioFile", () => {
 	});
 
 	it("returns undefined for a file that is not there", () => {
-		expect(readScenarioFile(scenarioPath("nothing"))).toBeUndefined();
+		expect(readScenarioAt(scenarioPath("nothing"))).toBeUndefined();
 		expect(loadScenario("nothing")).toBeUndefined();
 	});
 
@@ -236,7 +236,7 @@ describe("writeScenario and readScenarioFile", () => {
 	});
 
 	it("refuses an id that could escape the scenarios directory", () => {
-		const parsed = readScenarioFile(scenarioPath("x"));
+		const parsed = readScenarioAt(scenarioPath("x"));
 		expect(parsed).toBeUndefined();
 		mkdirSync(scenarioRoot(), { recursive: true });
 		writeFileSync(

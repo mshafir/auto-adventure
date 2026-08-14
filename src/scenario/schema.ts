@@ -266,6 +266,7 @@ export const AuthoredEffectSchema = z.discriminatedUnion("t", [
 	z.object({ t: z.literal("Damage"), amount: z.number().int().min(1).max(999) }),
 	z.object({ t: z.literal("Teleport"), x: z.number().int(), y: z.number().int() }),
 	z.object({ t: z.literal("OpenBarrier"), id: z.string().min(1).max(64) }),
+	z.object({ t: z.literal("PlayScene"), id: z.string().min(1).max(64) }),
 ]);
 
 export const TriggerSchema = z.object({
@@ -418,6 +419,123 @@ export const DialogueTreeSchema = z.object({
 	nodes: z.record(z.string(), DialogueNodeSchema),
 });
 
+const ScenePointSchema = PlacementSiteSchema;
+
+/**
+ * One thing a scene does.
+ *
+ * `Effects` reuses `AuthoredEffectSchema`, so a scene can cause exactly what a trigger can
+ * and nothing more — including, in principle, another `PlayScene`. That is refused by
+ * `sceneEffectProblems`' sibling check rather than by the schema, because the message a
+ * scene starting a scene deserves is a sentence, not a parse error.
+ */
+const SceneActionSchema = z.discriminatedUnion("t", [
+	z.object({
+		t: z.literal("Camera"),
+		to: ScenePointSchema,
+		pan: z.enum(["cut", "slow", "fast"]).optional(),
+	}),
+	z.object({ t: z.literal("Spawn"), actor: z.string().min(1).max(40), at: ScenePointSchema }),
+	z.object({ t: z.literal("Despawn"), actor: z.string().min(1).max(40) }),
+	z.object({
+		t: z.literal("WalkTo"),
+		actor: z.string().min(1).max(40),
+		to: ScenePointSchema,
+		speed: z.enum(["slow", "normal", "fast"]).optional(),
+	}),
+	z.object({
+		t: z.literal("Face"),
+		actor: z.string().min(1).max(40),
+		at: z.union([ScenePointSchema, z.enum(["up", "down", "left", "right"])]),
+	}),
+	// Shorter than a card and longer than a status line: a caption is one thing somebody
+	// says while the world holds still, and a paragraph in that position cannot be read.
+	z.object({
+		t: z.literal("Say"),
+		actor: z.string().min(1).max(40),
+		text: z.string().min(1).max(240),
+	}),
+	z.object({
+		t: z.literal("Card"),
+		card: CardBodySchema.extend({ id: z.string().min(1).max(64) }),
+	}),
+	z.object({ t: z.literal("Wait"), ticks: z.number().int().min(1).max(120) }),
+	z.object({ t: z.literal("Effects"), effects: z.array(AuthoredEffectSchema).min(1).max(8) }),
+]);
+
+export const SceneSchema = z.object({
+	id: z.string().min(1).max(64),
+	cast: z.record(z.string().min(1).max(40), z.string().min(1).max(64)).optional(),
+	// Twenty-four steps is a long cutscene — a minute of watching — and past that a scene is
+	// really a chapter and wants to be two, with the player given the world back in between.
+	steps: z
+		.array(
+			z.object({
+				do: z.array(SceneActionSchema).min(1).max(8),
+				hold: z.number().int().min(1).max(120).optional(),
+			}),
+		)
+		.min(1)
+		.max(24),
+	skippable: z.boolean().optional(),
+});
+
+const PointSchema = z.object({ x: z.number().int(), y: z.number().int() });
+
+export const TerraformEditSchema = z.discriminatedUnion("t", [
+	z.object({
+		t: z.literal("Path"),
+		id: z.string().min(1).max(64),
+		from: PointSchema,
+		to: PointSchema,
+		width: z.number().int().min(1).max(9).optional(),
+		surface: z.enum(["path", "dirt", "cobble"]),
+	}),
+	z.object({
+		t: z.literal("Bridge"),
+		id: z.string().min(1).max(64),
+		from: PointSchema,
+		to: PointSchema,
+	}),
+	z.object({
+		t: z.literal("Clearing"),
+		id: z.string().min(1).max(64),
+		at: PointSchema,
+		radius: z.number().int().min(1).max(24),
+	}),
+]);
+
+/**
+ * A diff over a list of things with ids.
+ *
+ * Generic so the six lists a phase can change share one shape, and so that a phase file
+ * reads the same whichever of them it is touching.
+ */
+const diffOf = <T extends z.ZodTypeAny>(item: T) =>
+	z.object({
+		add: z.array(item).max(64).optional(),
+		remove: z.array(z.string().min(1).max(64)).max(64).optional(),
+		replace: z.array(item).max(64).optional(),
+	});
+
+export const PhaseSchema = z.object({
+	id: z.string().min(1).max(64),
+	name: z.string().min(1).max(80),
+	// Optional in the type because the base content shares it, but every phase *file* has one:
+	// a later chapter with no condition would be in force from the first frame. `readScenarioDir`
+	// refuses one without it.
+	when: ConditionSchema.optional(),
+	sites: diffOf(StoredSiteSpecSchema).optional(),
+	placements: diffOf(PlacementSchema).optional(),
+	signs: diffOf(SignSchema).optional(),
+	barriers: diffOf(BarrierSchema).optional(),
+	triggers: diffOf(TriggerSchema).optional(),
+	terraform: diffOf(TerraformEditSchema).optional(),
+	trees: z.record(z.string(), DialogueTreeSchema.nullable()).optional(),
+	scenes: z.record(z.string(), SceneSchema.nullable()).optional(),
+	beats: z.array(ScenarioBeatSchema).max(12).optional(),
+});
+
 export const ScenarioArtifactSchema = z.object({
 	artifactVersion: z.literal(ARTIFACT_VERSION),
 	id: z
@@ -460,6 +578,9 @@ export const ScenarioArtifactSchema = z.object({
 	barriers: z.array(BarrierSchema).max(32).optional(),
 	placements: z.array(PlacementSchema).max(64).optional(),
 	signs: z.array(SignSchema).max(32).optional(),
+	terraform: z.array(TerraformEditSchema).max(64).optional(),
+	scenes: z.record(z.string(), SceneSchema).optional(),
+	phases: z.array(PhaseSchema).max(8).optional(),
 	/** Whether this world has a clock. Absent means the ordinary day/night cycle. */
 	time: TimeOptionsSchema.optional(),
 	/** Whether a model may improvise for anyone with no written tree. Absent means no. */

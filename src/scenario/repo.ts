@@ -1,4 +1,3 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { danglingTargets } from "../ai/dialogue/tree.js";
 import { resolveOverride } from "../content/load.js";
@@ -8,16 +7,16 @@ import { createInitialState, type GameState } from "../core/rules/state.js";
 import { MACRO, macroSite } from "../core/world/macro.js";
 import { npcId } from "../core/world/spec.js";
 import { scenarioRoot } from "../paths.js";
-import { writeFileAtomic } from "../persist/save-repo.js";
 import { logger } from "../utils/log.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
+import { listScenarioDirs, readScenarioDir, writeScenarioDir } from "./dir.js";
 import { flagsWritten, unsatisfiableFlags } from "./flag-sources.js";
-import { ScenarioArtifactSchema } from "./schema.js";
 
 export { scenarioRoot };
 
+/** A scenario's directory. No extension: a scenario is a directory of small files. */
 export function scenarioPath(id: string): string {
-	return join(scenarioRoot(), `${id}.json`);
+	return join(scenarioRoot(), id);
 }
 
 export interface ScenarioSummary {
@@ -29,30 +28,21 @@ export interface ScenarioSummary {
 }
 
 /**
- * Read and validate one scenario file.
+ * Read and validate one scenario directory.
  *
- * Returns undefined rather than throwing for every way a file can be wrong —
- * missing, unparseable, a shape from a future build, internally inconsistent, or
- * naming a pack that is not there. A bad scenario must not stop the launcher from
- * listing the good ones.
+ * Returns undefined rather than throwing for every way a scenario can be wrong — missing, a
+ * file that is not JSON, a shape from a future build, internally inconsistent, or naming a
+ * pack that is not there. A bad scenario must not stop the launcher listing the good ones.
+ *
+ * Two layers of check, deliberately apart. `readScenarioDir` asks whether the *files* make
+ * sense together: filenames matching ids, phases with conditions, triggers naming scenes that
+ * exist, diffs with something to act on. `verifyArtifact` asks whether the content matches the
+ * *world* the seed generates. A scenario can pass either and fail the other.
  */
-export function readScenarioFile(path: string): ScenarioArtifact | undefined {
-	if (!existsSync(path)) return undefined;
-	let raw: unknown;
-	try {
-		raw = JSON.parse(readFileSync(path, "utf8"));
-	} catch (error) {
-		logger.warn(`scenario ${path} is not valid JSON`, error);
-		return undefined;
-	}
+export function readScenarioAt(dir: string): ScenarioArtifact | undefined {
+	const artifact = readScenarioDir(dir);
+	if (!artifact) return undefined;
 
-	const parsed = ScenarioArtifactSchema.safeParse(raw);
-	if (!parsed.success) {
-		logger.warn(`scenario ${path} failed validation: ${parsed.error.issues[0]?.message ?? "?"}`);
-		return undefined;
-	}
-
-	const artifact = parsed.data as ScenarioArtifact;
 	const problems = verifyArtifact(artifact);
 	if (problems.length > 0) {
 		logger.warn(`scenario ${artifact.id} is inconsistent: ${problems.join("; ")}`);
@@ -90,22 +80,21 @@ function resolvePack(artifact: ScenarioArtifact): ScenarioArtifact | undefined {
 }
 
 export function loadScenario(id: string): ScenarioArtifact | undefined {
-	return readScenarioFile(scenarioPath(id));
+	return readScenarioAt(scenarioPath(id));
 }
 
 export function listScenarios(): ScenarioSummary[] {
 	const root = scenarioRoot();
-	if (!existsSync(root)) return [];
 	const summaries: ScenarioSummary[] = [];
-	for (const entry of readdirSync(root)) {
-		if (!entry.endsWith(".json")) continue;
-		const artifact = readScenarioFile(join(root, entry));
+	for (const entry of listScenarioDirs(root)) {
+		const path = join(root, entry);
+		const artifact = readScenarioAt(path);
 		if (!artifact) continue;
 		summaries.push({
 			id: artifact.id,
 			title: artifact.title,
 			blurb: artifact.blurb,
-			path: join(root, entry),
+			path,
 			siteCount: Object.keys(artifact.sites).length,
 		});
 	}
@@ -114,9 +103,7 @@ export function listScenarios(): ScenarioSummary[] {
 }
 
 export function writeScenario(artifact: ScenarioArtifact): string {
-	const path = scenarioPath(artifact.id);
-	writeFileAtomic(path, `${JSON.stringify(artifact, null, "\t")}\n`);
-	return path;
+	return writeScenarioDir(artifact, scenarioRoot());
 }
 
 /**

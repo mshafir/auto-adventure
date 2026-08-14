@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import { listPacks } from "../content/load.js";
 import { packRoot, scenarioRoot } from "../paths.js";
-import { readScenarioFile } from "./repo.js";
+import { readScenarioAt } from "./repo.js";
 
 /**
  * The files that are actually in the repository, read the way the game reads them.
@@ -14,7 +14,7 @@ import { readScenarioFile } from "./repo.js";
  * that stops appearing in the launcher. None of those fail a build, and none of
  * them are visible in a diff.
  *
- * So the check is the load itself. `readScenarioFile` already refuses everything
+ * So the check is the load itself. `readScenarioAt` already refuses everything
  * that would be broken — schema, seed consistency, arc reachability, dialogue
  * targets, and now a missing pack — and it is exercised here against the real
  * directory rather than a fixture.
@@ -56,7 +56,7 @@ describe.skip(".scenarios", () => {
 
 	for (const file of files) {
 		it(`${file} loads, with every check the launcher applies`, () => {
-			const artifact = readScenarioFile(`${scenarioRoot()}/${file}`);
+			const artifact = readScenarioAt(`${scenarioRoot()}/${file}`);
 			expect(artifact, `${file} did not load; the warning says why`).toBeDefined();
 			// The stem is the id a save records, so a renamed file is a save that can no
 			// longer find the scenario it came from.
@@ -64,7 +64,7 @@ describe.skip(".scenarios", () => {
 		});
 
 		it(`${file} arrives with its pack already folded in`, () => {
-			const artifact = readScenarioFile(`${scenarioRoot()}/${file}`);
+			const artifact = readScenarioAt(`${scenarioRoot()}/${file}`);
 			if (!artifact?.pack) return;
 			// Resolved, not referenced: this is what the save will carry.
 			expect(artifact.content, `${file} names a pack but has no tables`).toBeDefined();

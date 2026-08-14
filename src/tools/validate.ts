@@ -26,7 +26,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listScenarios, readScenarioFile, scenarioPath, verifyArtifact } from "../scenario/repo.js";
+import { listScenarios, readScenarioAt, scenarioPath, verifyArtifact } from "../scenario/repo.js";
 import { hasErrors, validateArtifact } from "../scenario/validate.js";
 import { walkTheStory } from "../scenario/walk.js";
 
@@ -74,7 +74,7 @@ async function main() {
 
 	let broken = false;
 	for (const id of ids) {
-		const artifact = readScenarioFile(scenarioPath(id));
+		const artifact = readScenarioAt(scenarioPath(id));
 		if (!artifact) {
 			process.stdout.write(`${id}\n  error    does not load\n`);
 			broken = true;

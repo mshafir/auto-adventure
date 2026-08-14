@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mainLineBeats, type ScenarioBeat } from "../core/rules/arc.js";
 import { listSaves } from "../persist/save-repo.js";
 import { walkMainLine, withStory } from "./play.js";
-import { readScenarioFile, scenarioPath } from "./repo.js";
+import { readScenarioAt, scenarioPath } from "./repo.js";
 
 /**
  * Playing a story, without deciding anything about it.
@@ -40,7 +40,7 @@ afterEach(() => {
  */
 describe.skip("walking the main line", { timeout: 180_000 }, () => {
 	it("walks a good story to the end", async () => {
-		const artifact = readScenarioFile(scenarioPath("thornwick-road"));
+		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
 		expect(artifact?.arc, "thornwick-road has no arc, so this test proves nothing").toBeDefined();
 		if (!artifact?.arc) return;
 
@@ -52,7 +52,7 @@ describe.skip("walking the main line", { timeout: 180_000 }, () => {
 	});
 
 	it("reports the beat it could not open rather than fixing it", async () => {
-		const artifact = readScenarioFile(scenarioPath("thornwick-road"));
+		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
 		if (!artifact?.arc) return;
 		const arc = artifact.arc;
 		// Not an arm of a fork: opening one arm bars its siblings, so a broken arm would be
@@ -83,7 +83,7 @@ describe.skip("walking the main line", { timeout: 180_000 }, () => {
 	it("leaves no world behind for the launcher to offer", async () => {
 		// The regression test for the `walk-<id>` leak: `dispose()` flushes a save repository, so
 		// a walk with nothing to stop it wrote a world into the player's Continue list.
-		const artifact = readScenarioFile(scenarioPath("thornwick-road"));
+		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
 		if (!artifact) return;
 		await withStory(artifact, (playing) => walkMainLine(artifact, playing, Date.now() + 120_000));
 		expect(listSaves()).toEqual([]);
