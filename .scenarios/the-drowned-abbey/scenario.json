@@ -80,5 +80,53 @@
 		"models": {},
 		"calls": 0,
 		"at": "2026-08-14T18:04:13.441Z"
+	},
+	"recipe": {
+		"sites": {
+			"weights": {
+				"town": 0,
+				"village": 0,
+				"fort": 0,
+				"hamlet": 0,
+				"camp": 0,
+				"ruins": 0,
+				"landmark": 0,
+				"cave": 0,
+				"castle": 0,
+				"docks": 0
+			},
+			"wildWeights": {
+				"town": 0,
+				"village": 0,
+				"fort": 0,
+				"hamlet": 0,
+				"camp": 0,
+				"ruins": 0,
+				"landmark": 0,
+				"cave": 0,
+				"castle": 0,
+				"docks": 0
+			}
+		},
+		"places": [
+			{
+				"at": {
+					"x": 86,
+					"y": -29
+				},
+				"kind": "hamlet",
+				"importance": 5,
+				"radius": 21
+			},
+			{
+				"at": {
+					"x": 39,
+					"y": -31
+				},
+				"kind": "village",
+				"importance": 2,
+				"radius": 26
+			}
+		]
 	}
 }

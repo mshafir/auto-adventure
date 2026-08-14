@@ -438,6 +438,45 @@ const DEFAULT_WILD_WEIGHTS: Record<SettledKind, number> = {
 	docks: 0,
 };
 
+/** Nothing built anywhere, on any ground. Every key spelled out — see {@link LAND_ONLY}. */
+const NO_WEIGHTS: Record<SettledKind, number> = {
+	town: 0,
+	village: 0,
+	fort: 0,
+	hamlet: 0,
+	camp: 0,
+	ruins: 0,
+	landmark: 0,
+	cave: 0,
+	castle: 0,
+	docks: 0,
+};
+
+/**
+ * A world of land and nothing else, for a scenario to build on.
+ *
+ * What an authored world starts from, and the point of it is what the roll leaves behind
+ * when it is not asked to settle anything: coasts, rivers, forest, hill and moor, with
+ * every road, town, ruin and cave left for an author to put somewhere on purpose.
+ *
+ * The rolled settlements were not wrong so much as unmotivated. A seed scattered eight
+ * villages across a short scenario and a story used two of them, so a player who walked
+ * into any of the other six found a place with a name, houses, and nobody with anything to
+ * say — which reads as the game being broken rather than as scenery. Nothing generated can
+ * fix that, because the generator does not know what the story is.
+ *
+ * Written into the artifact rather than made the engine's default, so it is visible in the
+ * file, it travels with the world, and it is one line to turn back on. An unwritten world —
+ * the launcher's wander mode — keeps its procedural settlements, because there is no author
+ * there to place any and an empty wilderness is not a game.
+ *
+ * Every key is spelled out rather than left to default: weights merge per kind, so a partial
+ * table would quietly inherit whatever the defaults said about the kinds it did not mention.
+ */
+export const LAND_ONLY: WorldRecipe = {
+	sites: { weights: NO_WEIGHTS, wildWeights: NO_WEIGHTS },
+};
+
 /**
  * How big each kind of place is, before a recipe has its say.
  *

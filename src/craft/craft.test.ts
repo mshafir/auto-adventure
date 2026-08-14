@@ -42,7 +42,15 @@ async function craft(...argv: string[]): Promise<{ code: number; out: string }> 
 	return { code, out: lines.join("\n") };
 }
 
-/** A scenario with two towns claimed, which is the floor for most of what follows. */
+/**
+ * A scenario with two towns founded, which is the floor for most of what follows.
+ *
+ * Nothing generates a settlement, so both of these exist because this fixture put them there.
+ * The two coordinates are cells `craft survey abbey` lists, one on each side of the spawn and
+ * far enough apart that their footprints do not touch.
+ */
+const WENTHOLLOW = 4213455557;
+
 async function twoTowns() {
 	await craft(
 		"new",
@@ -55,10 +63,10 @@ async function twoTowns() {
 		"abbey",
 	);
 	await craft(
-		"claim",
+		"found",
 		"abbey",
-		"--site",
-		"4213455557",
+		"--at",
+		"32,-32",
 		"--name",
 		"Wenthollow",
 		"--description",
@@ -67,10 +75,10 @@ async function twoTowns() {
 		"mill:Wenthollow Mill",
 	);
 	await craft(
-		"claim",
+		"found",
 		"abbey",
-		"--site",
-		"539500626",
+		"--at",
+		"-32,32",
 		"--name",
 		"Ash Hollow",
 		"--description",
@@ -138,7 +146,7 @@ describe("craft reseed", () => {
 	 * towns standing nowhere — and nothing at runtime reports it. Refusing is the only honest
 	 * answer once anything has been claimed.
 	 */
-	it("refuses once a town has been claimed", SLOW, async () => {
+	it("refuses once a town has been founded", SLOW, async () => {
 		await twoTowns();
 		const { code, out } = await craft("reseed", "abbey", "--seed", "elsewhere");
 		expect(code).toBe(1);
@@ -146,32 +154,73 @@ describe("craft reseed", () => {
 	});
 });
 
-describe("claiming and populating", () => {
-	it("refuses a site the seed does not produce, and says which there are", SLOW, async () => {
+describe("founding and populating", () => {
+	it("refuses ground outside the world, and says where the ground is", SLOW, async () => {
 		await craft("new", "abbey", "--premise", "x", "--seed", "abbey");
 		const { code, out } = await craft(
-			"claim",
+			"found",
 			"abbey",
-			"--site",
-			"999999",
+			"--at",
+			"9999,9999",
 			"--name",
 			"Nowhere",
 			"--description",
 			"x",
 		);
 		expect(code).toBe(1);
-		expect(out).toContain("not a place in this world");
-		expect(out).toContain("Settlements here:");
+		expect(out).toContain("outside it");
+		expect(out).toContain("can stand on runs from");
 	});
 
-	it("refuses more buildings than the place has room for", SLOW, async () => {
+	it("refuses two places in one 64-tile cell, because they would share an id", SLOW, async () => {
+		// A site's id is hashed from its cell, so the second would overwrite the first as far as
+		// `macroSite` is concerned — and the spec written for one would name the other.
+		await twoTowns();
+		const { code, out } = await craft(
+			"found",
+			"abbey",
+			"--at",
+			"40,-40",
+			"--name",
+			"Twin",
+			"--description",
+			"x",
+		);
+		expect(code).toBe(1);
+		expect(out).toContain("same 64-tile cell");
+		expect(out).toContain("Wenthollow");
+	});
+
+	it("refuses a place whose footprint would run into one already there", SLOW, async () => {
+		// Legal for the generator and wrong for a player: two footprints that touch read as one
+		// sprawling place, which is never what founding a second town meant.
+		await twoTowns();
+		const { code, out } = await craft(
+			"found",
+			"abbey",
+			"--at",
+			"32,32",
+			"--kind",
+			"town",
+			"--importance",
+			"5",
+			"--name",
+			"Sprawl",
+			"--description",
+			"x",
+		);
+		expect(code).toBe(1);
+		expect(out).toContain("read as one");
+	});
+
+	it("refuses more buildings than the ground has room for", SLOW, async () => {
 		await craft("new", "abbey", "--premise", "x", "--seed", "abbey");
 		const structures = Array.from({ length: 30 }, () => ["--structure", "house"]).flat();
 		const { code, out } = await craft(
-			"claim",
+			"found",
 			"abbey",
-			"--site",
-			"539500626",
+			"--at",
+			"-32,32",
 			"--name",
 			"Ash Hollow",
 			"--description",
@@ -179,7 +228,16 @@ describe("claiming and populating", () => {
 			...structures,
 		);
 		expect(code).toBe(1);
-		expect(out).toContain("has room for");
+		expect(out).toContain("building(s) and 30 were asked for");
+	});
+
+	it("writes the recipe entry as well as the spec, so the map builds it", SLOW, async () => {
+		// The point of founding rather than claiming: one call produces both the thing the
+		// generator lays out and the thing the story names, so they cannot come apart.
+		await twoTowns();
+		const artifact = JSON.parse(readFileSync(join(root, "abbey", "scenario.json"), "utf8"));
+		expect(artifact.recipe.places).toHaveLength(2);
+		expect(artifact.recipe.places[0]).toMatchObject({ at: { x: 32, y: -32 }, kind: "village" });
 	});
 
 	it("names somebody and hands back the id everything else refers to them by", SLOW, async () => {
@@ -189,7 +247,7 @@ describe("claiming and populating", () => {
 			"add",
 			"abbey",
 			"--site",
-			"4213455557",
+			String(WENTHOLLOW),
 			"--name",
 			"Ilse Wentworth",
 			"--role",
@@ -208,7 +266,7 @@ describe("claiming and populating", () => {
 			"add",
 			"abbey",
 			"--site",
-			"4213455557",
+			String(WENTHOLLOW),
 			"--name",
 			"Somebody",
 			"--role",
@@ -227,7 +285,7 @@ describe("claiming and populating", () => {
 			"add",
 			"abbey",
 			"--site",
-			"4213455557",
+			String(WENTHOLLOW),
 			"--name",
 			"Somebody",
 			"--role",
@@ -256,7 +314,7 @@ describe("placing things", () => {
 			"--description",
 			"Damp.",
 			"--site",
-			"4213455557",
+			String(WENTHOLLOW),
 			"--in",
 			"The Custom House",
 		);
@@ -274,7 +332,7 @@ describe("placing things", () => {
 			"--description",
 			"Damp.",
 			"--site",
-			"4213455557",
+			String(WENTHOLLOW),
 			"--in",
 			"Wenthollow Mill",
 		);
@@ -306,7 +364,7 @@ describe("check before write", () => {
 			"add",
 			"abbey",
 			"--site",
-			"4213455557",
+			String(WENTHOLLOW),
 			"--name",
 			"Somebody",
 			"--role",

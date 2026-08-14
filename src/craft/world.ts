@@ -1,15 +1,13 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveSeed } from "../config.js";
-import { fallbackSettlementSpec } from "../core/gen/features/fallback-spec.js";
-import { invalidateFeature } from "../core/gen/features/registry.js";
-import { generateSettlement } from "../core/gen/features/settlement.js";
 import { type Duration, isDuration } from "../core/world/brief.js";
-import { worldSeed } from "../core/world/recipe.js";
-import { ARTIFACT_VERSION, artifactWorld, type ScenarioArtifact } from "../scenario/artifact.js";
+import { SETTLEMENT_KINDS } from "../core/world/macro.js";
+import { LAND_ONLY, worldSeed } from "../core/world/recipe.js";
+import { ARTIFACT_VERSION, type ScenarioArtifact } from "../scenario/artifact.js";
 import { writeScenarioDir } from "../scenario/dir.js";
 import { scenarioPath, scenarioRoot } from "../scenario/repo.js";
-import { type Survey, surveyWorld } from "../scenario/survey.js";
+import { candidates, surveyWorld } from "../scenario/survey.js";
 import { type Args, CraftError } from "./args.js";
 import { openWorkspace } from "./workspace.js";
 
@@ -50,7 +48,10 @@ export function craftNew(args: Args, out: (line: string) => void): void {
 	const tiles = args.has("tiles") ? args.str("tiles") : undefined;
 	args.refuseUnknown();
 
-	const survey = surveyWorld(worldSeed(seed), duration, undefined);
+	// Land and nothing else. Every town, ruin and cave in an authored world is put there by an
+	// author for a reason — see `LAND_ONLY` for what the rolled ones cost.
+	const recipe = LAND_ONLY;
+	const survey = surveyWorld(worldSeed(seed, recipe), duration, recipe);
 	const artifact: ScenarioArtifact = {
 		artifactVersion: ARTIFACT_VERSION,
 		id,
@@ -58,6 +59,7 @@ export function craftNew(args: Args, out: (line: string) => void): void {
 		blurb: premise,
 		brief: { title, premise, duration, ...(tone ? { tone } : {}) },
 		seed,
+		recipe,
 		spawn: survey.spawn,
 		bounds: survey.bounds,
 		// Named from the premise so the world is not anonymous before a single call has been
@@ -78,7 +80,7 @@ export function craftNew(args: Args, out: (line: string) => void): void {
 	out(
 		`  bounds ${survey.bounds.minX},${survey.bounds.minY} to ${survey.bounds.maxX},${survey.bounds.maxY}`,
 	);
-	out(`  ${survey.sites.filter((site) => site.settlement).length} settlement(s) to claim`);
+	out("  land only: nothing is built until you found it");
 	out(`next: craft survey ${id}`);
 }
 
@@ -105,7 +107,11 @@ export function craftReseed(args: Args, out: (line: string) => void): void {
 	args.refuseUnknown();
 
 	const seed = resolveSeed(word);
-	const survey = surveyWorld(worldSeed(seed), duration, workspace.artifact.recipe);
+	const survey = surveyWorld(
+		worldSeed(seed, workspace.artifact.recipe),
+		duration,
+		workspace.artifact.recipe,
+	);
 	workspace.artifact = {
 		...workspace.artifact,
 		seed,
@@ -116,69 +122,103 @@ export function craftReseed(args: Args, out: (line: string) => void): void {
 
 	out(`reseeded "${workspace.id}" to ${seed} ("${word}")`);
 	out(
-		`  spawn ${survey.spawn.x},${survey.spawn.y}, ${survey.sites.filter((s) => s.settlement).length} settlement(s)`,
+		`  spawn ${survey.spawn.x},${survey.spawn.y}, bounds ${survey.bounds.minX},${survey.bounds.minY} ` +
+			`to ${survey.bounds.maxX},${survey.bounds.maxY}`,
 	);
 }
 
+/** How many cells the survey prints before it says how many more there are. */
+const SURVEY_ROWS = 24;
+
+/**
+ * What the country will take, cell by cell.
+ *
+ * The question shopping for a world used to answer was "which towns did this seed give me".
+ * Nothing gives you towns any more, so the question is the useful one instead: where will
+ * this ground hold a place, how far is it from the start, and what is it like there.
+ *
+ * Every row is measured by actually laying a settlement out on that cell and counting the
+ * plots it finds, which is the only thing that knows. So a row the survey prints is a place
+ * `craft found` will accept, and the two cannot disagree.
+ */
 export function craftSurvey(args: Args, out: (line: string) => void): void {
 	const workspace = openWorkspace(requireId(args, "survey"));
 	const all = args.bool("all");
+	const kind = args.oneOf("kind", SETTLEMENT_KINDS, "village");
+	const importance = args.int("importance", 3);
 	args.refuseUnknown();
 
 	const artifact = workspace.artifact;
-	const world = artifactWorld(artifact);
-	const survey = surveyWorld(world, artifact.brief.duration, artifact.recipe);
+	const bounds = artifact.bounds;
+	if (!bounds)
+		throw new CraftError(`"${artifact.id}" has no bounds, so it has no ground to survey`);
+	const spawn = artifact.spawn;
 
-	out(`"${artifact.id}" — seed ${artifact.seed}, spawn ${survey.spawn.x},${survey.spawn.y}`);
+	out(`"${artifact.id}" — seed ${artifact.seed}, spawn ${spawn.x},${spawn.y}`);
 	out(
-		`bounds ${survey.bounds.minX},${survey.bounds.minY} to ${survey.bounds.maxX},${survey.bounds.maxY} (${survey.bounds.style})`,
+		`bounds ${bounds.minX},${bounds.minY} to ${bounds.maxX},${bounds.maxY} ` +
+			`(${bounds.style}, ${bounds.thickness} tiles of edge)`,
+	);
+
+	const founded = Object.values(artifact.sites);
+	out("");
+	if (founded.length === 0)
+		out("nothing founded yet: this world is land only until you put something on it");
+	else {
+		out(`${founded.length} founded:`);
+		for (const spec of founded) {
+			out(`  ${spec.siteId}  ${spec.name} — ${spec.settlement.structures.length} building(s)`);
+		}
+	}
+
+	const { found, refused } = candidates(
+		artifact.seed,
+		artifact.recipe,
+		bounds,
+		spawn,
+		kind,
+		importance,
 	);
 	out("");
-
-	const sites = all ? survey.sites : survey.sites.filter((site) => site.settlement);
-	if (sites.length === 0) {
-		out("nothing to claim in this world. Try craft reseed.");
+	if (found.length === 0) {
+		out(`no cell in this world will hold a ${kind}. Try --kind hamlet, or craft reseed.`);
 		return;
 	}
-	out(`${sites.length} place(s), nearest first:`);
-	for (const site of [...sites].sort((a, b) => a.distanceFromSpawn - b.distanceFromSpawn)) {
-		const claimed = artifact.sites[String(site.site.id)];
-		const mark = claimed ? `claimed as "${claimed.name}"` : "unclaimed";
+	out(
+		`${found.length} cell(s) that will hold a ${kind} of importance ${importance}, nearest first:`,
+	);
+	for (const candidate of found.slice(0, all ? found.length : SURVEY_ROWS)) {
+		const { context } = candidate.prospect;
+		// Deduplicated because the biome and the elevation band often agree — "shore, shore"
+		// reads as the tool repeating itself rather than as two facts.
+		const notes = [
+			...new Set([
+				context.biomeName.toLowerCase(),
+				context.terrain,
+				...(context.coastal ? ["coast"] : []),
+				...(context.nearRiver ? ["river"] : []),
+			]),
+		];
 		out(
-			`  ${site.site.id}  ${site.site.kind.padEnd(9)} at ${site.site.site.x},${site.site.site.y}  ` +
-				`${site.distanceFromSpawn} away  ${site.context.biome}  room for ${site.context.buildingBudget}  ${mark}`,
+			`  --at ${String(`${context.x},${context.y}`).padEnd(11)} ${String(candidate.distanceFromSpawn).padStart(4)} away  ` +
+				`room for ${String(candidate.prospect.budget).padStart(2)}  ${notes.join(", ")}`,
 		);
-		if (site.settlement && !claimed)
-			out(`      anchors: ${anchorsOf(survey, site.site.id).join(" ")}`);
+	}
+	// Said out loud rather than silently truncated: a list that stops without saying so reads
+	// as the whole of what is available.
+	if (!all && found.length > SURVEY_ROWS) {
+		out(`  ... and ${found.length - SURVEY_ROWS} more (--all lists them)`);
+	}
+	if (refused > 0) {
+		out(
+			`  ${refused} cell(s) will not hold one — too steep, too wet, or too near the edge. ` +
+				"craft found says which, for a cell you name",
+		);
 	}
 	out("");
-	out(`next: craft claim ${artifact.id} --site <id> --name "..." --description "..."`);
-}
-
-/**
- * Which anchors a settlement is likely to lay down.
- *
- * Measured from the deterministic roster, so it is a strong hint rather than a promise — the
- * real layout depends on the roster that ends up being authored. It is here because putting
- * somebody at an anchor the settlement never builds leaves a named character standing
- * nowhere, and that is invisible until validation.
- */
-function anchorsOf(survey: Survey, siteId: number): string[] {
-	const found = survey.sites.find((candidate) => candidate.site.id === siteId);
-	if (!found) return [];
-	invalidateFeature(survey.world, siteId);
-	const built = generateSettlement(
-		survey.world,
-		found.site,
-		fallbackSettlementSpec(survey.world, found.site),
+	out(
+		`next: craft found ${artifact.id} --at <x,y> --kind ${kind} --name "..." --description "..."`,
 	);
-	const kinds = [
-		...new Set(built.anchors.filter((a) => a.building === undefined).map((a) => a.kind)),
-	];
-	// Leave no cached patch behind: the next thing to generate this site should be measuring
-	// the authored roster, not this probe.
-	invalidateFeature(survey.world, siteId);
-	return kinds.sort();
 }
 
 function writeStory(dir: string, title: string, premise: string): void {

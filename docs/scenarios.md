@@ -795,6 +795,14 @@ than relative weights, because the interesting number is how much of the map is 
 The defaults total 18%, and the schema refuses more than 80% — past that a map is not
 more densely settled, it is one continuous suburb.
 
+**An authored scenario sets both tables to zero.** `craft new` writes `LAND_ONLY` into the
+recipe, so a written world generates coasts, rivers and forest and no settlements at all:
+every place in it is an authored place, put somewhere by `craft found` because the story
+needed it. The rolled ones were not wrong so much as unmotivated — a seed scattered eight
+villages, a short story used two, and the other six were places with names, houses and nobody
+with anything to say. The engine's own defaults are untouched, so an unwritten world — the
+launcher's wander mode, where there is no author to place anything — still settles itself.
+
 Also here: `radius` per kind (`{ base, perImportance }`), `maxImportance`,
 `civilizationFloor` and `maxSlope`.
 
@@ -878,6 +886,11 @@ the recipe does not orphan everything written about it.
 
 Two places in one macro cell (64 tiles) is an error — the second silently replaces the
 first — and so is a place outside the boundary.
+
+In an authored world this is not an occasional override but the *only* way anything gets
+built: `craft found` writes one of these beside every `SiteSpec` it writes, and refuses a
+cell that is taken, a footprint that would run into a neighbour's, ground that will hold
+nothing, and anything the world's edge would cut in half.
 
 ### zones
 

@@ -1,7 +1,7 @@
 import { Args, CraftError, parseArgs } from "./args.js";
 import { craftCheck, craftPlaytest } from "./check.js";
 import {
-	craftClaim,
+	craftFound,
 	craftNpcAdd,
 	craftPlace,
 	craftSignposts,
@@ -46,21 +46,21 @@ export const VERBS: readonly Verb[] = [
 	{
 		words: ["reseed"],
 		usage: "craft reseed <id> [--seed word]",
-		summary: "shop for a different world. Free, and only before anything is claimed",
+		summary: "shop for a different world. Free, and only before anything is founded",
 		run: craftReseed,
 	},
 	{
 		words: ["survey"],
-		usage: "craft survey <id> [--all]",
-		summary: "what is actually out there: every place, its size, its ground",
+		usage: "craft survey <id> [--kind village] [--importance 3] [--all]",
+		summary: "where the ground will hold a place, how far it is, and what it is like there",
 		run: craftSurvey,
 	},
 	{
-		words: ["claim"],
+		words: ["found"],
 		usage:
-			'craft claim <id> --site N --name "..." --description "..." [--structure kind:Name]... [--hook "..."]... [--walled]',
-		summary: "name a place the generator put there, and say what is built in it",
-		run: craftClaim,
+			'craft found <id> --at x,y --name "..." --description "..." [--kind village] [--importance 3] [--structure kind:Name]... [--hook "..."]... [--walled]',
+		summary: "put a settlement somewhere, and say what is built in it. Nothing generates one",
+		run: craftFound,
 	},
 	{
 		words: ["npc", "add"],

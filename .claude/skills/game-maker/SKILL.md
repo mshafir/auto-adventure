@@ -46,23 +46,31 @@ npm run craft -- new <id> --premise "..." --duration short
 npm run craft -- survey <id>
 ```
 
-The survey lists every settlement the generator put there: its size, its ground, its distance
-from the spawn, the anchors it will lay down. It costs nothing, because the generator is pure.
+**The seed gives you land and nothing else.** No towns, no ruins, no caves — every one of
+those is yours to put somewhere for a reason. The survey therefore lists *ground*: which cells
+will hold a village, how far each is from the spawn, what the country is like there, and how
+many buildings will actually fit. Every row is measured by laying a settlement out on that
+cell, so a row it prints is a place `craft found` will accept.
 
-**If the map does not suit the story, reseed.** `craft reseed <id> --seed <word>` is free and
-takes a second. Do it five times if you need to. A story that wants a coastal town and a
-ruin two days apart is a story worth shopping for.
+**If the ground does not suit the story, reseed.** `craft reseed <id> --seed <word>` is free
+and takes a second. Do it five times if you need to. A story that wants a coast and a deep
+forest two days apart is a story worth shopping for.
 
-Reseeding stops working the moment you claim anything, because site ids come from the seed.
+Reseeding stops working the moment you found anything, because site ids come from the seed.
 So do all of your shopping first.
 
-### 3. Claim and populate
+### 3. Found and populate
 
 ```
-npm run craft -- claim <id> --site N --name "..." --description "..." --structure "inn:The Long Tide"
+npm run craft -- found <id> --at x,y --name "..." --description "..." --structure "inn:The Long Tide"
 npm run craft -- npc add <id> --site N --name "..." --role "..." --at square --stays
 npm run craft -- tree <id> --npc npc:N:0 --init
 ```
+
+`found` writes both halves at once — the recipe entry that makes the generator build the
+place, and the spec that names it — and hands back the site id everything else refers to it
+by. `--kind hamlet|village|town|fort` and `--importance 1..5` decide how big it is; the
+refusal tells you the real building budget before anything is written.
 
 Then edit `trees/npc:N:0.json` directly and write the conversation. Prose is yours; the CLI
 only owns what has to agree with the map.

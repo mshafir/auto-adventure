@@ -5,11 +5,13 @@ import type { AnchorKind, StructureKind } from "../core/gen/features/patch.js";
 import type { AuthoredBarrier } from "../core/rules/lock.js";
 import type { Placement } from "../core/rules/placement.js";
 import type { Sign } from "../core/rules/signage.js";
+import { MACRO, macroSite, SETTLEMENT_KINDS } from "../core/world/macro.js";
+import type { PlaceRecipe, WorldRecipe } from "../core/world/recipe.js";
 import { type NpcSpec, npcId, type SiteSpec } from "../core/world/spec.js";
 import { resolvePlacements } from "../engine/placements.js";
 import { artifactWorld } from "../scenario/artifact.js";
 import { signpostsFor } from "../scenario/signposts.js";
-import { surveyWorld } from "../scenario/survey.js";
+import { prospect } from "../scenario/survey.js";
 import type { TerraformEdit } from "../scenario/terraform.js";
 import { buildPassability, siteIndex } from "../scenario/validate.js";
 import { type Args, CraftError } from "./args.js";
@@ -25,10 +27,26 @@ import { requireId } from "./world.js";
  * there are, instead of an item that is nowhere and a quest that can never close.
  */
 
-export function craftClaim(args: Args, out: (line: string) => void): void {
-	const workspace = openWorkspace(requireId(args, "claim"));
+/**
+ * Put a settlement somewhere, because nothing generated one.
+ *
+ * The world is land only, so every town in it is here because a story needed one. That is
+ * the whole change: a village the seed scattered is a village with nobody in it and no
+ * reason to exist, and a player who walks into one finds a place with a name, houses and
+ * nothing to say. Founding writes two things at once — the recipe entry that makes the
+ * generator build a settlement in that macro cell, and the spec that names it and says what
+ * is in it — so the map and the story cannot come apart.
+ *
+ * Measured before it is written, and by laying the settlement out rather than by estimating:
+ * the number of buildings that fit depends on the plots the footprint finds on that exact
+ * ground, and a refusal here is a village that would have been half in a river.
+ */
+export function craftFound(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "found"));
 	const artifact = workspace.artifact;
-	const siteId = args.int("site");
+	const at = args.point("at");
+	const kind = args.oneOf("kind", SETTLEMENT_KINDS, "village");
+	const importance = args.int("importance", 3);
 	const name = args.str("name");
 	const short = args.str("short", name);
 	const description = args.str("description");
@@ -37,34 +55,43 @@ export function craftClaim(args: Args, out: (line: string) => void): void {
 	const structures = args.list("structure");
 	args.refuseUnknown();
 
+	const bounds = artifact.bounds;
+	if (!bounds) throw new CraftError(`"${artifact.id}" has no bounds, so it has nowhere to put one`);
+	if (importance < 1 || importance > 5) {
+		throw new CraftError("--importance runs 1 to 5; it decides how big the place is");
+	}
+
+	// One place per macro cell, because a site's id is hashed from its cell: a second place
+	// in the same cell would share the first one's id, and `macroSite` would only ever report
+	// whichever came last.
+	const cell = (point: { readonly x: number; readonly y: number }) =>
+		`${Math.floor(point.x / MACRO)},${Math.floor(point.y / MACRO)}`;
+	const sharing = (artifact.recipe?.places ?? []).find((place) => cell(place.at) === cell(at));
+	if (sharing) {
+		const world = artifactWorld(artifact);
+		const mine = macroSite(world, Math.floor(at.x / MACRO), Math.floor(at.y / MACRO));
+		const named = artifact.sites[String(mine.id)]?.name;
+		throw new CraftError(
+			`${at.x},${at.y} is in the same 64-tile cell as the ${sharing.kind} at ` +
+				`${sharing.at.x},${sharing.at.y}${named ? ` ("${named}")` : ""}, and two places cannot ` +
+				"share a cell. craft survey lists the cells that are free.",
+		);
+	}
+
+	const asked = prospect(artifact.seed, artifact.recipe, bounds, { at, kind, importance });
+	if ("refusal" in asked) throw new CraftError(asked.refusal);
+
+	const siteId = asked.site.id;
 	if (artifact.sites[String(siteId)]) {
-		throw new CraftError(
-			`site ${siteId} is already claimed as "${artifact.sites[String(siteId)]?.name}"`,
-		);
+		throw new CraftError(`site ${siteId} is already "${artifact.sites[String(siteId)]?.name}"`);
 	}
 
-	const survey = surveyWorld(artifactWorld(artifact), artifact.brief.duration, artifact.recipe);
-	const found = survey.sites.find((candidate) => candidate.site.id === siteId);
-	if (!found) {
-		const nearby = survey.sites
-			.filter((candidate) => candidate.settlement)
-			.slice(0, 5)
-			.map((candidate) => candidate.site.id);
-		throw new CraftError(
-			`site ${siteId} is not a place in this world. Settlements here: ${nearby.join(", ")} — "craft survey ${artifact.id}" lists them all`,
-		);
-	}
-	if (!found.settlement) {
-		throw new CraftError(
-			`site ${siteId} is a ${found.site.kind}, which has no buildings, so nobody can be put in it`,
-		);
-	}
-
-	const budget = found.context.buildingBudget;
+	const budget = asked.budget;
 	const parsed = structures.map((entry) => parseStructure(entry, budget));
 	if (parsed.length > budget) {
 		throw new CraftError(
-			`${name} has room for ${budget} building(s) and ${parsed.length} were asked for — the survey says how much room each place has`,
+			`a ${kind} on that ground holds ${budget} building(s) and ${parsed.length} were asked for. ` +
+				"Raise --importance to make the place bigger, or found it somewhere with more room",
 		);
 	}
 
@@ -77,12 +104,21 @@ export function craftClaim(args: Args, out: (line: string) => void): void {
 		npcs: [],
 		hooks,
 	};
-	workspace.artifact = { ...artifact, sites: { ...artifact.sites, [String(siteId)]: spec } };
-	commit(workspace, `claiming site ${siteId}`);
+	workspace.artifact = {
+		...artifact,
+		recipe: withPlace(artifact.recipe, asked.place),
+		sites: { ...artifact.sites, [String(siteId)]: spec },
+	};
+	commit(workspace, `founding "${name}"`);
 
-	out(`claimed ${siteId} as "${name}" (${found.site.kind}, room for ${budget})`);
+	out(`founded "${name}" as site ${siteId} — a ${kind} at ${at.x},${at.y}, room for ${budget}`);
 	if (parsed.length > 0) out(`  ${parsed.map((s) => s.name ?? s.kind).join(", ")}`);
 	out(`next: craft npc add ${artifact.id} --site ${siteId} --name "..." --role "..." --at square`);
+}
+
+/** The recipe with one more place in it. Appended: nothing already founded may be lost. */
+function withPlace(recipe: WorldRecipe | undefined, place: PlaceRecipe): WorldRecipe {
+	return { ...recipe, places: [...(recipe?.places ?? []), place] };
 }
 
 /** `kind:Name` or just `kind`, which is how a building is written on a command line. */
@@ -113,7 +149,8 @@ export function craftNpcAdd(args: Args, out: (line: string) => void): void {
 	const site = artifact.sites[String(siteId)];
 	if (!site) {
 		throw new CraftError(
-			`site ${siteId} has not been claimed — "craft claim ${artifact.id} --site ${siteId} ..." first`,
+			`site ${siteId} does not exist — nothing is built until it is founded. ` +
+				`"craft survey ${artifact.id}" says where one can go`,
 		);
 	}
 
@@ -267,7 +304,8 @@ function placeItem(
 
 	if (idTaken(artifact, "placements", id))
 		throw new CraftError(`there is already a placement called "${id}"`);
-	if (!artifact.sites[String(siteId)]) throw new CraftError(`site ${siteId} has not been claimed`);
+	if (!artifact.sites[String(siteId)])
+		throw new CraftError(`site ${siteId} does not exist; nothing has been founded there`);
 
 	const placement: Placement = {
 		id,
@@ -391,7 +429,8 @@ function placeGate(
 
 	if (idTaken(artifact, "barriers", id))
 		throw new CraftError(`there is already a gate called "${id}"`);
-	if (!artifact.sites[String(siteId)]) throw new CraftError(`site ${siteId} has not been claimed`);
+	if (!artifact.sites[String(siteId)])
+		throw new CraftError(`site ${siteId} does not exist; nothing has been founded there`);
 
 	const barrier: AuthoredBarrier = {
 		id,

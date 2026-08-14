@@ -22,8 +22,14 @@ import {
 import type { TerrainId } from "../core/tiles/terrain.js";
 import { isWellInside } from "../core/world/bounds.js";
 import { HALO } from "../core/world/coords.js";
-import { MACRO, type MacroSite, maxFeatureRadius, sitesInside } from "../core/world/macro.js";
-import { type PlaceRecipe, placeKey, type WorldRules } from "../core/world/recipe.js";
+import {
+	MACRO,
+	type MacroSite,
+	maxFeatureRadius,
+	placeRadius,
+	sitesInside,
+} from "../core/world/macro.js";
+import { type PlaceRecipe, placeKey } from "../core/world/recipe.js";
 import { overlapBy } from "../core/world/spacing.js";
 import { npcId } from "../core/world/spec.js";
 import { resolveBarriers } from "../engine/barriers.js";
@@ -308,7 +314,7 @@ function checkRecipe(artifact: ScenarioArtifact, sites: Map<number, MacroSite>):
 	// and much easier to make by accident: the author can see their own coordinates and
 	// cannot see the town two cells over until they generate the map.
 	for (const place of byCell.values()) {
-		const reach = radiusOf(place, rules);
+		const reach = placeRadius(place, rules);
 		for (const site of sites.values()) {
 			if (site.authored) continue;
 			// The same predicate the survey grows sites by. Shared rather than written twice,
@@ -336,7 +342,7 @@ function checkRecipe(artifact: ScenarioArtifact, sites: Map<number, MacroSite>):
 			const a = placed[i] as PlaceRecipe;
 			const b = placed[j] as PlaceRecipe;
 			const gap = Math.hypot(a.at.x - b.at.x, a.at.y - b.at.y);
-			const together = radiusOf(a, rules) + radiusOf(b, rules);
+			const together = placeRadius(a, rules) + placeRadius(b, rules);
 			if (gap < together) {
 				findings.push(
 					warning(
@@ -367,12 +373,6 @@ function checkRecipe(artifact: ScenarioArtifact, sites: Map<number, MacroSite>):
 
 function describePlace(place: PlaceRecipe): string {
 	return `the ${place.kind} at ${place.at.x},${place.at.y}`;
-}
-
-function radiusOf(place: PlaceRecipe, rules: WorldRules): number {
-	if (place.radius !== undefined) return place.radius;
-	const rule = rules.sites.radius[place.kind];
-	return rule.base + (rule.perImportance ?? 0) * (place.importance ?? 3);
 }
 
 /**

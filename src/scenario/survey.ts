@@ -4,15 +4,28 @@ import {
 	generateFeature,
 	invalidateFeature,
 } from "../core/gen/features/registry.js";
-import { type BoundaryStyle, isWellInside, type WorldBounds } from "../core/world/bounds.js";
+import {
+	type BoundaryStyle,
+	isWellInside,
+	safeInterior,
+	type WorldBounds,
+} from "../core/world/bounds.js";
 import type { Duration } from "../core/world/brief.js";
 import type { RegionContext } from "../core/world/context.js";
 import { biomeAt, regionContext, type SiteContext, siteContext } from "../core/world/context.js";
 import { CHUNK } from "../core/world/coords.js";
+import { elevationAt } from "../core/world/fields.js";
 import { growSite, rosterTarget } from "../core/world/growth.js";
-import { isSettlement, MACRO, type MacroSite, macroSite } from "../core/world/macro.js";
+import {
+	isSettlement,
+	MACRO,
+	type MacroSite,
+	macroSite,
+	placeRadius,
+} from "../core/world/macro.js";
 import {
 	type PlaceRecipe,
+	type SettledKind,
 	type WorldRecipe,
 	type WorldSeed,
 	worldSeed,
@@ -383,6 +396,13 @@ export function surveyWorld(
 	// first radius that holds enough wins, so an ordinary seed — which has plenty at
 	// the requested size — is surveyed exactly once and comes out exactly as before.
 	let survey = surveyAt(world, spawn, plan.radiusChunks, recipe);
+
+	// A world that settles nothing has nothing to grow toward. Every place in it will be put
+	// there by an author, so the requested radius is the answer — whereas searching for
+	// settlements that cannot exist would take every scenario to the largest rectangle its
+	// duration allows and then report no story sites anyway.
+	if (world.rules.sites.settled.length + world.rules.sites.wild.length === 0) return survey;
+
 	const ceiling = growthCeiling(duration);
 	for (let radius = plan.radiusChunks + 1; radius <= ceiling; radius++) {
 		if (storySites(survey).length >= Math.min(plan.beats, MIN_STORY_SITES)) break;
@@ -471,6 +491,156 @@ function surveyAt(
 		grown,
 		places,
 	};
+}
+
+/**
+ * What founding a place somewhere would actually produce, or why it cannot go there.
+ *
+ * The measurement behind both `craft survey` and `craft found`, and the reason those two
+ * agree: the survey shows the ground by asking this of every cell, and founding asks it of
+ * the one cell the author picked. A place the survey offered is therefore a place founding
+ * will accept, and a place founding refuses is one the survey never listed.
+ *
+ * It works by *doing it and looking*. The candidate is added to the recipe, the world is
+ * resolved with it in, and the resulting site is generated and measured — because a
+ * settlement's real building count depends on the plots its footprint finds on that exact
+ * ground, and nothing short of laying it out knows how many there are.
+ */
+export interface Prospect {
+	readonly site: MacroSite;
+	readonly context: SiteContext;
+	/** How many buildings the ground here will actually hold. */
+	readonly budget: number;
+	/** The recipe entry that produced this, ready to be written down. */
+	readonly place: PlaceRecipe;
+}
+
+export function prospect(
+	seed: number,
+	recipe: WorldRecipe | undefined,
+	bounds: WorldBounds,
+	place: PlaceRecipe,
+): Prospect | { readonly refusal: string } {
+	const at = place.at;
+	if (!isWellInside(bounds, at.x, at.y)) {
+		const safe = safeInterior(bounds);
+		return {
+			refusal:
+				`${at.x},${at.y} is in the world's edge or outside it. The ground a place can stand on ` +
+				`runs from ${safe.minX},${safe.minY} to ${safe.maxX},${safe.maxY}`,
+		};
+	}
+
+	// Appended, never replaced: `mergeRecipe` lets one recipe's `places` replace another's,
+	// which here would delete every place already founded and measure this one in a world
+	// where none of its neighbours exist.
+	const world = worldSeed(seed, { ...recipe, places: [...(recipe?.places ?? []), place] });
+	const site = macroSite(world, macroOf(at.x), macroOf(at.y));
+
+	// The same test `siteKindAt` applies to a rolled site, and it has to be the same: a
+	// footprint whose centre is at sea may still find plots on a spit at its edge, so the
+	// budget alone would accept a village whose square and well were under water.
+	if (elevationAt(world, at.x, at.y) < world.rules.climate.seaLevel) {
+		return { refusal: `${at.x},${at.y} is under water. A place has to stand on land` };
+	}
+
+	if (straddles(bounds, site)) {
+		return {
+			refusal:
+				`a ${place.kind} at ${at.x},${at.y} reaches ${site.radius} tiles, which the world's edge ` +
+				"would cut in half. Move it inward, or make it smaller with --importance",
+		};
+	}
+	if (!buildsSomething(world, site)) {
+		return {
+			refusal:
+				`the ground at ${at.x},${at.y} will not hold a ${place.kind}: too steep, too wet, or too ` +
+				"much of the footprint in water. craft survey lists the cells that will",
+		};
+	}
+
+	// Overlapping footprints are legal — the clip-into-chunks model copes — and they read as
+	// one sprawling place rather than as two, which is never what somebody founding a second
+	// town meant. `validate.ts` warns about it; refusing here is what stops it being written.
+	for (const other of recipe?.places ?? []) {
+		const gap = Math.hypot(other.at.x - at.x, other.at.y - at.y);
+		const together = site.radius + placeRadius(other, world.rules);
+		if (gap >= together) continue;
+		return {
+			refusal:
+				`a ${place.kind} at ${at.x},${at.y} reaches ${site.radius} tiles and would run ` +
+				`${Math.round(together - gap)} tiles into the ${other.kind} at ${other.at.x},${other.at.y}. ` +
+				"Two places that touch read as one; move it further off or lower --importance",
+		};
+	}
+
+	const context = siteContext(world, site);
+	return { site, context, budget: context.buildingBudget, place };
+}
+
+function macroOf(coordinate: number): number {
+	return Math.floor(coordinate / MACRO);
+}
+
+/** A cell of the world, with what would happen if a place were founded in it. */
+export interface Candidate {
+	readonly mx: number;
+	readonly my: number;
+	readonly prospect: Prospect;
+	readonly distanceFromSpawn: number;
+}
+
+/**
+ * Every macro cell of a bounded world that would hold the kind of place asked about.
+ *
+ * This is what shopping for a world means once the generator settles nothing: the question
+ * is no longer "which towns did the seed give me" but "where will this country take one".
+ * Sites sit one macro cell apart, so a cell is the unit — two places in one cell would share
+ * an id, and `macroSite` would only ever report the later of them.
+ *
+ * Cells that cannot hold anything are counted rather than listed. A caller that wants to
+ * know *why* asks {@link prospect} about that one cell and gets a sentence.
+ */
+export function candidates(
+	seed: number,
+	recipe: WorldRecipe | undefined,
+	bounds: WorldBounds,
+	spawn: { readonly x: number; readonly y: number },
+	kind: SettledKind,
+	importance: number,
+): { readonly found: readonly Candidate[]; readonly refused: number } {
+	const taken = new Set(
+		(recipe?.places ?? []).map((place) => `${macroOf(place.at.x)},${macroOf(place.at.y)}`),
+	);
+	const found: Candidate[] = [];
+	let refused = 0;
+
+	const safe = safeInterior(bounds);
+	for (let my = macroOf(safe.minY); my <= macroOf(safe.maxY); my++) {
+		for (let mx = macroOf(safe.minX); mx <= macroOf(safe.maxX); mx++) {
+			if (taken.has(`${mx},${my}`)) continue;
+			// The centre of the cell, clamped into the playable rectangle. A cell on the inside
+			// of the edge still has ground in it, and its middle may not be the part that does.
+			const at = {
+				x: Math.min(Math.max(mx * MACRO + MACRO / 2, safe.minX), safe.maxX),
+				y: Math.min(Math.max(my * MACRO + MACRO / 2, safe.minY), safe.maxY),
+			};
+			const asked = prospect(seed, recipe, bounds, { at, kind, importance });
+			if ("refusal" in asked) {
+				refused++;
+				continue;
+			}
+			found.push({
+				mx,
+				my,
+				prospect: asked,
+				distanceFromSpawn: Math.round(Math.hypot(at.x - spawn.x, at.y - spawn.y)),
+			});
+		}
+	}
+
+	found.sort((a, b) => a.distanceFromSpawn - b.distanceFromSpawn);
+	return { found, refused };
 }
 
 /** The settlements a story can actually be hung on. */

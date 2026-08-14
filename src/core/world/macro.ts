@@ -53,6 +53,21 @@ function siteRadius(rules: WorldRules, kind: SiteKind, importance: number): numb
 }
 
 /**
+ * How far an authored place will reach, before the world has been resolved with it in.
+ *
+ * The same arithmetic {@link macroSite} applies, exported because two callers need the answer
+ * *before* the place exists: founding, to refuse one that would run into its neighbour, and
+ * validation, to say so about a file that already has. Written twice it would be a rule the
+ * generator and its own validator could disagree about.
+ */
+export function placeRadius(
+	place: { readonly kind: SettledKind; readonly importance?: number; readonly radius?: number },
+	rules: WorldRules,
+): number {
+	return place.radius ?? siteRadius(rules, place.kind, place.importance ?? 3);
+}
+
+/**
  * The site occupying a macro cell, if any.
  *
  * Pure in `(world, mx, my)` and nothing else. Two chunks that both see this site
@@ -189,9 +204,16 @@ export function sitesInside(world: WorldSeed, bounds: WorldBounds): Map<number, 
 	return found;
 }
 
+/**
+ * The kinds that have buildings, and so the kinds a person can be put in.
+ *
+ * Ordered small to large, which is the order an author reads them in when choosing.
+ */
+export const SETTLEMENT_KINDS = ["hamlet", "village", "town", "fort"] as const;
+
 /** Whether a site is a settlement (has buildings) rather than a point feature. */
 export function isSettlement(kind: SiteKind): boolean {
-	return kind === "hamlet" || kind === "village" || kind === "town" || kind === "fort";
+	return (SETTLEMENT_KINDS as readonly string[]).includes(kind);
 }
 
 /**

@@ -6,12 +6,15 @@ import { hashString } from "../core/rand/hash.js";
 import { isBoundary, isWellInside } from "../core/world/bounds.js";
 import { buildingBudget } from "../core/world/context.js";
 import { CHUNK } from "../core/world/coords.js";
-import { isSettlement, macroSite } from "../core/world/macro.js";
-import { worldSeed } from "../core/world/recipe.js";
+import { elevationAt } from "../core/world/fields.js";
+import { isSettlement, macroSite, sitesInside } from "../core/world/macro.js";
+import { LAND_ONLY, worldSeed } from "../core/world/recipe.js";
 import { overlapBy } from "../core/world/spacing.js";
 import {
+	candidates,
 	DURATION_PLAN,
 	planFor,
+	prospect,
 	sitesWithin,
 	solveBounds,
 	storySites,
@@ -425,5 +428,124 @@ describe("a world with landmarks asked for", () => {
 			}
 		}
 		expect(checked, "no settlement was surveyed, so nothing was checked").toBeGreaterThan(5);
+	});
+});
+
+/*
+ * A world of land, which is what an authored scenario starts from.
+ *
+ * The rolled settlements were not wrong so much as unmotivated: a seed scattered eight
+ * villages across a short world, a story used two, and a player who walked into any of the
+ * other six found a place with a name, houses and nobody with anything to say.
+ */
+describe("a land-only world", () => {
+	const bounds = {
+		minX: -256,
+		minY: -256,
+		maxX: 255,
+		maxY: 255,
+		style: "cliffs",
+		thickness: 8,
+	} as const;
+
+	it("rolls nothing anywhere, on any ground", () => {
+		for (const seed of SEEDS) {
+			const world = worldSeed(seed, LAND_ONLY);
+			const sites = sitesInside(world, bounds);
+			expect(
+				[...sites.values()].map((site) => site.kind),
+				String(seed),
+			).toEqual([]);
+		}
+	});
+
+	it("leaves the engine's own default alone, so an unwritten world still has towns", () => {
+		// There is no author in wander mode to put anything anywhere, and an empty wilderness
+		// is not a game. Land-only is written into the artifact, not into the generator.
+		const rolled = sitesInside(worldSeed(SEED), bounds);
+		expect([...rolled.values()].some((site) => isSettlement(site.kind))).toBe(true);
+	});
+
+	it("stops growing the boundary in search of settlements that cannot exist", () => {
+		// The growth loop widens the rectangle until it holds a story's worth of places. With
+		// nothing to find it would take every scenario to the largest size its duration allows
+		// and then report no story sites anyway.
+		const survey = surveyWorld(worldSeed(SEED, LAND_ONLY), "short", LAND_ONLY);
+		const asked = planFor("short").radiusChunks * CHUNK;
+		expect(survey.bounds.maxX - survey.spawn.x).toBeLessThanOrEqual(asked + CHUNK);
+	});
+});
+
+describe("prospect", () => {
+	const bounds = {
+		minX: -256,
+		minY: -256,
+		maxX: 255,
+		maxY: 255,
+		style: "cliffs",
+		thickness: 8,
+	} as const;
+
+	/** The first cell of this seed that will hold a village, so the test is about the rule. */
+	function somewhere() {
+		const { found } = candidates(SEED, LAND_ONLY, bounds, { x: 0, y: 0 }, "village", 3);
+		const first = found[0];
+		if (!first) throw new Error("no cell in this world will hold a village");
+		return first;
+	}
+
+	it("agrees with the survey, because the survey is made of it", () => {
+		// A row the survey prints has to be a place founding accepts, or the tool contradicts
+		// itself and an author has no way to tell which half is lying.
+		const cell = somewhere();
+		const asked = prospect(SEED, LAND_ONLY, bounds, cell.prospect.place);
+		expect("refusal" in asked).toBe(false);
+	});
+
+	it("measures the buildings by laying the place out, not by estimating", () => {
+		const cell = somewhere();
+		expect(cell.prospect.budget).toBeGreaterThan(0);
+		expect(cell.prospect.budget).toBe(cell.prospect.context.buildingBudget);
+	});
+
+	it("refuses ground the world's edge would cut in half", () => {
+		const at = { x: bounds.maxX - 2, y: 0 };
+		const asked = prospect(SEED, LAND_ONLY, bounds, { at, kind: "village", importance: 3 });
+		expect(asked).toHaveProperty("refusal");
+		expect((asked as { refusal: string }).refusal).toContain("edge");
+	});
+
+	it("refuses a footprint that would run into one already founded", () => {
+		const cell = somewhere();
+		const recipe = { ...LAND_ONLY, places: [cell.prospect.place] };
+		// Ten tiles away is well inside any settlement's radius.
+		const at = { x: cell.prospect.place.at.x + 10, y: cell.prospect.place.at.y };
+		const asked = prospect(SEED, recipe, bounds, { at, kind: "village", importance: 3 });
+		expect(asked).toHaveProperty("refusal");
+		expect((asked as { refusal: string }).refusal).toContain("read as one");
+	});
+
+	it("refuses to stand a place in the sea", () => {
+		// The same test `siteKindAt` applies to a rolled site. A footprint whose centre is at
+		// sea can still find plots on a spit at its edge, so the budget alone would accept a
+		// village whose square and well were under water.
+		const world = worldSeed(SEED, LAND_ONLY);
+		let drowned: { x: number; y: number } | undefined;
+		for (let y = -200; y < 200 && !drowned; y += 8) {
+			for (let x = -200; x < 200; x += 8) {
+				if (elevationAt(world, x, y) < world.rules.climate.seaLevel) {
+					drowned = { x, y };
+					break;
+				}
+			}
+		}
+		if (!drowned) return; // This seed has no sea in range; the rule is still tested above.
+		const asked = prospect(SEED, LAND_ONLY, bounds, {
+			at: drowned,
+			kind: "village",
+			importance: 3,
+		});
+		expect(asked).toHaveProperty("refusal");
+		expect((asked as { refusal: string }).refusal).toContain("under water");
 	});
 });

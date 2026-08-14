@@ -51,7 +51,7 @@ export function craftSceneNew(args: Args, out: (line: string) => void): void {
 	if (workspace.artifact.scenes?.[id])
 		throw new CraftError(`there is already a scene called "${id}"`);
 	if (at !== undefined && !workspace.artifact.sites[String(at)]) {
-		throw new CraftError(`site ${at} has not been claimed, so a scene cannot be set there`);
+		throw new CraftError(`site ${at} does not exist, so a scene cannot be set there`);
 	}
 
 	const roster: Record<string, string> = {};
@@ -218,7 +218,8 @@ function point(raw: string, sites: Readonly<Record<string, { readonly siteId: nu
 	const siteId = Number(site);
 	if (!Number.isInteger(siteId))
 		throw new CraftError(`"${raw}" is not a place: want x,y or <siteId>[@anchor]`);
-	if (!sites[String(siteId)]) throw new CraftError(`site ${siteId} has not been claimed`);
+	if (!sites[String(siteId)])
+		throw new CraftError(`site ${siteId} does not exist; nothing has been founded there`);
 	if (anchor === "door")
 		throw new CraftError('a door wants a building: write "<siteId>@door:Name"');
 	if (anchor?.startsWith("door:")) {
@@ -271,7 +272,7 @@ export function craftBeatAdd(args: Args, out: (line: string) => void): void {
 	args.refuseUnknown();
 
 	const site = artifact.sites[String(siteId)];
-	if (!site) throw new CraftError(`site ${siteId} has not been claimed`);
+	if (!site) throw new CraftError(`site ${siteId} does not exist; nothing has been founded there`);
 	if (!site.npcs.some((npc) => npc.slot === slot)) {
 		throw new CraftError(
 			`${site.name} has nobody in slot ${slot}. It has: ${site.npcs.map((npc) => `${npc.slot} (${npc.name})`).join(", ") || "nobody"}`,
