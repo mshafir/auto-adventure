@@ -25,8 +25,13 @@ The engine, renderer and world generator are not restructured. Three things are 
    changed.
 2. **Phase composition** — a pure function from base content plus game state to the
    resolved content the engine sees.
-3. A **scene player** — a state machine in `GameState`, advanced by the `Tick` command
-   that already exists in the alphabet.
+3. A **scene player** — a state machine in `GameState`, advanced by a new `SceneFrame`
+   command dispatched on an interval while a scene runs.
+
+`SceneFrame` is new rather than reusing `Tick` because `tick` is an *action counter*, not
+a clock: one per player command, sixty to the in-game hour, and it drives lighting,
+weather and NPC schedules. Running a three-second cutscene off it would burn an hour of
+daylight. (`Tick` also turns out to be dead — nothing in the tree dispatches it.)
 
 ## 2. On-disk format
 
@@ -115,10 +120,13 @@ corrects saves already in flight.
 
 ### Terraform and chunk invalidation
 
-A phase that changes `terraform` changes tiles that are already built and resident.
-Entering it must invalidate and rebuild the affected chunks. `chunk-manager.ts` has no
-invalidation path today — this is the one place phases reach into the engine, and it is
-the highest-risk item in this sub-project.
+A phase that changes `terraform` changes tiles that are already built and resident, so
+entering it must invalidate and rebuild the affected chunks.
+
+`ChunkManager.invalidateRect(rect)` already does exactly this — it exists because a
+settlement's spec arriving late has the same problem, and dropping rather than patching is
+safe because regeneration is deterministic. Phase entry calls it over the bounding
+rectangle of the terraform diff. This is the one place phases reach into the engine.
 
 A phase whose terraform diff is empty — which is most of them — costs nothing.
 
@@ -178,10 +186,24 @@ export type SceneAction =
 	| { readonly t: "Effects"; readonly effects: readonly DomainEffect[] };
 ```
 
-`ScenePoint` reuses the addressing `Placement` already uses — a site, optionally a
-building and a spot within it — with a raw world coordinate as the escape hatch. It
-resolves through the same resolver as `resolvePlacements`, so a scene point cannot mean
-something a placement could not.
+`ScenePoint` reuses `PlacementSite` verbatim — the `world`, `interior` and
+`site`+`structure`+`anchor` spellings — so a scene point cannot mean something a
+placement could not, and both resolve through the same code.
+
+### Staging
+
+A scene is **staged** when it starts and never touched afterwards. Staging resolves
+every `ScenePoint` to a definite tile and precomputes every `WalkTo` path with
+`findPath` from `core/geom/astar.ts`, which is deterministic. The result is a
+`StagedScene` whose actions carry only plain coordinates and tile lists.
+
+This is what keeps `advanceScene` a pure function of `(StagedScene, SceneState)` with no
+world access at all — the reducer never pathfinds, and a scene's movement cannot diverge
+between two runs. The engine stages and caches; the reducer asks for the staged scene
+through `WorldProbe`, the way it already asks `doorAt` and `barrierAt`.
+
+A `WalkTo` whose path cannot be found is a staging failure, reported like an
+unresolvable placement rather than silently skipped.
 
 A `Say` action finishes when the player presses SPACE. Everything else finishes on its
 own, so a step containing only movement and camera work runs to completion unattended.
@@ -211,8 +233,10 @@ interface SceneActor {
 }
 ```
 
-Started by a new `DomainEffect`, `{ t: "PlayScene", id }`. Advanced by `Tick`. Ended by
-running out of steps, or by `{ t: "SkipScene" }` when `skippable`.
+Started by a new `DomainEffect`, `{ t: "PlayScene", id }`. Advanced by
+`{ t: "SceneFrame" }`, which the UI dispatches on an interval for as long as
+`state.scene` is set. Ended by running out of steps, or by `{ t: "SkipScene" }` when
+`skippable`.
 
 ### The three rules that make it safe
 
@@ -285,11 +309,17 @@ problems.
 
 ## 8. Risks
 
-- **Chunk invalidation on phase entry** is new machinery in `chunk-manager.ts` and the
-  likeliest source of visual glitches — a stale chunk showing the old world next to a
-  rebuilt one.
-- **Scene timing versus the render loop.** Ticks are dispatched by the UI; a slow frame
-  makes a scene stutter rather than skip, which is the right failure but needs watching.
+- **Chunk invalidation on phase entry** reuses `invalidateRect`, but a phase entered
+  while the player is standing in the affected rectangle rebuilds the ground under them.
+  A terraform diff that removes the tile they occupy could strand them somewhere
+  impassable; the engine must re-check passability after a phase-entry rebuild.
+- **Scene timing versus the render loop.** `SceneFrame` is dispatched by the UI on an
+  interval, and the store already coalesces renders on a frame budget. A slow machine
+  makes a scene run slower rather than skip steps, which is the right failure, but it
+  means a scene's duration is not guaranteed.
+- **A scene has no clock.** Because `SceneFrame` deliberately does not advance world
+  time, a long cutscene happens in an instant of game time. Correct for a conversation
+  in a square; wrong if a scene ever wants to depict a journey. Accepted.
 - **Deferred saving** means a player who quits mid-scene loses the few seconds before
   it. Accepted: a scene is seconds long, and the alternative is making every step
   resumable.
