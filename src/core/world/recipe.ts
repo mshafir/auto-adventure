@@ -236,11 +236,19 @@ export interface PlaceRecipe {
  * outside the radius — which means it can live inside the pure field functions
  * without introducing an edge for two chunks to disagree about.
  *
- * Deliberately no elevation effect. Elevation decides where the sea is, where
- * towns may stand and where roads may run, and a local bump would move a coastline
- * under a settlement that had already been placed against the unbumped field.
- * Moisture and temperature only reach biome classification and weather, which is
- * where an author's "make this stretch wetter" belongs.
+ * Elevation is the dangerous one and it is here anyway, because a story that wants a
+ * river has no other way to get one. Moisture and temperature only reach biome
+ * classification and weather; elevation decides where the sea is, which ground is
+ * buildable, where cliffs form and — through `rivers.ts`, which runs downhill — where
+ * water goes. That reach is the point: lowering a valley makes the river network flow
+ * through it, rather than stamping a blue line onto a hillside.
+ *
+ * It also means an elevation zone can move the coastline out from under a town that was
+ * founded before it. Nothing here can prevent that; what does is the order of work and
+ * the check afterwards. `craft terraform` refuses an edit that drowns a place that
+ * already exists, and `craft check` regenerates every settlement against the ground as it
+ * now is — so a town whose plots have gone under water is a finding rather than a
+ * surprise. Shape the land before founding on it.
  */
 export interface ZoneRecipe {
 	readonly id?: string;
@@ -253,6 +261,14 @@ export interface ZoneRecipe {
 	readonly falloff?: number;
 	readonly moisture?: number;
 	readonly temperature?: number;
+	/**
+	 * Height added to the field at the centre, fading to nothing at the rim.
+	 *
+	 * In the same `[0, 1]` the field is, so the numbers are small: the default sea level
+	 * is 0.42 and the shore runs to 0.46, which makes -0.06 the difference between dry
+	 * land and a beach and -0.10 the difference between dry land and water.
+	 */
+	readonly elevation?: number;
 	/** Multiplies the biome's scatter density: 2 is twice as many trees. */
 	readonly scatter?: number;
 }
@@ -347,8 +363,10 @@ export interface WorldRules {
 	/** Authored sites by macro cell key, `${mx},${my}`. */
 	readonly places: ReadonlyMap<string, PlaceRecipe>;
 	readonly zones: readonly ZoneRecipe[];
-	/** True when no zone can affect anything, so the field functions can skip them. */
+	/** True when no zone moves moisture or temperature, so those fields can skip them. */
 	readonly flatFields: boolean;
+	/** True when no zone moves the ground. Kept apart because `elevationAt` is the hot one. */
+	readonly flatElevation: boolean;
 	/**
 	 * What the edge is, when the world says rather than the survey deciding.
 	 *
@@ -690,6 +708,7 @@ export function resolveRecipe(recipe?: WorldRecipe): WorldRules {
 
 	const zones = (recipe?.zones ?? []).filter((zone) => zone.radius > 0);
 	const flatFields = zones.every((zone) => !zone.moisture && !zone.temperature);
+	const flatElevation = zones.every((zone) => !zone.elevation);
 
 	return {
 		key: recipeKey(recipe),
@@ -699,6 +718,7 @@ export function resolveRecipe(recipe?: WorldRecipe): WorldRules {
 		places,
 		zones,
 		flatFields,
+		flatElevation,
 		bounds: { ...stripUndefined(recipe?.bounds) },
 	};
 }
@@ -763,9 +783,10 @@ export function zoneInfluence(
 	rules: WorldRules,
 	x: number,
 	y: number,
-): { moisture: number; temperature: number; scatter: number } {
+): { moisture: number; temperature: number; elevation: number; scatter: number } {
 	let moisture = 0;
 	let temperature = 0;
+	let elevation = 0;
 	let scatter = 1;
 	for (const zone of rules.zones) {
 		const distance = Math.hypot(x - zone.at.x, y - zone.at.y);
@@ -775,17 +796,32 @@ export function zoneInfluence(
 		const weight = zone.falloff && zone.falloff !== 1 ? smooth ** zone.falloff : smooth;
 		if (zone.moisture) moisture += zone.moisture * weight;
 		if (zone.temperature) temperature += zone.temperature * weight;
+		if (zone.elevation) elevation += zone.elevation * weight;
 		// Interpolated from 1 rather than multiplied outright, so the effect fades to
 		// "no change" at the rim instead of snapping from the full multiplier to none.
 		if (zone.scatter !== undefined) scatter *= 1 + (zone.scatter - 1) * weight;
 	}
-	return { moisture, temperature, scatter };
+	return { moisture, temperature, elevation, scatter };
 }
 
 /** How much a zone multiplies scatter density here. 1 when nothing applies. */
 export function zoneScatter(rules: WorldRules, x: number, y: number): number {
 	if (rules.zones.length === 0) return 1;
 	return zoneInfluence(rules, x, y).scatter;
+}
+
+/**
+ * How far a zone moves the ground here, in field units. Zero when nothing applies.
+ *
+ * Guarded by its own flag rather than by `rules.zones.length`, and that is a
+ * performance decision rather than a stylistic one: `elevationAt` is the hottest
+ * function in the generator — four thousand samples a chunk, quadrupled again by
+ * `slopeAt` — so a world with a wet-forest zone and no earthworks must not pay a loop
+ * per sample for an answer that is always zero.
+ */
+export function zoneElevation(rules: WorldRules, x: number, y: number): number {
+	if (rules.flatElevation) return 0;
+	return zoneInfluence(rules, x, y).elevation;
 }
 
 function macroKeyFor(x: number, y: number): string {

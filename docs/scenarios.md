@@ -900,10 +900,11 @@ The "thick forest near this town" mechanism:
 { "at": { "x": 320, "y": -64 }, "radius": 140, "moisture": 0.25, "scatter": 2.5 }
 ```
 
-`moisture` and `temperature` are added to the fields; `scatter` multiplies the biome's
-scatter density. All three are weighted by a smoothstep falloff, so the influence is
-full at the centre and exactly zero at the rim, with no step anywhere in between.
-Overlapping zones compound. `falloff` above 1 concentrates the effect near the centre.
+`moisture`, `temperature` and `elevation` are added to the fields; `scatter` multiplies
+the biome's scatter density. All four are weighted by a smoothstep falloff, so the
+influence is full at the centre and exactly zero at the rim, with no step anywhere in
+between. Overlapping zones compound. `falloff` above 1 concentrates the effect near the
+centre.
 
 That smoothness is not a nicety. Terrain is a pure function of position, and the reason
 chunk seams cannot exist is that no stage has any notion of a chunk. A rectangle of
@@ -911,11 +912,22 @@ override would put a hard edge somewhere, and one chunk in the world would event
 be generated with the edge running through it. A sum of smooth radial fields has no
 edge to catch on.
 
-**Zones cannot move elevation, and this is deliberate.** Elevation decides where the
-sea is, where towns may stand and where roads may run. A local bump would drag a
-coastline under a settlement that had already been placed against the unbumped field.
-Moisture and temperature only reach biome classification and the weather, which is
-where "make this stretch wetter" belongs.
+**`elevation` is the dangerous one, and it is here because rivers need it.** Moisture and
+temperature only reach biome classification and the weather. Elevation decides where the
+sea is, which ground will hold a building, where cliffs form, and — through `rivers.ts`,
+which traces by steepest descent — where water goes. That reach is the whole point: a
+lowered valley is one the river network flows through, whereas a stamped blue line across
+a hillside is not a river. It is also the hazard: an earthwork can drag a coastline out
+from under a town that was founded before it. `craft terraform --lower/--raise` refuses one
+that leaves a founded place on ground that no longer holds it, and `craft check`
+regenerates every settlement against the ground as it now is. Shape the land first.
+
+Values are in the field's own `[0, 1]`, so they are small: with the default sea level at
+0.42 and the shore running to 0.46, `-0.06` turns dry land into beach and `-0.10` turns it
+into water. The schema caps it at half the field either way.
+
+An earthwork is world-constant like every other zone, so it cannot belong to a chapter —
+a chapter that moved a coastline would move it under ground the player has already walked.
 
 ### What a recipe is not allowed to do
 

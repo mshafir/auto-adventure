@@ -222,6 +222,9 @@ export const ZoneRecipeSchema = z
 		falloff: z.number().min(0.2).max(8).optional(),
 		moisture: z.number().min(-1).max(1).optional(),
 		temperature: z.number().min(-1).max(1).optional(),
+		// Half the field either way. The whole span from sea floor to alpine is one unit, so
+		// anything larger is not a valley or a hill but a world with a hole punched in it.
+		elevation: z.number().min(-0.5).max(0.5).optional(),
 		scatter: z.number().min(0).max(8).optional(),
 	})
 	.strict();

@@ -79,7 +79,22 @@ describe("what a recipe may not say", () => {
 		// Strict throughout, because a misspelled knob that is silently ignored is a
 		// scenario author changing a number and seeing nothing happen.
 		expect(parse({ climate: { seelevel: 0.5 } }).success).toBe(false);
-		expect(parse({ zones: [{ at: { x: 0, y: 0 }, radius: 50, elevation: 0.2 }] }).success).toBe(
+		expect(parse({ zones: [{ at: { x: 0, y: 0 }, radius: 50, hight: 0.2 }] }).success).toBe(false);
+	});
+
+	/*
+	 * A zone's `elevation` used to be refused here, deliberately: moving the ground moves the
+	 * coastline, and a bump under a settlement placed against the unbumped field is a town in
+	 * the sea. It is allowed now because a story that wants a river has no other way to get
+	 * one — `rivers.ts` runs downhill, so water goes where the land is lower and nowhere else.
+	 * The hazard did not go away; `craft terraform` refuses an earthwork that drowns a place
+	 * already founded, and `craft check` regenerates every settlement against the new ground.
+	 */
+	it("takes an earthwork, and holds it to half the field either way", () => {
+		expect(parse({ zones: [{ at: { x: 0, y: 0 }, radius: 50, elevation: -0.2 }] }).success).toBe(
+			true,
+		);
+		expect(parse({ zones: [{ at: { x: 0, y: 0 }, radius: 50, elevation: -0.9 }] }).success).toBe(
 			false,
 		);
 	});

@@ -88,8 +88,41 @@ straight where every other road bends reads as a seam. Use it for:
 Not for reshaping a country. If you find yourself laying a third road, the seed was wrong and
 you should have reseeded.
 
-## Elevation is not available yet
+## Moving the ground is a bigger debt
 
-Authored rivers need the elevation field to be editable, so that lowering a valley makes the
-existing river network flow there rather than stamping water onto a hillside. That is designed
-and not built. Until it is, a story that needs a river needs a seed that has one.
+`craft terraform --lower x,y --radius 40 --by 0.06` and its `--raise` twin do something
+different from the other edits. A path is a run of road tiles laid over the world; this
+changes the elevation field the world is *made of*, so the coastline, the biome, the cliffs,
+which ground will hold a building and the rivers all move together.
+
+The numbers are small because the whole world from sea floor to alpine is one unit:
+
+| by | what it does to lowland |
+|---|---|
+| 0.04 | a dip you can see |
+| 0.06 | dry land becomes shore |
+| 0.10 | dry land becomes water |
+| 0.30 | open sea |
+
+**Shape the land before you found anything on it.** An earthwork under a town moves the
+plots its buildings were laid on. `craft terraform` refuses one that leaves a founded place
+on ground that no longer holds it, and `craft check` regenerates every settlement against the
+new ground — but the cheap order is land first, towns second.
+
+An earthwork cannot belong to a chapter, and the refusal says why: the ground is
+world-constant, so a chapter that moved a coastline would move it under a town the player has
+already walked through.
+
+## Authoring a river
+
+Rivers are traced by steepest descent over macro cells, so you do not draw one — you make the
+water want to go somewhere. A river needs a **source cell above the upland level** that also
+passes the spring roll, and then three cells of downhill to run through.
+
+Which means: **raise a hillside, not a pillar.** Macro cells are 64 tiles apart, so a raise
+with a radius of 40 lifts one cell and leaves its neighbours where they were; the water runs
+off it, finds a local minimum next door and stops, which is two cells and not a river. A
+radius of 150 tilts the whole neighbourhood and the water keeps going.
+
+`craft check` will show you what you got. Expect to try three or four positions — you are
+asking the seed a question, not giving it an instruction.

@@ -1,5 +1,5 @@
 import { domainWarp2, fbm2, unit } from "../rand/noise.js";
-import { type WorldRules, type WorldSeed, zoneInfluence } from "./recipe.js";
+import { type WorldRules, type WorldSeed, zoneElevation, zoneInfluence } from "./recipe.js";
 
 /**
  * Continuous scalar fields sampled at world coordinates.
@@ -53,8 +53,11 @@ export function elevationAt(world: WorldSeed, x: number, y: number): number {
 		octaves: 4,
 		scale: world.rules.climate.elevationScale,
 	});
-	// Bias slightly upward so the default world is more land than ocean.
-	return unit(base + world.rules.climate.elevationBias);
+	// Bias slightly upward so the default world is more land than ocean. Authored
+	// earthworks are added here, before the banding that reads this — so lowering a
+	// valley moves the coastline, the biome, the cliffs and the rivers together, which
+	// is the only way an authored river can be a river rather than a painted line.
+	return clamp01(unit(base + world.rules.climate.elevationBias) + zoneElevation(world.rules, x, y));
 }
 
 export function moistureAt(world: WorldSeed, x: number, y: number): number {

@@ -349,6 +349,59 @@ describe("placing things", () => {
 	});
 });
 
+/*
+ * Moving the ground rather than painting on it. Every other edit stamps tiles; this one changes
+ * the elevation field the world is made of, so the coastline, the buildable ground, the cliffs
+ * and the rivers all move with it. That reach is why it exists — a river cannot be painted on —
+ * and why it is the one edit that can quietly ruin what is already built.
+ */
+describe("moving the ground", () => {
+	it("writes a zone into the recipe, where the whole world can see it", SLOW, async () => {
+		await craft("new", "abbey", "--premise", "x", "--seed", "abbey");
+		const { code, out } = await craft("terraform", "abbey", "--lower", "160,160", "--radius", "40");
+		expect(code).toBe(0);
+		expect(out).toContain("lowered");
+		const artifact = JSON.parse(readFileSync(join(root, "abbey", "scenario.json"), "utf8"));
+		expect(artifact.recipe.zones).toHaveLength(1);
+		expect(artifact.recipe.zones[0].elevation).toBeLessThan(0);
+	});
+
+	it("refuses to drown a place that is already there", SLOW, async () => {
+		// The hazard the whole feature carries. `craft check` would find it afterwards; refusing
+		// here is what keeps the last command that succeeded the last thing that changed anything.
+		await twoTowns();
+		const { code, out } = await craft(
+			"terraform",
+			"abbey",
+			"--lower",
+			"32,-32",
+			"--radius",
+			"80",
+			"--by",
+			"0.4",
+		);
+		expect(code).toBe(1);
+		expect(out).toContain("Wenthollow");
+		const artifact = JSON.parse(readFileSync(join(root, "abbey", "scenario.json"), "utf8"));
+		expect(artifact.recipe.zones ?? []).toHaveLength(0);
+	});
+
+	it("refuses to belong to a chapter, because the ground is world-constant", SLOW, async () => {
+		await craft("new", "abbey", "--premise", "x", "--seed", "abbey");
+		await craft("phase", "add", "abbey", "--phase", "after", "--name", "After", "--when", "flood");
+		const { code, out } = await craft(
+			"terraform",
+			"abbey",
+			"--lower",
+			"160,160",
+			"--phase",
+			"after",
+		);
+		expect(code).toBe(1);
+		expect(out).toContain("world-constant");
+	});
+});
+
 describe("check before write", () => {
 	/*
 	 * The property the whole workspace exists for. A refused command must be a no-op on disk, or

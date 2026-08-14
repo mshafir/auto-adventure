@@ -92,8 +92,10 @@ export const VERBS: readonly Verb[] = [
 	{
 		words: ["terraform"],
 		usage:
-			"craft terraform <id> --path x,y x,y [--width 3] [--surface path|dirt|cobble] | --bridge x,y x,y | --clearing x,y [--radius 3]",
-		summary: "change the ground. A debt: reseeding is free and this is not",
+			"craft terraform <id> --path x,y x,y [--width 3] [--surface path|dirt|cobble] | --bridge x,y x,y | " +
+			"--clearing x,y [--radius 3] | --lower x,y [--radius 24] [--by 0.06] | --raise x,y",
+		summary:
+			"change the ground. --lower and --raise move the land itself, so coasts and rivers follow",
 		run: craftTerraform,
 	},
 	{

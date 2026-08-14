@@ -165,7 +165,7 @@ export interface Survey {
  * leaving this patch in the cache would mean the real spec is never stamped. The same
  * precaution `checkPlaces` takes, for the same reason.
  */
-function buildsSomething(world: WorldSeed, site: MacroSite): boolean {
+export function buildsSomething(world: WorldSeed, site: MacroSite): boolean {
 	if (!featureKindFor(site.kind)) return true;
 	try {
 		const patch = generateFeature(world, site, fallbackSettlementSpec(world, site));

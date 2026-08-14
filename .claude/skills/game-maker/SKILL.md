@@ -152,6 +152,10 @@ and mention it.
 - **Reseeding is free; terraforming is a debt.** Terraform grows the scenario and makes the
   world look hand-mangled. Use it for the lane the story needs between two farms, not to
   reshape a country you should have reseeded away from.
+- **Moving the ground is a bigger debt, and it goes first.** `terraform --lower/--raise`
+  changes the elevation field itself, so the coastline, the buildable ground and the rivers
+  all move with it — which is the only way to author a river, and the reason an earthwork
+  under a town is refused. Shape the land before you found anything on it.
 - **A scene's last step is the only place a non-idempotent effect may go.** An interrupted
   scene replays, so a `GrantItem` in the middle hands the item out twice. `craft check`
   refuses it.

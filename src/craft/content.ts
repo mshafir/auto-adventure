@@ -5,13 +5,14 @@ import type { AnchorKind, StructureKind } from "../core/gen/features/patch.js";
 import type { AuthoredBarrier } from "../core/rules/lock.js";
 import type { Placement } from "../core/rules/placement.js";
 import type { Sign } from "../core/rules/signage.js";
+import { elevationAt, elevationBand } from "../core/world/fields.js";
 import { MACRO, macroSite, SETTLEMENT_KINDS } from "../core/world/macro.js";
-import type { PlaceRecipe, WorldRecipe } from "../core/world/recipe.js";
+import { type PlaceRecipe, type WorldRecipe, worldSeed } from "../core/world/recipe.js";
 import { type NpcSpec, npcId, type SiteSpec } from "../core/world/spec.js";
 import { resolvePlacements } from "../engine/placements.js";
-import { artifactWorld } from "../scenario/artifact.js";
+import { artifactWorld, type ScenarioArtifact } from "../scenario/artifact.js";
 import { signpostsFor } from "../scenario/signposts.js";
-import { prospect } from "../scenario/survey.js";
+import { buildsSomething, prospect } from "../scenario/survey.js";
 import type { TerraformEdit } from "../scenario/terraform.js";
 import { buildPassability, siteIndex } from "../scenario/validate.js";
 import { type Args, CraftError } from "./args.js";
@@ -447,6 +448,13 @@ function placeGate(
 
 export function craftTerraform(args: Args, out: (line: string) => void): void {
 	const workspace = openWorkspace(requireId(args, "terraform"));
+	// Moving the ground is a different thing from stamping tiles onto it, and it is spelled
+	// as an option of the same verb because "change the ground" is one idea to an author.
+	if (args.has("lower") || args.has("raise")) {
+		earthwork(workspace, args, out);
+		return;
+	}
+
 	const phase = phaseOf(workspace, args.has("phase") ? args.str("phase") : undefined);
 
 	const edit = readEdit(args);
@@ -464,6 +472,98 @@ export function craftTerraform(args: Args, out: (line: string) => void): void {
 	out(`${edit.id}: ${tiles.size} tile(s)`);
 	if (phase) out(`  from "${phase.name}" onward`);
 	out("  terraform is a debt: it grows the scenario and makes the world look hand-mangled.");
+}
+
+/**
+ * Move the ground itself, rather than stamping tiles onto it.
+ *
+ * The other terraform edits paint over the world: a path is a run of road tiles, a bridge is
+ * a run of planks. This one changes the elevation field the world is *made of*, so everything
+ * downstream of height moves with it — the coastline, the biome, where cliffs form, which
+ * ground will hold a building, and the rivers, which run downhill and so will find a valley
+ * that has been lowered for them. That is the whole reason it exists: a river cannot be
+ * painted on, because a blue line across a hillside is not a river.
+ *
+ * It is a zone in the recipe rather than an edit in the scenario, which has two consequences
+ * worth knowing. It is world-constant, so it cannot belong to a chapter — a chapter that
+ * moved the coastline would move it under a town the player had already walked through.
+ * And it is not free at play time in the way a tile stamp is: it is read on every elevation
+ * sample, which is the hottest path in the generator, so a world with no earthworks skips it
+ * on a boolean.
+ */
+function earthwork(
+	workspace: ReturnType<typeof openWorkspace>,
+	args: Args,
+	out: (line: string) => void,
+): void {
+	const artifact = workspace.artifact;
+	const lowering = args.has("lower");
+	const at = args.point(lowering ? "lower" : "raise");
+	const radius = args.int("radius", 24);
+	const by = Number(args.str("by", "0.06"));
+	const id = args.str("id", `${lowering ? "hollow" : "rise"}-${at.x}-${at.y}`);
+	if (args.has("phase")) {
+		throw new CraftError(
+			"the ground is world-constant, so an earthwork cannot belong to a chapter: moving a " +
+				"coastline halfway through would move it under a town the player has already walked through",
+		);
+	}
+	args.refuseUnknown();
+
+	if (!Number.isFinite(by) || by <= 0 || by > 0.5) {
+		throw new CraftError("--by is how far to move the ground, from 0 to 0.5. 0.06 is a shore");
+	}
+	if ((artifact.recipe?.zones ?? []).some((zone) => zone.id === id)) {
+		throw new CraftError(`there is already a zone called "${id}"`);
+	}
+
+	const zone = { id, at, radius, elevation: lowering ? -by : by };
+	const recipe = { ...artifact.recipe, zones: [...(artifact.recipe?.zones ?? []), zone] };
+	const after = worldSeed(artifact.seed, recipe);
+
+	// Everything already standing has to survive the ground moving under it. `craft check`
+	// would find this afterwards; refusing here is what keeps the scenario in a state where
+	// the last command that succeeded is the last thing that changed anything.
+	for (const spec of Object.values(artifact.sites)) {
+		const site = macroSite(after, ...cellOf(artifact, spec.siteId));
+		if (buildsSomething(after, site)) continue;
+		throw new CraftError(
+			`that would leave "${spec.name}" standing on ground that no longer holds a ${site.kind}. ` +
+				"Shape the land before founding on it, or move the earthwork off the town",
+		);
+	}
+	const { climate } = after.rules;
+	if (elevationAt(after, artifact.spawn.x, artifact.spawn.y) < climate.seaLevel) {
+		throw new CraftError("that would put the spawn under water");
+	}
+
+	workspace.artifact = { ...artifact, recipe };
+	commit(workspace, `moving the ground at ${at.x},${at.y}`);
+
+	const depth = (elevationAt(after, at.x, at.y) - elevationAt(artifactWorld(artifact), at.x, at.y))
+		.toFixed(3)
+		.replace("-0", "−0");
+	out(
+		`${id}: ${lowering ? "lowered" : "raised"} ${radius} tiles around ${at.x},${at.y} by ${depth}`,
+	);
+	out(
+		`  the ground at the centre is now ${elevationBand(elevationAt(after, at.x, at.y), after.rules)}`,
+	);
+	out("  rivers run downhill, so run craft check and look at what moved.");
+}
+
+/**
+ * The macro cell a founded site sits in.
+ *
+ * Site ids are hashed from the cell and the hash does not invert, so the only way back is
+ * the recipe entry that put the place there — which every founded site has.
+ */
+function cellOf(artifact: ScenarioArtifact, siteId: number): [number, number] {
+	for (const place of artifact.recipe?.places ?? []) {
+		const cell: [number, number] = [Math.floor(place.at.x / MACRO), Math.floor(place.at.y / MACRO)];
+		if (macroSite(artifactWorld(artifact), ...cell).id === siteId) return cell;
+	}
+	throw new CraftError(`site ${siteId} has no place in the recipe, so nothing knows where it is`);
 }
 
 function readEdit(args: Args): TerraformEdit {
