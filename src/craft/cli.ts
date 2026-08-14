@@ -8,6 +8,7 @@ import {
 	craftTerraform,
 	craftTree,
 } from "./content.js";
+import { craftPlay } from "./play.js";
 import {
 	craftBeatAdd,
 	craftPhaseAdd,
@@ -134,6 +135,12 @@ export const VERBS: readonly Verb[] = [
 		usage: "craft check <id>",
 		summary: "everything knowable without playing it, including staging every scene",
 		run: craftCheck,
+	},
+	{
+		words: ["play"],
+		usage: "craft play <id> [--script file] [--radius 8]",
+		summary: "play it, a typed line at a time. What a review reads rather than reasons about",
+		run: craftPlay,
 	},
 	{
 		words: ["playtest"],
