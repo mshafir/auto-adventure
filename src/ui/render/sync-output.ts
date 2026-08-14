@@ -130,13 +130,3 @@ export function withSynchronizedOutput(
 		},
 	}) as NodeJS.WriteStream;
 }
-
-/**
- * Leave synchronized mode on the way out.
- *
- * A frame interrupted by Ctrl-C could otherwise leave the terminal holding an
- * unpresented buffer, which looks like a hang.
- */
-export function endSynchronizedOutput(): void {
-	if (syncOutputEnabled()) process.stdout.write(END_SYNC);
-}

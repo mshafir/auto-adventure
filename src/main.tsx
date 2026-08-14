@@ -13,18 +13,13 @@ import {
 	resolveTileMode,
 } from "./ui/render/mode.js";
 import { multiplexer } from "./ui/render/multiplexer.js";
-import {
-	endSynchronizedOutput,
-	syncOutputEnabled,
-	withSynchronizedOutput,
-} from "./ui/render/sync-output.js";
+import { restoreTerminal } from "./ui/render/restore.js";
+import { syncOutputEnabled, withSynchronizedOutput } from "./ui/render/sync-output.js";
 import { bindEngine } from "./ui/store.js";
 import { setTileMode } from "./ui/viewport.js";
 import { logger } from "./utils/log.js";
 
 const ALT_SCREEN_ON = "\u001B[?1049h";
-const ALT_SCREEN_OFF = "\u001B[?1049l";
-const CURSOR_SHOW = "\u001B[?25h";
 
 /**
  * The shortest gap between two frames, in milliseconds.
@@ -53,15 +48,9 @@ const FRAME_MS = (() => {
  */
 const ALT_SCREEN = process.env.NO_ALT_SCREEN !== "1" && process.env.NO_ALT_SCREEN !== "true";
 
-function enterAltScreen(): () => void {
-	if (!ALT_SCREEN) return () => {};
+function enterAltScreen(): void {
+	if (!ALT_SCREEN) return;
 	process.stdout.write(ALT_SCREEN_ON);
-	let restored = false;
-	return () => {
-		if (restored) return;
-		restored = true;
-		process.stdout.write(ALT_SCREEN_OFF + CURSOR_SHOW);
-	};
 }
 
 /**
@@ -150,11 +139,12 @@ async function startGame() {
 
 	await chooseRenderer();
 
-	const restoreScreen = enterAltScreen();
+	enterAltScreen();
+	// So the paths that end the process from outside this function — a signal, a
+	// terminal that stops accepting output — can still flush the save.
+	closeSession = () => session.dispose();
 	const shutdown = (code: number) => {
-		session.dispose();
-		endSynchronizedOutput();
-		restoreScreen();
+		leave();
 		process.exit(code);
 	};
 	process.on("SIGINT", () => shutdown(0));
@@ -169,27 +159,74 @@ async function startGame() {
 		});
 		await waitUntilExit();
 	} finally {
-		session.dispose();
-		endSynchronizedOutput();
-		restoreScreen();
+		leave();
 	}
 }
+
+/**
+ * The world's save, and then the terminal.
+ *
+ * Every way out of the program goes through here: returning from the game, a
+ * signal, an uncaught exception, a terminal that stops taking output. Both halves
+ * are idempotent, so nothing has to know whether one of the others got there
+ * first, and both are wrapped — a failing save must not cost the player their
+ * keyboard.
+ */
+function leave(): void {
+	try {
+		closeSession?.();
+		closeSession = undefined;
+	} catch (error) {
+		logger.error("could not close the session cleanly", error);
+	}
+	restoreTerminal();
+}
+
+/** Set once a session exists, so the exit paths above can flush its save. */
+let closeSession: (() => void) | undefined;
+
+/*
+ * A terminal that refuses a write must not take the game with it.
+ *
+ * This is what the game died of mid-play. Node reports a failed asynchronous write
+ * by calling `stream.destroy(error)`, and a destroyed stream with nobody listening
+ * emits the error globally — so an `EIO` from one oversized frame became an
+ * uncaught exception. The handler below then tried to leave the alternate screen
+ * through that same destroyed stream, and the writes went nowhere: the player was
+ * returned to a shell still on the alternate screen with the keyboard still in raw
+ * mode, which is what "it crashed my entire terminal" means.
+ *
+ * There is no recovering the session, because a destroyed stdout can never draw
+ * again. So this still exits — but deliberately, with the world saved, the terminal
+ * handed back through the file descriptor, and the reason on stderr rather than
+ * only in a log the player does not know about.
+ */
+process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+	const why = error.code ?? error.message;
+	logger.error(`the terminal stopped accepting output (${why})`, error);
+	leave();
+	try {
+		process.stderr.write(
+			`\nauto-adventure: the terminal stopped accepting output (${why}), so the game has stopped.\n` +
+				"Your world was saved. There is more in log.txt.\n",
+		);
+	} catch {
+		// If stderr has gone too, there is nowhere left to say so.
+	}
+	process.exit(1);
+});
 
 process.on("unhandledRejection", (reason) => {
 	logger.error("unhandled rejection", reason);
 });
 process.on("uncaughtException", (error) => {
 	logger.error("uncaught exception", error);
-	// Leave synchronized mode first: a terminal still holding an unpresented frame
-	// looks like a hang rather than a crash.
-	endSynchronizedOutput();
-	process.stdout.write(ALT_SCREEN_OFF + CURSOR_SHOW);
+	leave();
 	process.exit(1);
 });
 
 startGame().catch((error) => {
 	logger.error("failed to start", error);
-	endSynchronizedOutput();
-	process.stdout.write(ALT_SCREEN_OFF + CURSOR_SHOW);
+	leave();
 	process.exit(1);
 });
