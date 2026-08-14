@@ -152,10 +152,22 @@ export function reduce(state: GameState, command: Command, world: WorldProbe): R
 	// And checked *before* the no-change shortcut below. The command that opens the
 	// final beat changes nothing about quests or arrivals, so an early return would
 	// have skipped exactly the case this exists for.
-	const ended = applyEffects(
-		settled.state,
-		arcEndEffects(settled.state.arc, settled.state, arcOutline(settled.state.arc, settled.state)),
-	);
+	//
+	// Not while a conversation is open, for the reason `takesTheScreen` gives at length: the
+	// last beat's flag is set when its conversation *opens*, so the card announcing that the
+	// story was over used to arrive before the person who ends it had said a word. This is a
+	// condition over state, like a trigger, so skipping it costs nothing — it fires on the
+	// command that closes the conversation.
+	const ended = settled.state.dialogue
+		? settled
+		: applyEffects(
+				settled.state,
+				arcEndEffects(
+					settled.state.arc,
+					settled.state,
+					arcOutline(settled.state.arc, settled.state),
+				),
+			);
 
 	if (ended.state === result.state) return result;
 
@@ -282,6 +294,23 @@ function settle(
  * mid-cutscene replays it from the start next time rather than resuming a half-applied
  * middle.
  */
+/**
+ * Commands that are answers rather than actions.
+ *
+ * Every one of these is something the world told the game about after the fact — a model's
+ * reply, a chunk that finished building, a name the director settled on. None of them is a
+ * keypress, so none of them may be swallowed by anything whose job is to ignore keypresses.
+ */
+const ARRIVALS: ReadonlySet<Command["t"]> = new Set([
+	"DialogueTurn",
+	"DialogueStreaming",
+	"ChunkReady",
+	"LoreLearned",
+	"RegionLearned",
+	"SiteLearned",
+	"Error",
+]);
+
 function duringScene(
 	state: GameState,
 	scene: SceneState,
@@ -316,6 +345,15 @@ function duringScene(
 		);
 		return { state: applied.state, effects: [{ t: "Save", reason: "checkpoint" }] };
 	}
+
+	// Something that *arrived* rather than something that was pressed. The lock a scene puts
+	// on the world is a lock on the player's hands, and a model's answer is not the player's
+	// hands: swallowing one leaves the conversation it belongs to waiting for a reply that
+	// has already been thrown away, which the player sees as a spinner that never stops.
+	// That is exactly what happened — a beat's own trigger raised a scene while the beat's
+	// opening line was still in flight — and while triggers now wait for a conversation to
+	// close, an arrival must not be droppable by any future path either.
+	if (ARRIVALS.has(command.t)) return step(state, command, world);
 
 	// `Advance` and `Confirm` are both "yes, go on" elsewhere in the game, so both get past a
 	// caption. Anything else is swallowed.

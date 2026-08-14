@@ -226,3 +226,70 @@ describe("scenes in the reducer", () => {
 		expect(finished.time.tick).toBe(opened.time.tick);
 	});
 });
+
+/*
+ * What a player saw: a conversation whose spinner never stopped.
+ *
+ * The lock a scene puts on the world is a lock on the player's hands. A model's answer is not
+ * the player's hands — it is something that arrived — and swallowing one leaves the
+ * conversation it belongs to waiting on a reply that has already been thrown away.
+ */
+describe("what a scene may not swallow", () => {
+	const talking = (state: GameState): GameState => ({
+		...state,
+		dialogue: {
+			npcId: "npc:1:0",
+			npcName: "Ilse",
+			lines: [],
+			cursor: 0,
+			choiceIndex: 0,
+			pending: true,
+		},
+	});
+
+	/*
+	 * The scene is opened first and the conversation attached afterwards, which is the shape
+	 * the bug actually had: the reply was already in flight when the world was taken away.
+	 * A trigger can no longer produce this — one that takes the screen waits for the
+	 * conversation to close — but a scene raised any other way still can, and an arrival must
+	 * not be droppable by any path.
+	 */
+	it("lets a reply through to the conversation waiting on it", () => {
+		const playing = reduce(start(), { t: "SceneFrame" }, world).state;
+		expect(playing.scene, "the scene should be up for this test to mean anything").toBeDefined();
+		const opened = talking(playing);
+
+		const answered = reduce(
+			opened,
+			{
+				t: "DialogueTurn",
+				npcId: "npc:1:0",
+				speaker: "Ilse",
+				text: "Ferry's not running.",
+				choices: ["Why?"],
+			},
+			world,
+		).state;
+		expect(answered.dialogue?.pending).toBe(false);
+		expect(answered.dialogue?.lines.at(-1)?.text).toBe("Ferry's not running.");
+		// And the scene is still playing: an arrival changes the conversation, not the cutscene.
+		expect(answered.scene?.id).toBe(ARRIVAL.id);
+	});
+
+	it("still swallows a keypress", () => {
+		const playing = reduce(start(), { t: "SceneFrame" }, world).state;
+		const moved = reduce(talking(playing), { t: "Move", facing: "left" }, world).state;
+		expect(moved.player.x).toBe(playing.player.x);
+	});
+
+	it("does not raise a scene over a conversation in the first place", () => {
+		// The rule that made the spinner impossible rather than merely survivable. A beat's flag
+		// is set when its conversation opens, so a trigger watching for that beat used to fire
+		// on the first line of it.
+		const held = reduce(talking(start()), { t: "SceneFrame" }, world).state;
+		expect(held.scene).toBeUndefined();
+
+		const closed = reduce(held, { t: "CloseDialogue" }, world).state;
+		expect(closed.scene?.id).toBe(ARRIVAL.id);
+	});
+});

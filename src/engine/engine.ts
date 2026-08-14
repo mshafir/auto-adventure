@@ -744,6 +744,7 @@ export class GameEngine {
 				const found = this.npcs.byNpcId(npcId);
 				return found ? { x: found.x, y: found.y } : undefined;
 			},
+			occupied: (x, y) => this.personAt(x, y) !== undefined,
 		});
 		for (const problem of problems) logger.warn(`scene "${id}" cannot be staged: ${problem}`);
 		this.staged.set(id, staged);

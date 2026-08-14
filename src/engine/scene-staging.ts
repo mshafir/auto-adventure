@@ -54,6 +54,14 @@ export interface StageOptions {
 	 * body in the square.
 	 */
 	readonly npcAt?: (npcId: string) => Vec2 | undefined;
+	/**
+	 * Whether somebody is standing on a tile, whoever they are.
+	 *
+	 * Wider than {@link npcAt} on purpose. A scene walks to *places* — the well, the gate, the
+	 * inn door — and places are exactly where people stand, so the tile a scene names is very
+	 * often occupied by somebody the scene has never heard of.
+	 */
+	readonly occupied?: (x: number, y: number) => boolean;
 }
 
 export interface StagingResult {
@@ -150,8 +158,17 @@ function stageAction(action: SceneAction, ctx: StageContext): StagedAction | und
 				);
 				return undefined;
 			}
-			const to = resolve(action.to, ctx, `${where}: ${action.actor} walks`);
-			if (!to) return undefined;
+			const asked = resolve(action.to, ctx, `${where}: ${action.actor} walks`);
+			if (!asked) return undefined;
+
+			const to = beside(asked, action.actor, ctx);
+			if (!to) {
+				ctx.problems.push(
+					`${where}: "${action.actor}" walks to ${asked.x},${asked.y}, where somebody is already ` +
+						"standing, and there is no free tile beside it to stop on",
+				);
+				return undefined;
+			}
 
 			const path = route(from, to, ctx.options);
 			if (!path) {
@@ -164,6 +181,46 @@ function stageAction(action: SceneAction, ctx: StageContext): StagedAction | und
 			return { t: "WalkTo", actor: action.actor, path, speed: action.speed ?? "normal" };
 		}
 	}
+}
+
+/**
+ * Where to actually stop, given somebody may already be standing on the target.
+ *
+ * A scene walks to *places* — the well, the gate, the shrine — and a place is exactly where
+ * somebody stands: the keeper is at the well because that is where the keeper is all day. So
+ * the destination a scene names is very often occupied, and walking onto it drew the rider
+ * standing inside the keeper. What the player saw was a figure cross the square and vanish
+ * into another one, which is the whole of "he walked over and then stopped on top of them".
+ *
+ * Stopping *beside* them is also what the sentence meant. "The rider comes to the keeper" is
+ * approach, not merger, and the last step of an approach points at what was approached — so
+ * the arriving actor ends up facing the person they came to, with no `Face` needed.
+ *
+ * Orthogonal neighbours only, and in a fixed order, because the walk is four-connected and
+ * staging has to be reproducible. The target itself is returned when nobody is there.
+ */
+function beside(target: Vec2, actor: string, ctx: StageContext): Vec2 | undefined {
+	const taken = (at: Vec2) => {
+		for (const [alias, where] of ctx.standing) {
+			if (alias === actor) continue;
+			if (where.x === at.x && where.y === at.y) return true;
+		}
+		return ctx.options.occupied?.(at.x, at.y) ?? false;
+	};
+	if (!taken(target)) return target;
+
+	for (const [dx, dy] of [
+		[0, 1],
+		[-1, 0],
+		[1, 0],
+		[0, -1],
+	] as const) {
+		const at = { x: target.x + dx, y: target.y + dy };
+		if (taken(at)) continue;
+		if (!ctx.options.isPassable(at.x, at.y)) continue;
+		return at;
+	}
+	return undefined;
 }
 
 /**

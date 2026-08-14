@@ -62,6 +62,23 @@ export function playsAScene(effects: readonly DomainEffect[]): boolean {
 }
 
 /**
+ * Whether these effects would take the whole screen away from the player.
+ *
+ * A conversation owns the screen until it ends. This is the rule that makes a beat's own
+ * trigger work at all: a beat's flag is set the moment its conversation *opens*, so anything
+ * watching for that beat fires while the player is still reading the first line of it — and
+ * what they saw was the world taken away mid-sentence, a cutscene played over the top, and
+ * the thing the person had actually come to say happening afterwards as though it were a
+ * second, unrelated conversation.
+ *
+ * Waiting costs nothing. A trigger is a condition over state checked after every command, so
+ * one skipped here fires on the command that closes the conversation instead.
+ */
+export function takesTheScreen(effects: readonly DomainEffect[]): boolean {
+	return effects.some((effect) => effect.t === "PlayScene" || effect.t === "ShowCard");
+}
+
+/**
  * How many times the trigger pass may go round in one command.
  *
  * A trigger's effects can satisfy another trigger's condition, and an author will
@@ -95,6 +112,8 @@ export function pendingTriggers(
 		const once = trigger.once ?? true;
 		if (once && triggerFired(state, trigger)) continue;
 		if (!evaluate(trigger.when, state)) continue;
+		// A conversation owns the screen until it ends; see {@link takesTheScreen}.
+		if (state.dialogue && takesTheScreen(trigger.effects)) continue;
 		effects.push(...trigger.effects);
 		// Set last, so a partially-applied trigger is retried rather than skipped —
 		// the rule `beatEffects` follows, and for the same failure.

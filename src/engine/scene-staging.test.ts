@@ -365,3 +365,74 @@ describe("staging against a real world", () => {
 		expect(problems[0]).toContain("The Custom House");
 	});
 });
+
+/*
+ * The fault a player reported in one sentence: "not clear why the person walked over to the
+ * other person and then basically stopped on top of where they are."
+ *
+ * A scene walks to *places* — the well, the gate, the shrine door — and a place is exactly
+ * where somebody stands, because that is where the generator puts them. So a scene's
+ * destination is very often occupied, and walking onto it drew one figure crossing the square
+ * and disappearing into another.
+ */
+describe("walking to somewhere somebody is already standing", () => {
+	const occupiedAt = (x: number, y: number): StageOptions => ({
+		...options,
+		occupied: (px, py) => px === x && py === y,
+	});
+
+	it("stops beside them rather than on them", () => {
+		const scene = sceneOf([
+			{ do: [{ t: "Spawn", actor: "rider", at: at(0, 4) }] },
+			{ do: [{ t: "WalkTo", actor: "rider", to: at(4, 4) }] },
+		]);
+		const walk = only(scene, 1, occupiedAt(4, 4));
+		expect(walk?.t).toBe("WalkTo");
+		const end = walk?.t === "WalkTo" ? walk.path.at(-1) : undefined;
+		expect(end).toBeDefined();
+		expect(end).not.toEqual({ x: 4, y: 4 });
+		// Beside means beside: one orthogonal step from what was asked for.
+		expect(Math.abs((end?.x ?? 0) - 4) + Math.abs((end?.y ?? 0) - 4)).toBe(1);
+	});
+
+	it("walks onto the tile when nobody is there", () => {
+		const scene = sceneOf([
+			{ do: [{ t: "Spawn", actor: "rider", at: at(0, 4) }] },
+			{ do: [{ t: "WalkTo", actor: "rider", to: at(4, 4) }] },
+		]);
+		const walk = only(scene, 1);
+		expect(walk?.t === "WalkTo" ? walk.path.at(-1) : undefined).toEqual({ x: 4, y: 4 });
+	});
+
+	it("counts the scene's own cast, not only the world's people", () => {
+		// Two actors sent to the same anchor is the ordinary way a scene brings people together,
+		// and the second must not land inside the first.
+		const scene = sceneOf([
+			{
+				do: [
+					{ t: "Spawn", actor: "first", at: at(4, 4) },
+					{ t: "Spawn", actor: "second", at: at(0, 4) },
+				],
+			},
+			{ do: [{ t: "WalkTo", actor: "second", to: at(4, 4) }] },
+		]);
+		const walk = only(scene, 1);
+		expect(walk?.t === "WalkTo" ? walk.path.at(-1) : undefined).not.toEqual({ x: 4, y: 4 });
+	});
+
+	it("says so when the destination is occupied and hemmed in", () => {
+		// Better than silently walking somewhere else: a scene that stages with an actor in the
+		// wrong place is the class of fault this whole format exists to remove.
+		const boxed: StageOptions = {
+			...options,
+			occupied: (x, y) => x === 4 && y === 4,
+			isPassable: (x, y) => x === 4 && y === 4,
+		};
+		const scene = sceneOf([
+			{ do: [{ t: "Spawn", actor: "rider", at: at(4, 4) }] },
+			{ do: [{ t: "WalkTo", actor: "rider", to: at(4, 4) }] },
+		]);
+		const { problems } = stageScene(scene, boxed);
+		expect(problems.join(" ")).toContain("no free tile beside it");
+	});
+});

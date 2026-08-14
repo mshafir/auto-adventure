@@ -213,3 +213,61 @@ describe("triggers in reduce", () => {
 		expect(reduce(state, { t: "Move", facing: "down" }, probe).state).toBe(state);
 	});
 });
+
+/*
+ * A conversation owns the screen until it ends.
+ *
+ * This is the rule that makes a beat's own cutscene work at all. A beat's flag is set the
+ * moment its conversation *opens*, so a trigger watching for that beat used to fire while the
+ * player was still reading the first line — the world was taken away mid-sentence, the scene
+ * played over the top, and what the person had come to say happened afterwards as though it
+ * were a second, unrelated conversation. Worse, the model's reply to the opening line arrived
+ * while the scene held the world and was swallowed, so the panel underneath waited forever on
+ * an answer that had already been thrown away.
+ */
+describe("a trigger that would take the screen", () => {
+	const talking = (state: GameState): GameState => ({
+		...state,
+		dialogue: {
+			npcId: "npc:1:0",
+			npcName: "Ilse",
+			lines: [],
+			cursor: 0,
+			choiceIndex: 0,
+			pending: false,
+		},
+	});
+
+	const scene: Trigger = {
+		id: "arrive",
+		when: { flag: "ready" },
+		effects: [{ t: "PlayScene", id: "the-messenger-arrives" }],
+	};
+	const card: Trigger = {
+		id: "news",
+		when: { flag: "ready" },
+		effects: [{ t: "ShowCard", card: { id: "news", title: "News", sections: ["It is over."] } }],
+	};
+
+	it("waits while a conversation is open", () => {
+		const state = talking({ ...base([scene, card]), flags: { ready: true } });
+		expect(pendingTriggers([scene, card], state)).toEqual([]);
+	});
+
+	it("fires the moment the conversation is not", () => {
+		const state = { ...base([scene]), flags: { ready: true } };
+		expect(pendingTriggers([scene], state)).toHaveLength(1);
+	});
+
+	it("lets a trigger that only moves the world through", () => {
+		// Most triggers are invisible — a flag, an opened gate — and there is no reason for one
+		// of those to wait for anybody. Only the ones that take the whole screen do.
+		const quiet: Trigger = {
+			id: "quiet",
+			when: { flag: "ready" },
+			effects: [{ t: "SetFlag", key: "the-tide-turned", value: true }],
+		};
+		const state = talking({ ...base([quiet]), flags: { ready: true } });
+		expect(pendingTriggers([quiet], state)).toHaveLength(2);
+	});
+});
