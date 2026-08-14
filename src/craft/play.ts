@@ -4,6 +4,11 @@ import { describeObjective } from "../core/rules/quests.js";
 import { activeQuests, type Facing, type GameState, worldAnchor } from "../core/rules/state.js";
 import { decorDef } from "../core/tiles/decor.js";
 import { terrainDef } from "../core/tiles/terrain.js";
+import { CHUNK, toChunk } from "../core/world/coords.js";
+import { sitesInside } from "../core/world/macro.js";
+import { ChunkManager } from "../engine/chunk-manager.js";
+import { createWorldView } from "../engine/world-view.js";
+import { artifactWorld } from "../scenario/artifact.js";
 import { buildSession, type Session } from "../session.js";
 import { type Args, CraftError } from "./args.js";
 import { openWorkspace } from "./workspace.js";
@@ -102,6 +107,63 @@ function scriptLines(path: string): string[] {
 	} catch {
 		throw new CraftError(`there is no script at ${path}`, 2);
 	}
+}
+
+/**
+ * Look at a place without walking to it.
+ *
+ * The survey says what is at a site — its size, its ground, its budget; this says what it
+ * *looks* like, which is the question an author has after claiming one and before deciding
+ * where a scene happens. Both are free, because the generator is pure.
+ */
+export function craftRender(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "render"));
+	const artifact = workspace.artifact;
+	const radius = args.int("radius", 12);
+	const at = args.str("at");
+	args.refuseUnknown();
+
+	const world = artifactWorld(artifact);
+	const sites = sitesInside(world, artifact.bounds);
+	const centre = at.includes(",")
+		? { x: Number(at.split(",")[0]), y: Number(at.split(",")[1]) }
+		: sites.get(Number(at))?.site;
+	if (!centre || !Number.isInteger(centre.x) || !Number.isInteger(centre.y)) {
+		throw new CraftError(
+			`--at wants x,y or a site id — "${at}" is neither, or names no place here`,
+		);
+	}
+
+	const chunks = new ChunkManager({
+		world,
+		capacity: 256,
+		bounds: artifact.bounds,
+		specFor: (site) => artifact.sites[String(site.id)]?.settlement,
+		...(artifact.terraform ? { terraform: artifact.terraform } : {}),
+	});
+	const view = createWorldView({
+		seed: artifact.seed,
+		chunkAt: (cx, cy) => chunks.get(cx, cy),
+		revision: () => chunks.revision,
+	});
+	chunks.prefetch(toChunk(centre.x, centre.y), Math.ceil(radius / CHUNK) + 1);
+
+	const named = artifact.sites[String(Number(at))];
+	out(`${named ? `${named.name} — ` : ""}${centre.x},${centre.y}`);
+	for (let y = centre.y - radius; y <= centre.y + radius; y++) {
+		let row = "";
+		for (let x = centre.x - radius; x <= centre.x + radius; x++) {
+			const door = chunks.doorAt(x, y);
+			if (door) {
+				row += "+";
+				continue;
+			}
+			row += view.isPassable(x, y) ? (view.decorAt(x, y) ? "," : ".") : "#";
+		}
+		out(row);
+	}
+	out("");
+	out(". walkable   , something on it   # blocked   + a door");
 }
 
 function perform(

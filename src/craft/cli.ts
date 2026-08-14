@@ -8,7 +8,7 @@ import {
 	craftTerraform,
 	craftTree,
 } from "./content.js";
-import { craftPlay } from "./play.js";
+import { craftPlay, craftRender } from "./play.js";
 import {
 	craftBeatAdd,
 	craftPhaseAdd,
@@ -135,6 +135,12 @@ export const VERBS: readonly Verb[] = [
 		usage: "craft check <id>",
 		summary: "everything knowable without playing it, including staging every scene",
 		run: craftCheck,
+	},
+	{
+		words: ["render"],
+		usage: "craft render <id> --at <siteId|x,y> [--radius 12]",
+		summary: "look at a place without walking to it",
+		run: craftRender,
 	},
 	{
 		words: ["play"],
