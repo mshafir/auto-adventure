@@ -106,6 +106,30 @@
 				"knows": ["The millrace runs fast after rain and catches whatever the river brings."],
 				"stays": true,
 				"indoors": true
+			},
+			{
+				"slot": 2,
+				"name": "Corl Wentworth",
+				"role": "rope-maker",
+				"glyph": "C",
+				"appearance": "rope-maker of Wenthollow.",
+				"persona": "A rope-maker, and talks like one.",
+				"disposition": 0,
+				"placement": "stall",
+				"knows": [],
+				"treeAlias": "npc:4213455557:0"
+			},
+			{
+				"slot": 3,
+				"name": "Mag Tolliver",
+				"role": "fishwife",
+				"glyph": "M",
+				"appearance": "fishwife of Wenthollow.",
+				"persona": "A fishwife, and talks like one.",
+				"disposition": 0,
+				"placement": "bench",
+				"knows": [],
+				"treeAlias": "npc:4213455557:1"
 			}
 		],
 		"hooks": ["The ferry has not run since the abbey bell stopped."]

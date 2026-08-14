@@ -16,3 +16,4 @@ where it will actually be read.
 | `scenes.md` | Cutscenes that are worth watching, and the ways they come out inert |
 | `people.md` | Casting a town without writing thirty conversations |
 | `failures.md` | Things that looked right, passed every check, and were wrong |
+| `reviewing.md` | What playing a finished world found that no check could |

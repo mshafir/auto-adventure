@@ -2,10 +2,11 @@
 	"artifactVersion": 2,
 	"id": "the-drowned-abbey",
 	"title": "The Drowned Abbey",
-	"blurb": "An abbey on the sandflats goes under, and the news travels east faster than the water does.",
+	"blurb": "Word comes east along the shore road, and the vale does not stay quiet.",
 	"brief": {
 		"title": "The Drowned Abbey",
 		"premise": "An abbey on the sandflats goes under, and the news travels east faster than the water does.",
+		"tone": "sombre",
 		"duration": "short"
 	},
 	"seed": 3304608049,
@@ -22,12 +23,12 @@
 		"thickness": 8
 	},
 	"lore": {
-		"title": "The Drowned Abbey",
-		"premise": "An abbey on the sandflats goes under, and the news travels east faster than the water does.",
-		"era": "unstated",
-		"tone": "unstated",
-		"factions": [],
-		"deities": []
+		"title": "The Sandflat Shore",
+		"premise": "A coast of shallow water and long tides, where the sea comes in over the fields.",
+		"era": "late mediaeval",
+		"tone": "sombre",
+		"factions": ["The Abbey of Saint Ceol", "The Wenthollow Ferry"],
+		"deities": ["Saint Ceol, who walked out on the water"]
 	},
 	"regions": {},
 	"arc": {
@@ -54,11 +55,6 @@
 			}
 		]
 	},
-	"authoredWith": {
-		"models": {},
-		"calls": 0,
-		"at": "2026-08-14T18:04:13.441Z"
-	},
 	"triggers": [
 		{
 			"id": "the-messenger",
@@ -79,5 +75,10 @@
 				}
 			]
 		}
-	]
+	],
+	"authoredWith": {
+		"models": {},
+		"calls": 0,
+		"at": "2026-08-14T18:04:13.441Z"
+	}
 }

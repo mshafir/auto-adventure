@@ -41,6 +41,11 @@ export function craftNew(args: Args, out: (line: string) => void): void {
 	// From the id when nobody names a seed, so the same name always makes the same country —
 	// which is what lets an author say "that one" and get it back.
 	const seed = resolveSeed(args.str("seed", id));
+	// Left empty rather than stubbed with a word. `openingCard` uses the era as its subtitle, so a
+	// placeholder there is a placeholder on the first screen of the game — the stub used to read
+	// "unstated" under the title, which looks like a bug rather than like something unwritten.
+	const era = args.str("era", "");
+	const tone = args.str("tone", "");
 	const pack = args.has("pack") ? args.str("pack") : undefined;
 	const tiles = args.has("tiles") ? args.str("tiles") : undefined;
 	args.refuseUnknown();
@@ -51,20 +56,13 @@ export function craftNew(args: Args, out: (line: string) => void): void {
 		id,
 		title,
 		blurb: premise,
-		brief: { title, premise, duration },
+		brief: { title, premise, duration, ...(tone ? { tone } : {}) },
 		seed,
 		spawn: survey.spawn,
 		bounds: survey.bounds,
 		// Named from the premise so the world is not anonymous before a single call has been
 		// made. An author replaces these; nothing derives anything from them.
-		lore: {
-			title,
-			premise,
-			era: "unstated",
-			tone: "unstated",
-			factions: [],
-			deities: [],
-		},
+		lore: { title, premise, era, tone, factions: [], deities: [] },
 		regions: {},
 		sites: {},
 		...(pack ? { pack } : {}),

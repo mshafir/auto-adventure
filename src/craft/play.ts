@@ -252,11 +252,20 @@ async function perform(
 			);
 			return;
 		}
-		const npc = state().dialogue?.npcId ?? "";
-		// The player's own line first, so a transcript reads as an exchange rather than as a list
-		// of things said at somebody.
+		/*
+		 * Move the cursor and confirm, which is what the keyboard does — rather than dispatching a
+		 * `DialogueTurn` with the player's line in it.
+		 *
+		 * That was the first version and it was wrong in a way worth recording: `DialogueTurn` is
+		 * the command that *commits* a turn somebody has already produced, so fabricating one put
+		 * the player's words on screen and never asked the game for a reply. Every answer in the
+		 * game came back as "nothing more to say".
+		 */
+		const cursor = state().dialogue?.cursor ?? 0;
+		for (let step = cursor; step < choice - 1; step++) engine.dispatch({ t: "ChoiceDown" });
+		for (let step = cursor; step > choice - 1; step--) engine.dispatch({ t: "ChoiceUp" });
 		out(`you: ${picked}`);
-		engine.dispatch({ t: "DialogueTurn", npcId: npc, speaker: "you", text: picked });
+		engine.dispatch({ t: "Confirm" });
 		await spoken(session);
 		settle(session, out);
 		after(session, out);
@@ -404,7 +413,20 @@ function destination(session: Session, where: string): { x: number; y: number } 
 	}
 	if (where.startsWith("npc:")) {
 		const person = session.engine.personById(where);
-		return person ? { x: person.x, y: person.y } : undefined;
+		if (person) return { x: person.x, y: person.y };
+		// Somebody indoors resolves only while the player is standing in their building, which is
+		// correct — and means "walk to them" is not a thing that can be asked from the street. The
+		// door is what can be walked to.
+		const site = Number(where.split(":")[1]);
+		const inside = session.engine
+			.getState()
+			.sites[String(site)]?.npcs.find((npc) => `npc:${site}:${npc.slot}` === where);
+		if (inside?.indoors) {
+			throw new CraftError(
+				`${inside.name} is inside ${inside.structureName ?? "a building"} — walk to the town, find the door, and \`enter\``,
+			);
+		}
+		return undefined;
 	}
 	const siteId = Number(where);
 	if (!Number.isInteger(siteId)) return undefined;

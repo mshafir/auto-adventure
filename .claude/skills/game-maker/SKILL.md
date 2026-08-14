@@ -114,15 +114,23 @@ Once the main line plays, add optional beats — `--optional` — conditioned on
 happened. Place what each one needs. If it cannot be placed, **delete the side quest**; do not
 weaken the main line to fit it.
 
-### 8. Play it yourself
+### 8. Have it reviewed, then play it yourself
+
+Dispatch a reviewer with the `game-reviewer` skill. It plays the world without reading the
+files first — which is the point: you cannot un-know where you put the ledger, so you are the
+worst possible judge of whether anything told the player.
+
+Address what comes back, worst first. A dead end or a lie is not negotiable. "The second town
+feels like a set" usually means one more written conversation and one more reason to be there.
+
+Then play it yourself anyway:
 
 ```
 npm run craft -- play <id>
 ```
 
-Walk to the first town. Talk to the person the story starts with. Ask yourself whether you
-would know where to go next if nobody had told you. This is the only step that catches a world
-that is correct and dull.
+Walk to the first town. Talk to the person the story starts with. Ask whether you would know
+where to go next if nobody had told you.
 
 ### 9. Write down what you learned
 
