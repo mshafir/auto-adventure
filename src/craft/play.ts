@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { findPath } from "../core/geom/astar.js";
 import { describeObjective } from "../core/rules/quests.js";
 import { activeQuests, type Facing, type GameState, worldAnchor } from "../core/rules/state.js";
 import { decorDef } from "../core/tiles/decor.js";
 import { terrainDef } from "../core/tiles/terrain.js";
 import { CHUNK, toChunk } from "../core/world/coords.js";
 import { sitesInside } from "../core/world/macro.js";
+import { worldSeed } from "../core/world/recipe.js";
 import { ChunkManager } from "../engine/chunk-manager.js";
 import { createWorldView } from "../engine/world-view.js";
 import { artifactWorld } from "../scenario/artifact.js";
@@ -33,6 +35,8 @@ const HELP = [
 	"1-9       answer, when a conversation offers choices",
 	"search    look in whatever is in front of you",
 	"enter     go through the door in front of you",
+	"goto N    walk to a site id or x,y, along ground you could walk",
+	"close     end the conversation you are in",
 	"wait      let a moment pass",
 	"map       redraw",
 	"where     position, place, and the hour",
@@ -215,8 +219,18 @@ function perform(
 		case "wait":
 			engine.dispatch({ t: "Tick", amount: 1 });
 			return;
+		case "close":
+			// Movement is swallowed while somebody is talking, exactly as it is in the game — so a
+			// review needs a way out of a conversation that is not a keypress it cannot send.
+			engine.dispatch({ t: "CloseDialogue" });
+			return;
 		default:
 			break;
+	}
+
+	if (command.startsWith("goto ")) {
+		goTo(session, command.slice("goto ".length).trim(), radius, out);
+		return;
 	}
 
 	const choice = Number(command);
@@ -241,6 +255,113 @@ function perform(
 	}
 
 	out(`"${command}" is not something you can do. Try \`help\`.`);
+}
+
+/**
+ * Walk to a place, along ground the player could actually walk.
+ *
+ * Not a teleport, and not a convenience: an agent reviewing a world has a budget, and counting
+ * arrow keys to cross sixty tiles spends all of it on travel. What it must not do is *skip* the
+ * travel, because a leg that cannot be walked is one of the things a review is looking for — so
+ * this pathfinds over the same passability the player has and then takes the steps.
+ */
+function goTo(session: Session, where: string, radius: number, out: (line: string) => void): void {
+	const engine = session.engine;
+	const state = engine.getState();
+	if (state.player.inside) {
+		out("you are indoors; step outside first");
+		return;
+	}
+	// Movement is swallowed while somebody is talking, exactly as it is in the game. Said rather
+	// than worked around, because a review that silently walked out of conversations would not be
+	// experiencing the game the player does — and because the first version of this reported
+	// having walked fifty tiles while standing still.
+	if (state.dialogue) {
+		out("a conversation is open — `close` it first");
+		return;
+	}
+
+	const target = destination(session, where);
+	if (!target) {
+		out(`"${where}" is not somewhere to go: want a site id or x,y`);
+		return;
+	}
+
+	const view = engine.getView();
+	const from = { x: state.player.x, y: state.player.y };
+	// Generous bounds, since the route may need to go round water; the search is cheap and this
+	// is not on any frame path.
+	const path = findPath(from, target, {
+		bounds: {
+			x: Math.min(from.x, target.x) - 96,
+			y: Math.min(from.y, target.y) - 96,
+			w: Math.abs(target.x - from.x) + 192,
+			h: Math.abs(target.y - from.y) + 192,
+		},
+		cost: (x, y) => (view.isPassable(x, y) ? 1 : Number.POSITIVE_INFINITY),
+	});
+	if (!path) {
+		out(`there is no way from ${from.x},${from.y} to ${target.x},${target.y} on foot`);
+		return;
+	}
+
+	let walked = 0;
+	for (const step of path.slice(1)) {
+		const at = engine.getState().player;
+		const facing = towards(at, step);
+		if (!facing) continue;
+		// Twice, because the first press of a direction turns and the second walks — the game's
+		// own rule, and a walker that dispatched one command per step would spend half of them
+		// turning on the spot.
+		engine.dispatch({ t: "Move", facing });
+		engine.dispatch({ t: "Move", facing });
+		settle(session, out);
+		const now = engine.getState();
+		if (now.player.x === at.x && now.player.y === at.y) {
+			// Something is in the way that the passability check did not know about — a person
+			// standing on the route is the usual one. Worth saying rather than looping.
+			out(`stopped at ${at.x},${at.y}: something is in the way`);
+			break;
+		}
+		walked++;
+		// A conversation or a cutscene has taken the world. Stop rather than pressing on through
+		// it, because whatever happens next is what the player would be looking at.
+		if (now.scene || now.dialogue) break;
+	}
+
+	// The distance actually covered, not the length of the route. The first version reported the
+	// route and so claimed to have walked fifty tiles from a standing start.
+	const end = engine.getState().player;
+	out(`walked ${walked} tile(s), now at ${end.x},${end.y}`);
+	draw(session, radius, out);
+}
+
+function destination(session: Session, where: string): { x: number; y: number } | undefined {
+	if (where.includes(",")) {
+		const [x, y] = where.split(",").map((part) => Number(part.trim()));
+		return Number.isInteger(x) && Number.isInteger(y)
+			? { x: x as number, y: y as number }
+			: undefined;
+	}
+	const siteId = Number(where);
+	if (!Number.isInteger(siteId)) return undefined;
+	return session.engine.getNpcs().atSite(siteId)[0] ?? siteCentre(session, siteId);
+}
+
+function siteCentre(session: Session, siteId: number): { x: number; y: number } | undefined {
+	const state = session.engine.getState();
+	const bounds = state.world.bounds;
+	if (!bounds) return undefined;
+	return sitesInside(worldSeed(state.world.seed, state.world.recipe), bounds).get(siteId)?.site;
+}
+
+/** Which single step goes from one tile to the next. Undefined when they are the same tile. */
+function towards(from: { x: number; y: number }, to: { x: number; y: number }): Facing | undefined {
+	if (to.x > from.x) return "right";
+	if (to.x < from.x) return "left";
+	if (to.y > from.y) return "down";
+	if (to.y < from.y) return "up";
+	return undefined;
 }
 
 /**
