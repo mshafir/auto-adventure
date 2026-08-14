@@ -35,7 +35,7 @@ const HELP = [
 	"1-9       answer, when a conversation offers choices",
 	"search    look in whatever is in front of you",
 	"enter     go through the door in front of you",
-	"goto N    walk to a site id or x,y, along ground you could walk",
+	"goto X    walk to a site id, an npc:S:N or x,y, along ground you could walk",
 	"close     end the conversation you are in",
 	"wait      let a moment pass",
 	"map       redraw",
@@ -87,7 +87,7 @@ export async function craftPlay(args: Args, out: (line: string) => void): Promis
 			if (!command || command.startsWith("#")) continue;
 			if (script) out(`> ${command}`);
 			if (command === "done" || command === "quit") break;
-			perform(session, command, radius, out);
+			await perform(session, command, radius, out);
 		}
 	} finally {
 		session.dispose();
@@ -170,12 +170,20 @@ export function craftRender(args: Args, out: (line: string) => void): void {
 	out(". walkable   , something on it   # blocked   + a door");
 }
 
-function perform(
+/**
+ * Do one thing, and wait for its consequences.
+ *
+ * Asynchronous because a conversation is: the dialogue service runs a turn off the effect
+ * queue, so a reply lands a microtask after the command that asked for it. The first version of
+ * this printed straight after dispatching and so showed the player's own line followed by
+ * "nothing more to say" — every answer in the game was invisible.
+ */
+async function perform(
 	session: Session,
 	command: string,
 	radius: number,
 	out: (line: string) => void,
-): void {
+): Promise<void> {
 	const engine = session.engine;
 	const state = () => engine.getState();
 
@@ -213,6 +221,7 @@ function perform(
 			// whatever that thing affords. Three words here because a person describing what they
 			// did says "I talked to her", not "I interacted with her".
 			engine.dispatch({ t: "Interact" });
+			await spoken(session);
 			settle(session, out);
 			after(session, out);
 			return;
@@ -243,12 +252,12 @@ function perform(
 			);
 			return;
 		}
-		engine.dispatch({
-			t: "DialogueTurn",
-			npcId: state().dialogue?.npcId ?? "",
-			speaker: "you",
-			text: picked,
-		});
+		const npc = state().dialogue?.npcId ?? "";
+		// The player's own line first, so a transcript reads as an exchange rather than as a list
+		// of things said at somebody.
+		out(`you: ${picked}`);
+		engine.dispatch({ t: "DialogueTurn", npcId: npc, speaker: "you", text: picked });
+		await spoken(session);
 		settle(session, out);
 		after(session, out);
 		return;
@@ -281,11 +290,15 @@ function goTo(session: Session, where: string, radius: number, out: (line: strin
 		return;
 	}
 
-	const target = destination(session, where);
-	if (!target) {
-		out(`"${where}" is not somewhere to go: want a site id or x,y`);
+	const aimed = destination(session, where);
+	if (!aimed) {
+		out(`"${where}" is not somewhere to go: want a site id, an npc:S:N, or x,y`);
 		return;
 	}
+	// Held separately from `aimed` because the target is re-asked after the walk: a person's
+	// position comes from a roster that is only populated around the player, so one sixty tiles
+	// away is resolved from a stale reading.
+	let target = aimed;
 
 	const view = engine.getView();
 	const from = { x: state.player.x, y: state.player.y };
@@ -293,20 +306,30 @@ function goTo(session: Session, where: string, radius: number, out: (line: strin
 	// is not on any frame path.
 	const path = findPath(from, target, {
 		bounds: {
-			x: Math.min(from.x, target.x) - 96,
-			y: Math.min(from.y, target.y) - 96,
-			w: Math.abs(target.x - from.x) + 192,
-			h: Math.abs(target.y - from.y) + 192,
+			x: Math.min(from.x, aimed.x) - 96,
+			y: Math.min(from.y, aimed.y) - 96,
+			w: Math.abs(aimed.x - from.x) + 192,
+			h: Math.abs(aimed.y - from.y) + 192,
 		},
-		cost: (x, y) => (view.isPassable(x, y) ? 1 : Number.POSITIVE_INFINITY),
+		// People count as in the way, because they are: walking into somebody opens a conversation
+		// rather than moving. Without this the route went straight through whoever was standing in
+		// the square and stopped dead at them a step later.
+		cost: (x, y) => {
+			if (!view.isPassable(x, y)) return Number.POSITIVE_INFINITY;
+			if (x === aimed.x && y === aimed.y) return 1;
+			return engine.personAt(x, y) ? Number.POSITIVE_INFINITY : 1;
+		},
 	});
 	if (!path) {
-		out(`there is no way from ${from.x},${from.y} to ${target.x},${target.y} on foot`);
+		out(`there is no way from ${from.x},${from.y} to ${aimed.x},${aimed.y} on foot`);
 		return;
 	}
 
 	let walked = 0;
-	for (const step of path.slice(1)) {
+	// The last tile is the destination itself, which for a person is the tile they are standing on
+	// — walking onto it opens a conversation. Stopping beside them is what a player does.
+	const route = engine.personAt(aimed.x, aimed.y) ? path.slice(1, -1) : path.slice(1);
+	for (const step of route) {
 		const at = engine.getState().player;
 		const facing = towards(at, step);
 		if (!facing) continue;
@@ -329,13 +352,49 @@ function goTo(session: Session, where: string, radius: number, out: (line: strin
 		if (now.scene || now.dialogue) break;
 	}
 
-	// The distance actually covered, not the length of the route. The first version reported the
-	// route and so claimed to have walked fifty tiles from a standing start.
+	/*
+	 * Close the last gap, and re-ask where the target is before doing it.
+	 *
+	 * Two reasons the first walk can end short. A person's position is derived from the roster,
+	 * which is only populated around the player — so a target sixty tiles away is resolved from a
+	 * stale reading and the route ends up a tile off. And somebody without `--stays` genuinely
+	 * moves while you are walking to them.
+	 */
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const at = engine.getState().player;
+		target = destination(session, where) ?? target;
+		const gap = Math.abs(target.x - at.x) + Math.abs(target.y - at.y);
+		if (gap <= 1) break;
+		const step = towards(at, target);
+		if (!step) break;
+		engine.dispatch({ t: "Move", facing: step });
+		engine.dispatch({ t: "Move", facing: step });
+		settle(session, out);
+		if (engine.getState().player.x === at.x && engine.getState().player.y === at.y) break;
+		walked++;
+	}
+
+	// Turn to face what was asked for, so `goto npc:...` followed by `talk` works. Arriving beside
+	// somebody and facing the other way is the sort of thing a person does without noticing and an
+	// agent cannot see at all.
 	const end = engine.getState().player;
+	const facing = towards(end, target);
+	if (facing && end.facing !== facing) engine.dispatch({ t: "Move", facing });
+
+	// The distance actually covered, not the length of the route. The first version reported the
+	// route's length and so claimed to have walked fifty tiles from a standing start.
 	out(`walked ${walked} tile(s), now at ${end.x},${end.y}`);
 	draw(session, radius, out);
 }
 
+/**
+ * Where `goto` is being asked to go.
+ *
+ * Three spellings, and the middle one is the important one. `goto <siteId>` goes to the town —
+ * its centre, predictably, rather than to whichever of its people the roster happened to list
+ * first, which is where this landed the player before and made every approach a different tile.
+ * `goto npc:S:N` walks up to a particular person, which is what "ask for Ilse Wentworth" means.
+ */
 function destination(session: Session, where: string): { x: number; y: number } | undefined {
 	if (where.includes(",")) {
 		const [x, y] = where.split(",").map((part) => Number(part.trim()));
@@ -343,9 +402,13 @@ function destination(session: Session, where: string): { x: number; y: number } 
 			? { x: x as number, y: y as number }
 			: undefined;
 	}
+	if (where.startsWith("npc:")) {
+		const person = session.engine.personById(where);
+		return person ? { x: person.x, y: person.y } : undefined;
+	}
 	const siteId = Number(where);
 	if (!Number.isInteger(siteId)) return undefined;
-	return session.engine.getNpcs().atSite(siteId)[0] ?? siteCentre(session, siteId);
+	return siteCentre(session, siteId);
 }
 
 function siteCentre(session: Session, siteId: number): { x: number; y: number } | undefined {
@@ -362,6 +425,31 @@ function towards(from: { x: number; y: number }, to: { x: number; y: number }): 
 	if (to.y > from.y) return "down";
 	if (to.y < from.y) return "up";
 	return undefined;
+}
+
+/**
+ * Wait for a reply, or for it to be clear there is not going to be one.
+ *
+ * A turn is produced off the effect queue — for an authored tree that is a microtask, for an
+ * improvised one a network call — so the only honest way to read the answer is to wait for the
+ * line count to move. Bounded, because a turn that never arrives must not hang a review.
+ */
+async function spoken(session: Session, within = 4000): Promise<void> {
+	// Counted over the *other* person's lines only. `DialogueTurn` adds the player's own line
+	// synchronously, so waiting for the line count to move at all returned immediately and every
+	// reply in the game was reported as "nothing more to say".
+	const theirs = (state: GameState) =>
+		(state.dialogue?.lines ?? []).filter((line) => line.speaker !== "you").length;
+	const before = theirs(session.engine.getState());
+	const deadline = Date.now() + within;
+	while (Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		const now = session.engine.getState();
+		if (theirs(now) > before) return;
+		// Nothing opened at all — the tile in front held no conversation — so there is nothing to
+		// wait for, and saying so at once beats a four-second pause.
+		if (!now.dialogue) return;
+	}
 }
 
 /**
@@ -404,7 +492,7 @@ function after(session: Session, out: (line: string) => void): void {
 	const dialogue = state.dialogue;
 	if (!dialogue) return;
 	const last = dialogue.lines.at(-1);
-	if (last) out(`${last.speaker}: ${last.text}`);
+	if (last && last.speaker !== "you") out(`${last.speaker}: ${last.text}`);
 	dialogue.choices?.forEach((choice, index) => out(`  ${index + 1}. ${choice}`));
 	if (!dialogue.choices?.length) out("  (nothing more to say)");
 }

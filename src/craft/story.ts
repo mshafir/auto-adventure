@@ -319,13 +319,27 @@ export function craftBeatAdd(args: Args, out: (line: string) => void): void {
  * read back, and `asCondition` already turns the common case into the right shape.
  */
 function readCondition(args: Args, key: string): Condition {
-	if (args.has(`${key}-visited`)) return { visited: args.str(`${key}-visited`) };
-	if (args.has(`${key}-item`)) return { item: args.str(`${key}-item`) };
+	// Every part read before any is judged, because a reader that returned on the first match
+	// would leave the others unread — and an unread flag is refused as unknown, which is how
+	// `--when x --when-visited y` came to be rejected for not taking `--when`.
+	const visited = args.list(`${key}-visited`).map((place) => ({ visited: place }) as Condition);
+	const carried = args.list(`${key}-item`).map((item) => ({ item }) as Condition);
 	const flags = args.list(key);
-	if (flags.length === 0)
+	// `asCondition` returns undefined for an empty list, so the flags go through the same
+	// collected-parts path rather than being passed wholesale.
+	const parts: Condition[] = [
+		...visited,
+		...carried,
+		...(flags.length > 0 ? [asCondition(flags) as Condition] : []),
+	];
+
+	if (parts.length === 0) {
 		throw new CraftError(`--${key} wants a flag, or --${key}-visited / --${key}-item`);
-	// `asCondition` returns undefined for an empty list, which the guard above has ruled out.
-	return asCondition(flags) as Condition;
+	}
+	// Combined rather than first-wins, because the common shape is genuinely a conjunction: a
+	// cutscene fires on *arriving somewhere having already been told why*. First-wins made that
+	// inexpressible, and a scene whose trigger only watched the flag played in the wrong town.
+	return parts.length === 1 ? (parts[0] as Condition) : { all: parts };
 }
 
 function describe(when: Condition): string {

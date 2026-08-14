@@ -1,0 +1,44 @@
+{
+	"npcId": "npc:4213455557:0",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "Ferry's not running. Bell's not rung for two days and I'll not cross to a silent abbey.",
+			"choices": [
+				{
+					"text": "What do you think has happened?",
+					"goto": "guess"
+				},
+				{
+					"text": "Two days is not long.",
+					"goto": "long"
+				},
+				{
+					"text": "Fair enough.",
+					"goto": null
+				}
+			]
+		},
+		"guess": {
+			"id": "guess",
+			"speech": "I think the tide came in and did not go out. Go east to Ash Hollow and ask Rell — they watch the shore, and they'll have seen the water before I did.",
+			"choices": [
+				{
+					"text": "I'll go east.",
+					"goto": null
+				}
+			]
+		},
+		"long": {
+			"id": "long",
+			"speech": "It is when the bell is the only clock forty people have. Ask Rell at Ash Hollow, east along the shore road.",
+			"choices": [
+				{
+					"text": "East it is.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

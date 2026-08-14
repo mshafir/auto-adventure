@@ -1,0 +1,25 @@
+{
+	"id": "after-the-flood",
+	"name": "After the Flood",
+	"when": {
+		"flag": "flood"
+	},
+	"placements": {
+		"add": [
+			{
+				"id": "abbey-seal",
+				"at": {
+					"kind": "site",
+					"siteId": 4213455557,
+					"structure": "Wenthollow Mill"
+				},
+				"item": {
+					"name": "Abbey Seal",
+					"description": "A lead seal on a broken cord, still bright where the cord protected it."
+				},
+				"showDecor": true,
+				"emptyText": "Only weed, and the water going over."
+			}
+		]
+	}
+}

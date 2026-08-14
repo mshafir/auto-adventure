@@ -1,0 +1,113 @@
+{
+	"539500626": {
+		"siteId": 539500626,
+		"name": "Ash Hollow",
+		"shortName": "Ash Hollow",
+		"description": "Five houses in a dip of the woods, and a well nobody trusts.",
+		"settlement": {
+			"name": "Ash Hollow",
+			"walled": false,
+			"structures": [
+				{
+					"kind": "shrine",
+					"size": "small",
+					"importance": 4,
+					"name": "The Ash Shrine",
+					"required": true
+				}
+			]
+		},
+		"npcs": [
+			{
+				"slot": 0,
+				"name": "Rell Ashcombe",
+				"role": "shrine-keeper",
+				"glyph": "R",
+				"appearance": "Grey, and dressed for a colder season than this one.",
+				"persona": "Careful with words. Waits to be asked twice.",
+				"disposition": 0,
+				"placement": "well",
+				"knows": ["The shrine was raised for people the sea kept."],
+				"stays": true
+			},
+			{
+				"slot": 1,
+				"name": "Hesper Ashcombe",
+				"role": "netmender",
+				"glyph": "H",
+				"appearance": "netmender of Ash Hollow.",
+				"persona": "A netmender, and talks like one.",
+				"disposition": 0,
+				"placement": "bench",
+				"knows": [],
+				"treeAlias": "npc:539500626:0"
+			}
+		],
+		"hooks": ["Nobody here goes down to the shore any more."]
+	},
+	"4213455557": {
+		"siteId": 4213455557,
+		"name": "Wenthollow",
+		"shortName": "Wenthollow",
+		"description": "A ferry village of ten roofs, its jetty longer than its high street.",
+		"settlement": {
+			"name": "Wenthollow",
+			"walled": false,
+			"structures": [
+				{
+					"kind": "inn",
+					"size": "medium",
+					"importance": 4,
+					"name": "The Long Tide",
+					"required": true
+				},
+				{
+					"kind": "mill",
+					"size": "medium",
+					"importance": 4,
+					"name": "Wenthollow Mill",
+					"required": true
+				},
+				{
+					"kind": "warehouse",
+					"size": "medium",
+					"importance": 4,
+					"name": "The Rope Store",
+					"required": true
+				}
+			]
+		},
+		"npcs": [
+			{
+				"slot": 0,
+				"name": "Ilse Wentworth",
+				"role": "ferryman",
+				"glyph": "I",
+				"appearance": "A short woman in a tarred coat, hands like knotted rope.",
+				"persona": "Blunt, and not unkind about it. Talks about tides the way others talk about weather.",
+				"disposition": 10,
+				"placement": "square",
+				"knows": [
+					"The crossing is only safe either side of the turn of the tide.",
+					"The abbey bell has not rung for two days."
+				],
+				"stays": true
+			},
+			{
+				"slot": 1,
+				"name": "Bran Cawle",
+				"role": "miller",
+				"glyph": "B",
+				"appearance": "miller of Wenthollow.",
+				"persona": "Talks a great deal, mostly about the millrace.",
+				"disposition": 0,
+				"placement": "doorstep",
+				"structureName": "Wenthollow Mill",
+				"knows": ["The millrace runs fast after rain and catches whatever the river brings."],
+				"stays": true,
+				"indoors": true
+			}
+		],
+		"hooks": ["The ferry has not run since the abbey bell stopped."]
+	}
+}
