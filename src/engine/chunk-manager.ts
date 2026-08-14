@@ -1,12 +1,15 @@
+import { authoredTiles, terraformBounds } from "../core/gen/features/authored.js";
 import type { Anchor, BuildingPlacement } from "../core/gen/features/patch.js";
 import type { SettlementSpec } from "../core/gen/features/settlement.js";
 import { generateChunk, type TerrainSummary } from "../core/gen/pipeline.js";
 import type { ChunkDelta } from "../core/rules/state.js";
 import { type Chunk, setTerrain } from "../core/tiles/chunk.js";
+import type { TerrainId } from "../core/tiles/terrain.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import { CHUNK, type ChunkCoord, type ChunkKey, chunkKey } from "../core/world/coords.js";
 import type { MacroSite } from "../core/world/macro.js";
 import type { WorldSeed } from "../core/world/recipe.js";
+import type { TerraformEdit } from "../scenario/terraform.js";
 
 export interface ChunkManagerOptions {
 	readonly world: WorldSeed;
@@ -21,6 +24,8 @@ export interface ChunkManagerOptions {
 	readonly barriers?: readonly { readonly x: number; readonly y: number }[];
 	/** Signposts the scenario puts up. Positions only, for the same reason. */
 	readonly signs?: readonly { readonly x: number; readonly y: number }[];
+	/** Ground the scenario authored. Rasterised once, here, rather than per chunk. */
+	readonly terraform?: readonly TerraformEdit[];
 }
 
 interface Entry {
@@ -43,9 +48,44 @@ export class ChunkManager {
 	private readonly capacity: number;
 	private clock = 0;
 	private deltas: Readonly<Record<ChunkKey, ChunkDelta>> = {};
+	/**
+	 * The authored ground, resolved to tiles.
+	 *
+	 * Held here rather than passed through as edits, because a road across a world would
+	 * otherwise be re-rasterised once per chunk it crosses.
+	 */
+	private terraform: ReadonlyMap<string, TerrainId>;
+	private edits: readonly TerraformEdit[];
 
 	constructor(private readonly options: ChunkManagerOptions) {
 		this.capacity = options.capacity ?? 49;
+		this.edits = options.terraform ?? [];
+		this.terraform = authoredTiles(this.edits);
+	}
+
+	/**
+	 * Point the manager at a new set of authored ground, as a phase change does.
+	 *
+	 * Drops the chunks the *union* of the old and new edits touches. The old ones because a
+	 * removed edit cannot be un-stamped from a chunk already carrying it; the new ones because
+	 * they have yet to be stamped at all. Dropping rather than patching is safe for the same
+	 * reason eviction is: regeneration is deterministic, so a chunk is never lost, only
+	 * recomputed.
+	 *
+	 * Returns the keys it dropped, so the caller can tell the view which ground has changed
+	 * under it.
+	 */
+	setTerraform(edits: readonly TerraformEdit[]): ChunkKey[] {
+		if (edits === this.edits) return [];
+		const before = terraformBounds(this.edits);
+		this.edits = edits;
+		this.terraform = authoredTiles(edits);
+		const after = terraformBounds(edits);
+		const dropped = new Set<ChunkKey>();
+		for (const rect of [before, after]) {
+			if (rect) for (const key of this.invalidateRect(rect)) dropped.add(key);
+		}
+		return [...dropped];
 	}
 
 	/**
@@ -101,6 +141,7 @@ export class ChunkManager {
 				...(this.options.bounds ? { bounds: this.options.bounds } : {}),
 				...(this.options.barriers?.length ? { barriers: this.options.barriers } : {}),
 				...(this.options.signs?.length ? { signs: this.options.signs } : {}),
+				...(this.terraform.size > 0 ? { terraform: this.terraform } : {}),
 			},
 			cc,
 		);

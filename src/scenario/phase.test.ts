@@ -36,8 +36,8 @@ function withPlacements(...ids: string[]): ScenarioContent {
 }
 
 /** A conversation shaped enough to be told apart from another. */
-function tree(npcId: string): DialogueTree {
-	return { npcId, entry: "start", nodes: {} } as unknown as DialogueTree;
+function tree(npcId: string, entry = "start"): DialogueTree {
+	return { npcId, entry: [entry], nodes: {} };
 }
 
 const FLOOD = { flag: "flood" } as const;
@@ -134,7 +134,7 @@ describe("composeScenario", () => {
 
 	it("replaces a conversation wholesale", () => {
 		const base: ScenarioContent = { ...EMPTY, trees: { "1-0": tree("1-0") } };
-		const after = { ...tree("1-0"), entry: "after-the-flood" } as DialogueTree;
+		const after = tree("1-0", "after-the-flood");
 		const composed = composeScenario(
 			base,
 			[{ id: "2", name: "After", when: FLOOD, trees: { "1-0": after } }],

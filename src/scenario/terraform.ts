@@ -24,7 +24,8 @@ export type TerraformEdit =
 			readonly to: Vec2;
 			/** Odd numbers read best, since a path is laid symmetrically about its line. */
 			readonly width?: number;
-			readonly surface: "dirt" | "cobble" | "plank";
+			/** A beaten footpath, a rutted cart track, or laid cobbles. */
+			readonly surface: "path" | "dirt" | "cobble";
 	  }
 	| { readonly t: "Bridge"; readonly id: string; readonly from: Vec2; readonly to: Vec2 }
 	/** Ground cleared of whatever the generator scattered on it, for a scene to happen on. */

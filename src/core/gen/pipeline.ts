@@ -118,6 +118,18 @@ export interface GenContext {
 	 * the player has something to face.
 	 */
 	readonly signs?: readonly { readonly x: number; readonly y: number }[];
+	/**
+	 * Ground the scenario authored, as world position to terrain.
+	 *
+	 * Stamped last, over everything the generator decided, for the same reason gates and
+	 * signposts are stamped rather than negotiated: the author is stating what is there, and a
+	 * stage that could disagree would make the scenario's own map unreliable.
+	 *
+	 * A resolved map rather than the edits themselves, because the rasterisation is a property
+	 * of the whole world and this function only sees one chunk — recomputing a road for every
+	 * chunk it crosses would be quadratic. `ChunkManager` builds it once.
+	 */
+	readonly terraform?: ReadonlyMap<string, TerrainId>;
 }
 
 /**
@@ -298,6 +310,10 @@ export function generateChunk(ctx: GenContext, cc: ChunkCoord): GeneratedChunk {
 
 	if (ctx.barriers) stampBarriers(chunk, ctx.barriers, originX, originY);
 
+	// Last, so an authored path crosses a road, a settlement's street and a signpost's tile
+	// alike. An author who lays a lane through a town square means the lane.
+	if (ctx.terraform) stampAuthored(chunk, ctx.terraform, originX, originY);
+
 	// Tally after stamping, so the counts describe what the chunk actually is.
 	let waterTiles = 0;
 	let passableTiles = 0;
@@ -371,6 +387,28 @@ function stampBoundary(
  * thousands — so a linear scan per chunk is cheaper than any index would be, and it
  * keeps the whole feature to one loop with no lookup structure to keep in step.
  */
+/**
+ * Lay the authored ground that falls inside this chunk.
+ *
+ * Decor goes with it, for the reason the gates and the boundary pass both clear theirs: a
+ * tree left standing in the middle of a new road appears to grow through it.
+ */
+function stampAuthored(
+	chunk: Chunk,
+	tiles: ReadonlyMap<string, TerrainId>,
+	originX: number,
+	originY: number,
+): void {
+	for (let ly = 0; ly < CHUNK; ly++) {
+		for (let lx = 0; lx < CHUNK; lx++) {
+			const terrain = tiles.get(`${originX + lx},${originY + ly}`);
+			if (terrain === undefined) continue;
+			setTerrain(chunk, lx, ly, terrain);
+			chunk.decor[localIndex(lx, ly)] = 0;
+		}
+	}
+}
+
 function stampBarriers(
 	chunk: Chunk,
 	barriers: readonly { readonly x: number; readonly y: number }[],
