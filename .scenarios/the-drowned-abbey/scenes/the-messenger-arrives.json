@@ -16,7 +16,7 @@
 					"pan": "slow"
 				}
 			],
-			"hold": 3
+			"hold": 6
 		},
 		{
 			"do": [
@@ -35,7 +35,7 @@
 					"at": "left"
 				}
 			],
-			"hold": 3
+			"hold": 8
 		},
 		{
 			"do": [
@@ -47,9 +47,10 @@
 						"siteId": 539500626,
 						"anchor": "well"
 					},
-					"speed": "fast"
+					"speed": "normal"
 				}
-			]
+			],
+			"hold": 4
 		},
 		{
 			"do": [
@@ -82,7 +83,7 @@
 					]
 				}
 			],
-			"hold": 4
+			"hold": 8
 		}
 	]
 }

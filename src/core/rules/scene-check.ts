@@ -1,5 +1,5 @@
 import type { DomainEffect } from "./effects.js";
-import type { Scene } from "./scene.js";
+import type { Scene, SceneAction } from "./scene.js";
 
 /**
  * Effects that must not happen twice.
@@ -53,6 +53,62 @@ const VERBS: Readonly<Record<string, string>> = {
 	AdjustDisposition: "adjusts disposition toward",
 	AdjustReputation: "adjusts reputation with",
 };
+
+/**
+ * The fewest frames a step may hold and still be seen.
+ *
+ * A scene frame is ninety milliseconds, so five frames is a little under half a second —
+ * about as short as a thing can appear on screen and still register as having happened.
+ *
+ * This exists because of a scene that passed every other check and was unwatchable. It
+ * panned, spawned a rider and held each of those for three frames: a quarter of a second
+ * each, so by the time the player had noticed the camera had moved, the rider was already
+ * at the well. "It executed too quickly and it was hard to tell what happened" is not
+ * something a validator can normally say, but this much of it can be checked.
+ */
+export const MIN_VISIBLE_HOLD = 5;
+
+/** Actions that change what is on screen the instant they run and are over at once. */
+const INSTANT: ReadonlySet<SceneAction["t"]> = new Set(["Spawn", "Despawn", "Face"]);
+
+/**
+ * Whether anything in this step keeps the frame on screen by itself.
+ *
+ * A walk takes as many frames as it has tiles, a wait says how long it is, a line stops
+ * the scene until the player presses on, and a pan runs until the camera arrives. Any of
+ * those gives an instantaneous change beside it time to be looked at; a step made only of
+ * instantaneous changes has exactly one frame unless it asks for more.
+ */
+function lingers(action: SceneAction): boolean {
+	if (action.t === "WalkTo" || action.t === "Wait" || action.t === "Say" || action.t === "Card")
+		return true;
+	return action.t === "Camera" && action.pan !== undefined && action.pan !== "cut";
+}
+
+export function scenePacingProblems(scene: Scene): string[] {
+	const problems: string[] = [];
+
+	scene.steps.forEach((step, index) => {
+		const seen = step.do.filter(
+			(action) =>
+				INSTANT.has(action.t) || (action.t === "Camera" && (action.pan ?? "cut") === "cut"),
+		);
+		if (seen.length === 0) return;
+		if (step.do.some(lingers)) return;
+		if ((step.hold ?? 0) >= MIN_VISIBLE_HOLD) return;
+
+		const what = seen.map((action) =>
+			"actor" in action ? `${action.t} ${action.actor}` : action.t,
+		);
+		problems.push(
+			`scene ${scene.id} step ${index + 1} of ${scene.steps.length} ${what.join(" and ")}, then moves ` +
+				`straight on: at ${step.hold ?? 0} frame(s) that is on screen for under half a second. ` +
+				`Give the step "hold": ${MIN_VISIBLE_HOLD} or more, or something that takes time of its own`,
+		);
+	});
+
+	return problems;
+}
 
 export function sceneEffectProblems(scene: Scene): string[] {
 	const problems: string[] = [];

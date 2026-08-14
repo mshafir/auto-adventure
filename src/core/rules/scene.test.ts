@@ -63,13 +63,15 @@ describe("advanceScene", () => {
 		expect(first.scene?.camera).toEqual({ x: 10, y: 10 });
 	});
 
-	it("consumes one tile of a walk per frame and moves on when the path runs out", () => {
+	it("works through a walk a tile at a time and moves on when the path runs out", () => {
 		const staged = walkThenSpeak();
-		const { frames } = play(staged, idle, 5);
+		const { frames } = play(staged, idle, 7);
 
-		// Frame one is the spawn. Then three tiles, one per frame, and the fourth frame
-		// has nothing left to walk — so the step is done and the line is up.
-		expect(frames.map((frame) => frame.actors.rider?.x)).toEqual([10, 11, 12, 13, 13]);
+		// Frame one is the spawn. Then three tiles at a normal walk, which is one tile every
+		// second frame, and once there is nothing left to walk the step is done and the line
+		// is up. Nobody covers more than a tile in a frame: a grid has nowhere to draw
+		// somebody between two of them, so the only way to be faster is to skip one.
+		expect(frames.map((frame) => frame.actors.rider?.x)).toEqual([10, 11, 11, 12, 12, 13, 13]);
 		expect(frames.at(-1)?.caption?.text).toBe("The abbey has fallen.");
 	});
 
@@ -149,20 +151,22 @@ describe("advanceScene", () => {
 				{ do: [{ t: "Say", actor: "a", text: "There." }] },
 			],
 		};
-		const { frames } = play(staged, idle, 6);
+		const { frames } = play(staged, idle, 10);
 
 		// `a` arrived on the first frame of the walk; the step ran on because `b` had three
 		// tiles to cover. A step that ended with the fastest action would have cut `b` off
 		// mid-stride and teleported it into place for the next step.
-		const midway = frames[2] as SceneState;
-		expect(midway.actors.a).toMatchObject({ x: 1, y: 0 });
-		expect(midway.actors.b).toMatchObject({ x: 6, y: 0 });
-		expect(midway.caption).toBeUndefined();
+		//
+		// Written against where `b` gets to rather than against frame numbers, so retuning how
+		// many frames a tile takes does not make this test about arithmetic.
+		expect(frames[1]?.actors.a).toMatchObject({ x: 1, y: 0 });
+		const arrival = frames.findIndex((frame) => frame.actors.b?.x === 7);
+		expect(arrival).toBeGreaterThan(1);
 
-		// `b` arrives, and that frame shows the arrival rather than the next step's line.
-		expect(frames[3]?.actors.b).toMatchObject({ x: 7, y: 0 });
-		expect(frames[3]?.caption).toBeUndefined();
-		expect(frames[4]?.caption?.text).toBe("There.");
+		// Nothing of the next step happens until `b` is there, and the frame it arrives on
+		// shows the arrival rather than the line.
+		for (const frame of frames.slice(0, arrival + 1)) expect(frame.caption).toBeUndefined();
+		expect(frames[arrival + 1]?.caption?.text).toBe("There.");
 	});
 
 	/*
@@ -212,10 +216,72 @@ describe("advanceScene", () => {
 			],
 		};
 		const { frames } = play(staged, idle, 8);
-		// One tile on the frame the walk starts, then two frames standing on it, then the
+		// One tile on the frame the walk starts, then three frames standing on it, then the
 		// next. A slow walker holds a tile rather than covering a fraction of one, because
 		// the world is a grid and there is nowhere to draw somebody between two tiles.
-		expect(frames.map((frame) => frame.actors.old?.x).slice(0, 5)).toEqual([0, 1, 1, 1, 2]);
+		expect(frames.map((frame) => frame.actors.old?.x).slice(0, 6)).toEqual([0, 1, 1, 1, 1, 2]);
+	});
+
+	/*
+	 * The pan belongs to the machine, and this is why. While it lived in the renderer the
+	 * scene treated every camera move as instantaneous, so a step aiming the camera across a
+	 * village finished in one frame and everything after it — a rider spawning, riding in,
+	 * speaking — happened while the shot was still travelling, or worse, was never framed at
+	 * all. The view had memoised the pan on a target that does not change during a pan, so in
+	 * practice the camera moved one tile and stopped.
+	 */
+	describe("a camera that pans", () => {
+		function panTo(x: number, pan: "cut" | "slow" | "fast"): StagedScene {
+			return {
+				id: "look-over-there",
+				skippable: true,
+				steps: [
+					{ do: [{ t: "Camera", to: { x, y: 0 }, pan }] },
+					{ do: [{ t: "Say", actor: "player", text: "Oh." }] },
+				],
+			};
+		}
+
+		it("arrives at once on a cut", () => {
+			const { frames } = play(panTo(40, "cut"), idle, 3);
+			expect(frames[0]?.camera).toEqual({ x: 40, y: 0 });
+			// One frame for the cut, and the line is up on the next.
+			expect(frames[1]?.caption?.text).toBe("Oh.");
+		});
+
+		it("crosses the distance a tile at a time on a slow pan", () => {
+			// Starting from the player at 4,4, so the first frame has moved one tile of each axis.
+			const { frames } = play(panTo(8, "slow"), idle, 12);
+			expect(frames[0]?.camera).toEqual({ x: 5, y: 3 });
+			expect(frames[1]?.camera).toEqual({ x: 6, y: 2 });
+		});
+
+		it("holds the step open until the shot has arrived", () => {
+			const { frames } = play(panTo(40, "slow"), idle, 60);
+			// Nothing of the next step until then. This is the whole point: a line spoken over a
+			// moving camera is a line nobody read.
+			for (const frame of frames) {
+				if (frame.camera?.x !== 40) expect(frame.caption).toBeUndefined();
+			}
+			expect(frames.some((frame) => frame.camera?.x === 40)).toBe(true);
+		});
+
+		it("goes three times as fast when the pan is fast", () => {
+			const { frames } = play(panTo(40, "fast"), idle, 20);
+			const slow = play(panTo(40, "slow"), idle, 60).frames;
+			const arrived = (all: readonly SceneState[]) => all.findIndex((f) => f.camera?.x === 40);
+			expect(arrived(frames)).toBeGreaterThan(0);
+			expect(arrived(frames) * 3).toBeLessThanOrEqual(arrived(slow) + 3);
+		});
+
+		it("stops on the target rather than rocking past it", () => {
+			// A pan that overshot would oscillate for the rest of the scene and never finish
+			// its step, which is a hang rather than a wobble.
+			const { frames } = play(panTo(2, "fast"), idle, 8);
+			const settled = frames.filter((frame) => frame.camera?.x === 2);
+			expect(settled.length).toBeGreaterThan(0);
+			expect(frames.every((frame) => (frame.camera?.x ?? 0) <= 4)).toBe(true);
+		});
 	});
 
 	it("takes an actor off stage when the scene says so", () => {

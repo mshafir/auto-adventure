@@ -1,4 +1,5 @@
 import { storyNpcIds } from "../core/rules/arc.js";
+import { scenePacingProblems } from "../core/rules/scene-check.js";
 import { sitesInside } from "../core/world/macro.js";
 import { npcId } from "../core/world/spec.js";
 import { ChunkManager } from "../engine/chunk-manager.js";
@@ -42,6 +43,12 @@ export function craftCheck(args: Args, out: (line: string) => void): void {
 	errors.push(...improvisationProblems(artifact));
 	errors.push(...stagingProblems(artifact));
 	warnings.push(...wayfindingProblems(artifact));
+	// A warning rather than an error, because a scene that goes by too fast is dull rather
+	// than broken — and dullness is the one fault the whole review pass exists to find, so
+	// the part of it a machine can see is worth saying out loud.
+	for (const scene of Object.values(artifact.scenes ?? {})) {
+		warnings.push(...scenePacingProblems(scene));
+	}
 
 	for (const error of errors) out(`error  ${error}`);
 	for (const warning of warnings) out(`warn   ${warning}`);

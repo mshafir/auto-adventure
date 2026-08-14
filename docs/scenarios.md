@@ -613,6 +613,32 @@ A placement's site spelling resolves *inside* a building, which is its whole pur
 stories hide things in chests. A cutscene happens in the square. Sharing the spelling sent
 the rider to the well and landed him in somebody's pantry.
 
+### How long any of it takes
+
+A scene frame is **ninety milliseconds**, and every duration in a scene is counted in them.
+That number is the one an author has to hold on to, because `"hold": 3` looks like three
+beats and is a quarter of a second.
+
+| | frames per tile | tiles a second |
+|---|---|---|
+| `WalkTo` `slow` | 4 | 2.8 |
+| `WalkTo` `normal` | 2 | 5.6 |
+| `WalkTo` `fast` | 1 | 11 |
+| `Camera` `slow` | — | 11 |
+| `Camera` `fast` | — | 33 |
+
+Nobody covers more than a tile in a frame. The world is a grid, so there is nowhere to draw
+somebody between two tiles, and a "faster" walk could only be one that skipped them.
+
+**A pan is a step the scene waits for.** `Camera` with `slow` or `fast` does not finish until
+the shot has arrived, so the step holding it does not finish either. That is what stops a
+rider riding in over a camera that is still travelling. A `cut` is over in one frame and, like
+a `Spawn`, needs a `hold` if anyone is to see it.
+
+`craft check` warns about a step that changes what is on screen and then moves straight on
+with nothing to keep the frame up. Five frames is the floor it asks for; a shot worth framing
+usually wants more.
+
 ### Two rules a scene has to obey
 
 **Non-idempotent effects only in the last step.** No save is written while a scene plays, so

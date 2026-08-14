@@ -160,19 +160,32 @@ export interface SceneOutcome {
 /**
  * How many frames one tile of walking takes.
  *
- * A slow walker holds each tile for several frames rather than covering a fraction of
- * one, because the world is a grid and an actor between two tiles has nowhere to be drawn.
+ * A walker holds each tile for whole frames rather than covering a fraction of one,
+ * because the world is a grid and an actor between two tiles has nowhere to be drawn.
+ * One tile a frame is therefore the fastest anything can move, and at the ninety
+ * milliseconds a scene frame lasts that is already eleven tiles a second — a gallop.
+ * So the three speeds are all divisors of it and none of them takes more than a tile
+ * at a time.
+ *
+ * `fast` used to take *two* tiles a frame, which is twenty-two tiles a second: a rider
+ * crossed a village square in under a second and the arrival the scene existed to show
+ * was over before it registered. That was half of "the cutscene went by too quickly".
  */
-const FRAMES_PER_TILE: Readonly<Record<WalkSpeed, number>> = { slow: 3, normal: 1, fast: 1 };
+const FRAMES_PER_TILE: Readonly<Record<WalkSpeed, number>> = { slow: 4, normal: 2, fast: 1 };
 
 /**
- * How many tiles a walk covers per frame.
+ * How many tiles a scene's camera pans in one frame.
  *
- * `fast` takes two tiles a frame rather than shortening the frame: the frame interval is
- * the UI's to choose, and a scene whose pacing depended on it would run differently on a
- * slow terminal.
+ * A cut is instant and needs no number. At ninety milliseconds a frame these are about
+ * eleven and thirty-three tiles a second — a considered look, and a snap of the head.
+ *
+ * Kept here rather than in the renderer, and that is the point of it: a pan the *machine*
+ * performs is a pan the machine can wait for. While it lived in the view the scene treated
+ * every camera move as instantaneous and walked on regardless, so a rider could arrive and
+ * speak while the camera was still travelling — or, because the view memoised the pan on a
+ * target that never changed, while it had moved a single tile and stopped.
  */
-const TILES_PER_FRAME: Readonly<Record<WalkSpeed, number>> = { slow: 1, normal: 1, fast: 2 };
+const PAN_TILES_PER_FRAME: Readonly<Record<PanKind, number>> = { cut: 0, slow: 1, fast: 3 };
 
 export function beginScene(staged: StagedScene, player: Vec2, facing: Facing): SceneState {
 	return {
@@ -180,6 +193,10 @@ export function beginScene(staged: StagedScene, player: Vec2, facing: Facing): S
 		step: 0,
 		elapsed: 0,
 		actors: { player: { x: player.x, y: player.y, facing } },
+		// Aimed at the player from the first frame, so a pan has somewhere to start from and
+		// so a scene does not inherit the dead zone the walking camera uses. A scene points at
+		// a gate or a well deliberately; drifting toward it would be the wrong shot.
+		camera: { x: player.x, y: player.y },
 	};
 }
 
@@ -237,9 +254,9 @@ export function advanceScene(
 				if (first) actors = without(actors, action.actor);
 				break;
 			case "Camera":
-				// A cut lands at once. A pan is interpolated by the renderer between the camera
-				// it had and this target, so the state only has to carry where it is headed.
-				if (first) camera = action.to;
+				// A cut lands at once; a pan slides a fixed number of tiles a frame until it
+				// arrives, and the step below will not finish while it is still travelling.
+				camera = panned(camera, action.to, PAN_TILES_PER_FRAME[action.pan]);
 				break;
 			case "Face": {
 				if (!first) break;
@@ -269,13 +286,12 @@ export function advanceScene(
 					break;
 				}
 				const hold = FRAMES_PER_TILE[action.speed];
-				if (hold > 1 && !first && state.elapsed % hold !== 0) {
+				if (state.elapsed % hold !== 0) {
 					actors = { ...actors, [action.actor]: { ...actor, path: remaining } };
 					break;
 				}
-				const stride = Math.min(TILES_PER_FRAME[action.speed], remaining.length);
-				const landing = remaining[stride - 1] as Vec2;
-				const rest = remaining.slice(stride);
+				const landing = remaining[0] as Vec2;
+				const rest = remaining.slice(1);
 				actors = {
 					...actors,
 					[action.actor]: {
@@ -291,7 +307,7 @@ export function advanceScene(
 	}
 
 	const elapsed = state.elapsed + 1;
-	const busy = step.do.some((action) => unfinished(action, actors, elapsed));
+	const busy = step.do.some((action) => unfinished(action, actors, camera, elapsed));
 	// `hold` counts frames *after* the actions are done, so a step that is still busy has
 	// not started holding yet.
 	const holding = !busy && elapsed <= (step.hold ?? 0);
@@ -308,11 +324,33 @@ export function advanceScene(
 function unfinished(
 	action: StagedAction,
 	actors: Readonly<Record<string, SceneActor>>,
+	camera: Vec2 | undefined,
 	elapsed: number,
 ): boolean {
 	if (action.t === "WalkTo") return (actors[action.actor]?.path?.length ?? 0) > 0;
 	if (action.t === "Wait") return elapsed < action.ticks;
+	if (action.t === "Camera") {
+		if (action.pan === "cut") return false;
+		return !camera || camera.x !== action.to.x || camera.y !== action.to.y;
+	}
 	return false;
+}
+
+/**
+ * Slide the camera toward where it is being aimed, one frame's worth.
+ *
+ * Lands exactly on the target rather than oscillating past it, so "has it arrived" is an
+ * equality test and a pan of any length terminates.
+ */
+function panned(from: Vec2 | undefined, to: Vec2, tilesPerFrame: number): Vec2 {
+	if (!from || tilesPerFrame <= 0) return to;
+	return { x: toward(from.x, to.x, tilesPerFrame), y: toward(from.y, to.y, tilesPerFrame) };
+}
+
+function toward(from: number, to: number, rate: number): number {
+	const delta = to - from;
+	if (Math.abs(delta) <= rate) return to;
+	return from + Math.sign(delta) * rate;
 }
 
 /** Which way one point is from another, by the larger of the two offsets. */

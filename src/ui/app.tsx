@@ -37,7 +37,6 @@ import { KeyBar, type KeyBarMode } from "./panels/key-bar.js";
 import { Reader } from "./panels/reader.js";
 import { SCENE_CAPTION_ROWS, SceneCaption } from "./panels/scene-caption.js";
 import { TOP_BAR_ROWS, TopBar } from "./panels/top-bar.js";
-import { cameraTowards } from "./render/camera.js";
 import type { Camera } from "./render/compose.js";
 import { mapFit } from "./render/fit.js";
 import { PLAYER_GLYPH } from "./render/glyphs.js";
@@ -48,7 +47,7 @@ import { minimapExtent } from "./render/overlay.js";
 import { PAL } from "./render/palette.js";
 import { tileSourceFrom } from "./render/world-source.js";
 import { getEngine, useGameState } from "./store.js";
-import { cameraFollowing, tileMode, Viewport } from "./viewport.js";
+import { cameraCenteredOn, cameraFollowing, tileMode, Viewport } from "./viewport.js";
 
 /** How far a lamp carries indoors. */
 const INTERIOR_SIGHT = 9;
@@ -62,15 +61,6 @@ const INTERIOR_SIGHT = 9;
  * machine makes a scene take longer rather than skip any of it.
  */
 const SCENE_FRAME_MS = 90;
-
-/**
- * How fast a scene's camera pans, in tiles per frame.
- *
- * A cut is instant and needs no number. These are what "slow" and "fast" buy an author: at
- * ninety milliseconds a frame, slow crosses about eleven tiles a second and fast about
- * thirty-three, which are a considered look and a snap of the head.
- */
-const PAN_RATE = { cut: 0, slow: 1, fast: 3 } as const;
 
 /**
  * Slope shading costs bandwidth: it bands terrain into more distinct styles, so
@@ -196,15 +186,6 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 
 	const view = engine.getView();
 	const player = state.player;
-
-	/*
-	 * How fast the camera is moving toward what the scene is looking at.
-	 *
-	 * Zero is a cut, which `cameraTowards` reads as "go straight there". The rate is not on the
-	 * scene state because a pan is presentation: the state carries only where the camera is
-	 * aimed, and how it gets there is the renderer's business.
-	 */
-	const panRate = scene ? PAN_RATE.slow : 0;
 
 	/*
 	 * Who is speaking, by their real name rather than by their stage alias.
@@ -376,10 +357,12 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 	const camera = useMemo(() => {
 		const held = spaceRef.current === space ? cameraRef.current : undefined;
 		// A scene aims the camera deliberately — at a gate, at a well — so it must not inherit
-		// the dead zone, which exists to stop the world lurching under a walking player. A pan
-		// slides toward the target a few tiles a frame; a cut is simply centred.
+		// the dead zone, which exists to stop the world lurching under a walking player. The
+		// pan itself is the scene machine's: `scene.camera` is already where the camera should
+		// be *this frame*, so there is nothing to interpolate here and nothing that could
+		// disagree with what the scene is waiting for.
 		const next = scene?.camera
-			? cameraTowards(held, [scene.camera.x, scene.camera.y], fit.width, fit.height, panRate)
+			? cameraCenteredOn([scene.camera.x, scene.camera.y], fit.width, fit.height)
 			: cameraFollowing(held, [player.x, player.y], fit.width, fit.height);
 		spaceRef.current = space;
 		// The previous object when nothing moved, not an equal new one: the viewport
@@ -388,7 +371,7 @@ export default function App({ initialTab, initialCursor = 0 }: AppProps = {}) {
 		const settled = held && next.x === held.x && next.y === held.y ? held : next;
 		cameraRef.current = settled;
 		return settled;
-	}, [player.x, player.y, fit.width, fit.height, space, scene?.camera, panRate]);
+	}, [player.x, player.y, fit.width, fit.height, space, scene?.camera]);
 
 	// Where the player is *in the world*. Indoors their coordinates are local to the
 	// interior grid, so anything asked in chunk space — which region is this, what is

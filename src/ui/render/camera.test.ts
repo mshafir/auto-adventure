@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraCenteredOn, cameraFollowing, cameraTowards } from "./camera.js";
+import { cameraCenteredOn, cameraFollowing } from "./camera.js";
 
 const W = 40;
 const H = 20;
@@ -161,48 +161,5 @@ describe("a viewport too small to hold a dead zone", () => {
 				expect(at).toBeLessThan(camera.x + span);
 			}
 		}
-	});
-});
-
-describe("panning a scene's camera", () => {
-	const size = [21, 11] as const;
-
-	it("centres outright when there is no camera to pan from", () => {
-		expect(cameraTowards(undefined, [50, 50], ...size, 1)).toEqual(
-			cameraCenteredOn([50, 50], ...size),
-		);
-	});
-
-	it("goes straight there at a rate of zero, which is what a cut is", () => {
-		const held = cameraCenteredOn([0, 0], ...size);
-		expect(cameraTowards(held, [50, 50], ...size, 0)).toEqual(cameraCenteredOn([50, 50], ...size));
-	});
-
-	it("moves the stated number of tiles per call", () => {
-		const held = cameraCenteredOn([0, 0], ...size);
-		const goal = cameraCenteredOn([9, 0], ...size);
-		const once = cameraTowards(held, [9, 0], ...size, 3);
-		expect(once.x).toBe(held.x + 3);
-		expect(once.x).not.toBe(goal.x);
-	});
-
-	it("arrives exactly, rather than oscillating past the target", () => {
-		// A pan that overshot would rock back and forth for the rest of the scene.
-		let camera = cameraCenteredOn([0, 0], ...size);
-		const goal = cameraCenteredOn([4, 0], ...size);
-		for (let frame = 0; frame < 10; frame++) camera = cameraTowards(camera, [4, 0], ...size, 3);
-		expect(camera).toEqual(goal);
-	});
-
-	it("pans both axes at once", () => {
-		const held = cameraCenteredOn([0, 0], ...size);
-		const next = cameraTowards(held, [20, 20], ...size, 2);
-		expect(next.x).toBe(held.x + 2);
-		expect(next.y).toBe(held.y + 2);
-	});
-
-	it("re-centres on a resize rather than panning to a camera of the wrong shape", () => {
-		const held = cameraCenteredOn([0, 0], 21, 11);
-		expect(cameraTowards(held, [0, 0], 31, 15, 1)).toEqual(cameraCenteredOn([0, 0], 31, 15));
 	});
 });
