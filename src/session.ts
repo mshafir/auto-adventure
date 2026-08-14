@@ -1,4 +1,5 @@
 import { createDialogueService } from "./ai/dialogue/dialogue.js";
+import type { DialogueTree } from "./ai/dialogue/tree.js";
 import { Director } from "./ai/director/director.js";
 import { logTelemetry } from "./ai/telemetry.js";
 import { CONFIG, hasGatewayKey } from "./config.js";
@@ -20,7 +21,7 @@ import type { ScenarioBrief } from "./core/world/brief.js";
 import { toChunk } from "./core/world/coords.js";
 import { regionIdAt, sitesAround } from "./core/world/macro.js";
 import { worldSeed } from "./core/world/recipe.js";
-import type { SpecSource } from "./core/world/spec.js";
+import { npcId as makeNpcId, type SpecSource } from "./core/world/spec.js";
 import { resolveBarriers } from "./engine/barriers.js";
 import { createEffectRunner } from "./engine/effect-runner.js";
 import { GameEngine } from "./engine/engine.js";
@@ -179,7 +180,9 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 		regionSpec: (regionId) => director.regionSpec(regionId),
 		siteSpec: (siteId) => director.siteSpec(siteId),
 		disabled: !live,
-		...(trees ? { tree: (npcId: string) => trees[npcId] } : {}),
+		// Through `treeFor` rather than a bare lookup, so somebody marked `--like` speaks with the
+		// words that were written for the person they share with.
+		...(trees ? { tree: (npcId: string) => treeFor(trees, choice.scenario, npcId) } : {}),
 	});
 
 	const engine = new GameEngine(
@@ -426,6 +429,39 @@ function newScenarioWorld(
  * The player's progress is unaffected either way: what has fired, what has been opened
  * and what has been taken all live in the flags, not here.
  */
+/**
+ * The written conversation somebody speaks, following an alias if they have one.
+ *
+ * `treeAlias` is how a town gets populated without thirty written conversations: one
+ * carefully written villager answers for the six other householders. A better floor than
+ * either improvisation — which invents facts about a story nobody told it — or the canned
+ * menu, and it costs nothing.
+ *
+ * One hop only. An alias pointing at somebody who is themselves an alias would be a chain to
+ * resolve and a cycle to guard against, for no gain: the thing being shared is *written
+ * words*, and they belong to whoever they were written for.
+ */
+export function treeFor(
+	trees: Readonly<Record<string, DialogueTree>>,
+	artifact: ScenarioArtifact | undefined,
+	npcId: string,
+): DialogueTree | undefined {
+	const own = trees[npcId];
+	if (own) return own;
+	const alias = aliasOf(artifact, npcId);
+	return alias ? trees[alias] : undefined;
+}
+
+function aliasOf(artifact: ScenarioArtifact | undefined, id: string): string | undefined {
+	if (!artifact) return undefined;
+	for (const site of Object.values(artifact.sites)) {
+		for (const npc of site.npcs) {
+			if (makeNpcId(site.siteId, npc.slot) === id) return npc.treeAlias;
+		}
+	}
+	return undefined;
+}
+
 /**
  * The clock a resumed scenario should be running on.
  *

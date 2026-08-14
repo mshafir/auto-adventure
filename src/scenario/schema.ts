@@ -144,6 +144,10 @@ export const StoredNpcSpecSchema = z.object({
 	placement: z.enum(PLACEMENTS),
 	structureName: z.string().optional(),
 	knows: z.array(z.string()),
+	/** Whether a model may improvise for them. Never for anybody the arc hangs on. */
+	live: z.boolean().optional(),
+	/** Speak with somebody else's written words, by their npcId. */
+	treeAlias: z.string().min(1).max(64).optional(),
 	/** What has to be true for this person to be in the world at all. */
 	requires: ConditionSchema.optional(),
 	/** Keep them at their own anchor at every hour, rather than on a schedule. */

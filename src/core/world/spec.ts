@@ -55,6 +55,29 @@ export interface NpcSpec {
 	readonly structureName?: string;
 	readonly knows: readonly string[];
 	/**
+	 * Whether a model may improvise for this person.
+	 *
+	 * Opt-in, and only in a world with an authored cast. "Anyone the author did not write a
+	 * conversation for" was the old rule and it is the wrong one: it made improvisation the
+	 * default for everybody the author had not got to yet, so a half-written town was a town
+	 * full of people inventing facts about a story they had not been told.
+	 *
+	 * Somebody the arc hangs on is never allowed it, whatever this says — talking to one *is*
+	 * the story moving, and a model asked to say hello writes a fine line about the weather
+	 * while the errand it was meant to hand over goes unmentioned. `craft check` refuses a
+	 * scenario that marks one.
+	 */
+	readonly live?: boolean;
+	/**
+	 * Speak with somebody else's written words.
+	 *
+	 * How a town gets populated without thirty written conversations. The tree is looked up
+	 * under the *other* person's id, so one carefully written villager can answer for the six
+	 * other householders — which is a better floor than either improvisation or silence, and
+	 * costs nothing.
+	 */
+	readonly treeAlias?: string;
+	/**
 	 * What has to be true for this person to be here at all.
 	 *
 	 * Absent means always, which is everybody in a procedural or live world — this

@@ -38,6 +38,23 @@ export interface DialogueDeps {
 }
 
 /**
+ * Whether a model may speak for this person at all.
+ *
+ * Opt-in for an authored cast, and unchanged for everybody else. The old rule was "anyone the
+ * author did not write a conversation for", which made improvisation the *default* for
+ * everybody the author had not reached yet — so a half-written town was a town full of people
+ * inventing facts about a story they had never been told, and the launcher's toggle read as
+ * "anyone I forgot" rather than as a decision.
+ *
+ * A world with no authored spec for this site is a live or procedural one, where derived
+ * residents are exactly who improvisation is for and nothing changes.
+ */
+function mayImprovise(site: SiteSpec | undefined, slot: number): boolean {
+	const authored = site?.npcs.find((npc) => npc.slot === slot);
+	return authored ? authored.live === true : true;
+}
+
+/**
  * One turn of conversation, and the memory that outlives it.
  *
  * The service owns no state. It reads the engine's, produces effects, and
@@ -126,7 +143,7 @@ export function createDialogueService(deps: DialogueDeps) {
 		// The floor for them is `cannedTurn`, which is built from what this person knows
 		// and what the site's hooks say — the same material a model would be given, minus
 		// the licence to invent. Not silence, and not an error state.
-		const fixed = storyNpcIds(state.arc).has(npcId);
+		const fixed = storyNpcIds(state.arc).has(npcId) || !mayImprovise(site, placed.spec.slot);
 
 		// A remembered reply is read whether or not a model is available, and that
 		// asymmetry with *writing* is deliberate. Once these words exist they are content

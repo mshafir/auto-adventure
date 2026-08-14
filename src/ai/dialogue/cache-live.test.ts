@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { demoArtifact } from "../../../test/fixtures/scenario.js";
 import { turnKey } from "../../core/rules/dialogue-cache.js";
 import { npcId } from "../../core/world/spec.js";
+import type { ScenarioArtifact } from "../../scenario/artifact.js";
 import { buildSession } from "../../session.js";
 
 /**
@@ -31,8 +32,27 @@ afterEach(() => {
 
 const REMEMBERED = "I remember telling you: the mill wheel is seized.";
 
+/**
+ * The fixture's cast, allowed to improvise.
+ *
+ * Improvisation is opt-in per person for an authored cast, and the cache only exists for
+ * people who improvise — there is nothing to remember about somebody whose words were
+ * written down. So a test about the cache has to mark somebody first.
+ */
+function improvising(artifact: ScenarioArtifact): ScenarioArtifact {
+	return {
+		...artifact,
+		sites: Object.fromEntries(
+			Object.entries(artifact.sites).map(([key, site]) => [
+				key,
+				{ ...site, npcs: site.npcs.map((npc) => ({ ...npc, live: true })) },
+			]),
+		),
+	};
+}
+
 function start() {
-	const artifact = demoArtifact();
+	const artifact = improvising(demoArtifact());
 	const siteId = Number(Object.keys(artifact.sites)[0]);
 	const anchor = npcId(siteId, 0);
 	const spec = artifact.sites[String(siteId)]?.npcs[0];
@@ -170,7 +190,7 @@ describe("a reply that has already been written", () => {
 
 	it("yields to an author's words", async () => {
 		// A written tree outranks a remembered reply: the author wrote theirs on purpose.
-		const artifact = demoArtifact();
+		const artifact = improvising(demoArtifact());
 		const siteId = Number(Object.keys(artifact.sites)[0]);
 		const anchor = npcId(siteId, 0);
 		const spec = artifact.sites[String(siteId)]?.npcs[0];

@@ -1559,7 +1559,16 @@ function checkTrees(artifact: ScenarioArtifact): Finding[] {
 		);
 	}
 
-	const without = people.filter((id) => !trees[id]);
+	// Somebody sharing another's written words has words. `treeAlias` is how a town is
+	// populated without thirty written conversations, and counting the sharers as silent would
+	// make the feature look like a fault every time it was used.
+	const spoken = new Set(Object.keys(trees));
+	for (const site of Object.values(artifact.sites)) {
+		for (const npc of site.npcs) {
+			if (npc.treeAlias && spoken.has(npc.treeAlias)) spoken.add(npcId(site.siteId, npc.slot));
+		}
+	}
+	const without = people.filter((id) => !spoken.has(id));
 	if (without.length > 0 && Object.keys(trees).length > 0)
 		findings.push(
 			warning(

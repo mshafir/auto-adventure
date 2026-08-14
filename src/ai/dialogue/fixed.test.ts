@@ -55,9 +55,22 @@ function findTown(seed: number): MacroSite {
 }
 
 /** A town, its people, and a story whose first beat opens at slot 0. */
-function stage(options: { readonly trees?: Record<string, DialogueTree> } = {}) {
+function stage(
+	options: {
+		readonly trees?: Record<string, DialogueTree>;
+		readonly live?: readonly number[];
+	} = {},
+) {
 	const site = findTown(SEED);
-	const spec = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
+	const found = fallbackSite(worldSeed(SEED), site, siteContext(worldSeed(SEED), site));
+	// Improvisation is opt-in for an authored cast, so a test about who improvises has to say
+	// who was allowed to. A world with no authored spec at all is the other case, and is
+	// unchanged — see `mayImprovise`.
+	const live = new Set(options.live ?? []);
+	const spec = {
+		...found,
+		npcs: found.npcs.map((npc) => (live.has(npc.slot) ? { ...npc, live: true } : npc)),
+	};
 	const arc: ScenarioArc = {
 		title: "The Tally",
 		premise: "Somebody has to count the sacks.",
@@ -138,19 +151,36 @@ describe("who is allowed to improvise", () => {
 		expect(said).toMatch(/\S/);
 	});
 
-	it("still lets an ordinary resident improvise", async () => {
-		// The other half of the same fault. Somebody standing in a town who anchors no
-		// beat is exactly who `liveInGame` was bought for.
-		const staged = stage();
+	it("lets a resident the author marked improvise", async () => {
+		// The other half of the same fault. Somebody standing in a town who anchors no beat is
+		// exactly who live conversation was bought for — once the author has said so.
+		const staged = stage({ live: [1] });
 		expect(await speak(staged, 1)).toBe(IMPROVISED);
 		expect(streamed).toHaveBeenCalledTimes(1);
 	});
 
-	it("lets an ordinary resident improvise even when other people have written trees", async () => {
+	/*
+	 * Opt-in, not opt-out, and the difference matters while a world is half written.
+	 *
+	 * The old rule was "anybody the author did not write a conversation for", which made
+	 * improvisation the default for everybody not yet reached — so a town in progress was a town
+	 * full of people inventing facts about a story nobody had told them.
+	 */
+	it("does not let an unmarked resident improvise, however little is written", async () => {
+		const staged = stage();
+		const said = await speak(staged, 1);
+		expect(streamed).not.toHaveBeenCalled();
+		expect(said).not.toBe(IMPROVISED);
+		// The canned menu, which is a real conversation built from what they know.
+		expect(said).toMatch(/\S/);
+	});
+
+	it("lets a marked resident improvise even when other people have written trees", async () => {
 		// The bug: the scripted path answered for everybody, tree or no tree, so one
 		// authored conversation anywhere in a scenario silenced the model for the whole
 		// cast. A world that paid for improvisation got none of it.
 		const staged = stage({
+			live: [1],
 			trees: {
 				[npcId(findTown(SEED).id, 0)]: {
 					npcId: npcId(findTown(SEED).id, 0),

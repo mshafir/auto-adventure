@@ -1,0 +1,465 @@
+import type { DialogueTree } from "../ai/dialogue/tree.js";
+import { PLACEMENTS, STRUCTURE_KINDS } from "../ai/director/schemas.js";
+import { authoredTiles } from "../core/gen/features/authored.js";
+import type { AnchorKind, StructureKind } from "../core/gen/features/patch.js";
+import type { AuthoredBarrier } from "../core/rules/lock.js";
+import type { Placement } from "../core/rules/placement.js";
+import type { Sign } from "../core/rules/signage.js";
+import { type NpcSpec, npcId, type SiteSpec } from "../core/world/spec.js";
+import { resolvePlacements } from "../engine/placements.js";
+import { artifactWorld } from "../scenario/artifact.js";
+import { signpostsFor } from "../scenario/signposts.js";
+import { surveyWorld } from "../scenario/survey.js";
+import type { TerraformEdit } from "../scenario/terraform.js";
+import { buildPassability, siteIndex } from "../scenario/validate.js";
+import { type Args, CraftError } from "./args.js";
+import { addTo, commit, filePath, idTaken, openWorkspace, phaseOf } from "./workspace.js";
+import { requireId } from "./world.js";
+
+/**
+ * Commands about what is in the world: places, people, things, and the ground under them.
+ *
+ * Every one of these resolves what it is asked for *before* writing it. That is the whole
+ * argument for the CLI existing rather than an agent editing JSON: a chest in a building
+ * that does not exist is a call that fails here, with a sentence saying which buildings
+ * there are, instead of an item that is nowhere and a quest that can never close.
+ */
+
+export function craftClaim(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "claim"));
+	const artifact = workspace.artifact;
+	const siteId = args.int("site");
+	const name = args.str("name");
+	const short = args.str("short", name);
+	const description = args.str("description");
+	const walled = args.bool("walled");
+	const hooks = args.list("hook");
+	const structures = args.list("structure");
+	args.refuseUnknown();
+
+	if (artifact.sites[String(siteId)]) {
+		throw new CraftError(
+			`site ${siteId} is already claimed as "${artifact.sites[String(siteId)]?.name}"`,
+		);
+	}
+
+	const survey = surveyWorld(artifactWorld(artifact), artifact.brief.duration, artifact.recipe);
+	const found = survey.sites.find((candidate) => candidate.site.id === siteId);
+	if (!found) {
+		const nearby = survey.sites
+			.filter((candidate) => candidate.settlement)
+			.slice(0, 5)
+			.map((candidate) => candidate.site.id);
+		throw new CraftError(
+			`site ${siteId} is not a place in this world. Settlements here: ${nearby.join(", ")} — "craft survey ${artifact.id}" lists them all`,
+		);
+	}
+	if (!found.settlement) {
+		throw new CraftError(
+			`site ${siteId} is a ${found.site.kind}, which has no buildings, so nobody can be put in it`,
+		);
+	}
+
+	const budget = found.context.buildingBudget;
+	const parsed = structures.map((entry) => parseStructure(entry, budget));
+	if (parsed.length > budget) {
+		throw new CraftError(
+			`${name} has room for ${budget} building(s) and ${parsed.length} were asked for — the survey says how much room each place has`,
+		);
+	}
+
+	const spec: SiteSpec = {
+		siteId,
+		name,
+		shortName: short,
+		description,
+		settlement: { name, walled, structures: parsed },
+		npcs: [],
+		hooks,
+	};
+	workspace.artifact = { ...artifact, sites: { ...artifact.sites, [String(siteId)]: spec } };
+	commit(workspace, `claiming site ${siteId}`);
+
+	out(`claimed ${siteId} as "${name}" (${found.site.kind}, room for ${budget})`);
+	if (parsed.length > 0) out(`  ${parsed.map((s) => s.name ?? s.kind).join(", ")}`);
+	out(`next: craft npc add ${artifact.id} --site ${siteId} --name "..." --role "..." --at square`);
+}
+
+/** `kind:Name` or just `kind`, which is how a building is written on a command line. */
+function parseStructure(
+	entry: string,
+	budget: number,
+): SiteSpec["settlement"]["structures"][number] {
+	const colon = entry.indexOf(":");
+	const kind = (colon >= 0 ? entry.slice(0, colon) : entry).trim();
+	const name = colon >= 0 ? entry.slice(colon + 1).trim() : undefined;
+	if (!(STRUCTURE_KINDS as readonly string[]).includes(kind)) {
+		throw new CraftError(
+			`"${kind}" is not a kind of building. One of: ${STRUCTURE_KINDS.join(", ")}`,
+		);
+	}
+	return {
+		kind: kind as StructureKind,
+		size: budget > 8 ? "medium" : "small",
+		importance: name ? 4 : 1,
+		...(name ? { name, required: true } : {}),
+	};
+}
+
+export function craftNpcAdd(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "npc add"));
+	const artifact = workspace.artifact;
+	const siteId = args.int("site");
+	const site = artifact.sites[String(siteId)];
+	if (!site) {
+		throw new CraftError(
+			`site ${siteId} has not been claimed — "craft claim ${artifact.id} --site ${siteId} ..." first`,
+		);
+	}
+
+	const name = args.str("name");
+	const role = args.str("role");
+	const at = args.oneOf("at", PLACEMENTS as readonly AnchorKind[], "square");
+	const inside = args.has("in") ? args.str("in") : undefined;
+	const indoors = args.bool("indoors");
+	const glyph = args.str("glyph", name.trim()[0]?.toUpperCase() ?? "P");
+	const appearance = args.str("appearance", `${role} of ${site.name}.`);
+	const persona = args.str("persona", `A ${role}, and talks like one.`);
+	const disposition = args.int("disposition", 0);
+	const knows = args.list("knows");
+	const stays = args.bool("stays");
+	const live = args.bool("live");
+	const like = args.has("like") ? args.str("like") : undefined;
+	args.refuseUnknown();
+
+	if (!/^[A-Za-z]$/.test(glyph)) throw new CraftError(`--glyph wants one letter, not "${glyph}"`);
+	if (inside && !site.settlement.structures.some((s) => (s.name ?? s.kind) === inside)) {
+		throw new CraftError(
+			`${site.name} has no building called "${inside}". It has: ${site.settlement.structures.map((s) => s.name ?? s.kind).join(", ") || "none yet"}`,
+		);
+	}
+	if (indoors && !inside) throw new CraftError("--indoors wants --in to say which building");
+
+	const slot = site.npcs.length;
+	const id = npcId(siteId, slot);
+	if (like && !artifact.trees?.[like]) {
+		throw new CraftError(
+			`--like wants somebody with a written conversation; "${like}" has none. Written so far: ${Object.keys(artifact.trees ?? {}).join(", ") || "nobody"}`,
+		);
+	}
+
+	const spec: NpcSpec = {
+		slot,
+		name,
+		role,
+		glyph,
+		appearance,
+		persona,
+		disposition,
+		placement: at,
+		knows,
+		...(inside ? { structureName: inside } : {}),
+		...(indoors ? { indoors: true } : {}),
+		...(stays ? { stays: true } : {}),
+		...(live ? { live: true } : {}),
+		...(like ? { treeAlias: like } : {}),
+	};
+
+	workspace.artifact = {
+		...artifact,
+		sites: { ...artifact.sites, [String(siteId)]: { ...site, npcs: [...site.npcs, spec] } },
+	};
+	commit(workspace, `adding ${name} to ${site.name}`);
+
+	out(`${name} is ${id}, at the ${at} of ${site.name}${inside ? ` (${inside})` : ""}`);
+	if (like) out(`  speaks with ${like}'s words`);
+	if (live) out("  may improvise, so the story must not hang on them");
+	else if (!like) out(`next: craft tree ${artifact.id} --npc ${id} --init`);
+}
+
+/**
+ * Scaffold a conversation for somebody to write into.
+ *
+ * The one command whose output is meant to be hand-edited afterwards. What it writes is a
+ * valid tree with a way out, because a tree with no way out traps the panel open and a tree
+ * with a dangling `goto` ends a conversation abruptly — both silent at runtime, both easy to
+ * write by hand, and neither worth making an author rediscover.
+ */
+export function craftTree(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "tree"));
+	const who = args.str("npc");
+	args.bool("init");
+	args.refuseUnknown();
+
+	const known = new Set<string>();
+	for (const site of Object.values(workspace.artifact.sites)) {
+		for (const npc of site.npcs) known.add(npcId(site.siteId, npc.slot));
+	}
+	if (!known.has(who)) {
+		throw new CraftError(
+			`nobody in this world is "${who}". There is: ${[...known].join(", ") || "nobody yet"}`,
+		);
+	}
+	if (workspace.artifact.trees?.[who])
+		throw new CraftError(`${who} already has a written conversation`);
+
+	const tree: DialogueTree = {
+		npcId: who,
+		entry: ["opening"],
+		nodes: {
+			opening: {
+				id: "opening",
+				speech: "Say something here.",
+				choices: [{ text: "Goodbye.", goto: null }],
+			},
+		},
+	};
+	workspace.artifact = {
+		...workspace.artifact,
+		trees: { ...workspace.artifact.trees, [who]: tree },
+	};
+	commit(workspace, `writing a conversation for ${who}`);
+
+	out(`wrote ${filePath(workspace, "trees", `${who}.json`)}`);
+	out("  one node with a way out. Edit the prose directly; the shape is already valid.");
+}
+
+export function craftPlace(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "place"));
+	const phase = phaseOf(workspace, args.has("phase") ? args.str("phase") : undefined);
+
+	// Three things a scenario puts in a place, and they share a verb because to an author they
+	// are one gesture: "there is something here".
+	if (args.bool("sign")) {
+		placeSign(workspace, args, phase, out);
+		return;
+	}
+	if (args.bool("gate")) {
+		placeGate(workspace, args, phase, out);
+		return;
+	}
+	placeItem(workspace, args, phase, out);
+}
+
+type Phase = ReturnType<typeof phaseOf>;
+type Workspace = ReturnType<typeof openWorkspace>;
+
+function placeItem(
+	workspace: Workspace,
+	args: Args,
+	phase: Phase,
+	out: (line: string) => void,
+): void {
+	const artifact = workspace.artifact;
+	const item = args.str("item");
+	const description = args.str("description");
+	const siteId = args.int("site");
+	const inside = args.has("in") ? args.str("in") : undefined;
+	const anchor = args.has("anchor")
+		? args.oneOf("anchor", PLACEMENTS as readonly AnchorKind[])
+		: undefined;
+	const requires = args.has("requires") ? args.str("requires") : undefined;
+	const show = args.bool("show");
+	const quantity = args.int("quantity", 1);
+	const id = args.str("id", slug(item));
+	const emptyText = args.has("empty") ? args.str("empty") : undefined;
+	args.refuseUnknown();
+
+	if (idTaken(artifact, "placements", id))
+		throw new CraftError(`there is already a placement called "${id}"`);
+	if (!artifact.sites[String(siteId)]) throw new CraftError(`site ${siteId} has not been claimed`);
+
+	const placement: Placement = {
+		id,
+		at: {
+			kind: "site",
+			siteId,
+			...(inside ? { structure: inside } : {}),
+			...(anchor ? { anchor } : {}),
+		},
+		item: { name: item, description, ...(quantity > 1 ? { quantity } : {}) },
+		...(requires ? { requires: { flag: requires } } : {}),
+		...(show ? { showDecor: true } : {}),
+		...(emptyText ? { emptyText } : {}),
+	};
+
+	// Resolved before it is written, which is the point of this command existing. An item that
+	// is nowhere is a `have` objective that can never be satisfied and nothing on screen to say
+	// why — and it is invisible until somebody plays that far.
+	const { resolved, unresolved } = resolvePlacements([placement], {
+		world: artifactWorld(artifact),
+		siteSpec: (id) => artifact.sites[String(id)],
+		bounds: artifact.bounds,
+	});
+	const failed = unresolved[0];
+	if (failed) throw new CraftError(`"${item}" cannot be placed: ${failed.reason}`);
+
+	addTo(workspace, phase, "placements", placement);
+	commit(workspace, `placing "${item}"`);
+
+	const landed = resolved[0];
+	out(
+		`"${item}" is ${id}, in ${artifact.sites[String(siteId)]?.name}${inside ? `'s ${inside}` : ""}`,
+	);
+	if (landed)
+		out(
+			`  lands at ${landed.interiorId ? `interior ${landed.interiorId} ` : ""}${landed.x},${landed.y}`,
+		);
+	if (phase) out(`  from "${phase.name}" onward`);
+}
+
+function placeSign(
+	workspace: Workspace,
+	args: Args,
+	phase: Phase,
+	out: (line: string) => void,
+): void {
+	const artifact = workspace.artifact;
+	const at = args.point("at");
+	const arms = args.list("arm").map(Number);
+	const note = args.has("note") ? args.str("note") : undefined;
+	const id = args.str("id", `sign-${at.x}-${at.y}`);
+	args.refuseUnknown();
+
+	if (idTaken(artifact, "signs", id))
+		throw new CraftError(`there is already a sign called "${id}"`);
+	if (arms.length === 0) throw new CraftError("--arm wants at least one site id to point at");
+	for (const arm of arms) {
+		if (!artifact.sites[String(arm)]) {
+			throw new CraftError(`a board cannot point at site ${arm}, which is not claimed`);
+		}
+	}
+
+	const sign: Sign = {
+		id,
+		x: at.x,
+		y: at.y,
+		arms: arms.map((armSite) => ({ siteId: armSite })),
+		...(note ? { note } : {}),
+	};
+	addTo(workspace, phase, "signs", sign);
+	commit(workspace, `putting up ${id}`);
+
+	out(`${id} stands at ${at.x},${at.y}`);
+	out(`  points at ${arms.map((arm) => artifact.sites[String(arm)]?.name).join(", ")}`);
+	out("  the bearing and the distance are worked out from where those places really are");
+}
+
+/**
+ * Put a board on the road out of every town the story walks between.
+ *
+ * Free, and derived: the arc already knows which places the story sends the player to and in
+ * what order, so nothing has to be written down twice. This is the command to reach for
+ * rather than placing boards one at a time — an author who writes them by hand has to keep
+ * them in step with the arc, and a board pointing somewhere the story no longer goes is
+ * worse than no board.
+ */
+export function craftSignposts(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "signposts"));
+	args.refuseUnknown();
+	const artifact = workspace.artifact;
+	if (!artifact.arc)
+		throw new CraftError("this world has no story yet, so there is nowhere to point");
+
+	const plan = signpostsFor(artifact, buildPassability(artifact), siteIndex(artifact));
+	if (plan.signs.length === 0) {
+		out("nothing to sign: the story does not walk between places yet");
+		for (const missed of plan.missed) out(`  ${missed}`);
+		return;
+	}
+
+	workspace.artifact = { ...artifact, signs: plan.signs };
+	commit(workspace, "putting up the signposts");
+
+	out(`${plan.signs.length} board(s) up`);
+	for (const missed of plan.missed) out(`  no board: ${missed}`);
+}
+
+function placeGate(
+	workspace: Workspace,
+	args: Args,
+	phase: Phase,
+	out: (line: string) => void,
+): void {
+	const artifact = workspace.artifact;
+	const siteId = args.int("site");
+	const opensWhen = args.str("opens-when");
+	const lockedText = args.str("locked-text", "The gate is barred.");
+	const opensText = args.has("opens-text") ? args.str("opens-text") : undefined;
+	const id = args.str("id", `gate-${siteId}`);
+	args.refuseUnknown();
+
+	if (idTaken(artifact, "barriers", id))
+		throw new CraftError(`there is already a gate called "${id}"`);
+	if (!artifact.sites[String(siteId)]) throw new CraftError(`site ${siteId} has not been claimed`);
+
+	const barrier: AuthoredBarrier = {
+		id,
+		tiles: { siteId, at: "gate" },
+		opensWhen: { flag: opensWhen },
+		lockedText,
+		...(opensText ? { opensText } : {}),
+	};
+	addTo(workspace, phase, "barriers", barrier);
+	commit(workspace, `barring the gate at site ${siteId}`);
+
+	out(`${id} bars ${artifact.sites[String(siteId)]?.name} until "${opensWhen}"`);
+}
+
+export function craftTerraform(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "terraform"));
+	const phase = phaseOf(workspace, args.has("phase") ? args.str("phase") : undefined);
+
+	const edit = readEdit(args);
+	args.refuseUnknown();
+
+	if (idTaken(workspace.artifact, "terraform", edit.id)) {
+		throw new CraftError(`there is already an edit called "${edit.id}"`);
+	}
+	const tiles = authoredTiles([edit]);
+	if (tiles.size === 0) throw new CraftError("that edit changes no ground at all");
+
+	addTo(workspace, phase, "terraform", edit);
+	commit(workspace, `laying ${edit.id}`);
+
+	out(`${edit.id}: ${tiles.size} tile(s)`);
+	if (phase) out(`  from "${phase.name}" onward`);
+	out("  terraform is a debt: it grows the scenario and makes the world look hand-mangled.");
+}
+
+function readEdit(args: Args): TerraformEdit {
+	if (args.has("clearing")) {
+		const at = args.point("clearing");
+		return {
+			t: "Clearing",
+			id: args.str("id", `clearing-${at.x}-${at.y}`),
+			at,
+			radius: args.int("radius", 3),
+		};
+	}
+	const kind = args.has("bridge") ? "bridge" : "path";
+	const key = kind === "bridge" ? "bridge" : "path";
+	const from = args.point(key, 0);
+	const to = args.point(key, 1);
+	const id = args.str("id", `${kind}-${from.x}-${from.y}`);
+	if (kind === "bridge") return { t: "Bridge", id, from, to };
+	const width = args.int("width", 1);
+	return {
+		t: "Path",
+		id,
+		from,
+		to,
+		surface: args.oneOf("surface", ["path", "dirt", "cobble"] as const, "path"),
+		...(width > 1 ? { width } : {}),
+	};
+}
+
+function slug(text: string): string {
+	return (
+		text
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-+|-+$/g, "")
+			.slice(0, 48) || "thing"
+	);
+}

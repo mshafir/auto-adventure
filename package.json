@@ -52,6 +52,7 @@
 		"screens": "vite-node src/tools/screenshot.tsx",
 		"author": "vite-node src/tools/author.ts --",
 		"survey": "vite-node src/tools/survey.ts --",
+		"craft": "vite-node src/tools/craft.ts --",
 		"assemble": "vite-node src/tools/assemble.ts --",
 		"validate": "vite-node src/tools/validate.ts --",
 		"invariants": "vite-node src/tools/invariants.ts --",
