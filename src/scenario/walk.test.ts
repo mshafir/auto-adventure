@@ -2,12 +2,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { twoPhaseArtifact } from "../../test/fixtures/two-phase.js";
 import { listSaves } from "../persist/save-repo.js";
-import { readScenarioAt, scenarioPath } from "./repo.js";
 import { walkTheStory } from "./walk.js";
 
 /**
- * The shipped scenarios, played to the end in the real engine.
+ * A whole story, played to the end in the real engine.
  *
  * The strongest claim anything in this repository makes about a scenario, and the one
  * the offline checks cannot make: not that the story *looks* finishable, but that a
@@ -37,50 +37,37 @@ afterEach(() => {
 // Building a session, generating chunks and walking between towns is real work.
 const SLOW = { timeout: 120_000 };
 
-/*
- * Skipped until the `two-phase` fixture directory exists.
- *
- * These suites are parameterised over the scenarios that used to ship in `.scenarios/`,
- * and those were deleted with the pipeline that wrote them — so they currently assert
- * things about content that is not there. The checkers themselves are kept deliberately:
- * they become `craft check` and `craft playtest`. Task 11 of
- * docs/superpowers/plans/2026-08-14-scenario-v2-and-scenes.md points them at
- * test/fixtures/scenarios/two-phase and turns them back on.
- */
-describe.skip("walkTheStory", SLOW, () => {
-	for (const name of ["thornwick-road", "green-chapel"]) {
-		it(`plays ${name} to its ending`, async () => {
-			const artifact = readScenarioAt(scenarioPath(name));
-			expect(artifact, `${name} did not load`).toBeDefined();
-			if (!artifact) return;
+describe("walkTheStory", SLOW, () => {
+	it("plays the two-phase fixture to its ending", async () => {
+		const artifact = twoPhaseArtifact();
+		const walk = await walkTheStory(artifact, "walk-test-two-phase");
+		expect(walk.absent, "somebody the story hangs on was not standing anywhere").toEqual([]);
+		expect(walk.stuck, "a beat never opened").toEqual([]);
+		expect(walk.unfinished, "an errand could not be closed").toEqual([]);
+		expect(walk.finished).toBe(true);
+		expect(walk.opened.length).toBe(artifact.arc?.beats.length ?? 0);
+	});
 
-			const walk = await walkTheStory(artifact, `walk-test-${name}`);
-			expect(walk.absent, "somebody the story hangs on was not standing anywhere").toEqual([]);
-			expect(walk.stuck, "a beat never opened").toEqual([]);
-			expect(walk.unfinished, "an errand could not be closed").toEqual([]);
-			expect(walk.finished).toBe(true);
-			// Every beat but the arm of the fork that was not taken.
-			expect(walk.opened.length).toBeGreaterThanOrEqual((artifact.arc?.beats.length ?? 0) - 1);
-		});
-	}
+	/*
+	 * The walk has to be able to get *through* a cutscene, or every beat behind one is
+	 * unreachable and a scenario that plays perfectly reports as stuck at its first scene.
+	 */
+	it("gets through the cutscene on the way, rather than stopping at it", async () => {
+		const walk = await walkTheStory(twoPhaseArtifact(), "walk-test-cutscene");
+		expect(walk.finished).toBe(true);
+	});
 
 	it("leaves no world behind for the launcher to offer", async () => {
 		// The walk used to write a save under `walk-<id>`, and `listSaves` has no filter — so
 		// a checked scenario appeared in Continue as a half-played world nobody started. That
 		// was tolerable while this was a tool somebody ran by hand and is not once generation
 		// walks every story it writes.
-		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
-		expect(artifact).toBeDefined();
-		if (!artifact) return;
-
-		await walkTheStory(artifact, "walk-test-ephemeral");
+		await walkTheStory(twoPhaseArtifact(), "walk-test-ephemeral");
 		expect(listSaves().map((entry) => entry.worldId)).not.toContain("walk-test-ephemeral");
 	});
 
 	it("says a world with no story is finished, without building one", async () => {
-		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
-		if (!artifact) return;
-		const { arc: _arc, ...storyless } = artifact;
+		const { arc: _arc, ...storyless } = twoPhaseArtifact();
 		const walk = await walkTheStory(storyless, "walk-test-storyless");
 		expect(walk.finished).toBe(true);
 		expect(walk.opened).toEqual([]);

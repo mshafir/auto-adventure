@@ -26,7 +26,15 @@ import type { ScenarioArtifact } from "./artifact.js";
  */
 
 export interface StoryWalker {
-	readonly readCards: () => void;
+	/**
+	 * Let whatever the world is doing finish, before doing anything with it.
+	 *
+	 * A card and a cutscene both take the world away, and a walker that does not know it spends
+	 * its whole budget pressing arrow keys at something swallowing them. Cards are dismissed and
+	 * scenes are played out frame by frame, answering each line — as a player would, rather than
+	 * skipping, because a walkthrough that skipped every scene would never prove they work.
+	 */
+	readonly catchUp: () => void;
 	readonly goTo: (site: MacroSite) => void;
 	readonly buildingsOf: (siteId: number, structureName?: string) => BuildingPlacement[];
 	readonly findIndoors: (id: string, siteId: number, structure?: string) => PlacedNpc | undefined;
@@ -85,9 +93,20 @@ export function storyWalker(
 	 * dialogue never lands in state, so a `talk` objective sits unticked forever and the
 	 * story reports as unfinishable when in fact nobody was listening.
 	 */
-	const readCards = () => {
-		for (let guard = 0; guard < 16 && state().card; guard++) {
-			engine.dispatch({ t: "DismissCard" });
+	const catchUp = () => {
+		// Bounded generously rather than tightly: a cutscene is dozens of frames, and several may
+		// fire in a row when a chapter turns. The bound is only here so a scene that somehow
+		// cannot finish stops the walk instead of hanging it.
+		for (let guard = 0; guard < 4000; guard++) {
+			const now = state();
+			if (now.card) {
+				engine.dispatch({ t: "DismissCard" });
+				continue;
+			}
+			if (!now.scene) return;
+			// The advance key when somebody is speaking, a frame otherwise — which is exactly what
+			// the UI's interval and the player's thumb do between them.
+			engine.dispatch(now.scene.caption ? { t: "Advance" } : { t: "SceneFrame" });
 		}
 	};
 
@@ -192,7 +211,7 @@ export function storyWalker(
 	 */
 	const enterBuilding = (building: BuildingPlacement): boolean => {
 		apply({ t: "Teleport", x: building.door.x, y: building.door.y + 1 });
-		readCards();
+		catchUp();
 		step("up");
 		return state().player.inside !== undefined;
 	};
@@ -221,7 +240,7 @@ export function storyWalker(
 		id: string,
 		indoors?: { readonly siteId: number; readonly structure?: string },
 	): Promise<boolean> => {
-		readCards();
+		catchUp();
 		const person = indoors
 			? (engine.personById(id) ?? findIndoors(id, indoors.siteId, indoors.structure))
 			: engine.personById(id);
@@ -234,7 +253,7 @@ export function storyWalker(
 		// turn it records — so this needs a real tick, not a zero-tick wait.
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		engine.dispatch({ t: "CloseDialogue" });
-		readCards();
+		catchUp();
 		return true;
 	};
 
@@ -309,7 +328,7 @@ export function storyWalker(
 	};
 
 	return {
-		readCards,
+		catchUp,
 		goTo,
 		buildingsOf,
 		findIndoors,

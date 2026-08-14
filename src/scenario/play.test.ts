@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { twoPhaseArtifact } from "../../test/fixtures/two-phase.js";
 import { mainLineBeats, type ScenarioBeat } from "../core/rules/arc.js";
 import { listSaves } from "../persist/save-repo.js";
 import { walkMainLine, withStory } from "./play.js";
-import { readScenarioAt, scenarioPath } from "./repo.js";
 
 /**
  * Playing a story, without deciding anything about it.
@@ -28,21 +28,10 @@ afterEach(() => {
 	rmSync(home, { recursive: true, force: true });
 });
 
-/*
- * Skipped until the `two-phase` fixture directory exists.
- *
- * These suites are parameterised over the scenarios that used to ship in `.scenarios/`,
- * and those were deleted with the pipeline that wrote them — so they currently assert
- * things about content that is not there. The checkers themselves are kept deliberately:
- * they become `craft check` and `craft playtest`. Task 11 of
- * docs/superpowers/plans/2026-08-14-scenario-v2-and-scenes.md points them at
- * test/fixtures/scenarios/two-phase and turns them back on.
- */
-describe.skip("walking the main line", { timeout: 180_000 }, () => {
+describe("walking the main line", { timeout: 180_000 }, () => {
 	it("walks a good story to the end", async () => {
-		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
-		expect(artifact?.arc, "thornwick-road has no arc, so this test proves nothing").toBeDefined();
-		if (!artifact?.arc) return;
+		const artifact = twoPhaseArtifact();
+		expect(artifact.arc, "the fixture has no arc, so this test proves nothing").toBeDefined();
 
 		const walk = await withStory(artifact, (playing) =>
 			walkMainLine(artifact, playing, Date.now() + 120_000),
@@ -52,9 +41,9 @@ describe.skip("walking the main line", { timeout: 180_000 }, () => {
 	});
 
 	it("reports the beat it could not open rather than fixing it", async () => {
-		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
-		if (!artifact?.arc) return;
+		const artifact = twoPhaseArtifact();
 		const arc = artifact.arc;
+		if (!arc) throw new Error("the fixture has no arc, so this test proves nothing");
 		// Not an arm of a fork: opening one arm bars its siblings, so a broken arm would be
 		// skipped as barred rather than reached, and this would pass for the wrong reason.
 		const beats = mainLineBeats(arc).filter((beat) => beat.branch === undefined);
@@ -83,8 +72,7 @@ describe.skip("walking the main line", { timeout: 180_000 }, () => {
 	it("leaves no world behind for the launcher to offer", async () => {
 		// The regression test for the `walk-<id>` leak: `dispose()` flushes a save repository, so
 		// a walk with nothing to stop it wrote a world into the player's Continue list.
-		const artifact = readScenarioAt(scenarioPath("thornwick-road"));
-		if (!artifact) return;
+		const artifact = twoPhaseArtifact();
 		await withStory(artifact, (playing) => walkMainLine(artifact, playing, Date.now() + 120_000));
 		expect(listSaves()).toEqual([]);
 	});

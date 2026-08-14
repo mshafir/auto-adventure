@@ -21,9 +21,8 @@ npm run preview -- --seed vale --at 0,0    # dump a chunk to stdout
 npm run preview -- --at 0,0 --ascii        # ...as one ASCII byte per tile
 npm run preview -- --at 0,0 --flat         # ...with shadows and slope shading off
 npm run preview -- --at 0,0 --xscale 1     # ...one column per tile instead of two
-npm run author -- --id thornwick --prompt "..." --duration short   # build a scenario
 npm run survey -- --seed thornwick --duration short                # dump the map, free
-npm run assemble -- --draft drafts/green-chapel.json               # install a written one
+npm run validate                                                   # check every scenario on disk
 npm run check             # typecheck + lint + tests
 ```
 
@@ -51,8 +50,7 @@ four chunks is one town seen four ways.
 | `src/core/rules` | `reduce(state, command, probe) → {state, effects}` — pure and total |
 | `src/engine/` | Chunk manager, stitched world view, effect runner, NPC directory |
 | `src/ai/` | Gateway client, director (regions and sites), dialogue and memory |
-| `src/ai/author/` | The offline authoring pipeline and its prompts |
-| `src/scenario/` | Artifacts, the survey, and validation against the real generator |
+| `src/scenario/` | Scenario directories, chapters, the survey, and validation against the real generator |
 | `src/persist/` | Deltas-only saves, atomic writes, versioned migration |
 | `src/ui/` | Ink app, panels, and the two renderers |
 | `src/ui/render/` | Glyphs, autotile, ANSI run-length encoding, sprites, the kitty graphics protocol |
@@ -149,7 +147,7 @@ latency per call type into the log on exit.
 | `SCENARIO_TONE` | — | Refines the brief. |
 | `SCENARIO_PROTAGONIST` | — | Who the player is. |
 | `SCENARIO_AVOID` | — | Genres, tropes or subjects to keep out. |
-| `SCENARIO_DURATION` | — | `short`, `medium` or `long`. Only means something when a scenario is generated. |
+| `SCENARIO_DURATION` | — | `short`, `medium` or `long`. Sets how large a world `npm run survey` measures. |
 
 A brief is *intent*, never geometry: nothing here can move a coastline or place a
 town. It reaches the prompts that name and populate what the engine already
@@ -164,7 +162,7 @@ rather than a broken one.
 | `TILE_PACK` | — | A directory under `.packs/tiles/`, or a path to one. Chooses how the map *looks*; the world is identical either way. Eight ship, one per pack that wanted a look of its own. |
 | `AUTO_ADVENTURE_HOME` | `~/.auto-adventure` | Where saves live. |
 | `AUTO_ADVENTURE_PACKS` | `./.packs` | Where content and tile packs are read from. |
-| `AUTO_ADVENTURE_SCENARIOS` | `./.scenarios` | Where pre-generated scenarios are read from, and where a generated one is written. |
+| `AUTO_ADVENTURE_SCENARIOS` | `./.scenarios` | Where scenario directories are read from, and written to. |
 | `LOG_FILE`, `LOG_LEVEL` | `log.txt`, `info` | The TUI owns stdout, so logs go to a file. `debug` is what to reach for when something silently did not happen. |
 | `SAVE_DEBOUNCE_MS` | `2000` | How long a change waits before it is written. Checkpoints and quitting flush immediately regardless. |
 
@@ -522,17 +520,17 @@ into it, and the far end is the only end worth being at: a world with a plotted
 story, named people and written conversations beats one that invents them as you
 arrive, and it costs a wait rather than a compromise.
 
-**Generate a New Scenario** asks six questions first — length, an optional
-premise, the tile pack, the content pack, whether the clock runs, and whether a
-model may improvise for anyone with no written conversation — and says what the
-answer will cost in model calls and minutes before anything is spent. Then it runs
-the same authoring passes `npm run author` does, showing each as it lands, and
-writes the result to `.scenarios/`. From that point it is an ordinary pre-built
-scenario: it appears on this page next time, and replays exactly.
+**An unwritten world** is the other way in: ground in every direction and towns named and
+populated as you reach them. With a key that naming is done by a model; without one it comes
+out of the flavour tables, which is free, offline, and the same world every time for a given
+seed. Nothing is decided until you get there, which also means nothing is waiting for you.
 
-An option that is unavailable is shown greyed with the reason, not hidden: a
-player who has heard the game writes its own worlds and cannot find the option
-concludes they have the wrong build.
+What this page deliberately does *not* offer is writing a world. Authoring happens at
+development time now, by an agent driving a CLI over a scenario directory, and what it
+produces appears on the shelf above like anything else. The row that used to promise "a few
+minutes" ran a ten-pass pipeline whose whole middle section existed to argue a story into
+agreement with a world it had never been shown — and the worlds it produced had people in
+them asking after documents that were nowhere.
 
 **Continue** is a grid of cards, as many across and down as the terminal allows,
 scrolling by whole rows when there are more worlds than fit. Each says how far in
@@ -585,126 +583,106 @@ default premise for every region found after the reload. That also means the
 environment cannot re-brief a world that already has one — start a new save slot
 instead. A world that has *no* brief will adopt a configured one.
 
-## Pre-generated scenarios
+## Written scenarios
 
-A scenario is a whole world authored ahead of time — premise, regions, towns,
-people, story and conversations all written down before you play, so **no model
-call happens while the game runs**:
+A scenario is a whole world authored ahead of time — premise, regions, towns, people, story,
+conversations and cutscenes all written down before you play, so **no model call happens
+while the game runs**. It is a directory:
 
 ```
-npm run author -- --id drowned-archipelago \
-  --prompt "a drowned archipelago run by debt-collectors" \
-  --duration short
+.scenarios/the-drowned-abbey/
+  scenario.json      seed, recipe, bounds, spawn, packs
+  story.md           the premise expanded, for people to read
+  world/             sites, authored ground, items and gates
+  phases/            later chapters, as diffs
+  scenes/            cutscenes
+  trees/             one conversation per file
 ```
 
-It lands in `.scenarios/` and appears in the launcher. Roughly sixty model calls
-for a medium world, a couple of minutes.
+A directory rather than one file because a scenario is something that gets *edited*. As a
+single blob, every change was a rewrite of several hundred kilobytes: the diff was one
+enormous line, and a review could not tell a corrected sentence from a rebuilt world.
 
 Both kinds of content live in the repository and are committed:
 
 | `.packs/` | flavour packs — names, households, trades, the ambient lines |
 | `.scenarios/` | whole authored worlds |
 
-In the repository rather than under your home directory because they are *source*.
-A pack decides what everybody in a world is called and what they trade in; a
-scenario is thirty kilobytes of hand-editable JSON keyed to a seed, and every way
-it can go wrong is silent at runtime — a site id the seed does not produce is a
-town that never gets its name, and nothing anywhere reports an error. Content you
-can read in a diff is content you can review. `AUTO_ADVENTURE_PACKS` and
-`AUTO_ADVENTURE_SCENARIOS` redirect either one elsewhere.
+In the repository rather than under your home directory because they are *source*. A pack
+decides what everybody in a world is called and what they trade in; a scenario is
+hand-editable JSON keyed to a seed, and every way it can go wrong is silent at runtime — a
+site id the seed does not produce is a town that never gets its name, and nothing anywhere
+reports an error. Content you can read in a diff is content you can review.
+`AUTO_ADVENTURE_PACKS` and `AUTO_ADVENTURE_SCENARIOS` redirect either one elsewhere.
 
-A scenario names the pack it is peopled from rather than embedding a copy:
+A scenario names the pack it is peopled from rather than embedding a copy. The tables are
+folded in when it is read, so what a *save* records is the names themselves — deleting a
+pack next month cannot rename anybody you have already met.
 
-```json
-{ "id": "thornwick-road", "pack": "thornwick", "seed": 1234, … }
+Two things make a written world better than a live one rather than merely cheaper. First,
+nothing arrives late: every spec is in the state the engine starts from, so the first frame
+shows the authored town, and the whole late-spec-rebuild-commitment problem does not exist.
+Second, the generator is pure and runs offline, so a checker can execute the real thing over
+a scenario and prove what a live director structurally cannot — that the person the story
+hangs on is standing at an anchor that actually got built, that the town they were assigned
+to exists, that the road between two beats can be walked inside the boundary, and that a
+cutscene's actors can reach the places it sends them.
+
+A scenario is bounded, and the edge is made of deep water, cliffs or mountains, chosen to
+suit the ground it is drawn on and placed so that it cuts no settlement in half.
+
+A written world puts up its own signposts, and they cost nothing: the arc knows which towns
+the story walks between, so a board goes up on the road out of each one with the next place
+on it. The direction and the distance are worked out from where that place actually is,
+every time you face the post — there is no field in a scenario file for a compass point,
+which is the only way to be sure a board never points the wrong way. It matters because an
+open errand only gets a bearing on the map once you have *been* to the town it is in, so the
+case with no marker at all is exactly the case you need one for.
+
+### Chapters and cutscenes
+
+A scenario can change. `phases/` holds later chapters, each a **diff** over the world before
+it — this NPC is gone, this conversation is replaced, there is a body in the millrace now, a
+lane has been trodden between the two towns. A chapter is entered when its condition holds,
+and which one is in force is derived from the flags rather than written down, so a chapter
+file can be corrected while somebody is halfway through the world.
+
+`scenes/` holds cutscenes: the world takes over, the camera pans to the gate, a rider walks
+in and says the abbey has fallen, and then you have the world back and it is a different
+one. A story told only through conversations is a story nobody can see.
+
+Full reference in [`docs/scenarios.md`](docs/scenarios.md).
+
+### How one gets written
+
+By an agent, at development time, driving a CLI — not by the game.
+
+There used to be a row on the launcher promising a world in a few minutes, and behind it ten
+model passes. Most of them existed to negotiate between a story a model had already written
+and a world that was never consulted: one added the conversations that were missing, one
+moved what collided, one rewrote objectives the world could not satisfy, one dropped side
+errands that would not open, and the last read the result and reported what it still could
+not believe. The worlds it produced had people in them asking after documents that were
+nowhere, and no number of repair passes fixes that, because the disagreement is the design.
+
+The rule now is that **the only way to assert a fact about the world is to call a tool that
+makes it true** — so a story cannot mention a ledger unless a ledger exists, in a container,
+in a building, in a named town, at real coordinates.
+
+Authoring starts with the survey, which costs nothing because the generator is pure:
+
+```
+npm run survey -- --seed abbey --duration short   # every town, its size, its ground
+npm run validate                                  # check what is installed
+npm run validate -- --deep                        # and play each story to the end
 ```
 
-The tables are folded in when the file is read, so what a *save* records is the
-names themselves, not a pointer to them — deleting a pack next month cannot rename
-anybody you have already met. A scenario may still write `content` of its own on
-top, for the two or three tables it wants differently from the pack it borrows.
-
-### Writing one by hand, or with an agent
-
-There is a second way in, which needs no API key at all: survey the world, write a
-draft, assemble it.
-
-```
-npm run survey -- --seed thornwick --duration short     # what is actually out there
-$EDITOR drafts/green-chapel.json                        # name it and people it
-npm run assemble -- --draft drafts/green-chapel.json --check
-npm run assemble -- --draft drafts/green-chapel.json
-npm run validate -- --scenario green-chapel             # re-check what is installed
-```
-
-The survey prints every settlement with its position, its building capacity, the
-ground it stands on and its distance from the start — all free, because the
-generator is pure. A draft says only what needs judgement: beat order, gating flags,
-quest ids and npc ids are derived on assembly, so a hand-written story cannot wait on
-a flag nothing sets. Anything left out falls back to the deterministic content, which
-makes authoring incremental — write the towns that matter, play it, come back.
-
-The `author-scenario` skill drives exactly this loop from a Claude Code session,
-asking for the pieces the game needs (duration above all, since it sets both the
-number of beats and the size of the world) before it surveys anything.
-`drafts/green-chapel.json` is the worked example, and it is a complete one: every
-scenario feature the game has is expressible in a draft, so the file assembles to the
-shipped artifact byte for byte and a test asserts that it still does. (`thornwick-road`
-has no draft — its artifact was hand-reconstructed and is authoritative.)
-
-Two scenarios ship. *The Hollow Tithe* is a timber levy on a wet road, and it is the
-worked example for the gameplay vocabulary — a gate, a locked hall, a hidden standard, a
-fork with an ending per arm. *A Blow for a Blow* is Gawain and the Green Knight in about
-fifteen minutes, and it is the worked example for a scenario that **describes its
-world**: a recipe puts Camelot and Hautdesert where the story needs them, cuts the Green
-Chapel into a hillside and finds a shoreline for the ferry, then thickens the wood
-between them and drops the temperature over the dale. It carries its own tile pack too.
-Neither uses a token to play.
-
-Two things make a pre-generated world better than a live one rather than merely
-cheaper. First, nothing arrives late: every spec is in the state the engine starts
-from, so the first frame shows the authored town, and the whole
-late-spec-rebuild-commitment problem does not exist. Second, the generator is pure
-and runs offline, so the tool can execute the real thing over its own output and
-check what a live director structurally cannot — that the person the story hangs on
-is standing at an anchor that actually got built, that the town they were assigned
-to exists, that the road between two beats can be walked inside the boundary, and
-that the walking roughly matches the duration asked for. It refuses to write a file
-with errors in it.
-
-A scenario is bounded: `--duration` sets both how many story beats there are and
-how large the world is, since in a bounded world those are the same knob. The edge
-is made of deep water, cliffs or mountains, chosen to suit the ground it is drawn
-on, and it is placed so that it cuts no settlement in half.
-
-`--duration tiny` is the odd one out. Two beats across a world four macro cells wide
-is not much of a game; it exists so that a change to the *pipeline* can be tried for
-about a tenth of the price of the shortest real world. Every pass still runs — shape,
-lore, regions, sites, arc, reactions, dialogue, repair — so a break shows up on a run
-that cost a minute rather than on the next world somebody wanted to keep.
-
-A model that answers in the requested schema most of the time, rather than always, is
-the normal case rather than a broken one — a measured run had `openai/gpt-5-mini`
-answering the dialogue schema eight times in twenty-six. So a mismatch is retried like
-any other failure, and the last attempt is spent on a dearer model from the same
-provider where the catalogue names one. Both are paid only on a call that has already
-failed, and both are visible in the cost line.
-
-A written world puts up its own signposts, and they cost nothing: the arc knows which
-towns the story walks between, so a board goes up on the road out of each one with the
-next place on it. The direction and the distance are worked out from where that place
-actually is, every time you face the post — there is no field in a scenario file for a
-compass point, which is the only way to be sure a board never points the wrong way. It
-matters because an open errand only gets a bearing on the map once you have *been* to the
-town it is in, so the case with no marker at all is exactly the case you need one for.
-
-Every prompt and every answer is kept, at full length, and there is nothing to turn on.
-`D` on the writing screen opens them while the world is being written — `L` there puts the
-debug log under the exchange — and a `Working` tab in the menu reads them back while
-playing. They are also written beside the world in `.scenarios/.working/`, so a run you
-have since quit, or one that failed halfway, can still be read afterwards.
-
-See `docs/scenarios.md` for the design.
+`--deep` is the strongest check available. Everything else reasons *about* the files; this
+builds a real session and walks the story through the real engine — travelling between the
+towns the beats name, opening the doors of people who are indoors, holding the
+conversations, sitting through the cutscenes, and asking at the end whether the story is
+told. It is the only way to find out that the person a beat hangs on is not actually
+standing in the town written for them, which every static check will call fine.
 
 ## Playing without a model
 

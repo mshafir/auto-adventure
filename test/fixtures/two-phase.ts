@@ -129,10 +129,16 @@ export function twoPhaseArtifact(): ScenarioArtifact {
 						appearance: "Flour to the elbows, and a limp he does not explain.",
 						persona: "Talks a great deal, mostly about the millrace.",
 						disposition: 0,
+						// An outdoor anchor kind even for somebody indoors: `indoors` is what puts them
+						// inside, and the anchor is which spot of the building they take.
 						placement: "doorstep",
 						structureName: "Wenthollow Mill",
 						knows: ["The millrace runs fast after rain and catches whatever the river brings."],
 						stays: true,
+						// Inside, deliberately. An indoor character resolves only while the player is
+						// standing in their building, so this is the fixture's case for a walkthrough
+						// that has to open a door to find somebody.
+						indoors: true,
 					},
 				],
 				hooks: ["The ferry has not run since the abbey bell stopped."],

@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { demoArtifact } from "../../test/fixtures/scenario.js";
+import { twoPhaseArtifact } from "../../test/fixtures/two-phase.js";
 import type { ScenarioArc, ScenarioBeat } from "../core/rules/arc.js";
 import type { Trigger } from "../core/rules/trigger.js";
-import { scenarioRoot } from "../paths.js";
 import type { ScenarioArtifact } from "./artifact.js";
 import { checkCompleteness } from "./completeness.js";
 
@@ -51,27 +50,12 @@ function messages(artifact: ScenarioArtifact): string[] {
 	return checkCompleteness(artifact).map((finding) => `${finding.severity}: ${finding.message}`);
 }
 
-/*
- * Skipped until the `two-phase` fixture directory exists.
- *
- * These suites are parameterised over the scenarios that used to ship in `.scenarios/`,
- * and those were deleted with the pipeline that wrote them — so they currently assert
- * things about content that is not there. The checkers themselves are kept deliberately:
- * they become `craft check` and `craft playtest`. Task 11 of
- * docs/superpowers/plans/2026-08-14-scenario-v2-and-scenes.md points them at
- * test/fixtures/scenarios/two-phase and turns them back on.
- */
-describe.skip("checkCompleteness", () => {
-	// The scenarios in the repository, read as JSON rather than through the launcher:
-	// this asks about the story alone, and the story is in the file exactly as written.
-	for (const name of ["thornwick-road", "green-chapel"]) {
-		it(`accepts ${name}, which is known to be finishable`, () => {
-			const artifact = JSON.parse(
-				readFileSync(`${scenarioRoot()}/${name}.json`, "utf8"),
-			) as ScenarioArtifact;
-			expect(messages(artifact)).toEqual([]);
-		});
-	}
+describe("checkCompleteness", () => {
+	it("accepts the two-phase fixture, which is known to be finishable", () => {
+		// A real scenario rather than a hand-made arc: the point of this one case is that the
+		// checker agrees with a story somebody has actually played to the end.
+		expect(messages(twoPhaseArtifact())).toEqual([]);
+	});
 
 	it("says nothing about a scenario with no story", () => {
 		expect(checkCompleteness(demoArtifact())).toEqual([]);

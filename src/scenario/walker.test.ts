@@ -2,16 +2,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { twoPhaseArtifact } from "../../test/fixtures/two-phase.js";
 import { npcId } from "../core/world/spec.js";
 import { buildSession } from "../session.js";
-import { readScenarioAt, scenarioPath } from "./repo.js";
 import { siteIndex } from "./validate.js";
 import { storyWalker } from "./walker.js";
 
 /**
  * The primitives, on their own.
  *
- * `walk.test.ts` asserts that two shipped stories reach their endings, which is the claim
+ * `walk.test.ts` asserts that a whole story reaches its ending, which is the claim
  * worth having and a poor way to find out *which* primitive broke: every one of them fails
  * through a whole walk as "a beat never opened". These three are the properties that were
  * learned the hard way — leaving a room before travelling, opening a door to find whoever is
@@ -35,8 +35,10 @@ afterEach(() => {
 });
 
 function walkerFor(name: string) {
-	const artifact = readScenarioAt(scenarioPath(name));
-	if (!artifact) throw new Error(`${name} did not load`);
+	// `name` is kept for the failure messages, which read better naming the world than the
+	// variable holding it. There is one fixture, so it is not a lookup.
+	void name;
+	const artifact = twoPhaseArtifact();
 	const sites = siteIndex(artifact);
 	const session = buildSession(
 		{ worldId: `walker-${name}`, seed: artifact.seed, flavour: "prebuilt", scenario: artifact },
@@ -46,24 +48,14 @@ function walkerFor(name: string) {
 	return { artifact, sites, session, walker: storyWalker(artifact, session.engine, sites) };
 }
 
-/*
- * Skipped until the `two-phase` fixture directory exists.
- *
- * These suites are parameterised over the scenarios that used to ship in `.scenarios/`,
- * and those were deleted with the pipeline that wrote them — so they currently assert
- * things about content that is not there. The checkers themselves are kept deliberately:
- * they become `craft check` and `craft playtest`. Task 11 of
- * docs/superpowers/plans/2026-08-14-scenario-v2-and-scenes.md points them at
- * test/fixtures/scenarios/two-phase and turns them back on.
- */
-describe.skip("the story walker", { timeout: 60_000 }, () => {
+describe("the story walker", { timeout: 60_000 }, () => {
 	it("stands the player in the town it was sent to, out of doors", () => {
 		// The failure this pins is silent and total: indoors the player's coordinates are
 		// interior-local and the reducer asks which place they are in about the doorstep they
 		// came in by, so a walker that teleports without leaving is reported as standing in the
 		// last town it was inside, forever — and a `reach` objective for the town it is
 		// actually standing in never ticks.
-		const { artifact, sites, session, walker } = walkerFor("thornwick-road");
+		const { artifact, sites, session, walker } = walkerFor("two-phase");
 		const written = [...sites.values()].filter((site) => artifact.sites[String(site.id)]);
 		expect(written.length, "no site in this scenario was written about").toBeGreaterThan(1);
 
@@ -96,51 +88,19 @@ describe.skip("the story walker", { timeout: 60_000 }, () => {
 	it("finds somebody the scenario put in a room, by going in and looking", async () => {
 		// An indoor character resolves only while the player stands in their building, which is
 		// correct — and means a walker that never opens a door reports every one of them as
-		// missing.
-		//
-		// The porter first, and that is the test rather than setup. There is exactly one indoor
-		// character in either shipped scenario — the Lady of Hautdesert — and she stands in a
-		// bower inside a castle whose gate is barred until the porter has taken the player's
-		// name in. So she is unreachable cold, by design, and the full walk only reaches her
-		// because it has spoken to him by then. Doing the same here exercises both paths in the
-		// order a player takes them: somebody standing in the open, then somebody behind a door
-		// that a conversation opened.
-		const { artifact, sites, session, walker } = walkerFor("green-chapel");
+		// missing, which reads as a scenario whose cast was never placed.
+		const { artifact, sites, session, walker } = walkerFor("two-phase");
 		const indoors = Object.values(artifact.sites).flatMap((spec) =>
 			spec.npcs.filter((npc) => npc.indoors).map((npc) => ({ spec, npc })),
 		);
 		const wanted = indoors[0];
-		expect(
-			indoors.length,
-			"green-chapel no longer has exactly one indoor character; this test was written around that",
-		).toBe(1);
+		expect(indoors.length, "the fixture has nobody indoors, so this test proves nothing").toBe(1);
 		if (!wanted) return;
 
 		const site = sites.get(wanted.spec.siteId);
 		expect(site).toBeDefined();
 		if (!site) return;
 		walker.goTo(site);
-
-		// Whoever the gate to this place opens on. Read out of the artifact rather than
-		// hard-coded, so a re-authored porter does not silently turn this into a test of
-		// nothing.
-		const gate = (artifact.barriers ?? []).find((barrier) =>
-			JSON.stringify(barrier.opensWhen ?? {}).includes(String(wanted.spec.siteId >>> 0)),
-		);
-		const porter = JSON.stringify(gate?.opensWhen ?? {}).match(/npc:\d+:(\d+)/);
-		expect(
-			porter,
-			"nothing gates the way in, so the Lady should have been reachable cold",
-		).not.toBeNull();
-		if (!porter) return;
-		expect(await walker.talkTo(npcId(wanted.spec.siteId, Number(porter[1])))).toBe(true);
-
-		// And the bower's own door, which is latched until the covenant is made. Two locks
-		// between the start and this room, both of them the scenario working as written.
-		session.engine.dispatch({
-			t: "ApplyEffects",
-			effects: [{ t: "SetFlag", key: "arc:the-exchange-of-winnings", value: true }],
-		});
 
 		const id = npcId(wanted.spec.siteId, wanted.npc.slot);
 		const spoke = await walker.talkTo(id, walker.roomOf(wanted.spec.siteId, wanted.npc.slot));
@@ -153,7 +113,7 @@ describe.skip("the story walker", { timeout: 60_000 }, () => {
 		// `absent` is the walk's only evidence that a beat's anchor was never placed, and a
 		// `talkTo` that returned true for a person who does not exist would turn that into a
 		// story reported as walkable and unfinishable in play.
-		const { session, walker } = walkerFor("thornwick-road");
+		const { session, walker } = walkerFor("two-phase");
 		const id = npcId(999_999, 0);
 		expect(await walker.talkTo(id)).toBe(false);
 		expect(walker.absent.has(id)).toBe(true);

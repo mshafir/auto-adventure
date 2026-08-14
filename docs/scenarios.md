@@ -479,75 +479,156 @@ settled pass as triggers, so it lands in the command that made it true rather th
 the next step. The NPC anchor stays required, because that is what the validator
 checks against and what a later conversation about the beat hangs off.
 
-## The draft says all of it
-
-Everything on this page is a field of `ScenarioDraftSchema`, so a scenario is one file
-and one command. That was not true until recently: the newer vocabulary lived only in
-the artifact, so the loop was *assemble once, hand-patch the JSON, then never
-re-assemble* — because re-running the tool discarded every edit without saying so. A
-scenario that cannot be regenerated from its source is a scenario nobody can change.
-
-`drafts/green-chapel.json` is the proof and the worked example: it assembles to the
-shipped artifact byte for byte, and `green-chapel-live.test.ts` asserts that it still
-does. Two things are still derived rather than written, on purpose — beat order and
-gating flags — and one of those is worth reading about before writing a fork:
-
-**Do not write `requires` at a fork.** Assembly derives it, including the two cases
-that are easy to get wrong. An arm waits on the beat *before* the fork rather than on
-its sibling, or it can never open at all. And the beat after a fork waits on
-`{ any: [both arms] }`, because waiting on one arm dead-ends the other and waiting on
-the pre-fork beat lets the fork be skipped — which leaves `remaining` above zero for
-good, since neither arm was ever barred.
-
-## How a generated world is written
-
-Ten passes, in this order. The first seven produce the world; the last three decide whether
-it is any good, and one of them can stop it being written at all.
-
-| | Pass | What it does | Costs |
-|---|---|---|---|
-| 0 | shape | asks what kind of country this is | a call |
-| 1 | survey | measures the real plots at every site, and grows the ones too small for the roster they will be asked for | free |
-| 2–5 | author | lore, regions, sites, the arc, the reactions, the conversations | most of the bill |
-| 5b | signposts | boards on the road out of town | free |
-| 6 | repairs | the faults with exactly one right answer, once, unjudged | free |
-| 7 | mend | rewrites the conversations the checks complained about | a call each |
-| 8 | settle | **plays the main line in a real session**, fixing what it can | free |
-| 9 | fit | places the side errands, with no growth and one attempt each | free |
-| 10 | adjust | one call: what the story makes of the side errands that survived | a call |
-
-The last three are what makes a generated world different from a validated one.
-
-**A generated world is played before it is kept.** Pass 8 builds a real session — real
-chunks, real settlement patches, real NPC placement, the real reducer settling after every
-command — and walks the main line, beat by beat. Where a beat will not open it fixes what it
-can and tries again: somebody standing in a building the ground never built, a thing hidden in
-a room that does not exist, a site with no room for the buildings the story was written
-against. Only that last one touches the map, and only that one restarts the walk.
-
-There is deliberately no "drop it and carry on" branch on the main line. Deleting a step of
-the story to make a fault go away is the one thing none of these passes may do, so a beat that
-cannot be settled stops the pass and is reported. Side errands are the opposite: pass 9 gives
-each one attempt, no growth at all — growing a site re-rolls its layout and would move every
-plot the main line was just settled against — and drops the ones that will not fit, unless the
-main line waits on one, in which case it stays and the fault is reported.
-
-**An unplayable world is not kept.** If the main line does not settle, nothing is written. The
-screen names the beat, says why, lists what was tried, and offers three things:
+## A scenario is a directory
 
 ```
-R   another world — same premise, same title, same tone, same packs, same file name,
-    a different country (the seed is salted with the attempt)
-P   keep this one and play it anyway
-ESC give up; nothing is written
+.scenarios/the-drowned-abbey/
+  scenario.json      seed, recipe, bounds, spawn, packs, title, blurb, provenance
+  story.md           the premise expanded: beginning, middle, end, cast, places
+  world/
+    sites.json       the settlements and their people
+    terraform.json   authored changes to the ground
+    placements.json  items, signs and gates
+  phases/
+    2-after-the-flood.json
+  scenes/
+    the-messenger-arrives.json
+  trees/
+    npc:4213455557:0.json
 ```
 
-There is no cap on attempts: each one is an explicit keypress with what the last one cost on
-the screen beside it. `npm run author` follows the same rule and refuses to write, with
-`--force` to override.
+One file was fine while scenarios were written by a pipeline and read by a program. It is
+the wrong shape for something an agent edits: every change was a rewrite of a
+several-hundred-kilobyte blob, so a diff showed one enormous line and a review could not
+tell a corrected sentence from a rebuilt world.
 
-The working record is written for a discarded attempt too, so a world that was thrown away can
-still be diagnosed afterwards.
+**Filenames are ids.** `scenes/the-messenger-arrives.json` *is* the scene called
+`the-messenger-arrives`, and a file whose contents disagree with its name is refused. Two
+names for one thing is two things to keep in step by hand, and the one that goes wrong is
+the trigger — it names its scene by id, and would find nothing.
+
+`story.md` is never parsed. It is the brief an author writes to themselves and what a
+person reads to judge whether the story is worth playing. Everything the engine runs is in
+the files around it.
+
+## Chapters
+
+`world/` is the first chapter. Everything in `phases/` is a later one, and each is a
+**diff** rather than a snapshot:
+
+```json
+{
+  "id": "after-the-flood",
+  "name": "After the Flood",
+  "when": { "flag": "flood" },
+  "placements": { "add": [ ... ], "remove": ["the-ferry-notice"] },
+  "terraform": { "add": [ ... ] },
+  "trees": { "npc:4213455557:0": null }
+}
+```
+
+A diff rather than a snapshot because of a failure mode, not a preference: with snapshots a
+correction made to the first chapter silently fails to reach the second and third, which is
+exactly the drift between what a story says and what the world holds that this format
+exists to remove.
+
+`add`, `remove` and `replace` work over `sites`, `placements`, `signs`, `barriers`,
+`triggers` and `terraform`. `trees` and `scenes` are replaced wholesale by key, and `null`
+takes one away — a conversation after a turning point is a different conversation, not the
+old one with two lines changed, and a node-level diff over a dialogue tree is where
+dangling `goto`s come from. `beats` are appended to the arc.
+
+**A removal or replacement of something nothing adds is an error.** A diff that quietly does
+nothing because the base was rewritten underneath it is the same silent failure by another
+door: the chapter loads, the door that was meant to open stays shut, and nothing reports it.
+
+**Which chapter is in force is derived, never stored.** A phase is entered when its `when`
+holds, and the composition is recomputed from the flags after every command. That is what
+lets a phase file be corrected while somebody is halfway through a world — the save records
+what they did, and the chapter follows from it.
+
+A chapter that changes `terraform` rebuilds the chunks it touches, in both directions: a
+stamped tile cannot be un-stamped from a chunk already in memory, so the union of the old
+and new ground is what gets dropped and regenerated.
+
+## Scenes
+
+A moment the world takes over and the player watches.
+
+```json
+{
+  "id": "the-messenger-arrives",
+  "cast": { "keeper": "npc:539500626:0" },
+  "steps": [
+    {
+      "do": [
+        { "t": "Camera", "to": { "kind": "anchor", "siteId": 539500626, "anchor": "well" }, "pan": "slow" },
+        { "t": "Spawn", "actor": "rider", "at": { "kind": "world", "x": 61, "y": -24 } },
+        { "t": "Face", "actor": "keeper", "at": "left" }
+      ],
+      "hold": 3
+    },
+    { "do": [{ "t": "WalkTo", "actor": "rider", "to": { "kind": "anchor", "siteId": 539500626, "anchor": "well" }, "speed": "fast" }] },
+    { "do": [{ "t": "Say", "actor": "rider", "text": "The bell has stopped. The abbey is under." }] },
+    { "do": [{ "t": "Effects", "effects": [{ "t": "SetFlag", "key": "flood", "value": true }] }], "hold": 3 }
+  ]
+}
+```
+
+Raised by a trigger, and only by a trigger: `{ "t": "PlayScene", "id": "..." }`. A story
+told only through conversations is a story nobody can *see* — a rider arriving at the gate
+while the player stands still is the same information as a line of dialogue about a rider,
+and it is the difference between being told a chapter turned and watching it turn.
+
+A step's actions run **together**, and the step ends when the slowest of them finishes.
+There is deliberately no branching inside a scene: branching is what triggers and chapters
+are for, and a scene that could test state mid-run would be a small programming language
+with its own interpreter, its own checks and a playtest matrix that multiplies with every
+conditional.
+
+| action | what it does |
+|---|---|
+| `Camera` | aim the view. `cut` lands at once; `slow` and `fast` pan toward it |
+| `Spawn` / `Despawn` | put somebody on stage who is not in the world, or take them off |
+| `WalkTo` | walk, tile by tile, along a route found by the real pathfinder |
+| `Face` | turn to look at a point or a direction |
+| `Say` | one line, in a band under the map. Waits for the player |
+| `Card` | a full screen of prose, as a beat raises one |
+| `Wait` | hold for a number of frames |
+| `Effects` | anything a trigger can do |
+
+**A cast member already in the world starts where they stand.** `Spawn` is for somebody
+genuinely not there yet. Getting that wrong is quiet: cast the rider as the shrine-keeper
+who is already at the well and the scene stages perfectly and nothing moves.
+
+Where a scene puts things is *not* where a placement puts things, although they look alike:
+
+| point | means |
+|---|---|
+| `{ kind: "world", x, y }` | an exact tile |
+| `{ kind: "anchor", siteId, anchor }` | an **outdoor** anchor — the square, the well, a gate |
+| `{ kind: "door", siteId, structure }` | the tile outside a building's door |
+
+A placement's site spelling resolves *inside* a building, which is its whole purpose since
+stories hide things in chests. A cutscene happens in the square. Sharing the spelling sent
+the rider to the well and landed him in somebody's pantry.
+
+### Two rules a scene has to obey
+
+**Non-idempotent effects only in the last step.** No save is written while a scene plays, so
+an interrupted one replays from its first step — which means everything before the last step
+may happen more than once over the life of a save. `GrantItem`, `TakeItem`, `AdjustGold`,
+`Damage`, `Heal`, `AdjustDisposition` and `AdjustReputation` are therefore refused anywhere
+else. Everything else in the effect vocabulary is idempotent by construction.
+
+**A scene's last step is not rendered finishing.** The frame a step completes on shows the
+state it completed in — that is the only frame an actor is drawn standing at the end of its
+walk — but the last step's completion hands control back instead. A scene whose final action
+must be seen finishing needs a `hold` on it.
+
+Skipping with ESC skips the *prose*, never the consequences: a scene is where a chapter
+turns, and a player who has read enough must not be left in a world where the turn never
+happened.
 
 ## Editing a scenario somebody is playing
 
@@ -572,10 +653,9 @@ npm run validate                                # every scenario on disk
 npm run validate -- --deep                      # and play each of them to the end
 ```
 
-`assemble --check` validates a *draft*; this runs the same offline pass over what is
-**installed**, and exits non-zero on errors so it can gate a commit. Worth having even
-now that a draft can say everything, because an artifact can be hand-edited, produced
-by an older build, or assembled against a generator that has since moved.
+It exits non-zero on errors, so it can gate a commit. Worth having even though the loader
+already refuses a broken scenario, because these say *what* is wrong in words an author can
+act on rather than declining to start a world.
 
 `--deep` is a different kind of check, and the strongest one available. Everything else
 reasons *about* the file; this builds a real session and walks the story through the real
@@ -660,7 +740,7 @@ npm run preview -- --seed thornwick --at 5,-2 --recipe my-recipe.json
 npm run survey  -- --seed thornwick --duration short --recipe my-recipe.json
 ```
 
-The file can be a bare recipe or a whole draft with a `recipe` in it — whichever you
+The file can be a bare recipe or a whole `scenario.json` with a `recipe` in it — whichever you
 happen to have open.
 
 ### climate
@@ -830,13 +910,12 @@ them — by weight, for a world of castles, or by `places`, for one in particula
 **The survey drops the ones that declined**, so nothing downstream ever writes a roster
 for a castle that found no level ground. That is why raising a weight is safe: the number
 you ask for is an upper bound, and the number you get is however many the ground allowed.
-`surveyWorld` reports the shortfall as `declined`, and `npm run author` prints it — a
+`surveyWorld` reports the shortfall as `declined`, and `npm run survey` prints it — a
 recipe asking for six harbours in a landlocked world says so rather than quietly
 producing a smaller world than you asked for.
 
-The generated path asks for these too. The shape pass (`src/ai/author/shape.ts`) turns
-`strongholds` / `caves` / `harbours` — three coarse words a model picks — into weights,
-so a world generated from a premise about a siege gets somewhere to lay one.
+An author writing a recipe by hand asks for these too: `strongholds`, `caves` and
+`harbours` are weights, so a world meant to hold a siege gets somewhere to lay one.
 
 **A castle's gate is a choke point the scenario can bar.** The generator emits it as a
 `gate` anchor and leaves it open, because a barred gate needs a condition to open it
@@ -1531,10 +1610,10 @@ An override is partial, and the two rules differ on purpose:
 
 ```
 CONTENT_PACK=thornwick npm start        # a shipped pack, by name
-CONTENT_PACK=./my-pack.json npm start   # or a path, so one can live beside a draft
+CONTENT_PACK=./my-pack.json npm start   # or a path, so one can live beside a scenario
 ```
 
-…or `"content": { … }` in a scenario draft, which is inlined into the artifact so
+…or `"content": { … }` in a scenario's `scenario.json`, which travels with it so
 the scenario is self-contained: no file to install, nothing beside it to lose.
 
 The baked default is **code** (`core/content/default.ts`), not a file, so the pure
@@ -1651,251 +1730,107 @@ covering; a player who does something genuinely strange gets a stiff
 conversation. That is the price of the mode, and it is why `live` remains the
 default.
 
-## What the authoring pipeline can now write
+## How a world gets written
 
-`npm run author` learns most of the surface above, in two places.
+By an agent, at development time, driving a CLI — not by a pipeline inside the game.
 
-**Before the survey**, it asks a model what kind of country the brief wants — five
-coarse settings (`sea`, `climate`, `wet`, `settled`, `woods`) and a sentence saying
-why — and `shape.ts` turns those into a recipe. The model never sees a `WorldRecipe`,
-and that is deliberate: a model handed `seaLevel` and asked for a drowned archipelago
-writes `0.9`, which is not an archipelago but an empty ocean with the player standing
-on the one remaining rock. The numbers in that table were arrived at by generating
-worlds and looking at them. An explicit `recipe` in the draft always wins — somebody
-who wrote one has seen the map.
+The pipeline that used to do it had ten passes and most of them existed to negotiate
+between a story a model had already written and a world that was never consulted: one added
+the missing conversations, one moved what collided, one rewrote objectives the world could
+not satisfy, one dropped side errands that would not open, and the last read the result and
+reported what it still could not believe. A world whose people asked after a document that
+existed nowhere is what that shape produces, and no number of repair passes fixes it,
+because the disagreement is the design.
 
-**In the arc pass**, a beat may now carry four more things:
+The rule now is that **the only way to assert a fact about the world is to call a tool that
+makes it true.** A story cannot mention a ledger unless a ledger exists — in a container, in
+a building, in a named town, at real coordinates. The tool call *is* the assertion, so there
+is never a second copy of the truth to reconcile.
 
-| field | what it does |
-| --- | --- |
-| `optional` | a side errand; the story can finish with it open |
-| `partOf` | makes this beat a step of an earlier one |
-| `branch` | two beats with the same group are mutually exclusive |
-| `find` | something hidden in a named kind of building at that settlement |
+What survives from the old pipeline is every mechanical checker, because those were never
+the problem: `validate`, `invariants`, `completeness`, `wayfinding`, `signposts`, `walk`,
+`walker`, `play` and `survey`. They are the tools the agent calls.
 
-`find` becomes **two** things at once — a `Placement` the engine resolves against real
-geometry, and a `have` objective on the beat. Both or neither: a placement alone is an
-item nobody was told about, and an objective alone is an item that is nowhere. That is
-the dead end the findability check exists to catch, and the pipeline is now incapable
-of writing it.
-
-The lowering enforces what the schema cannot. A side errand never becomes the thing the
-next beat waits on; two arms of a fork never gate each other; a step that names a
-parent it cannot have is demoted rather than dropped; and a parent gets a `quest`
-objective per step, so it closes the moment its last step does.
-
-`optional` and `find` are now *required* rather than offered. Both sat in the schema,
-documented, for as long as the pipeline existed, and every generated world came back with
-none of either — because "you may" reads as "you need not" and the straight line is always
-the easier thing to write. A story with no side errand and nothing to search for is a
-story of walking between conversations.
-
-**After the arc**, a reactions pass writes the two kinds nothing had ever produced:
-
-| kind | what it does |
-| --- | --- |
-| `triggers` | the world noticing — a journal line, a card — once a beat has opened |
-| `barriers` | a castle gate barred until a beat opens it |
-
-Both are chosen by **index** into lists the pass is shown, never by id or coordinate: a
-trigger waits on a flag some beat definitely sets, and a gate names a site the survey
-found. An unsatisfiable condition is not something the pass can express. Barriers are
-offered only where there is a castle, because a village's streets have as many ways in as
-they have edges — barring one tile of an open road bars nothing and says it did — and a
-gate whose opening beat happens *behind* it is refused outright.
-
-What the model is still not trusted with: `places` and `zones` (they need coordinates,
-and a coordinate is exactly what a model invents confidently and wrongly), where a gate
-actually stands (`castleGateTiles` answers that from the generated world), and the recipe
-itself.
-
-## Authoring
-
-`src/tools/author.ts`, run offline, checkpointing between passes because it is
-expensive enough to want resuming.
-
-| Pass | Does | Cost |
-|---|---|---|
-| 0 | **Shape** — what kind of country the brief wants, lowered into a recipe | 1 call |
-| 1 | **Survey.** `findSpawn`, `sitesAround` over the footprint, `siteContext`/`regionContext` for each, boundary-rect solve | free — all pure |
-| 1b | **Reachability.** One flood fill from the spawn over the whole bounded world; places it cannot reach are not offered to the story | one world generation |
-| 1 | **Lore** from the brief | 1 call |
-| 2 | **Regions** | ~6 calls |
-| 3 | **Sites**, each told what the engine has room for | ~13 calls |
-| 4 | **Arc** — beats placed over the surveyed sites | 1 call |
-| 4b | **Reactions** — triggers, and a gate on a castle if there is one | 1 call |
-| 5 | **Trees**, per NPC | ~40 calls |
-| 6 | **Validate and repair**, mechanically | free |
-| 7 | **Mend** — the faults that need prose written | ≤ 6 calls |
-
-Pass 1 is why this produces better worlds than `live` can. The model is handed
-the real site list — kinds, importance, bearings, building budgets, distances —
-before it invents anything. Pass 4b runs *after* the arc for the same kind of
-reason in reverse: a trigger is a consequence, and it can only be conditioned on a
-flag that already exists, so nothing it writes can wait on something nobody sets.
-
-Pass 1b is the only one that costs real work for nothing visible, and it is worth
-it. `distanceFromSpawn` is a straight line — right for ordering a story outward,
-wrong for deciding a place can be visited at all, because a town across an inlet is
-thirty tiles away and unreachable. Without this the validator says so at the *end*,
-after sixty calls have been spent writing a scene nobody can walk to.
-
-At radius 6 that is roughly 60 calls: ~169 macro cells, ~13 settlements, ~40
-people. A couple of minutes at Flash speeds with a concurrency of 4.
-
-### Validation is the point
-
-Pass 6 is the strongest argument for prebuilt scenarios existing. The entire
-generator is pure and runs offline, so the authoring tool can execute it against
-its own output and check things live generation structurally cannot:
-
-- every `NpcSpec.structureName` matches a building the settlement generator
-  actually placed, and every `placement` anchor exists
-- `buildingBudget` is respected
-- quest `reach` targets resolve through `placeNameAt`; `have` items are
-  obtainable somewhere in the arc
-- beat sites are A\*-reachable from spawn *within the bounds*, and the walking
-  distance matches the requested duration
-- the boundary rect intersects no site footprint and suits its edge biome
-- every tree node is reachable and every `goto` resolves
-- **the story can be finished**: `checkCompleteness` simulates the arc forward from
-  an empty state, once per arm of every fork, and reports a beat that no route
-  reaches or an errand no route can close — the class of fault where every id
-  resolves, every flag is written, and the story stops anyway
-
-A golden test asserts the artifact's site ids equal `macroSite(seed, mx, my).id`,
-which is the one invariant that silently ruins everything if it breaks.
-
-### Repair until clean
-
-Findings are not merely printed. `scenario/repair.ts` fixes what has one right
-answer, and the loop is judged by the validator rather than by itself:
+`npm run survey` is where authoring starts and it costs nothing:
 
 ```
-repair (mechanical, free)  →  validate  →  keep it only if the score fell
-   ↓  what is left and needs words, capped at 6 calls
-mend (model)               →  validate  →  keep it only if the score fell
+npm run survey -- --seed abbey --duration short
 ```
 
-Errors count for ten warnings in that score, so trading a step of the story that
-cannot be taken for a place that came out rougher than intended is a trade the loop
-will make, and the reverse is one it will not. A round that improves nothing is
-thrown away whole, which means a repair with an unforeseen consequence costs one
-wasted world-generation rather than a worse scenario.
-
-Every repair **re-derives its own condition** rather than parsing a finding — a
-finding is a sentence written for a person, and coupling a fix to its wording means
-improving the wording silently disables the fix. What they fix, one class each:
-
-| repair | fault |
-|---|---|
-| `standTheCastSomewhereReal` | somebody at an anchor the town does not build, in a room that was not built, or claiming a building that did not fit |
-| `hideThingsWhereThereIsSomewhereToHideThem` | a hidden thing in a kind of building the ground refused |
-| `spellObjectivesAsTheWorldDoes` | an objective the world spells differently, so it would never match |
-| `dropErrandsForThingsThatDoNotExist` | a `have` objective for an item this world's goods do not produce under any spelling |
-| `dropObjectivesNothingCanTick` | an objective waiting on a flag nothing sets, which keeps the whole arc from ever ending |
-| `dropOneArmedForks` | a fork with one arm, which is not a choice |
-| `forgetPeopleWhoAreNotHere` | a conversation gated on somebody the scenario does not contain |
-| `gateTheCastOnTheirOwnScene` | somebody on stage before the beat they carry can open |
-
-`mend` covers the two that genuinely need prose: somebody with no conversation at
-all, and a fork nobody speaks about. It keeps a rewrite only if the rewrite did the
-thing it was asked for, so a replacement that is merely *different* is discarded and
-the original conversation kept.
+The generator is pure, so every settlement, its size, its building capacity, the ground it
+stands on and its distance from the spawn are all knowable before a word is written.
+Authoring against that output is what stops a scenario describing a town that is not there.
 
 ## Launcher
 
-`main.tsx` currently builds the whole session before `render`. That splits:
+Three ways in, and none of them writes a world: continue a save, play a scenario that has
+been written, or start an unwritten world that names its places as you reach them.
 
-- `src/session.ts` — `buildSession(choice: LaunchChoice)`, everything
-  `startGame` does except rendering.
-- `src/ui/launcher/` — an Ink screen listing saves (`saveRoot()/saves/*/save.json`)
-  and scenarios (`saveRoot()/scenarios/*.json`, plus `--scenario <path>`), with a
-  **New game** submenu choosing flavour and a text field for a live brief.
-- `main.tsx` — render launcher, await a choice, build the session, render `App`.
+- `src/session.ts` — `buildSession(choice: LaunchChoice)`, everything but rendering.
+- `src/ui/launcher/` — an Ink screen listing saves and the scenario directories in
+  `.scenarios/`, with a settings page for the gateway key and the model.
+- `main.tsx` — render the launcher, await a choice, build the session, render `App`.
 
-There is no text input component yet, because dialogue is choice-only. A ~40-line
-`useInput` field is preferable to adding `ink-text-input` for one screen.
+Testing it needed `test/harness/ink.tsx`. `ink-testing-library` cannot drive the installed
+Ink: its fake stdin has no `ref`, which Ink calls to enable raw mode, and in raw mode Ink
+reads with `readable`/`read()` while the library emits `data`. The `ref` failure lands
+inside a `useEffect`, so the first frame is already committed and correct and only the
+*next* one is an error message — which is why the existing `app.test.tsx` passed while every
+render under it was throwing. The harness implements both contracts, so a test can assert
+what a keypress does rather than only what a screen looks like.
 
-Testing it needed `test/harness/ink.tsx`. `ink-testing-library` cannot drive the
-installed Ink: its fake stdin has no `ref`, which Ink calls to enable raw mode, and
-in raw mode Ink reads with `readable`/`read()` while the library emits `data`. The
-`ref` failure lands inside a `useEffect`, so the first frame is already committed
-and correct and only the *next* one is an error message — which is why the existing
-`app.test.tsx` passed while every render under it was throwing. The harness
-implements both contracts, so a test can assert what a keypress does rather than
-only what a screen looks like.
-
-Saves gain `world.scenarioId?`, so resuming re-attaches the artifact: the save
-carries the specs, but the trees, arc and bounds live only in the file. The field
-is optional, so `SAVE_VERSION` does not move.
+Saves carry `world.scenarioId?`, so resuming re-attaches the artifact: the save holds the
+specs, but the trees, the chapters and the bounds live only in the directory.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
 | `src/core/world/brief.ts` | `ScenarioBrief` and `Duration`, pure — it is saved state |
-| `src/scenario/scenario.ts` | Artifact and arc types, `ARTIFACT_VERSION` |
-| `src/scenario/schema.ts` | Zod schemas for the artifact |
-| `src/scenario/repo.ts` | List, load, write and verify artifacts |
-| `test/harness/ink.tsx` | Render an Ink tree and type at it |
-| `src/scenario/arc.ts` | Beat → quest/flag lowering (pure) |
+| `src/scenario/artifact.ts` | `ScenarioArtifact` and `ARTIFACT_VERSION` |
+| `src/scenario/schema.ts` | Zod schemas for everything on disk |
+| `src/scenario/dir.ts` | Read and write a scenario *directory*, and check it hangs together |
+| `src/scenario/repo.ts` | List, load, write and verify scenarios against the world |
+| `src/scenario/phase.ts` | `Phase`, `Diff`, `composeScenario`, `phaseProblems` |
+| `src/scenario/terraform.ts` | `TerraformEdit` |
+| `src/core/gen/features/authored.ts` | Terraform rasterised into tiles the generator stamps |
+| `src/core/rules/scene.ts` | `Scene`, `StagedScene`, and the pure scene player |
+| `src/core/rules/scene-check.ts` | The non-idempotent-effect rule |
+| `src/engine/scene-staging.ts` | Resolving a scene against the world, once |
+| `src/ui/panels/scene-caption.tsx` | The band under the map during a scene |
+| `src/core/rules/arc.ts` | Beat → quest/flag lowering (pure) |
 | `src/ai/dialogue/scripted.ts` | Tree walker and the scripted service |
-| `src/ai/author/` | The offline pipeline and its prompts |
-| `src/scenario/draft.ts` | The hand-authored format, and lowering it to an artifact |
-| `src/tools/author.ts` | CLI entry point |
+| `src/scenario/walk.ts`, `walker.ts`, `play.ts` | Playing a story through the real engine |
 | `src/ui/launcher/` | The selector |
-| `src/session.ts` | Session assembly, extracted from `main.tsx` |
-| `src/core/gen/bounds.ts` | S9, pure — lives in `core` and imports nothing new |
+| `src/session.ts` | Session assembly |
+| `test/fixtures/two-phase.ts` | A worked example: two towns, a cutscene, two chapters |
+| `test/harness/ink.tsx` | Render an Ink tree and type at it |
 
-## Phases
+## What the implementation learned
 
-Each phase leaves the game playable.
+Two things the design did not know, both found by a real scenario running through it.
 
-| # | Lands |
-|---|---|
-| 1 | ✅ `ScenarioBrief`; brief-aware prompts; brief persisted; `SCENARIO_*` env. Promptable `live`, no new UI. |
-| 2 | ✅ Launcher, selector, flavour picker, `session.ts` split. |
-| 3 | ✅ Artifact format, repo, `prebuilt` loading of lore/regions/sites. A working pre-gen mode with canned conversation. |
-| 3b | ✅ `bounds` in `GenContext`, S9, threading, seam tests. |
-| 4 | ✅ The authoring tool and its validation pass, including the boundary solve. |
-| 5 | ✅ The arc: baked quests, flags, journal. |
-| 6 | ✅ Dialogue trees, authored and walked. |
+`generateSettlement` memoises by `(seed, siteId)`. That is right for a running game — one
+town, generated once — and wrong for validation, which measures several candidate rosters
+for the same site in one process and would otherwise report the first layout for all of
+them. The pass drops the entry before generating.
 
-All six have landed, plus a seventh way in that was not in the original plan:
-**authoring by hand**. `npm run survey` prints the map for free and
-`npm run assemble` takes a written draft, so a scenario can be produced with no API
-key — by a person, or by an agent in an editor session via the `author-scenario`
-skill. The draft format asks only for judgement and derives every mechanical part,
-which is what makes a hand-written arc impossible to mis-wire.
+Two mechanisms were reaching the same invariant by different means, and one of them was
+wrong. The validator matched place names by *substring* while `verifyQuests` matches on
+*significant words*, so `reach: "Thorn"` passed authoring against a town called "Thornwick"
+and could never complete in play — authoring accepted a quest the game refused, and the only
+symptom was an errand that never finished. Name resolution now lives once in
+`core/rules/surroundings.ts` and obtainability once in `core/rules/obtainable.ts`, both
+called by the engine and the validator.
 
-Two things the implementation learned that the design did not know:
+The anchor check was also *wrong*, not merely weak, and stayed wrong until a real scenario
+ran through it. `pickAnchor` treats `yard` as `doorstep` and falls back to any free anchor
+otherwise — its own comment says the placement is advisory — so an unbuilt anchor relocates
+somebody rather than stranding them. As an error it would have refused perfectly playable
+scenarios, including every one built from the deterministic roster, which asks for a `yard`
+routinely.
 
-`generateSettlement` memoises by `(seed, siteId)`. That is right for a running
-game — one town, generated once — and wrong for validation, which measures several
-candidate rosters for the same site in one process and would otherwise report the
-first layout for all of them. The pass drops the entry before generating.
-
-Two mechanisms were reaching the same invariant by different means, and one of them
-was wrong. The validator matched place names by *substring* while `verifyQuests`
-matches on *significant words*, so `reach: "Thorn"` passed authoring against a town
-called "Thornwick" and could never complete in play — authoring accepted a quest the
-game refused, and the only symptom was an errand that never finished. Name resolution
-now lives once in `core/rules/surroundings.ts` (`resolveObjectiveTarget`) and
-obtainability once in `core/rules/obtainable.ts`, both called by the engine and the
-validator; the engine's four sources for a fetchable item are no longer approximated
-by a pattern over NPC roles. Assembly canonicalises `reach` and `talk` targets to the
-world's own spelling, which is what the runtime already did for a quest an NPC opens.
-
-The anchor check was also *wrong*, not merely weak, and stayed wrong until a real
-draft ran through it. `pickAnchor` treats `yard` as `doorstep` and falls back to any
-free anchor otherwise — its own comment says the placement is advisory — so an
-unbuilt anchor relocates somebody rather than stranding them. As an error it would
-have refused to install perfectly playable scenarios, including every one built from
-the deterministic roster, which asks for a `yard` routinely.
-
-Beyond that, the anchor check is weaker than hoped. A settlement of any size lays down
-eight of the nine anchor kinds, so only `yard` is realistically ever missing from a
-town, and the check earns its keep mainly on hamlets and camps. It stays because
-the failure it catches — a named character standing nowhere — is invisible
-otherwise.
+Beyond that the anchor check is weaker than hoped. A settlement of any size lays down eight
+of the nine anchor kinds, so only `yard` is realistically ever missing from a town, and the
+check earns its keep mainly on hamlets and camps. It stays because the failure it catches — a
+named character standing nowhere — is invisible otherwise.

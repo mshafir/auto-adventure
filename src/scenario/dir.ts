@@ -201,11 +201,17 @@ export function writeScenarioDir(artifact: ScenarioArtifact, root: string): stri
 	return dir;
 }
 
-/** Every scenario directory under a root, by name. */
+/**
+ * Every scenario directory under a root, by name.
+ *
+ * Dot-directories are not scenarios. `.working` is the authoring record — the prompt-by-prompt
+ * transcript of a run — and it lives beside the scenarios because that is where the run was
+ * about. A scenario id cannot begin with a dot either, so nothing legitimate is being hidden.
+ */
 export function listScenarioDirs(root: string): string[] {
 	if (!existsSync(root)) return [];
 	return readdirSync(root, { withFileTypes: true })
-		.filter((entry) => entry.isDirectory())
+		.filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
 		.map((entry) => entry.name)
 		.sort();
 }
