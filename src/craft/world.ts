@@ -29,7 +29,7 @@ const ID = /^[a-z0-9][a-z0-9-]*$/;
 export function craftNew(args: Args, out: (line: string) => void): void {
 	const id = args.words[1];
 	if (!id)
-		throw new CraftError('craft new wants an id: "craft new the-drowned-abbey --premise ..."');
+		throw new CraftError('craft new wants an id: "craft new the-lantern-watch --premise ..."');
 	if (!ID.test(id))
 		throw new CraftError(`"${id}" is not a usable id: lower-case letters, digits and dashes`);
 	if (existsSync(scenarioPath(id))) throw new CraftError(`"${id}" already exists`);

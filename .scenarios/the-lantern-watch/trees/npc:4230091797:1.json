@@ -1,0 +1,40 @@
+{
+	"npcId": "npc:4230091797:1",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "My sister says not to talk to people about the beacon. So I will say the sheep are fine and you can make what you like of the sheep being fine.",
+			"choices": [
+				{
+					"text": "How are the sheep?",
+					"goto": "sheep"
+				},
+				{
+					"text": "Who came up the path that morning?",
+					"goto": "path"
+				}
+			]
+		},
+		"sheep": {
+			"id": "sheep",
+			"speech": "Fine. Better than fine. Nobody has been up here at night for two nights, which they like, and there was a cart on the low road four days ago, which they did not like at all.",
+			"choices": [
+				{
+					"text": "Who came up the path that morning?",
+					"goto": "path"
+				}
+			]
+		},
+		"path": {
+			"id": "path",
+			"speech": "A man in good boots. He talked to Nesh for a long time and then he went down again and he never once looked at the sea. I look at the sea and I am the stupid one.",
+			"choices": [
+				{
+					"text": "Thank you.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

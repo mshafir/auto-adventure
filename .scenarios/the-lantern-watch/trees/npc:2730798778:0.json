@@ -1,0 +1,72 @@
+{
+	"npcId": "npc:2730798778:0",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "There you are. Hold it up where they can see it — no, up. Good. Now: two nights ago the beacon on Cairnhead did not light, and the boats came home to a smokehouse with the door off.",
+			"choices": [
+				{
+					"text": "Whose beacon was it?",
+					"goto": "whose"
+				},
+				{
+					"text": "What was taken?",
+					"goto": "taken"
+				},
+				{
+					"text": "Why does it matter who?",
+					"goto": "matter"
+				}
+			]
+		},
+		"whose": {
+			"id": "whose",
+			"speech": "That is what the tally says and what nobody here will say. Read it out. — Cairnhead. Orin Vane's turn, in his own notch. And Orin Vane is not in Salt Wick, and he is not on Cairnhead either. He is at Emberfold, south, where his sister keeps the mill.",
+			"choices": [
+				{
+					"text": "Then I will go up to Cairnhead first.",
+					"goto": "keeper"
+				},
+				{
+					"text": "Somebody must have covered for him.",
+					"goto": "matter"
+				}
+			]
+		},
+		"taken": {
+			"id": "taken",
+			"speech": "Two hundredweight of smoked herring and the winter's salt. Ask Wend Sallow in the smokehouse; he was in it when they came and nobody has believed a word he has said since.",
+			"choices": [
+				{
+					"text": "Whose beacon was it?",
+					"goto": "whose"
+				},
+				{
+					"text": "I will talk to him.",
+					"goto": null
+				}
+			]
+		},
+		"matter": {
+			"id": "matter",
+			"speech": "Because a watch that nobody can be blamed for is not a watch. It is a rota of favours. I would rather have one name and a bad winter than no name and this every year.",
+			"choices": [
+				{
+					"text": "Whose beacon was it?",
+					"goto": "whose"
+				}
+			]
+		},
+		"keeper": {
+			"id": "keeper",
+			"speech": "Nesh Cairnhead keeps the path. She is not a liar and she is not friendly; ask her plainly and she will answer plainly. Go east along the shore and then up.",
+			"choices": [
+				{
+					"text": "East, then up.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

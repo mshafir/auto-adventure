@@ -3,6 +3,7 @@ import { asCondition, type Condition } from "../core/rules/condition.js";
 import type { Scene, SceneStep } from "../core/rules/scene.js";
 import type { Trigger } from "../core/rules/trigger.js";
 import { npcId } from "../core/world/spec.js";
+import type { ScenarioArtifact } from "../scenario/artifact.js";
 import type { Phase } from "../scenario/phase.js";
 import { type Args, CraftError } from "./args.js";
 import { addTo, commit, idTaken, openWorkspace, phaseOf, replacePhase } from "./workspace.js";
@@ -20,7 +21,7 @@ export function craftPhaseAdd(args: Args, out: (line: string) => void): void {
 	const workspace = openWorkspace(requireId(args, "phase add"));
 	const id = args.str("phase");
 	const name = args.str("name");
-	const when = readCondition(args, "when");
+	const when = readCondition(args, "when", workspace.artifact);
 	args.refuseUnknown();
 
 	if ((workspace.artifact.phases ?? []).some((phase) => phase.id === id)) {
@@ -238,7 +239,7 @@ export function craftTriggerAdd(args: Args, out: (line: string) => void): void {
 	const workspace = openWorkspace(requireId(args, "trigger add"));
 	const phase = phaseOf(workspace, args.has("phase") ? args.str("phase") : undefined);
 	const id = args.str("trigger");
-	const when = readCondition(args, "when");
+	const when = readCondition(args, "when", workspace.artifact);
 	const scene = args.has("scene") ? args.str("scene") : undefined;
 	const flags = args.list("set");
 	const repeats = args.bool("repeats");
@@ -325,11 +326,13 @@ export function craftBeatAdd(args: Args, out: (line: string) => void): void {
  * into the file by hand — a condition language on a command line is a language nobody can
  * read back, and `asCondition` already turns the common case into the right shape.
  */
-function readCondition(args: Args, key: string): Condition {
+function readCondition(args: Args, key: string, artifact?: ScenarioArtifact): Condition {
 	// Every part read before any is judged, because a reader that returned on the first match
 	// would leave the others unread — and an unread flag is refused as unknown, which is how
 	// `--when x --when-visited y` came to be rejected for not taking `--when`.
-	const visited = args.list(`${key}-visited`).map((place) => ({ visited: place }) as Condition);
+	const visited = args
+		.list(`${key}-visited`)
+		.map((place) => ({ visited: placeVisited(place, artifact) }) as Condition);
 	const carried = args.list(`${key}-item`).map((item) => ({ item }) as Condition);
 	const flags = args.list(key);
 	// `asCondition` returns undefined for an empty list, so the flags go through the same
@@ -347,6 +350,31 @@ function readCondition(args: Args, key: string): Condition {
 	// cutscene fires on *arriving somewhere having already been told why*. First-wins made that
 	// inexpressible, and a scene whose trigger only watched the flag played in the wrong town.
 	return parts.length === 1 ? (parts[0] as Condition) : { all: parts };
+}
+
+/**
+ * The name the engine will actually key an arrival on.
+ *
+ * `recordArrival` writes `visited:<place name>`, lower-cased, so a condition written against a
+ * *site id* is one that can never be true. The CLI accepted one, printed "fires once the
+ * player has been to 2730798778", and produced a cutscene that never played — silently, which
+ * is the whole class of fault this tool exists to remove. A site id is the natural thing for an
+ * author to reach for here, because every other command takes one.
+ *
+ * So both spellings are accepted and translated to the name, and anything that names no place
+ * is refused with the list.
+ */
+function placeVisited(asked: string, artifact: ScenarioArtifact | undefined): string {
+	if (!artifact) return asked;
+	const sites = Object.values(artifact.sites);
+	const byId = sites.find((site) => String(site.siteId) === asked);
+	if (byId) return byId.name;
+	const byName = sites.find((site) => site.name.toLowerCase() === asked.toLowerCase());
+	if (byName) return byName.name;
+	throw new CraftError(
+		`--when-visited wants a place in this world; "${asked}" is neither a site id nor a name. ` +
+			`There is: ${sites.map((site) => `${site.name} (${site.siteId})`).join(", ") || "nothing founded yet"}`,
+	);
 }
 
 function describe(when: Condition): string {

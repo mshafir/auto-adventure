@@ -163,6 +163,23 @@ export class ChunkManager {
 		const { chunk, summary, buildings, anchors } = generated;
 		this.applyDelta(chunk, this.deltas[key]);
 		this.entries.set(key, { chunk, summary, buildings, anchors, lastUsed: ++this.clock });
+		/*
+		 * Ground appearing is a change, and anything that read this area before now holds a
+		 * wrong answer.
+		 *
+		 * Missing this cost an afternoon. `WorldView` memoises tiles against this revision, and
+		 * an unbuilt chunk reads as impassable — so a view that had already looked at ground
+		 * before it existed went on reporting it impassable after it was built. What that looked
+		 * like was a route across open country that "cannot be walked on foot", a town nobody
+		 * lived in, and a cutscene whose cast was missing. Three wrong diagnoses of one stale
+		 * memo, and none of them pointing here.
+		 *
+		 * Invisible in ordinary play because the view is created after the opening chunks are
+		 * built and then only ever reads ground the player can see. It shows up the moment
+		 * anything asks about somewhere first and builds it second — which is what pathfinding
+		 * across a bounded world does.
+		 */
+		this.revision++;
 		this.evictIfNeeded();
 		this.options.onGenerated?.(key, summary);
 		return chunk;

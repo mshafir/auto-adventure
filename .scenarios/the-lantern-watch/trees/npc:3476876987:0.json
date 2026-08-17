@@ -1,0 +1,78 @@
+{
+	"npcId": "npc:3476876987:0",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "Everyone going south stops here. That is not a boast, it is the road — there is nowhere else to stop between the coast and Emberfold. So: sit, or ask me what you came to ask.",
+			"choices": [
+				{
+					"text": "Has a man gone past in a hurry?",
+					"goto": "hurry"
+				},
+				{
+					"text": "Who else has been through this week?",
+					"goto": "week"
+				}
+			]
+		},
+		"hurry": {
+			"id": "hurry",
+			"speech": "One did, and he did not stop, which I took badly. Soft boots. Carrying a notched stick in his hand like it would burn his pocket. He went south and he did not look up at the sign.",
+			"choices": [
+				{
+					"text": "How long ago?",
+					"goto": "when"
+				},
+				{
+					"text": "Did he say anything?",
+					"goto": "said"
+				}
+			]
+		},
+		"when": {
+			"id": "when",
+			"speech": "Yesterday, with the light going. If you are following him you have lost a day, and there is only one road, so he is not lost — he is early.",
+			"choices": [
+				{
+					"text": "Then I keep going south.",
+					"goto": "south"
+				}
+			]
+		},
+		"said": {
+			"id": "said",
+			"speech": "Not to me. He said something to the byre door as he passed it, the way a man does when he is arguing with somebody who is not there. Vane. He said Vane.",
+			"choices": [
+				{
+					"text": "Then I keep going south.",
+					"goto": "south"
+				}
+			]
+		},
+		"week": {
+			"id": "week",
+			"speech": "A cart of good split timber went north four days back, which is the wrong direction for timber and the wrong time of year. Then the man in the soft boots, going the other way. Make of it what you like; I only keep the door open.",
+			"choices": [
+				{
+					"text": "Has a man gone past in a hurry?",
+					"goto": "hurry"
+				},
+				{
+					"text": "Then I keep going south.",
+					"goto": "south"
+				}
+			]
+		},
+		"south": {
+			"id": "south",
+			"speech": "South. Keep the water on your left where the valley narrows and you will smell the mill before you see it.",
+			"choices": [
+				{
+					"text": "Thank you.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

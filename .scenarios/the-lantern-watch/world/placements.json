@@ -1,0 +1,60 @@
+{
+	"placements": [
+		{
+			"id": "new-cut-timber",
+			"at": {
+				"kind": "world",
+				"x": 100,
+				"y": -38
+			},
+			"item": {
+				"name": "New-Cut Timber",
+				"description": "Split and stacked beside the cairn, and nobody in Cairnhead ordered it."
+			},
+			"showDecor": true,
+			"emptyText": "Only chips and sawdust, trodden in."
+		}
+	],
+	"signs": [
+		{
+			"id": "sign:start",
+			"x": 29,
+			"y": 30,
+			"arms": [
+				{
+					"siteId": 2730798778
+				}
+			]
+		},
+		{
+			"id": "sign:site-2730798778",
+			"x": -50,
+			"y": -38,
+			"arms": [
+				{
+					"siteId": 4230091797
+				}
+			]
+		},
+		{
+			"id": "sign:site-4230091797",
+			"x": 91,
+			"y": -12,
+			"arms": [
+				{
+					"siteId": 2718694633
+				}
+			]
+		},
+		{
+			"id": "sign:site-2718694633",
+			"x": -72,
+			"y": 332,
+			"arms": [
+				{
+					"siteId": 3476876987
+				}
+			]
+		}
+	]
+}

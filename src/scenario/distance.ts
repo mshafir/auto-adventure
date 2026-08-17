@@ -79,9 +79,22 @@ export function describeReach(tiles: number): string {
 	return `${reachOf(tiles).reach} (${Math.round(tiles)})`;
 }
 
+/**
+ * Tiles walked between two points, not the distance a bird would fly.
+ *
+ * Manhattan, because movement is four-connected: a step is one arrow key and there are no
+ * diagonals, so a place two hundred tiles east and two hundred north is four hundred steps
+ * away and not two hundred and eighty. Measuring the hypotenuse understated every diagonal
+ * leg by up to a factor of the square root of two — which is how a pair of towns the survey
+ * called "a journey (429)" turned out to be a five-hundred-and-eighty-tile walk, and how the
+ * bands came to promise something the walking did not deliver.
+ *
+ * Still a floor rather than the truth: the real path goes around water and hills, so
+ * `craft playtest` measures further. It is the right *unit*, which is what the bands need.
+ */
 export function tilesBetween(
 	a: { readonly x: number; readonly y: number },
 	b: { readonly x: number; readonly y: number },
 ): number {
-	return Math.round(Math.hypot(a.x - b.x, a.y - b.y));
+	return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }

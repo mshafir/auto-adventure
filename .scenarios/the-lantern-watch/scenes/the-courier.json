@@ -1,0 +1,123 @@
+{
+	"id": "the-courier",
+	"cast": {
+		"keeper": "npc:4230091797:0"
+	},
+	"steps": [
+		{
+			"do": [
+				{
+					"t": "Camera",
+					"to": {
+						"kind": "anchor",
+						"siteId": 4230091797,
+						"anchor": "square"
+					},
+					"pan": "slow"
+				}
+			],
+			"hold": 3
+		},
+		{
+			"do": [
+				{
+					"t": "Camera",
+					"to": {
+						"kind": "world",
+						"x": 96,
+						"y": 4
+					},
+					"pan": "slow"
+				}
+			],
+			"hold": 5
+		},
+		{
+			"do": [
+				{
+					"t": "Spawn",
+					"actor": "courier",
+					"at": {
+						"kind": "world",
+						"x": 96,
+						"y": 4
+					}
+				}
+			],
+			"hold": 8
+		},
+		{
+			"do": [
+				{
+					"t": "WalkTo",
+					"actor": "courier",
+					"to": {
+						"kind": "anchor",
+						"siteId": 4230091797,
+						"anchor": "well"
+					},
+					"speed": "normal"
+				}
+			],
+			"hold": 4
+		},
+		{
+			"do": [
+				{
+					"t": "Say",
+					"actor": "courier",
+					"text": "Reeve's own hand. She sent me up the path for it, and I'll not climb it twice."
+				}
+			]
+		},
+		{
+			"do": [
+				{
+					"t": "Say",
+					"actor": "keeper",
+					"text": "That is not the reeve's man. I have seen the reeve's man."
+				}
+			]
+		},
+		{
+			"do": [
+				{
+					"t": "WalkTo",
+					"actor": "courier",
+					"to": {
+						"kind": "world",
+						"x": 96,
+						"y": 4
+					},
+					"speed": "fast"
+				}
+			],
+			"hold": 4
+		},
+		{
+			"do": [
+				{
+					"t": "Effects",
+					"effects": [
+						{
+							"t": "SetFlag",
+							"key": "tally-taken",
+							"value": true
+						}
+					]
+				},
+				{
+					"t": "Effects",
+					"effects": [
+						{
+							"t": "TakeItem",
+							"name": "Warden's Tally",
+							"quantity": 1
+						}
+					]
+				}
+			],
+			"hold": 10
+		}
+	]
+}

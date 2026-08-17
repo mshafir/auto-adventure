@@ -59,6 +59,16 @@ export interface SessionOptions {
 	 * settling one — must not leave a world in the launcher's Continue list.
 	 */
 	readonly persist?: boolean;
+	/**
+	 * How many chunks to keep resident. Default is the game's, which is a screenful and a halo.
+	 *
+	 * A session that *walks* rather than plays needs more. The store evicts the oldest chunk
+	 * once it is full, and a walk of two hundred tiles across a bounded world evicts the ground
+	 * the walker is standing next to — which reads as impassable, so the walk stops dead in
+	 * open country and reports that something is in the way. Nothing is; the ground simply
+	 * stopped existing behind it.
+	 */
+	readonly chunkCapacity?: number;
 }
 
 export class MissingSaveError extends Error {
@@ -198,6 +208,7 @@ export function buildSession(choice: LaunchChoice, options: SessionOptions = {})
 			// The chapters, and the world as the first of them. Content rather than progress, so
 			// they come from the artifact every session and never from the save — which is what
 			// lets a phase file be corrected while somebody is halfway through.
+			...(options.chunkCapacity ? { chunkCapacity: options.chunkCapacity } : {}),
 			...(choice.scenario ? { base: baseContent(choice.scenario) } : {}),
 			...(choice.scenario?.phases?.length ? { phases: choice.scenario.phases } : {}),
 		}),

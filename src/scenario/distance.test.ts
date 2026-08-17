@@ -35,9 +35,13 @@ describe("the bands", () => {
 		expect(describeReach(168)).toBe("a walk (168)");
 	});
 
-	it("measures straight-line tiles, rounded", () => {
-		expect(tilesBetween({ x: 0, y: 0 }, { x: 3, y: 4 })).toBe(5);
+	it("measures tiles walked, not the distance a bird would fly", () => {
+		// Four-connected movement: a step is one arrow key and there are no diagonals, so the
+		// hypotenuse understates every diagonal leg by up to a factor of root two. That is how a
+		// pair of towns the survey called "a journey (429)" turned out to be a 583-tile walk.
+		expect(tilesBetween({ x: 0, y: 0 }, { x: 3, y: 4 })).toBe(7);
 		expect(tilesBetween({ x: -10, y: 0 }, { x: 10, y: 0 })).toBe(20);
+		expect(tilesBetween({ x: 0, y: 0 }, { x: 200, y: 200 })).toBe(400);
 	});
 
 	it("explains every band, because the reach alone is not advice", () => {

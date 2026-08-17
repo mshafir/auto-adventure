@@ -1,0 +1,40 @@
+{
+	"npcId": "npc:2718694633:1",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "The mill is running and I am running it, so keep it short. If you have come about my brother, he is inside and he will tell you himself, which is more than the coast ever did for him.",
+			"choices": [
+				{
+					"text": "A man came here before me.",
+					"goto": "man"
+				},
+				{
+					"text": "What did the coast do to him?",
+					"goto": "coast"
+				}
+			]
+		},
+		"man": {
+			"id": "man",
+			"speech": "He did. He put a notched stick in my hand and went away south and I have not decided what to do with it. Do not ask me for it. Ask Orin and then ask me again.",
+			"choices": [
+				{
+					"text": "What did the coast do to him?",
+					"goto": "coast"
+				}
+			]
+		},
+		"coast": {
+			"id": "coast",
+			"speech": "Put his name on the two nights the wheel has to turn, four years running, and told him that is the rota. A rota you cannot argue with is not a rota, it is a tax. He should have shouted. He cut a stick instead.",
+			"choices": [
+				{
+					"text": "I will talk to him.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

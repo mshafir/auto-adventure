@@ -1,0 +1,200 @@
+{
+	"artifactVersion": 2,
+	"id": "the-lantern-watch",
+	"title": "The Lantern Watch",
+	"blurb": "A chain of hill beacons warns the coast of raiders. One did not light, and nobody will say why.",
+	"brief": {
+		"title": "The Lantern Watch",
+		"premise": "A chain of hill beacons warns the coast of raiders. One did not light, and nobody will say why.",
+		"tone": "cold, and a little frightened",
+		"duration": "short"
+	},
+	"seed": 2965156295,
+	"recipe": {
+		"sites": {
+			"weights": {
+				"town": 0,
+				"village": 0,
+				"fort": 0,
+				"hamlet": 0,
+				"camp": 0,
+				"ruins": 0,
+				"landmark": 0,
+				"cave": 0,
+				"castle": 0,
+				"docks": 0
+			},
+			"wildWeights": {
+				"town": 0,
+				"village": 0,
+				"fort": 0,
+				"hamlet": 0,
+				"camp": 0,
+				"ruins": 0,
+				"landmark": 0,
+				"cave": 0,
+				"castle": 0,
+				"docks": 0
+			}
+		},
+		"places": [
+			{
+				"at": {
+					"x": -96,
+					"y": -32
+				},
+				"kind": "town",
+				"importance": 4
+			},
+			{
+				"at": {
+					"x": 96,
+					"y": -32
+				},
+				"kind": "hamlet",
+				"importance": 3
+			},
+			{
+				"at": {
+					"x": -96,
+					"y": 352
+				},
+				"kind": "village",
+				"importance": 4
+			},
+			{
+				"at": {
+					"x": 32,
+					"y": 224
+				},
+				"kind": "hamlet",
+				"importance": 2
+			}
+		]
+	},
+	"spawn": {
+		"x": 32,
+		"y": 32
+	},
+	"bounds": {
+		"minX": -416,
+		"minY": -416,
+		"maxX": 480,
+		"maxY": 480,
+		"style": "cliffs",
+		"thickness": 8
+	},
+	"lore": {
+		"title": "The Lantern Watch",
+		"premise": "A chain of hill beacons warns the coast of raiders. One did not light, and nobody will say why.",
+		"era": "late iron age",
+		"tone": "cold, and a little frightened",
+		"factions": [],
+		"deities": []
+	},
+	"regions": {},
+	"arc": {
+		"title": "The Lantern Watch",
+		"premise": "A chain of hill beacons warns the coast of raiders. One did not light, and nobody will say why.",
+		"beats": [
+			{
+				"id": "read-the-tally",
+				"order": 1,
+				"siteId": 2730798778,
+				"npcSlot": 0,
+				"requires": [],
+				"setsFlag": "beat:read-the-tally",
+				"journal": "Hebbel Marchen will not name whose beacon it was until the tally is read aloud. It says Cairnhead: Orin Vane's turn. He is not here."
+			},
+			{
+				"id": "ask-the-keeper",
+				"order": 2,
+				"siteId": 4230091797,
+				"npcSlot": 0,
+				"requires": ["beat:read-the-tally"],
+				"setsFlag": "beat:ask-the-keeper",
+				"journal": "Nesh Cairnhead did not light the beacon because a man with a tally of his own told her the rota had changed. There are two tallies."
+			},
+			{
+				"id": "follow-the-courier",
+				"order": 3,
+				"siteId": 3476876987,
+				"npcSlot": 0,
+				"requires": ["tally-taken"],
+				"setsFlag": "beat:follow-the-courier",
+				"journal": "Mabb Hollow saw a man go south past Hollowgate in a hurry, carrying a notched stick. He did not stop, and he did not look like the reeve's man."
+			},
+			{
+				"id": "find-the-miller",
+				"order": 4,
+				"siteId": 2718694633,
+				"npcSlot": 0,
+				"requires": ["beat:follow-the-courier"],
+				"setsFlag": "beat:find-the-miller",
+				"journal": "Orin Vane cut the second tally himself. Not for raiders: the rota put his beacon on the two nights his mill has to run, and nobody would hear him."
+			}
+		]
+	},
+	"triggers": [
+		{
+			"id": "the-watch",
+			"when": {
+				"visited": "Salt Wick"
+			},
+			"effects": [
+				{
+					"t": "PlayScene",
+					"id": "the-watch-turns-out"
+				}
+			]
+		},
+		{
+			"id": "the-taking",
+			"when": {
+				"flag": "beat:ask-the-keeper"
+			},
+			"effects": [
+				{
+					"t": "PlayScene",
+					"id": "the-courier"
+				}
+			]
+		},
+		{
+			"id": "the-delivery",
+			"when": {
+				"all": [
+					{
+						"visited": "Emberfold"
+					},
+					{
+						"flag": "tally-taken"
+					}
+				]
+			},
+			"effects": [
+				{
+					"t": "PlayScene",
+					"id": "the-second-tally"
+				}
+			]
+		}
+	],
+	"startsWith": [
+		{
+			"name": "Warden's Tally",
+			"description": "A notched hazel stick. Whose turn it is to keep which beacon, and the only proof the rota was ever agreed.",
+			"quantity": 1
+		},
+		{
+			"name": "Gold",
+			"description": "A handful of coins.",
+			"quantity": 9
+		}
+	],
+	"authoredWith": {
+		"models": {},
+		"calls": 0,
+		"at": "2026-08-17T11:43:43.098Z"
+	}
+}

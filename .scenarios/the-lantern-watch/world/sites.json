@@ -1,0 +1,239 @@
+{
+	"2718694633": {
+		"siteId": 2718694633,
+		"name": "Emberfold",
+		"shortName": "Emberfold",
+		"description": "A mill village in a fold of the hills, where the water runs all year.",
+		"settlement": {
+			"name": "Emberfold",
+			"walled": false,
+			"structures": [
+				{
+					"kind": "mill",
+					"size": "medium",
+					"importance": 4,
+					"name": "Vane's Mill",
+					"required": true
+				},
+				{
+					"kind": "shop",
+					"size": "medium",
+					"importance": 4,
+					"name": "The Meal Store",
+					"required": true
+				}
+			]
+		},
+		"npcs": [
+			{
+				"slot": 0,
+				"name": "Orin Vane",
+				"role": "miller",
+				"glyph": "O",
+				"appearance": "Floury to the elbow, and does not stop working to talk.",
+				"persona": "Not sorry. Explains himself as though it were obvious.",
+				"disposition": 0,
+				"placement": "square",
+				"structureName": "Vane's Mill",
+				"knows": ["The rota put his beacon on the two nights his mill has to run."],
+				"stays": true,
+				"indoors": true
+			},
+			{
+				"slot": 1,
+				"name": "Sabra Vane",
+				"role": "miller",
+				"glyph": "S",
+				"appearance": "Orin's sister, running the mill while he does not.",
+				"persona": "Protective, and short about it.",
+				"disposition": 0,
+				"placement": "square",
+				"knows": [],
+				"stays": true
+			},
+			{
+				"slot": 2,
+				"name": "Corr Ableth",
+				"role": "carter",
+				"glyph": "C",
+				"appearance": "Loading meal onto a cart that is already full.",
+				"persona": "Carries things and gossip in equal measure.",
+				"disposition": 0,
+				"placement": "well",
+				"knows": [],
+				"treeAlias": "npc:2718694633:1"
+			}
+		],
+		"hooks": ["The mill runs two nights of the year it should not have to."]
+	},
+	"2730798778": {
+		"siteId": 2730798778,
+		"name": "Salt Wick",
+		"shortName": "Salt Wick",
+		"description": "A shore village of tarred roofs, its smokehouse the biggest thing in it.",
+		"settlement": {
+			"name": "Salt Wick",
+			"walled": false,
+			"structures": [
+				{
+					"kind": "warehouse",
+					"size": "medium",
+					"importance": 4,
+					"name": "The Smokehouse",
+					"required": true
+				},
+				{
+					"kind": "inn",
+					"size": "medium",
+					"importance": 4,
+					"name": "The Wick Arms",
+					"required": true
+				}
+			]
+		},
+		"npcs": [
+			{
+				"slot": 0,
+				"name": "Hebbel Marchen",
+				"role": "reeve",
+				"glyph": "H",
+				"appearance": "Broad, grey-braided, with a tally-board of her own she never writes on.",
+				"persona": "Speaks to be overheard. Will not accuse anybody without a thing in her hand.",
+				"disposition": 5,
+				"placement": "square",
+				"knows": [
+					"The beacon on Cairnhead did not light two nights ago.",
+					"The smokehouse was robbed the same night."
+				],
+				"stays": true
+			},
+			{
+				"slot": 1,
+				"name": "Wend Sallow",
+				"role": "smoker",
+				"glyph": "W",
+				"appearance": "Smoke-cured himself, and short with anybody who doubts him.",
+				"persona": "Certain about what he saw and tired of saying it.",
+				"disposition": 0,
+				"placement": "square",
+				"structureName": "The Smokehouse",
+				"knows": ["A boat put in below the headland that night, low in the water."],
+				"stays": true,
+				"indoors": true
+			},
+			{
+				"slot": 2,
+				"name": "Tarrow Feld",
+				"role": "netmender",
+				"glyph": "T",
+				"appearance": "Mending the same net he was mending yesterday.",
+				"persona": "Talks about the watch the way people talk about weather.",
+				"disposition": 0,
+				"placement": "bench",
+				"knows": [],
+				"stays": true
+			},
+			{
+				"slot": 3,
+				"name": "Ithy Marchen",
+				"role": "fishwife",
+				"glyph": "I",
+				"appearance": "The reeve's cousin, and says so in the first sentence.",
+				"persona": "Would rather the tally stayed away.",
+				"disposition": 0,
+				"placement": "bench",
+				"knows": [],
+				"treeAlias": "npc:2730798778:2",
+				"stays": true
+			},
+			{
+				"slot": 4,
+				"name": "Dolm Rees",
+				"role": "boatwright",
+				"glyph": "D",
+				"appearance": "Sizing up timber that is not his.",
+				"persona": "Noticed the new-cut wood and has not said so.",
+				"disposition": 0,
+				"placement": "doorstep",
+				"knows": [],
+				"treeAlias": "npc:2730798778:2",
+				"stays": true
+			}
+		],
+		"hooks": ["Nobody here will say whose turn it was."]
+	},
+	"3476876987": {
+		"siteId": 3476876987,
+		"name": "Hollowgate",
+		"shortName": "Hollowgate",
+		"description": "Two roofs and a byre where the valley road bends, kept open for people walking it.",
+		"settlement": {
+			"name": "Hollowgate",
+			"walled": false,
+			"structures": [
+				{
+					"kind": "inn",
+					"size": "small",
+					"importance": 4,
+					"name": "The Long Bend",
+					"required": true
+				}
+			]
+		},
+		"npcs": [
+			{
+				"slot": 0,
+				"name": "Mabb Hollow",
+				"role": "innkeeper",
+				"glyph": "M",
+				"appearance": "Standing in the road because that is where the custom is.",
+				"persona": "Remembers everybody who has walked past, and says so unprompted.",
+				"disposition": 0,
+				"placement": "square",
+				"knows": ["A man went south past here in a hurry, carrying a stick like a tally."],
+				"stays": true
+			}
+		],
+		"hooks": ["Everyone going south stops here, and everyone going south is remembered."]
+	},
+	"4230091797": {
+		"siteId": 4230091797,
+		"name": "Cairnhead",
+		"shortName": "Cairnhead",
+		"description": "Four roofs under the beacon path, and a cairn of split wood above them.",
+		"settlement": {
+			"name": "Cairnhead",
+			"walled": false,
+			"structures": []
+		},
+		"npcs": [
+			{
+				"slot": 0,
+				"name": "Nesh Cairnhead",
+				"role": "beacon-keeper",
+				"glyph": "N",
+				"appearance": "Wind-burnt, in a coat too big for her, standing where she can see the sea.",
+				"persona": "Answers exactly what is asked and nothing beside it.",
+				"disposition": -5,
+				"placement": "well",
+				"knows": [
+					"A man with a tally of his own told her the rota had changed.",
+					"The wood on the cairn has never been lit."
+				],
+				"stays": true
+			},
+			{
+				"slot": 1,
+				"name": "Bel Cairnhead",
+				"role": "shepherd",
+				"glyph": "B",
+				"appearance": "Nesh's brother, half her age and twice as talkative.",
+				"persona": "Repeats what his sister says, badly.",
+				"disposition": 0,
+				"placement": "bench",
+				"knows": []
+			}
+		],
+		"hooks": ["The wood is dry and has never been lit."]
+	}
+}

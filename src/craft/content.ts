@@ -232,6 +232,176 @@ export function craftNpcAdd(args: Args, out: (line: string) => void): void {
 }
 
 /**
+ * Change a place already founded — how big it is, and what kind of place.
+ *
+ * The second thing authoring wanted and could not have. A village asked for a warehouse and a
+ * village's roster does not build one; the check said so, and the only ways to act on it were
+ * to start the town again — losing everybody in it — or to hand-edit both `sites.json` and the
+ * recipe in step with each other, which is exactly the pair of edits the CLI exists to keep
+ * together.
+ *
+ * The cell does not move, so the site id does not change and nothing written against it — the
+ * people, the beats, the placements, the cutscenes — has to be touched. Re-measured before it
+ * is written, because shrinking a place is how an author discovers that its buildings no
+ * longer fit.
+ */
+export function craftSiteSet(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "site set"));
+	const artifact = workspace.artifact;
+	const siteId = args.int("site");
+	const spec = artifact.sites[String(siteId)];
+	if (!spec) {
+		throw new CraftError(
+			`site ${siteId} does not exist. There is: ${Object.keys(artifact.sites).join(", ") || "nothing"}`,
+		);
+	}
+
+	const kind = args.has("kind") ? args.oneOf("kind", SETTLEMENT_KINDS, "village") : undefined;
+	const importance = args.has("importance") ? args.int("importance") : undefined;
+	const walled = args.bool("walled");
+	args.refuseUnknown();
+
+	if (!kind && importance === undefined && !walled) {
+		throw new CraftError("nothing to set: one of --kind, --importance or --walled");
+	}
+	if (importance !== undefined && (importance < 1 || importance > 5)) {
+		throw new CraftError("--importance runs 1 to 5");
+	}
+
+	const bounds = artifact.bounds;
+	if (!bounds) throw new CraftError(`"${artifact.id}" has no bounds`);
+	const places = artifact.recipe?.places ?? [];
+	const world = artifactWorld(artifact);
+	const index = places.findIndex(
+		(place) =>
+			macroSite(world, Math.floor(place.at.x / MACRO), Math.floor(place.at.y / MACRO)).id ===
+			siteId,
+	);
+	const place = places[index];
+	if (!place) {
+		throw new CraftError(`site ${siteId} has no recipe entry, so nothing knows where it is`);
+	}
+
+	// The radius is derived from the kind and the importance, so a place that was grown by hand
+	// has to give that up — otherwise "make it a town" would leave it a village's size.
+	const { radius: _outgrown, ...bare } = place;
+	const wanted = {
+		...bare,
+		...(kind ? { kind } : {}),
+		...(importance !== undefined ? { importance } : {}),
+	};
+	// Measured against the world *without* this place, so it is not asked to avoid itself.
+	const others = places.filter((_, at) => at !== index);
+	const asked = prospect(artifact.seed, { ...artifact.recipe, places: others }, bounds, wanted);
+	if ("refusal" in asked) throw new CraftError(asked.refusal);
+
+	const structures = spec.settlement.structures;
+	if (structures.length > asked.budget) {
+		throw new CraftError(
+			`"${spec.name}" has ${structures.length} building(s) and that change leaves room for ` +
+				`${asked.budget}. Raise --importance instead, or take a building out of the file first`,
+		);
+	}
+
+	workspace.artifact = {
+		...artifact,
+		recipe: {
+			...artifact.recipe,
+			places: places.map((entry, at) => (at === index ? wanted : entry)),
+		},
+		sites: {
+			...artifact.sites,
+			[String(siteId)]: {
+				...spec,
+				settlement: { ...spec.settlement, ...(walled ? { walled: true } : {}) },
+			},
+		},
+	};
+	commit(workspace, `changing "${spec.name}"`);
+
+	out(`"${spec.name}" is now a ${wanted.kind} of importance ${wanted.importance ?? 3}`);
+	out(`  reaches ${asked.site.radius} tiles, room for ${asked.budget}`);
+	if (walled) out("  walled");
+}
+
+/**
+ * Change somebody already in the world.
+ *
+ * The gap that made itself felt the first time a world was built in the intended order:
+ * populate a town, then write the conversations, then discover that the four householders you
+ * added before there was anything to share should all be sharing it. `--like` could only be
+ * given at `npc add` time, and there is no `npc remove` — so the only ways out were to start
+ * the town again or to hand-edit `sites.json`, which is the one thing the CLI exists to stop.
+ *
+ * Deliberately only the four flags that are decisions rather than prose. A name, an
+ * appearance and a persona are words, and words are edited in the file like every other
+ * sentence in this format; `--like`, `--stays`, `--live` and `--at` all have to agree with
+ * the world, so they belong here where they can be refused.
+ */
+export function craftNpcSet(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "npc set"));
+	const artifact = workspace.artifact;
+	const who = args.str("npc");
+
+	const site = Object.values(artifact.sites).find((candidate) =>
+		candidate.npcs.some((npc) => npcId(candidate.siteId, npc.slot) === who),
+	);
+	const npc = site?.npcs.find((candidate) => npcId(site.siteId, candidate.slot) === who);
+	if (!site || !npc) {
+		const known = Object.values(artifact.sites).flatMap((candidate) =>
+			candidate.npcs.map((person) => npcId(candidate.siteId, person.slot)),
+		);
+		throw new CraftError(
+			`nobody in this world is "${who}". There is: ${known.join(", ") || "nobody yet"}`,
+		);
+	}
+
+	const like = args.has("like") ? args.str("like") : undefined;
+	const at = args.has("at")
+		? args.oneOf("at", PLACEMENTS as readonly AnchorKind[], "square")
+		: undefined;
+	const stays = args.bool("stays");
+	const live = args.bool("live");
+	args.refuseUnknown();
+
+	if (like && !artifact.trees?.[like]) {
+		throw new CraftError(
+			`--like wants somebody with a written conversation; "${like}" has none. ` +
+				`Written so far: ${Object.keys(artifact.trees ?? {}).join(", ") || "nobody"}`,
+		);
+	}
+	if (like === who) throw new CraftError(`${who} cannot speak with their own words`);
+	if (!like && !at && !stays && !live) {
+		throw new CraftError("nothing to set: one of --like, --at, --stays or --live");
+	}
+
+	const changed: NpcSpec = {
+		...npc,
+		...(at ? { placement: at } : {}),
+		...(stays ? { stays: true } : {}),
+		...(live ? { live: true } : {}),
+		...(like ? { treeAlias: like } : {}),
+	};
+	workspace.artifact = {
+		...artifact,
+		sites: {
+			...artifact.sites,
+			[String(site.siteId)]: {
+				...site,
+				npcs: site.npcs.map((candidate) => (candidate.slot === npc.slot ? changed : candidate)),
+			},
+		},
+	};
+	commit(workspace, `changing ${npc.name}`);
+
+	out(`${npc.name} (${who}) in ${site.name}:`);
+	if (like) out(`  speaks with ${like}'s words`);
+	if (at) out(`  stands at the ${at}`);
+	if (stays) out("  stays put rather than following a schedule");
+	if (live) out("  may improvise, so the story must not hang on them");
+}
+
+/**
  * Scaffold a conversation for somebody to write into.
  *
  * The one command whose output is meant to be hand-edited afterwards. What it writes is a
@@ -343,7 +513,12 @@ function placeItem(
 	const artifact = workspace.artifact;
 	const item = args.str("item");
 	const description = args.str("description");
-	const siteId = args.int("site");
+	// A tile out of doors, for something the story wants *seen* rather than hidden. `--site`
+	// resolves inside a building — that is its whole purpose, since stories hide things in
+	// chests — so a stack of timber beside a cairn had nowhere to go and ended up in somebody's
+	// front room. The two spellings are exclusive, and saying so is the whole of the check.
+	const outdoors = args.has("at") ? args.point("at") : undefined;
+	const siteId = outdoors ? undefined : args.int("site");
 	const inside = args.has("in") ? args.str("in") : undefined;
 	const anchor = args.has("anchor")
 		? args.oneOf("anchor", PLACEMENTS as readonly AnchorKind[])
@@ -357,17 +532,24 @@ function placeItem(
 
 	if (idTaken(artifact, "placements", id))
 		throw new CraftError(`there is already a placement called "${id}"`);
-	if (!artifact.sites[String(siteId)])
+	if (outdoors && (inside || anchor)) {
+		throw new CraftError(
+			"--at puts a thing on a tile out of doors, so it takes neither --in nor --anchor",
+		);
+	}
+	if (siteId !== undefined && !artifact.sites[String(siteId)])
 		throw new CraftError(`site ${siteId} does not exist; nothing has been founded there`);
 
 	const placement: Placement = {
 		id,
-		at: {
-			kind: "site",
-			siteId,
-			...(inside ? { structure: inside } : {}),
-			...(anchor ? { anchor } : {}),
-		},
+		at: outdoors
+			? { kind: "world", x: outdoors.x, y: outdoors.y }
+			: {
+					kind: "site",
+					siteId: siteId as number,
+					...(inside ? { structure: inside } : {}),
+					...(anchor ? { anchor } : {}),
+				},
 		item: { name: item, description, ...(quantity > 1 ? { quantity } : {}) },
 		...(requires ? { requires: { flag: requires } } : {}),
 		...(show ? { showDecor: true } : {}),
@@ -390,7 +572,9 @@ function placeItem(
 
 	const landed = resolved[0];
 	out(
-		`"${item}" is ${id}, in ${artifact.sites[String(siteId)]?.name}${inside ? `'s ${inside}` : ""}`,
+		outdoors
+			? `"${item}" is ${id}, on the ground at ${outdoors.x},${outdoors.y}`
+			: `"${item}" is ${id}, in ${artifact.sites[String(siteId)]?.name}${inside ? `'s ${inside}` : ""}`,
 	);
 	if (landed)
 		out(

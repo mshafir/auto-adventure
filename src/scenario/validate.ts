@@ -36,6 +36,7 @@ import { resolveBarriers } from "../engine/barriers.js";
 import { resolvePlacements } from "../engine/placements.js";
 import { artifactWorld, type ScenarioArtifact } from "./artifact.js";
 import { checkCompleteness } from "./completeness.js";
+import { BANDS } from "./distance.js";
 import { conditionSatisfiable, flagsWritten, unsatisfiableFlags } from "./flag-sources.js";
 import { gridFor, isPassable, type PassabilityGrid, pathLength, terrainOf } from "./passability.js";
 import { journeys, toldWhereToGo } from "./wayfinding.js";
@@ -138,8 +139,14 @@ export function hasErrors(findings: readonly Finding[]): boolean {
  * that actually spoils a session — the player walks for four minutes and begins to
  * suspect the game has lost the thread — and a story that never leaves one place is
  * the other. Everything between those is a pace, not a mistake.
+ *
+ * `LONG_MARCH` is the floor of the `far` band rather than a number of its own, so the check
+ * that refuses a leg and the guide that explains distances cannot drift apart. It was 320
+ * when a short world was 512 tiles across; in a 896-tile world that made it impossible to put
+ * two beats on opposite sides of the map at all, which is a limit on the *story* rather than
+ * on the session it was meant to protect.
  */
-export const LONG_MARCH = 320;
+export const LONG_MARCH = BANDS.find((band) => band.reach === "far")?.from ?? 550;
 export const SHORT_STORY = 60;
 
 /**

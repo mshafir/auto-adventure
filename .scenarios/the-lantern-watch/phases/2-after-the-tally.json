@@ -1,0 +1,26 @@
+{
+	"id": "after-the-tally",
+	"name": "The Tally Gone",
+	"when": {
+		"flag": "tally-taken"
+	},
+	"placements": {
+		"add": [
+			{
+				"id": "the-second-tally",
+				"at": {
+					"kind": "site",
+					"siteId": 2718694633,
+					"structure": "Vane's Mill"
+				},
+				"item": {
+					"name": "The Second Tally",
+					"description": "Hazel, notched in a hand that pressed too hard. The nights are not the ones on yours."
+				},
+				"requires": {
+					"flag": "second-tally-delivered"
+				}
+			}
+		]
+	}
+}

@@ -5,12 +5,19 @@ import { describeObjective } from "../core/rules/quests.js";
 import { activeQuests, type Facing, type GameState, worldAnchor } from "../core/rules/state.js";
 import { decorDef } from "../core/tiles/decor.js";
 import { terrainDef } from "../core/tiles/terrain.js";
-import { CHUNK, toChunk } from "../core/world/coords.js";
+import {
+	CHUNK,
+	type ChunkKey,
+	chunkKey,
+	toChunk,
+	toChunkX,
+	toChunkY,
+} from "../core/world/coords.js";
 import { sitesInside } from "../core/world/macro.js";
 import { worldSeed } from "../core/world/recipe.js";
 import { ChunkManager } from "../engine/chunk-manager.js";
 import { createWorldView } from "../engine/world-view.js";
-import { artifactWorld } from "../scenario/artifact.js";
+import { artifactWorld, type ScenarioArtifact } from "../scenario/artifact.js";
 import { buildSession, type Session } from "../session.js";
 import { type Args, CraftError } from "./args.js";
 import { openWorkspace } from "./workspace.js";
@@ -43,6 +50,7 @@ const HELP = [
 	"quests    the errand log",
 	"journal   what has been learned",
 	"items     what is carried",
+	"flags     what the world believes, for asking why something has not fired",
 	"done      stop",
 ].join("\n");
 
@@ -71,13 +79,16 @@ export async function craftPlay(args: Args, out: (line: string) => void): Promis
 			flavour: "prebuilt",
 			scenario: workspace.artifact,
 		},
-		{ persist: false },
+		// Enough to hold a bounded world, because this one walks all of it — see
+		// `SessionOptions.chunkCapacity`.
+		{ persist: false, chunkCapacity: 4096 },
 	);
 
 	try {
 		out(`playing "${workspace.artifact.title}"`);
 		out("type `help` for what you can do, `done` to stop");
 		out("");
+		inhabit(session, workspace.artifact, out);
 		settle(session, out);
 		draw(session, radius, out);
 
@@ -92,6 +103,63 @@ export async function craftPlay(args: Args, out: (line: string) => void): Promis
 	} finally {
 		session.dispose();
 	}
+}
+
+/**
+ * Build the whole bounded world, and put people in it, before anybody walks anywhere.
+ *
+ * A running game fills the world in around the player: chunks are built by an asynchronous
+ * queue as they come into view, and each slice re-derives the roster of any town in the ground
+ * it just made. Nothing in this REPL ever yields to that queue, so the world stayed as it was
+ * at the first frame — built and populated around the spawn, and empty everywhere else.
+ *
+ * The symptoms all read as faults in the *world*, which is the worst thing a review instrument
+ * can do: `talk` found nobody in a town full of authored people, `goto npc:S:N` said there was
+ * no such person, and an arrival cutscene failed to stage with its whole cast missing. Three
+ * different wrong diagnoses of one wrong tool.
+ *
+ * So this stops pretending to be a game loop. A bounded world is a few hundred chunks and the
+ * validator already builds every one of them; doing it once here, up front, costs a second and
+ * makes everything after it behave like a world somebody is actually in. The people are derived
+ * per site rather than around the player, for the same reason.
+ */
+function inhabit(session: Session, artifact: ScenarioArtifact, out: (line: string) => void): void {
+	const engine = session.engine;
+	const chunks = engine.getChunks();
+	const world = artifactWorld(artifact);
+
+	/*
+	 * One town at a time, and populated before moving on to the next.
+	 *
+	 * The first attempt built the whole bounded world and then derived every roster, which
+	 * defeated itself: the chunk store holds forty-nine chunks and quietly evicts the oldest, so
+	 * by the time the people were asked for, the ground they stand on had been thrown away.
+	 * `footprintResident` said no for every site and nobody was placed anywhere.
+	 *
+	 * A footprint is a handful of chunks, so doing each in turn keeps every one of them resident
+	 * for exactly as long as it is needed. What is *not* built here is the country in between:
+	 * `goto` builds the ground along its own route, and the view now notices when it appears.
+	 */
+	let towns = 0;
+	for (const site of sitesInside(world, artifact.bounds).values()) {
+		if (!artifact.sites[String(site.id)]) continue;
+		const reach = Math.ceil(site.radius / CHUNK) + 2;
+		const keys: ChunkKey[] = [];
+		for (let dy = -reach; dy <= reach; dy++) {
+			for (let dx = -reach; dx <= reach; dx++) {
+				chunks.ensure(site.mx + dx, site.my + dy);
+				keys.push(chunkKey(site.mx + dx, site.my + dy));
+			}
+		}
+		// Through the engine, so the ground counts as discovered — which is what the minimap
+		// draws and what an arrival condition reads.
+		engine.dispatch({ t: "ChunkReady", keys });
+		engine.populateNpcs({ cx: site.mx, cy: site.my });
+		towns++;
+	}
+
+	out(`put people in ${towns} place(s)`);
+	out("");
 }
 
 /** Lines typed at the terminal, as an async iterable so the loop above reads the same either way. */
@@ -195,6 +263,13 @@ async function perform(
 		quests: () => quests(state(), out),
 		journal: () => journal(state(), out),
 		items: () => items(state(), out),
+		// What the world believes, which is the only way to answer "why has that not happened
+		// yet". A trigger is a condition over flags, so a scene that never plays is either a
+		// flag that was never set or a condition written against a name nothing writes.
+		flags: () => {
+			const set = Object.keys(state().flags).sort();
+			out(set.length > 0 ? set.join("\n") : "nothing is set");
+		},
 	};
 	const report = reports[command];
 	if (report) {
@@ -313,13 +388,41 @@ function goTo(session: Session, where: string, radius: number, out: (line: strin
 	const from = { x: state.player.x, y: state.player.y };
 	// Generous bounds, since the route may need to go round water; the search is cheap and this
 	// is not on any frame path.
+	const box = {
+		x: Math.min(from.x, aimed.x) - 96,
+		y: Math.min(from.y, aimed.y) - 96,
+		w: Math.abs(aimed.x - from.x) + 192,
+		h: Math.abs(aimed.y - from.y) + 192,
+	};
+
+	/*
+	 * Build the ground before asking whether it can be walked on.
+	 *
+	 * Unbuilt ground reads as impassable, and only the chunks around the player are built — so
+	 * any `goto` further than the player has already been failed with "there is no way on foot"
+	 * about a road that was perfectly clear. It was invisible while worlds were small enough
+	 * that everywhere was already loaded, and it made the first big one look unplayable through
+	 * the one tool a review is conducted with.
+	 *
+	 * Affordable because this is a typed command in a REPL, not a frame: a walk across a short
+	 * world is on the order of a couple of hundred chunks, once.
+	 */
+	const chunks = engine.getChunks();
+	const built: ChunkKey[] = [];
+	for (let cy = toChunkY(box.y); cy <= toChunkY(box.y + box.h); cy++) {
+		for (let cx = toChunkX(box.x); cx <= toChunkX(box.x + box.w); cx++) {
+			chunks.ensure(cx, cy);
+			built.push(chunkKey(cx, cy));
+		}
+	}
+	// And *tell the engine*, rather than building behind its back. `ChunkReady` is what marks
+	// ground discovered and what populates the roster of any town in it — so ensuring chunks
+	// directly left the world built and nobody living in it, which cost an arrival cutscene
+	// its cast and took an hour to find.
+	engine.dispatch({ t: "ChunkReady", keys: built });
+
 	const path = findPath(from, target, {
-		bounds: {
-			x: Math.min(from.x, aimed.x) - 96,
-			y: Math.min(from.y, aimed.y) - 96,
-			w: Math.abs(aimed.x - from.x) + 192,
-			h: Math.abs(aimed.y - from.y) + 192,
-		},
+		bounds: box,
 		// People count as in the way, because they are: walking into somebody opens a conversation
 		// rather than moving. Without this the route went straight through whoever was standing in
 		// the square and stopped dead at them a step later.
@@ -483,6 +586,7 @@ async function spoken(session: Session, within = 4000): Promise<void> {
  */
 function settle(session: Session, out: (line: string) => void): void {
 	const engine = session.engine;
+
 	for (let guard = 0; guard < 4000; guard++) {
 		const state = engine.getState();
 		if (state.card) {

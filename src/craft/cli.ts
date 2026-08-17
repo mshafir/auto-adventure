@@ -4,8 +4,10 @@ import {
 	craftCarry,
 	craftFound,
 	craftNpcAdd,
+	craftNpcSet,
 	craftPlace,
 	craftSignposts,
+	craftSiteSet,
 	craftTerraform,
 	craftTree,
 } from "./content.js";
@@ -64,12 +66,24 @@ export const VERBS: readonly Verb[] = [
 		run: craftFound,
 	},
 	{
+		words: ["site", "set"],
+		usage: "craft site set <id> --site N [--kind town] [--importance 5] [--walled]",
+		summary: "change a place already founded. The cell does not move, so its id does not either",
+		run: craftSiteSet,
+	},
+	{
 		words: ["npc", "add"],
 		usage:
 			'craft npc add <id> --site N --name "..." --role "..." [--at anchor] [--in "Building"] [--indoors] [--knows "..."]... [--stays] [--live] [--like npc:...]',
 		summary:
 			"put somebody in a place. --live lets a model speak for them; --like shares another's words",
 		run: craftNpcAdd,
+	},
+	{
+		words: ["npc", "set"],
+		usage: "craft npc set <id> --npc npc:S:N [--like npc:S:N] [--at anchor] [--stays] [--live]",
+		summary: "change somebody already there. Only the decisions; prose is edited in the file",
+		run: craftNpcSet,
 	},
 	{
 		words: ["tree"],
@@ -86,7 +100,7 @@ export const VERBS: readonly Verb[] = [
 	{
 		words: ["place"],
 		usage:
-			'craft place <id> --item "Name" --description "..." --site N [--in "Building"] [--anchor a] [--requires flag] [--show] | --sign --at x,y --arm N... | --gate --site N --opens-when flag',
+			'craft place <id> --item "Name" --description "..." (--site N [--in "Building"] [--anchor a] | --at x,y) [--requires flag] [--show] | --sign --at x,y --arm N... | --gate --site N --opens-when flag',
 		summary: "put a thing, a board or a barred gate somewhere real. Refuses what cannot land",
 		run: craftPlace,
 	},

@@ -1,0 +1,96 @@
+{
+	"npcId": "npc:4230091797:0",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "You have come up for the beacon. There it is. Split, stacked, dry as a bone, and never lit — you can put your hand in it and come out clean.",
+			"choices": [
+				{
+					"text": "Then why didn't you light it?",
+					"goto": "why"
+				},
+				{
+					"text": "Who cut the new timber beside it?",
+					"goto": "timber"
+				},
+				{
+					"text": "Did you see anything on the water?",
+					"goto": "boat"
+				}
+			]
+		},
+		"why": {
+			"id": "why",
+			"speech": "Because a man came up the path the morning before and told me the rota had changed and it was not my night to watch. He had a tally in his hand to prove it. Notched hazel, same as yours. I read it and it said what he said it said.",
+			"choices": [
+				{
+					"text": "There are two tallies.",
+					"goto": "two"
+				},
+				{
+					"text": "What did he look like?",
+					"goto": "man"
+				}
+			]
+		},
+		"two": {
+			"id": "two",
+			"speech": "There are two tallies. I have thought about nothing else for two days. Somebody is cutting them, and whoever it is knew which night to take off the list — which means whoever it is knew what was in the smokehouse.",
+			"choices": [
+				{
+					"text": "What did he look like?",
+					"goto": "man"
+				},
+				{
+					"text": "Then I have to find Orin Vane.",
+					"goto": "vane"
+				}
+			]
+		},
+		"man": {
+			"id": "man",
+			"speech": "Not from the coast. Soft boots, no salt on him, and he did not once look at the sea while he was standing above it. A man who came a long way to be sure I stayed indoors.",
+			"choices": [
+				{
+					"text": "Then I have to find Orin Vane.",
+					"goto": "vane"
+				}
+			]
+		},
+		"timber": {
+			"id": "timber",
+			"speech": "Not me and not my brother. It came up on a cart in the dark and it is good wood, better than the beacon's. Somebody means to keep a fire going somewhere, and it is not here.",
+			"choices": [
+				{
+					"text": "Then why didn't you light it?",
+					"goto": "why"
+				},
+				{
+					"text": "Did you see anything on the water?",
+					"goto": "boat"
+				}
+			]
+		},
+		"boat": {
+			"id": "boat",
+			"speech": "A boat put in below the headland with no light showing and sat there until the tide turned. I watched it from here with the wood cold beside me and my hands in my pockets, because a man with a tally had told me it was not my night.",
+			"choices": [
+				{
+					"text": "There are two tallies.",
+					"goto": "two"
+				}
+			]
+		},
+		"vane": {
+			"id": "vane",
+			"speech": "South, then. Down the valley road, past Hollowgate where the bend is, and keep going. His sister's mill is at Emberfold and the water there runs all year, which is the whole of his trouble if you ask me.",
+			"choices": [
+				{
+					"text": "South it is.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

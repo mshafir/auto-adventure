@@ -150,11 +150,20 @@ function stageAction(action: SceneAction, ctx: StageContext): StagedAction | und
 		case "WalkTo": {
 			const from = ctx.standing.get(action.actor);
 			if (!from) {
-				// An actor with no position has never been spawned and is not the player, so there is
-				// nobody to walk. Worth naming rather than skipping: the likeliest cause is a typo in
-				// an alias, and the scene would otherwise play with a character simply absent.
+				/*
+				 * An actor with no position is not in the world *right now*, and there are two very
+				 * different reasons for that. A typo in an alias is one. The other, which cost an
+				 * afternoon, is that the cast member is real and is simply somewhere else: anybody
+				 * without `stays` follows a schedule, so a scene that staged perfectly at eight in
+				 * the morning failed at eleven with its whole cast at work. Naming the npcId when
+				 * there is one is what separates the two cases in the message.
+				 */
+				const cast = ctx.scene.cast?.[action.actor];
 				ctx.problems.push(
-					`${where}: "${action.actor}" walks, but is not on stage — spawn them first`,
+					cast
+						? `${where}: "${action.actor}" is ${cast}, who is not out in the world at this hour — ` +
+								"give them --stays, or spawn a stand-in instead of casting them"
+						: `${where}: "${action.actor}" walks, but is not on stage — spawn them first`,
 				);
 				return undefined;
 			}

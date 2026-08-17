@@ -2,10 +2,10 @@
  * Build a scenario the game can play.
  *
  * ```
- * npm run craft -- new the-drowned-abbey --premise "an abbey goes under"
- * npm run craft -- survey the-drowned-abbey
- * npm run craft -- claim the-drowned-abbey --site 4213455557 --name "Wenthollow" ...
- * npm run craft -- check the-drowned-abbey
+ * npm run craft -- new the-lantern-watch --premise "a beacon did not light"
+ * npm run craft -- survey the-lantern-watch --reach "a walk"
+ * npm run craft -- found the-lantern-watch --at -96,-32 --name "Salt Wick" ...
+ * npm run craft -- check the-lantern-watch
  * ```
  *
  * Everything that must agree with the generated world goes through here rather than through

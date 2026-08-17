@@ -40,6 +40,28 @@ export function flagsWritten(artifact: ScenarioArtifact): Set<string> {
 		}
 	}
 
+	/*
+	 * A cutscene is a flag writer, and it is where a story's turns actually happen.
+	 *
+	 * Missing them made the intended order of work impossible. A scene's last step is where a
+	 * chapter turns — that is the rule the whole format pushes an author towards — so the beat
+	 * that comes *after* the scene waits on a flag only the scene sets, and adding that beat
+	 * was refused as waiting on a flag nothing sets. The only way through was to write the beat
+	 * before the scene, which is backwards, or to gate it on something else, which is a lie.
+	 */
+	for (const scene of Object.values(artifact.scenes ?? {})) {
+		for (const step of scene.steps) {
+			for (const action of step.do) {
+				if (action.t === "Card") written.add(cardKey(action.card.id));
+				if (action.t !== "Effects") continue;
+				for (const effect of action.effects) {
+					if (effect.t === "SetFlag") written.add(effect.key);
+					if (effect.t === "ShowCard") written.add(cardKey(effect.card.id));
+				}
+			}
+		}
+	}
+
 	for (const barrier of artifact.barriers ?? []) written.add(`barrier:${barrier.id}`);
 
 	// Written dialogue sets flags through the same action boundary a live model

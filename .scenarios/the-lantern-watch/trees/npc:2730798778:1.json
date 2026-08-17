@@ -1,0 +1,54 @@
+{
+	"npcId": "npc:2730798778:1",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "You can look at the door if you like. Everyone else has. Off its hinges, from the outside, by somebody who knew the bar was on the left.",
+			"choices": [
+				{
+					"text": "You were inside?",
+					"goto": "inside"
+				},
+				{
+					"text": "Why does nobody believe you?",
+					"goto": "believe"
+				}
+			]
+		},
+		"inside": {
+			"id": "inside",
+			"speech": "Sleeping in it, as I do in the smoking weeks. I heard the boat before I heard them — she came in low and quiet and she did not scrape, which means somebody aboard knew this shore. That is the part they do not like.",
+			"choices": [
+				{
+					"text": "Why does nobody believe you?",
+					"goto": "believe"
+				},
+				{
+					"text": "Somebody local, then.",
+					"goto": "local"
+				}
+			]
+		},
+		"believe": {
+			"id": "believe",
+			"speech": "Because if I saw a boat come in clean then somebody stood on this shore and waved it, and everybody in Salt Wick would rather it was strangers and bad luck. Bad luck costs nobody a cousin.",
+			"choices": [
+				{
+					"text": "Somebody local, then.",
+					"goto": "local"
+				}
+			]
+		},
+		"local": {
+			"id": "local",
+			"speech": "Or somebody who was told. I have stopped saying which by name. Take it up the hill — Nesh Cairnhead was awake that night whatever else she was, and she has never once said a thing to be liked.",
+			"choices": [
+				{
+					"text": "I will.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

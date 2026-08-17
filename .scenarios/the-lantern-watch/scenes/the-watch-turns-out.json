@@ -1,0 +1,93 @@
+{
+	"id": "the-watch-turns-out",
+	"cast": {
+		"reeve": "npc:2730798778:0",
+		"mender": "npc:2730798778:2",
+		"cousin": "npc:2730798778:3",
+		"wright": "npc:2730798778:4"
+	},
+	"steps": [
+		{
+			"do": [
+				{
+					"t": "Camera",
+					"to": {
+						"kind": "anchor",
+						"siteId": 2730798778,
+						"anchor": "square"
+					},
+					"pan": "slow"
+				}
+			],
+			"hold": 3
+		},
+		{
+			"do": [
+				{
+					"t": "WalkTo",
+					"actor": "mender",
+					"to": {
+						"kind": "anchor",
+						"siteId": 2730798778,
+						"anchor": "square"
+					},
+					"speed": "normal"
+				},
+				{
+					"t": "WalkTo",
+					"actor": "cousin",
+					"to": {
+						"kind": "anchor",
+						"siteId": 2730798778,
+						"anchor": "square"
+					},
+					"speed": "normal"
+				},
+				{
+					"t": "WalkTo",
+					"actor": "wright",
+					"to": {
+						"kind": "anchor",
+						"siteId": 2730798778,
+						"anchor": "square"
+					},
+					"speed": "normal"
+				}
+			]
+		},
+		{
+			"do": [
+				{
+					"t": "Face",
+					"actor": "reeve",
+					"at": "left"
+				}
+			],
+			"hold": 8
+		},
+		{
+			"do": [
+				{
+					"t": "Say",
+					"actor": "reeve",
+					"text": "You have the tally. Good — there is not another soul in Salt Wick who can read it, and that has suited some of us."
+				}
+			]
+		},
+		{
+			"do": [
+				{
+					"t": "Effects",
+					"effects": [
+						{
+							"t": "SetFlag",
+							"key": "watch-turned-out",
+							"value": true
+						}
+					]
+				}
+			],
+			"hold": 10
+		}
+	]
+}

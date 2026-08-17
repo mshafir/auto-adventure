@@ -1,0 +1,44 @@
+{
+	"npcId": "npc:2730798778:2",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "Mending. Same net. There is a fortnight of this in every net and a fortnight of my life in every fortnight.",
+			"choices": [
+				{
+					"text": "What do people here say about the beacon?",
+					"goto": "beacon"
+				},
+				{
+					"text": "Nothing. Good day.",
+					"goto": null
+				}
+			]
+		},
+		"beacon": {
+			"id": "beacon",
+			"speech": "They say the weather. They say it was probably wet wood. It was not wet wood — I have been up there and it goes up like a torch in March. But saying so out loud puts a name in the square, and half of us are related to the name.",
+			"choices": [
+				{
+					"text": "Whose name?",
+					"goto": "name"
+				},
+				{
+					"text": "Fair enough.",
+					"goto": null
+				}
+			]
+		},
+		"name": {
+			"id": "name",
+			"speech": "Ask the reeve and hold the tally up while you do it. That is what it is for. I mend nets.",
+			"choices": [
+				{
+					"text": "Fair enough.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

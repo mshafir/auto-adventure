@@ -17,3 +17,4 @@ where it will actually be read.
 | `people.md` | Casting a town without writing thirty conversations |
 | `failures.md` | Things that looked right, passed every check, and were wrong |
 | `reviewing.md` | What playing a finished world found that no check could |
+| `the-tools-lied.md` | Faults that looked like the world and were the tool |

@@ -72,6 +72,8 @@ export interface EngineServices {
 	 */
 	base?: ScenarioContent;
 	phases?: readonly Phase[];
+	/** How many chunks stay resident. Raised by tools that walk the whole world. */
+	chunkCapacity?: number;
 }
 
 /**
@@ -140,7 +142,13 @@ export class GameEngine {
 	 * this string is unchanged there is nothing to recompose and nothing to re-index.
 	 */
 	private entered = "";
-	/** Staged scenes, by id. Cached because staging sweeps for sites and builds settlements. */
+	/**
+	 * Staged scenes, keyed by id *and* the state of the world they were staged against.
+	 *
+	 * Cached because staging sweeps for sites and builds settlements. Keyed on the ground's
+	 * revision and the roster's because a *failure* must not outlive the reason for it — see
+	 * `stagedScene`.
+	 */
 	private readonly staged = new Map<string, StagedScene | undefined>();
 	private draining = false;
 	private readonly queue: Effect[] = [];
@@ -156,6 +164,7 @@ export class GameEngine {
 		this.placements = this.resolvePlaced(initial);
 		this.chunks = new ChunkManager({
 			world: this.world,
+			...(services.chunkCapacity ? { capacity: services.chunkCapacity } : {}),
 			...(services.specFor ? { specFor: services.specFor } : {}),
 			...(initial.world.bounds ? { bounds: initial.world.bounds } : {}),
 			...(initial.barriers?.length ? { barriers: barrierTiles(initial.barriers) } : {}),
@@ -714,23 +723,34 @@ export class GameEngine {
 	 * A scene with its points resolved and its walks pathfound, staged once.
 	 *
 	 * Cached because staging sweeps the bounded world for a site and builds its settlement,
-	 * and the reducer asks for the staged scene on *every frame* of a cutscene. Cached even
-	 * when staging failed — a scene that could not be staged will not stage on the next frame
-	 * either, and re-deriving the same failure sixty times a second would put the sweep on the
-	 * frame path.
+	 * and the reducer asks for the staged scene on *every frame* of a cutscene.
+	 *
+	 * A *failure* is cached only against the world it failed in, and that distinction cost a
+	 * cutscene. Staging asks the roster where the cast are standing, and the roster is only
+	 * populated around the player — so a scene set in the town the player is *walking towards*
+	 * fails while they are still crossing its outskirts, which is exactly when its arrival
+	 * trigger fires. Cached outright, that first failure was permanent: the trigger stayed
+	 * unfired, the scene never played, and nothing said so. `NpcDirectory` has the same note
+	 * about the same mistake one layer down — a provisional roster cached as a decision left a
+	 * fully authored town deserted for good.
+	 *
+	 * So the key carries the ground's revision and the roster's. Both bump as the world fills
+	 * in around the player, which retries the staging exactly when something has changed and
+	 * never on an unchanged frame.
 	 *
 	 * A failure is logged and returned as undefined, which the reducer reads as "do not open
 	 * this". The trigger is then left unfired, so a corrected scenario plays the scene next
 	 * time rather than having silently skipped it.
 	 */
 	private stagedScene(id: string): StagedScene | undefined {
-		if (this.staged.has(id)) return this.staged.get(id);
+		const key = `${id}@${this.chunks.revision}:${this.npcs.revision}`;
+		if (this.staged.has(key)) return this.staged.get(key);
 
 		const scene = this.state.scenes?.[id];
 		const bounds = this.state.world.bounds;
 		if (!scene || !bounds) {
 			if (!scene) logger.warn(`scene "${id}" was asked for and this world has none`);
-			this.staged.set(id, undefined);
+			this.staged.set(key, undefined);
 			return undefined;
 		}
 
@@ -747,7 +767,7 @@ export class GameEngine {
 			occupied: (x, y) => this.personAt(x, y) !== undefined,
 		});
 		for (const problem of problems) logger.warn(`scene "${id}" cannot be staged: ${problem}`);
-		this.staged.set(id, staged);
+		this.staged.set(key, staged);
 		return staged;
 	}
 

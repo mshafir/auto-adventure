@@ -1,0 +1,92 @@
+{
+	"npcId": "npc:2718694633:0",
+	"entry": ["opening"],
+	"nodes": {
+		"opening": {
+			"id": "opening",
+			"speech": "You are the one with the tally. Or you were. Do not stand in the light, I am working — and yes, I cut the second one. Ask me the rest properly and I will tell you properly.",
+			"choices": [
+				{
+					"text": "You had the watch and you sold it.",
+					"goto": "sold"
+				},
+				{
+					"text": "Why cut a second tally at all?",
+					"goto": "why"
+				},
+				{
+					"text": "Did you know what they would take?",
+					"goto": "knew"
+				}
+			]
+		},
+		"why": {
+			"id": "why",
+			"speech": "Because the rota as agreed put my beacon on the eighth and the ninth night after the turn, and those are the two nights of the year this wheel has to run or the whole valley eats nothing in March. I said so. Four times, to Hebbel, in the square. She wrote it on nothing.",
+			"choices": [
+				{
+					"text": "So you swapped your nights.",
+					"goto": "swapped"
+				},
+				{
+					"text": "You could have refused the beacon.",
+					"goto": "refused"
+				}
+			]
+		},
+		"swapped": {
+			"id": "swapped",
+			"speech": "With a man from up the coast who wanted the nights and did not want them written down. He took payment. I thought I had bought two nights of flour. I had bought a boat a clear run at the smokehouse and I did not know it until you walked in.",
+			"choices": [
+				{
+					"text": "Did you know what they would take?",
+					"goto": "knew"
+				},
+				{
+					"text": "Come back and say that in Salt Wick.",
+					"goto": "come"
+				}
+			]
+		},
+		"refused": {
+			"id": "refused",
+			"speech": "You have never lived anywhere small. Refusing is the one thing you cannot do. You can lie, or you can find somebody to lie for you, and the second is cheaper.",
+			"choices": [
+				{
+					"text": "So you swapped your nights.",
+					"goto": "swapped"
+				}
+			]
+		},
+		"knew": {
+			"id": "knew",
+			"speech": "No. And that is the only part I would say twice with my hand on anything you like. I sold two nights of watching. I did not sell the herring, and I did not sell Wend Sallow's door.",
+			"choices": [
+				{
+					"text": "Come back and say that in Salt Wick.",
+					"goto": "come"
+				}
+			]
+		},
+		"sold": {
+			"id": "sold",
+			"speech": "I sold two nights. Say the whole of it or none of it. Ask me why.",
+			"choices": [
+				{
+					"text": "Why cut a second tally at all?",
+					"goto": "why"
+				}
+			]
+		},
+		"come": {
+			"id": "come",
+			"speech": "I will come. Not because you asked and not because Hebbel will be fair — she will not — but because the man in the soft boots is still on this road, and he now knows I can name him. Take the tally back. Both of them. Read them out together and let the square do the arithmetic.",
+			"choices": [
+				{
+					"text": "Both of them, then.",
+					"goto": null
+				}
+			]
+		}
+	}
+}

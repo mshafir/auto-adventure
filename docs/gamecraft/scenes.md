@@ -51,6 +51,41 @@ Pacing is edited in the scene file directly, like prose — `craft scene step` a
 not retime. Holds and speeds are the two things in a scene that need no knowledge of the world,
 which is exactly why the CLI does not own them.
 
+## When a scene actually fires, which is not when you think
+
+**A cutscene waits for the conversation to end.** A beat's flag is set the moment its
+conversation *opens*, so a trigger watching for that beat is true while the player is still
+reading the first line. The engine now holds the scene back until the dialogue closes — but
+that changes what a scene off a beat *means*, and it is the difference between a scene that
+reads and one that does not:
+
+> The scene plays when the player walks away from the conversation, not during it.
+
+So a scene hung off a beat has to show a **consequence**, not a continuation. "The rider
+arrives and tells the keeper the news" is a continuation, and it played after the keeper had
+already said the same thing — which is exactly what a player reported as "the cutscene didn't
+make much sense".
+
+**Never hang a scene off the last beat.** The arc's ending card fires on the same command the
+last beat's conversation closes on, and it goes up first — so the story is declared over and
+*then* the climax plays. Put the scene on an earlier beat, or on a chapter flag, and let the
+last beat be the thing that ends it.
+
+**Arrival is usually a better trigger than a beat.** `--when-visited <site>` fires when the
+player walks in, with nothing open and nobody mid-sentence, which is the cleanest moment a
+scene can have.
+
+## Somebody walking up to somebody else
+
+A scene walks to *places* — the well, the gate, the shrine door — and a place is exactly where
+somebody stands, because that is where the generator puts them. Walking onto the well drew the
+rider standing inside the keeper: one figure crossed the square and disappeared into another.
+
+Staging stops the walker one tile short now, which is also what the sentence meant — "the rider
+comes to the keeper" is approach, not merger — and the last step of an approach leaves them
+facing what they approached. Nothing to do about it while authoring except know that the
+arriving actor ends up *beside* the anchor, not on it.
+
 ## Where the effects go
 
 Everything a scene changes should be in its **last step**. Not only because non-idempotent

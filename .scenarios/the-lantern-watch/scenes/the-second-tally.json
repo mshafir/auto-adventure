@@ -1,0 +1,113 @@
+{
+	"id": "the-second-tally",
+	"cast": {
+		"sister": "npc:2718694633:1"
+	},
+	"steps": [
+		{
+			"do": [
+				{
+					"t": "Camera",
+					"to": {
+						"kind": "anchor",
+						"siteId": 2718694633,
+						"anchor": "square"
+					},
+					"pan": "slow"
+				}
+			],
+			"hold": 3
+		},
+		{
+			"do": [
+				{
+					"t": "Camera",
+					"to": {
+						"kind": "anchor",
+						"siteId": 2718694633,
+						"anchor": "square"
+					},
+					"pan": "slow"
+				}
+			],
+			"hold": 6
+		},
+		{
+			"do": [
+				{
+					"t": "Spawn",
+					"actor": "kell",
+					"at": {
+						"kind": "world",
+						"x": -96,
+						"y": 326
+					}
+				}
+			],
+			"hold": 8
+		},
+		{
+			"do": [
+				{
+					"t": "WalkTo",
+					"actor": "kell",
+					"to": {
+						"kind": "anchor",
+						"siteId": 2718694633,
+						"anchor": "square"
+					},
+					"speed": "normal"
+				}
+			],
+			"hold": 5
+		},
+		{
+			"do": [
+				{
+					"t": "Say",
+					"actor": "kell",
+					"text": "He said you would know what to do with it. He said you would not like it."
+				}
+			]
+		},
+		{
+			"do": [
+				{
+					"t": "Say",
+					"actor": "sister",
+					"text": "Give it here. And do not come back up this valley."
+				}
+			]
+		},
+		{
+			"do": [
+				{
+					"t": "WalkTo",
+					"actor": "kell",
+					"to": {
+						"kind": "world",
+						"x": -96,
+						"y": 326
+					},
+					"speed": "fast"
+				}
+			],
+			"hold": 4
+		},
+		{
+			"do": [
+				{
+					"t": "Effects",
+					"effects": [
+						{
+							"t": "SetFlag",
+							"key": "second-tally-delivered",
+							"value": true
+						}
+					]
+				}
+			],
+			"hold": 10
+		}
+	]
+}
