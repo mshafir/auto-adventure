@@ -52,6 +52,12 @@ will hold a village, how far each is from the spawn, what the country is like th
 many buildings will actually fit. Every row is measured by laying a settlement out on that
 cell, so a row it prints is a place `craft found` will accept.
 
+**Place things a real distance apart.** The survey prints the reach between every candidate
+and everything already founded — `adjacent`, `neighbouring`, `a walk`, `a journey`, `far` —
+and `--reach "a journey"` asks it for somewhere at least that far. Most legs of a story want
+to be `a walk`; one may be `a journey`. Two places that come out `adjacent` are one place with
+two names, which is the mistake the first world made and the player noticed immediately.
+
 **If the ground does not suit the story, reseed.** `craft reseed <id> --seed <word>` is free
 and takes a second. Do it five times if you need to. A story that wants a coast and a deep
 forest two days apart is a story worth shopping for.

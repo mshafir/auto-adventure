@@ -1,6 +1,6 @@
-import { storyNpcIds } from "../core/rules/arc.js";
+import { orderedBeats, storyNpcIds } from "../core/rules/arc.js";
 import { scenePacingProblems } from "../core/rules/scene-check.js";
-import { sitesInside } from "../core/world/macro.js";
+import { MACRO, macroSite, sitesInside } from "../core/world/macro.js";
 import { npcId } from "../core/world/spec.js";
 import { ChunkManager } from "../engine/chunk-manager.js";
 import { NpcDirectory } from "../engine/npc-directory.js";
@@ -8,6 +8,7 @@ import { stageScene } from "../engine/scene-staging.js";
 import { createWorldView } from "../engine/world-view.js";
 import { artifactWorld, type ScenarioArtifact } from "../scenario/artifact.js";
 import { checkCompleteness } from "../scenario/completeness.js";
+import { TOO_CLOSE, tilesBetween } from "../scenario/distance.js";
 import { checkInvariants } from "../scenario/invariants.js";
 import { type Finding, siteIndex, validateArtifact } from "../scenario/validate.js";
 import { walkTheStory } from "../scenario/walk.js";
@@ -49,6 +50,7 @@ export function craftCheck(args: Args, out: (line: string) => void): void {
 	for (const scene of Object.values(artifact.scenes ?? {})) {
 		warnings.push(...scenePacingProblems(scene));
 	}
+	warnings.push(...spacingProblems(artifact));
 
 	for (const error of errors) out(`error  ${error}`);
 	for (const warning of warnings) out(`warn   ${warning}`);
@@ -149,6 +151,62 @@ function stagingProblems(artifact: ScenarioArtifact): string[] {
 		});
 		for (const problem of found) problems.push(`scene "${id}": ${problem}`);
 	}
+	return problems;
+}
+
+/**
+ * Places so close together that they read as one place.
+ *
+ * The fault the first world built this way had, and the one thing about it that nothing
+ * caught: its two towns were forty-seven tiles apart. Both were legal, neither footprint
+ * overlapped the other after a small adjustment, every check passed — and what a player saw
+ * was a single settlement with a field through the middle and two names on it. A beat at each
+ * end is two beats in the same scene.
+ *
+ * Reported as a warning about the *pair*, and separately about consecutive beats, because
+ * those are two different mistakes. Two villages close together may be deliberate scenery;
+ * two consecutive beats close together is a story with no journey in it.
+ *
+ * See `distance.ts` for what the bands mean and why a bare tile count could not say this.
+ */
+function spacingProblems(artifact: ScenarioArtifact): string[] {
+	const problems: string[] = [];
+	const world = artifactWorld(artifact);
+	const places = artifact.recipe?.places ?? [];
+	const named = (at: { readonly x: number; readonly y: number }) => {
+		const cell = macroSite(world, Math.floor(at.x / MACRO), Math.floor(at.y / MACRO));
+		return artifact.sites[String(cell.id)]?.name ?? `the place at ${at.x},${at.y}`;
+	};
+
+	for (let i = 0; i < places.length; i++) {
+		for (let j = i + 1; j < places.length; j++) {
+			const a = places[i] as (typeof places)[number];
+			const b = places[j] as (typeof places)[number];
+			const apart = tilesBetween(a.at, b.at);
+			if (apart >= TOO_CLOSE) continue;
+			problems.push(
+				`${named(a.at)} and ${named(b.at)} are ${apart} tiles apart, which reads as one place ` +
+					`with a field in it. ${TOO_CLOSE} is the shortest walk that is a walk`,
+			);
+		}
+	}
+
+	// The story's own legs. `orderedBeats` is the order the player meets them in, so this is
+	// asking how far they actually travel between one beat and the next.
+	const beats = artifact.arc ? orderedBeats(artifact.arc) : [];
+	const sites = siteIndex(artifact);
+	for (let i = 1; i < beats.length; i++) {
+		const from = sites.get((beats[i - 1] as (typeof beats)[number]).siteId);
+		const to = sites.get((beats[i] as (typeof beats)[number]).siteId);
+		if (!from || !to || from.id === to.id) continue;
+		const apart = tilesBetween(from.site, to.site);
+		if (apart >= TOO_CLOSE) continue;
+		problems.push(
+			`beats "${beats[i - 1]?.id}" and "${beats[i]?.id}" are ${apart} tiles apart — the player ` +
+				"walks nowhere between them, so the second is the same scene as the first",
+		);
+	}
+
 	return problems;
 }
 

@@ -2,10 +2,11 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveSeed } from "../config.js";
 import { type Duration, isDuration } from "../core/world/brief.js";
-import { SETTLEMENT_KINDS } from "../core/world/macro.js";
+import { MACRO, macroSite, SETTLEMENT_KINDS } from "../core/world/macro.js";
 import { LAND_ONLY, worldSeed } from "../core/world/recipe.js";
-import { ARTIFACT_VERSION, type ScenarioArtifact } from "../scenario/artifact.js";
+import { ARTIFACT_VERSION, artifactWorld, type ScenarioArtifact } from "../scenario/artifact.js";
 import { writeScenarioDir } from "../scenario/dir.js";
+import { BANDS, describeReach, tilesBetween } from "../scenario/distance.js";
 import { scenarioPath, scenarioRoot } from "../scenario/repo.js";
 import { candidates, surveyWorld } from "../scenario/survey.js";
 import { type Args, CraftError } from "./args.js";
@@ -146,6 +147,16 @@ export function craftSurvey(args: Args, out: (line: string) => void): void {
 	const all = args.bool("all");
 	const kind = args.oneOf("kind", SETTLEMENT_KINDS, "village");
 	const importance = args.int("importance", 3);
+	// "Somewhere at least a walk from anywhere I have already built" is the question an author
+	// actually has once the first place is down, and it is unanswerable from a list sorted by
+	// distance from the spawn.
+	const reach = args.has("reach")
+		? args.oneOf(
+				"reach",
+				BANDS.map((band) => band.reach),
+				"a walk",
+			)
+		: undefined;
 	args.refuseUnknown();
 
 	const artifact = workspace.artifact;
@@ -161,13 +172,23 @@ export function craftSurvey(args: Args, out: (line: string) => void): void {
 	);
 
 	const founded = Object.values(artifact.sites);
+	const places = artifact.recipe?.places ?? [];
 	out("");
 	if (founded.length === 0)
 		out("nothing founded yet: this world is land only until you put something on it");
 	else {
 		out(`${founded.length} founded:`);
-		for (const spec of founded) {
-			out(`  ${spec.siteId}  ${spec.name} — ${spec.settlement.structures.length} building(s)`);
+		const world = artifactWorld(artifact);
+		for (const [index, place] of places.entries()) {
+			const cell = macroSite(world, Math.floor(place.at.x / MACRO), Math.floor(place.at.y / MACRO));
+			const spec = founded.find((candidate) => candidate.siteId === cell.id);
+			const apart = places
+				.slice(index + 1)
+				.map((other) => describeReach(tilesBetween(place.at, other.at)));
+			out(
+				`  ${place.at.x},${place.at.y}  ${spec?.name ?? place.kind}` +
+					`${apart.length > 0 ? ` — ${apart.join(", ")} from the rest` : ""}`,
+			);
 		}
 	}
 
@@ -179,16 +200,42 @@ export function craftSurvey(args: Args, out: (line: string) => void): void {
 		kind,
 		importance,
 	);
+	// At least that far, rather than exactly that band: an author asking for a walk will
+	// happily take a journey, and would not thank a tool that hid it.
+	const floor = reach ? (BANDS.find((band) => band.reach === reach)?.from ?? 0) : 0;
+	const nearestTo = (at: { readonly x: number; readonly y: number }) =>
+		places.length ? Math.min(...places.map((place) => tilesBetween(place.at, at))) : undefined;
+	const shown = found.filter((candidate) => {
+		const near = nearestTo(candidate.prospect.context);
+		return near === undefined || near >= floor;
+	});
+
 	out("");
 	if (found.length === 0) {
 		out(`no cell in this world will hold a ${kind}. Try --kind hamlet, or craft reseed.`);
 		return;
 	}
+	if (shown.length === 0) {
+		out(
+			`no cell that will hold a ${kind} is "${reach}" from what is already founded. ` +
+				"Ask for less, or reseed for a bigger country.",
+		);
+		return;
+	}
 	out(
-		`${found.length} cell(s) that will hold a ${kind} of importance ${importance}, nearest first:`,
+		`${shown.length} cell(s) that will hold a ${kind} of importance ${importance}` +
+			`${reach ? `, at least "${reach}" from what is founded` : ""}, nearest first.`,
 	);
-	for (const candidate of found.slice(0, all ? found.length : SURVEY_ROWS)) {
+	// The distance to the *nearest thing already founded*, not to the spawn, because that is
+	// the number the decision turns on: an author choosing where the second town goes is
+	// asking how long the walk between them will be. Named as well as counted — see
+	// `distance.ts` for why a bare tile count is not a decision.
+	out(
+		`  "from" is the walk to the nearest place already founded${places.length === 0 ? ", of which there are none yet" : ""}:`,
+	);
+	for (const candidate of shown.slice(0, all ? shown.length : SURVEY_ROWS)) {
 		const { context } = candidate.prospect;
+		const nearest = nearestTo(context);
 		// Deduplicated because the biome and the elevation band often agree — "shore, shore"
 		// reads as the tool repeating itself rather than as two facts.
 		const notes = [
@@ -200,14 +247,16 @@ export function craftSurvey(args: Args, out: (line: string) => void): void {
 			]),
 		];
 		out(
-			`  --at ${String(`${context.x},${context.y}`).padEnd(11)} ${String(candidate.distanceFromSpawn).padStart(4)} away  ` +
+			`  --at ${String(`${context.x},${context.y}`).padEnd(11)} ` +
+				`${String(candidate.distanceFromSpawn).padStart(4)} from spawn  ` +
+				`${(nearest === undefined ? "" : describeReach(nearest)).padEnd(20)}` +
 				`room for ${String(candidate.prospect.budget).padStart(2)}  ${notes.join(", ")}`,
 		);
 	}
 	// Said out loud rather than silently truncated: a list that stops without saying so reads
 	// as the whole of what is available.
-	if (!all && found.length > SURVEY_ROWS) {
-		out(`  ... and ${found.length - SURVEY_ROWS} more (--all lists them)`);
+	if (!all && shown.length > SURVEY_ROWS) {
+		out(`  ... and ${shown.length - SURVEY_ROWS} more (--all lists them)`);
 	}
 	if (refused > 0) {
 		out(
@@ -215,6 +264,9 @@ export function craftSurvey(args: Args, out: (line: string) => void): void {
 				"craft found says which, for a cell you name",
 		);
 	}
+	out("");
+	for (const band of BANDS)
+		out(`  ${band.reach.padEnd(14)} ${String(band.from).padStart(4)}+  ${band.means}`);
 	out("");
 	out(
 		`next: craft found ${artifact.id} --at <x,y> --kind ${kind} --name "..." --description "..."`,

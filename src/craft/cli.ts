@@ -51,8 +51,8 @@ export const VERBS: readonly Verb[] = [
 	},
 	{
 		words: ["survey"],
-		usage: "craft survey <id> [--kind village] [--importance 3] [--all]",
-		summary: "where the ground will hold a place, how far it is, and what it is like there",
+		usage: 'craft survey <id> [--kind village] [--importance 3] [--reach "a walk"] [--all]',
+		summary: "where the ground will hold a place, how far that is from what is built, and why",
 		run: craftSurvey,
 	},
 	{

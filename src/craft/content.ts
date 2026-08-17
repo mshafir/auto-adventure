@@ -11,6 +11,7 @@ import { type PlaceRecipe, type WorldRecipe, worldSeed } from "../core/world/rec
 import { type NpcSpec, npcId, type SiteSpec } from "../core/world/spec.js";
 import { resolvePlacements } from "../engine/placements.js";
 import { artifactWorld, type ScenarioArtifact } from "../scenario/artifact.js";
+import { describeReach, tilesBetween } from "../scenario/distance.js";
 import { signpostsFor } from "../scenario/signposts.js";
 import { buildsSomething, prospect } from "../scenario/survey.js";
 import type { TerraformEdit } from "../scenario/terraform.js";
@@ -114,6 +115,21 @@ export function craftFound(args: Args, out: (line: string) => void): void {
 
 	out(`founded "${name}" as site ${siteId} — a ${kind} at ${at.x},${at.y}, room for ${budget}`);
 	if (parsed.length > 0) out(`  ${parsed.map((s) => s.name ?? s.kind).join(", ")}`);
+	// How far it is from everything else, named rather than only counted. This is the number
+	// the story turns on and the one that is hardest to see from coordinates: the first world
+	// built this way put its two towns forty-seven tiles apart, which reads as one place.
+	for (const other of artifact.recipe?.places ?? []) {
+		const spec = Object.values(artifact.sites).find(
+			(candidate) =>
+				candidate.siteId ===
+				macroSite(
+					artifactWorld(artifact),
+					Math.floor(other.at.x / MACRO),
+					Math.floor(other.at.y / MACRO),
+				).id,
+		);
+		out(`  ${describeReach(tilesBetween(at, other.at))} from ${spec?.name ?? other.kind}`);
+	}
 	out(`next: craft npc add ${artifact.id} --site ${siteId} --name "..." --role "..." --at square`);
 }
 

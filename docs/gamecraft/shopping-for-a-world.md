@@ -42,16 +42,41 @@ story wants water, a forest if it wants to hide something.
 It stops working the moment you found a place, because site ids are a function of the seed —
 so a reseeded scenario would carry correctly-named towns standing nowhere.
 
-## What "the right distance" means
+## Distances, by what you want them to mean
+
+**These numbers were wrong before and it cost a world.** The first one built this way put its
+two towns forty-seven tiles apart on the old guidance, and a player reported it as "the two
+key towns were basically overlapping". They were. The bands live in `distance.ts` now, the
+survey prints them, and `craft check` warns when two places or two consecutive beats fall
+below the floor.
+
+| reach | tiles | what it is |
+|---|---|---|
+| adjacent | 0+ | the same place with a field in it. Two beats here are one scene |
+| neighbouring | 70+ | the next village over, in sight of where you came from |
+| a walk | 140+ | half a minute of road with something to see. Where most legs want to be |
+| a journey | 300+ | somewhere you set out for. Worth it once, tedious twice |
+| far | 550+ | the other end of the world. Put something at the halfway point |
+
+A step is one command and a player manages three or four a second, so a hundred tiles is
+around half a minute of holding a key. That is the unit the bands are built from.
+
+**Ask the survey for what you want**, rather than reading coordinates and doing arithmetic:
+
+```
+npm run craft -- survey <id> --reach "a journey"
+```
+
+lists only the cells at least that far from everything already founded, and prints how far
+each is in both words and tiles.
 
 The survey's distance is straight-line. A player walks around water and through gaps, so the
-real distance is longer and sometimes very much longer.
+real distance is longer and sometimes very much longer — `craft playtest` measures the real
+thing, so trust it over the survey when they disagree.
 
-- Under 30 tiles: the same place, effectively. Two beats here are one scene.
-- 40–80: a walk with something to see. This is where most legs of a story want to be.
-- Over 150: a journey. Worth it once in a story, tedious twice.
-
-`craft playtest` measures the real thing, so trust it over the survey when they disagree.
+**A short world is 896 tiles across** and a long one 1792. That is deliberately generous: a
+world sized to just fit its beats has no room for the player to be anywhere that is not on
+the critical path.
 
 ## One place per cell, and no two touching
 

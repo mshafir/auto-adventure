@@ -67,18 +67,23 @@ export interface DurationPlan {
  * — shape, lore, regions, sites, arc, reactions, dialogue, repair — for about a tenth
  * of the bill.
  *
- * Two chunks of radius is 128 tiles, and `MACRO` is one chunk, so the boundary encloses
- * about sixteen macro cells. On a dense seed that is three or four places and a walk of
- * a couple of minutes; on a sparse one it is nothing at all, which is why the boundary
- * grows until it holds a story — see {@link GROWTH_LIMIT_CHUNKS}. Deliberately the
- * smallest radius that works rather than a safe one, so the cheap case stays cheap and
- * only the seeds that need the room pay for it.
+ * The radii are sized from `distance.ts` rather than guessed, and they had to grow. They
+ * were set when the generator scattered settlements and the job was to enclose enough of
+ * them; now every place is founded by hand, and the question is instead how much room a
+ * story needs to put its places a real walk apart. A short world at four chunks was 512
+ * tiles across, which sounds ample and is not: subtract the boundary band and a town's
+ * footprint at each end and there is one `a walk` in it, so the first world built this way
+ * put its two towns forty-seven tiles apart and read as one place with a field in the middle.
+ *
+ * So each duration now holds its beats at `a walk` apart with room to miss: `short` is three
+ * beats across 896 tiles, `long` ten across 1792. The cost is generation area — `craft check`
+ * walks every tile of the bounded world — and it is paid once per check rather than in play.
  */
 export const DURATION_PLAN: Readonly<Record<Duration, DurationPlan>> = {
-	tiny: { beats: 2, radiusChunks: 2 },
-	short: { beats: 3, radiusChunks: 4 },
-	medium: { beats: 6, radiusChunks: 6 },
-	long: { beats: 10, radiusChunks: 9 },
+	tiny: { beats: 2, radiusChunks: 3 },
+	short: { beats: 3, radiusChunks: 7 },
+	medium: { beats: 6, radiusChunks: 10 },
+	long: { beats: 10, radiusChunks: 14 },
 };
 
 export function planFor(duration: Duration | undefined): DurationPlan {
@@ -197,17 +202,32 @@ function growSites(
 ): { readonly places: readonly PlaceRecipe[]; readonly grown: Record<string, number> } {
 	const places: PlaceRecipe[] = [];
 	const grown: Record<string, number> = {};
+	/*
+	 * Each site grows against what its neighbours have *already* become, not against what
+	 * they started as.
+	 *
+	 * This was a latent bug that a bigger world made ordinary. Growth was computed for every
+	 * site against the original radii, so two neighbours could each expand into the same gap:
+	 * neither overlapped anything at the moment it was measured, and the pair overlapped by a
+	 * tile and a half once both had grown. The symptom was the generator producing, in one run,
+	 * a world its own validator complained about.
+	 *
+	 * `sites` is in cell order — `sitesWithin` sorts — so which of two neighbours gets the gap
+	 * is stable rather than a function of iteration order.
+	 */
+	const current = new Map(neighbours.map((site) => [site.id, site]));
 	for (const site of sites) {
 		const place = growSite({
 			world,
 			site,
 			bounds,
-			neighbours,
+			neighbours: [...current.values()],
 			wanted: rosterTarget(world, site),
 		});
 		if (place?.radius === undefined) continue;
 		grown[String(site.id)] = place.radius;
 		places.push(place);
+		current.set(site.id, { ...site, radius: place.radius });
 	}
 	return { places, grown };
 }
@@ -434,7 +454,21 @@ function surveyAt(
 	const style = styleForEdge(world, spawn, radiusTiles);
 	const { bounds, adjustment } = solveBounds(world, spawn, radiusTiles, style);
 
-	const inside = (site: MacroSite) => isWellInside(bounds, site.site.x, site.site.y);
+	/*
+	 * Wholly playable, not merely centred inside.
+	 *
+	 * `solveBounds` looks for a rectangle that cuts nothing in half and usually finds one, but
+	 * it is a single offset searched against four edges at once — and the bigger the world, the
+	 * longer the perimeter and the more sites there are near it, so on a large enough rectangle
+	 * there may be no offset that clears all of them. It used to be enough to test the centre,
+	 * which meant a survey could report a town whose western third was inside a cliff face.
+	 *
+	 * Dropping those is better than reporting them. Nothing downstream of a survey wants a
+	 * half-eaten town: the story pass would name it, put people in it and hang a beat on it,
+	 * and the missing third is wherever the noise happened to fall.
+	 */
+	const inside = (site: MacroSite) =>
+		isWellInside(bounds, site.site.x, site.site.y) && !straddles(bounds, site);
 
 	// Room first. Neighbours are drawn a macro cell wider than the bounds, because a site
 	// just outside the playable rectangle is still ground a grown footprint would run into.
