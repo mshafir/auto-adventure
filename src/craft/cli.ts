@@ -1,6 +1,7 @@
 import { Args, CraftError, parseArgs } from "./args.js";
 import { craftCheck, craftPlaytest } from "./check.js";
 import {
+	craftCarry,
 	craftFound,
 	craftNpcAdd,
 	craftPlace,
@@ -77,6 +78,12 @@ export const VERBS: readonly Verb[] = [
 		run: craftTree,
 	},
 	{
+		words: ["carry"],
+		usage: 'craft carry <id> --item "Name" --description "..." [--quantity 1]',
+		summary: "what the player starts with. The first one replaces the default coins",
+		run: craftCarry,
+	},
+	{
 		words: ["place"],
 		usage:
 			'craft place <id> --item "Name" --description "..." --site N [--in "Building"] [--anchor a] [--requires flag] [--show] | --sign --at x,y --arm N... | --gate --site N --opens-when flag',
@@ -114,7 +121,7 @@ export const VERBS: readonly Verb[] = [
 	{
 		words: ["scene", "step"],
 		usage:
-			'craft scene step <id> --scene <sceneId> [--say "who: words"] [--walk who:place] [--spawn who:place] [--camera place] [--face who:dir] [--wait n] [--flag f] [--grant "Item: what it is"] [--hold n]',
+			'craft scene step <id> --scene <sceneId> [--say "who: words"] [--walk who:place] [--spawn who:place] [--camera place] [--face who:dir] [--wait n] [--flag f] [--grant "Item: what it is"] [--take "Item"] [--hold n]',
 		summary: "append a step. A place is x,y or <siteId>[@anchor]",
 		run: craftSceneStep,
 	},

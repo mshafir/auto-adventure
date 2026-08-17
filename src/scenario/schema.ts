@@ -607,6 +607,24 @@ export const ScenarioArtifactSchema = z.object({
 	time: TimeOptionsSchema.optional(),
 	/** Whether a model may improvise for anyone with no written tree. Absent means no. */
 	liveInGame: z.boolean().optional(),
+	/**
+	 * What the player is carrying when the world opens. Absent means a handful of coins.
+	 *
+	 * Capped at eight, because a starting pack is a premise rather than a warehouse: the
+	 * player has to be able to read the whole of it on the first screen they open.
+	 */
+	startsWith: z
+		.array(
+			z
+				.object({
+					name: z.string().min(1).max(48),
+					description: z.string().min(1).max(240),
+					quantity: z.number().int().min(1).max(999),
+				})
+				.strict(),
+		)
+		.max(8)
+		.optional(),
 	trees: z.record(z.string(), DialogueTreeSchema).optional(),
 	authoredWith: z.object({
 		models: z.record(z.string(), z.string()),

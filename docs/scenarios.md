@@ -639,6 +639,15 @@ a `Spawn`, needs a `hold` if anyone is to see it.
 with nothing to keep the frame up. Five frames is the floor it asks for; a shot worth framing
 usually wants more.
 
+### What a scene can change
+
+`Effects` carries anything a trigger can do, which includes what the player is holding:
+`craft scene step --grant "Lantern: guttering" ` and `--take "Sealed Letter"`. A cutscene where
+somebody meets you on the road and takes the letter is the natural way for a story to move an
+object on, and without it the only way to lose a thing was to drop it yourself.
+
+Both are non-idempotent, so both are refused anywhere but the last step — see below.
+
 ### Two rules a scene has to obey
 
 **Non-idempotent effects only in the last step.** No save is written while a scene plays, so
@@ -786,6 +795,20 @@ Per-biome overrides on the built-in table — `ground`, `groundAlt`, `scatterDen
 `scatter`, `habitable`, `name`. Partial: `{ "forest": { "scatterDensity": 0.8 } }`
 thickens woodland and inherits everything else about a forest. Terrain is written by
 key (`"sand"`, `"conifer"`), not by number.
+
+### What the player starts with
+
+```json
+{ "startsWith": [{ "name": "Sealed Letter", "description": "Folded twice.", "quantity": 1 }] }
+```
+
+`craft carry <id> --item "Name" --description "..."`. Absent means the default handful of
+coins; the first `carry` **replaces** that rather than adding to it, so a world can start
+somebody with nothing but the clothes they stand in — ask for `Gold` explicitly to keep it.
+
+Applied when the world is created and never on resume. A starting inventory is a fact about
+the beginning, like the spawn, and an edited one must not hand items to a save halfway
+through. Capped at eight, because a starting pack is a premise rather than a warehouse.
 
 ### sites
 

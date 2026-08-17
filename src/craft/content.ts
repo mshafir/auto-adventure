@@ -278,6 +278,42 @@ export function craftTree(args: Args, out: (line: string) => void): void {
 	out("  one node with a way out. Edit the prose directly; the shape is already valid.");
 }
 
+/**
+ * What the player is carrying when the world opens.
+ *
+ * A hole in the format until now: a story that begins with a letter to deliver has to begin
+ * with the letter, and the only alternative was the first conversation telling the player they
+ * had been given something they could not find in their own pack.
+ *
+ * The first call replaces the default handful of coins rather than adding to it, so a world
+ * can start somebody with nothing but the clothes they stand in — say `--item Gold` explicitly
+ * if the coins are wanted alongside.
+ */
+export function craftCarry(args: Args, out: (line: string) => void): void {
+	const workspace = openWorkspace(requireId(args, "carry"));
+	const artifact = workspace.artifact;
+	const name = args.str("item");
+	const description = args.str("description");
+	const quantity = args.int("quantity", 1);
+	args.refuseUnknown();
+
+	if (quantity < 1) throw new CraftError("--quantity is how many, so it starts at 1");
+	const already = artifact.startsWith ?? [];
+	if (already.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+		throw new CraftError(`the player already starts with "${name}"`);
+	}
+
+	const startsWith = [...already, { name, description, quantity }];
+	workspace.artifact = { ...artifact, startsWith };
+	commit(workspace, `starting with ${name}`);
+
+	out(`the player starts carrying ${quantity} × ${name}`);
+	if (already.length === 0) out("  which replaces the default handful of coins");
+	out(
+		`  the whole pack: ${startsWith.map((item) => `${item.quantity} × ${item.name}`).join(", ")}`,
+	);
+}
+
 export function craftPlace(args: Args, out: (line: string) => void): void {
 	const workspace = openWorkspace(requireId(args, "place"));
 	const phase = phaseOf(workspace, args.has("phase") ? args.str("phase") : undefined);

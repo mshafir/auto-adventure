@@ -460,3 +460,82 @@ describe("the vocabulary", () => {
 		expect((await craft("check", "no-such-scenario")).code).toBe(2);
 	});
 });
+
+/*
+ * What the player is carrying when the world opens.
+ *
+ * A hole in the format until now, and the kind that shows: a story that begins with a letter
+ * to deliver has to begin with the letter, and the alternative was the first conversation
+ * telling the player they had been given something they could not find in their own pack.
+ */
+describe("the starting pack", () => {
+	it("replaces the default coins with what the story says", SLOW, async () => {
+		await craft("new", "abbey", "--premise", "x", "--seed", "abbey");
+		const { code, out } = await craft(
+			"carry",
+			"abbey",
+			"--item",
+			"Sealed Letter",
+			"--description",
+			"Folded twice.",
+		);
+		expect(code).toBe(0);
+		expect(out).toContain("replaces the default");
+		const artifact = JSON.parse(readFileSync(join(root, "abbey", "scenario.json"), "utf8"));
+		expect(artifact.startsWith).toEqual([
+			{ name: "Sealed Letter", description: "Folded twice.", quantity: 1 },
+		]);
+	});
+
+	it("adds to the pack after the first, so coins can be asked for back", SLOW, async () => {
+		await craft("new", "abbey", "--premise", "x", "--seed", "abbey");
+		await craft("carry", "abbey", "--item", "Sealed Letter", "--description", "Folded twice.");
+		const { code, out } = await craft(
+			"carry",
+			"abbey",
+			"--item",
+			"Gold",
+			"--description",
+			"A handful of coins.",
+			"--quantity",
+			"6",
+		);
+		expect(code).toBe(0);
+		expect(out).not.toContain("replaces the default");
+		const artifact = JSON.parse(readFileSync(join(root, "abbey", "scenario.json"), "utf8"));
+		expect(artifact.startsWith).toHaveLength(2);
+	});
+
+	it("refuses the same thing twice", SLOW, async () => {
+		await craft("new", "abbey", "--premise", "x", "--seed", "abbey");
+		await craft("carry", "abbey", "--item", "Rope", "--description", "Tarred.");
+		const { code, out } = await craft("carry", "abbey", "--item", "rope", "--description", "Also.");
+		expect(code).toBe(1);
+		expect(out).toContain("already starts with");
+	});
+});
+
+describe("a scene that changes what is carried", () => {
+	it("can take a thing as well as give one", SLOW, async () => {
+		// The natural way for a story to move an object on: somebody meets you and takes the
+		// letter. Without `--take`, the only way to lose a thing was to drop it yourself.
+		await craft("new", "abbey", "--premise", "x", "--seed", "abbey");
+		await craft("scene", "new", "abbey", "--scene", "the-handover");
+		const { code } = await craft(
+			"scene",
+			"step",
+			"abbey",
+			"--scene",
+			"the-handover",
+			"--take",
+			"Sealed Letter",
+		);
+		expect(code).toBe(0);
+		const scene = JSON.parse(
+			readFileSync(join(root, "abbey", "scenes", "the-handover.json"), "utf8"),
+		);
+		expect(scene.steps.at(-1).do).toEqual([
+			{ t: "Effects", effects: [{ t: "TakeItem", name: "Sealed Letter", quantity: 1 }] },
+		]);
+	});
+});

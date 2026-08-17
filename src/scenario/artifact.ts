@@ -6,6 +6,7 @@ import type { AuthoredBarrier } from "../core/rules/lock.js";
 import type { Placement } from "../core/rules/placement.js";
 import type { Scene } from "../core/rules/scene.js";
 import type { Sign } from "../core/rules/signage.js";
+import type { InventoryItem } from "../core/rules/state.js";
 import type { Trigger } from "../core/rules/trigger.js";
 import type { WorldBounds } from "../core/world/bounds.js";
 import type { ScenarioBrief } from "../core/world/brief.js";
@@ -182,6 +183,21 @@ export interface ScenarioArtifact {
 	 * generated not to should not start spending money because a key turned up.
 	 */
 	readonly liveInGame?: boolean;
+	/**
+	 * What the player is carrying when the world opens.
+	 *
+	 * Absent means the default handful of coins, which is what every world had before there
+	 * was any way to say otherwise — and it was a hole in the format, because a story that
+	 * begins with a letter to deliver has to begin with the letter. Writing it into the first
+	 * conversation instead means the player is told they were given something they cannot
+	 * find in their own pack.
+	 *
+	 * Replaces the default rather than adding to it, so a world can also start somebody with
+	 * nothing at all. Applied when the world is *created* and never on resume: a starting
+	 * inventory is a fact about the beginning, like the spawn, and an edited one must not
+	 * hand items to a save that is halfway through.
+	 */
+	readonly startsWith?: readonly InventoryItem[];
 	/**
 	 * Authored conversations, keyed by `npcId(siteId, slot)`.
 	 *

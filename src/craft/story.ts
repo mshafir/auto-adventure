@@ -191,6 +191,12 @@ function readActions(
 			effects: [{ t: "GrantItem", name, description: description.trim(), quantity: 1 }],
 		});
 	}
+	// The other half of a scene that changes what the player carries. A cutscene where
+	// somebody takes the letter off you is the natural way for a story to move an object on,
+	// and without this the only way to lose a thing was to drop it.
+	for (const name of args.list("take")) {
+		actions.push({ t: "Effects", effects: [{ t: "TakeItem", name, quantity: 1 }] });
+	}
 	return actions;
 }
 

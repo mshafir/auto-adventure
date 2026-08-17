@@ -411,6 +411,11 @@ function newScenarioWorld(
 		sites: artifact.sites,
 		specSources,
 		...(artifact.arc ? { arc: artifact.arc } : {}),
+		// Replaces the default handful of coins rather than adding to it, so a world can start
+		// somebody with nothing. Here and not in `scenarioRules`, which also runs on resume: a
+		// starting inventory is a fact about the beginning, like the spawn, and an edited one
+		// must not hand items to a save that is halfway through.
+		...(artifact.startsWith ? { inventory: artifact.startsWith } : {}),
 		...scenarioRules(artifact),
 	};
 }

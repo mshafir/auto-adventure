@@ -88,7 +88,21 @@ only owns what has to agree with the map.
 - `--live` only for people the story does not touch. `craft check` refuses it for anybody the
   arc anchors, and it is right to.
 
-### 4. Beats, then chapters, then scenes
+### 4. What the player starts with
+
+```
+npm run craft -- carry <id> --item "Sealed Letter" --description "Folded twice, and the wax is somebody's crest."
+```
+
+If the story begins with something in the player's hand, put it there. The first `carry`
+replaces the default handful of coins, so ask for `Gold` back if you want it. A story that
+opens by telling the player they were given something they cannot find in their own pack is
+the same fault as a story about a ledger that is nowhere.
+
+A scene can change it too: `--grant "Lantern: guttering"` and `--take "Sealed Letter"`, in the
+scene's last step only.
+
+### 5. Beats, then chapters, then scenes
 
 ```
 npm run craft -- beat add <id> --beat ask-the-ferryman --site N --slot 0 --journal "..."
@@ -101,7 +115,7 @@ npm run craft -- trigger add <id> --trigger t --when <flag> --scene the-messenge
 Every command takes `--phase <id>` to write into a chapter instead of the base world. There is
 no `craft phase place`; there is `craft place --phase after-the-flood`.
 
-### 5. Check after every step, not at the end
+### 6. Check after every step, not at the end
 
 ```
 npm run craft -- check <id>
@@ -112,7 +126,7 @@ reachability, and refuses anything that could never work. Run it constantly. A w
 been checked after every command has one thing wrong with it; a world checked at the end has
 twenty, and they interact.
 
-### 6. Playtest
+### 7. Playtest
 
 ```
 npm run craft -- playtest <id>
@@ -122,13 +136,13 @@ Walks the story through the real engine. `check` proves the files are consistent
 the story can actually be told — that the person a beat hangs on is standing where the world
 put them, that the road between two beats can be walked, that every errand can close.
 
-### 7. Side quests, per chapter
+### 8. Side quests, per chapter
 
 Once the main line plays, add optional beats — `--optional` — conditioned on what has already
 happened. Place what each one needs. If it cannot be placed, **delete the side quest**; do not
 weaken the main line to fit it.
 
-### 8. Have it reviewed, then play it yourself
+### 9. Have it reviewed, then play it yourself
 
 Dispatch a reviewer with the `game-reviewer` skill. It plays the world without reading the
 files first — which is the point: you cannot un-know where you put the ledger, so you are the
@@ -146,7 +160,7 @@ npm run craft -- play <id>
 Walk to the first town. Talk to the person the story starts with. Ask whether you would know
 where to go next if nobody had told you.
 
-### 9. Write down what you learned
+### 10. Write down what you learned
 
 Add to `docs/gamecraft/` anything a future run would want to know: a mistake that cost you an
 hour, a shape that worked, a rule the CLI does not enforce. One short file per topic, prose,
